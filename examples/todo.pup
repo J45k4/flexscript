@@ -1,0 +1,34 @@
+import { Text, Checkbox View, List, Page, Col, Row, Modal, DB } from "std"
+
+model Todo {
+    description: String
+    completed: Bool
+}
+
+let newTodo = () => {
+    Modal("Create new todo") {
+        Col {
+            Text("Description")
+            let description = TextInput(id="textInput")
+            Button("Create", onClick = {
+                DB.todo.create({
+                    description,
+                    completed: false
+                })
+                Modal.close()
+            })
+        }
+    }
+}
+
+Page("/*") {
+    Col {
+        Row { Text("Todo App") Button("New", onClick = newTodo) }
+        
+        List {
+            for todo in DB.todo.where(todo = !todo.completed) {
+                Row { Checkbox(onClick = todo.completed = true ) Text(todo.name) }
+            }
+        }
+    }
+}
