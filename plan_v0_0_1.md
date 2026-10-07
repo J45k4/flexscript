@@ -96,16 +96,16 @@ passes the language tests without depending on the Rust compiler at runtime.
 - [x] Freeze the 0.0.1 core specification and record its supported features and
       known limitations in versioned documentation outside `readme.md`.
 - [x] Add a repeatable bootstrap verification command covering steps 2 and 3.
-- [ ] Commit the compiler source, Rust seed, fixtures, build instructions, and
+- [x] Commit the compiler source, Rust seed, fixtures, build instructions, and
       bootstrap verification tooling on `master`.
-- [ ] Build the release from that exact committed tree and verify the embedded
+- [x] Build the release from that exact committed tree and verify the embedded
       version is `0.0.1`.
-- [ ] Select the verified stage 2 binary as the bootstrap release artifact.
+- [x] Select the verified stage 2 binary as the bootstrap release artifact.
 - [x] Verify the artifact in a clean environment with Rust and Cargo absent:
       compile a sample program, run it, and rebuild the Flexscript compiler.
-- [ ] Prepare the executable asset `flexscript-0.0.1-linux-x86_64` and its checksum
+- [x] Prepare the executable asset `flexscript-0.0.1-linux-x86_64` and its checksum
       in `SHA256SUMS`.
-- [ ] Record the target platform, source commit, bootstrap commands, and results
+- [x] Record the target platform, source commit, bootstrap commands, and results
       in the release notes.
 
 **Completion:** a verified native compiler binary and release notes are ready to
@@ -113,14 +113,14 @@ publish, and the source tree used to produce them is committed.
 
 ## 5. Tag, release, and upload the bootstrap binary
 
-- [ ] Create Git tag `0.0.1` at the verified release commit.
-- [ ] Push the release commit and tag to `J45k4/flexscript`.
-- [ ] Create the GitHub release for tag `0.0.1`.
-- [ ] Upload `flexscript-0.0.1-linux-x86_64` and `SHA256SUMS` to that release.
-- [ ] Download the published binary and verify its checksum and version.
-- [ ] Use that downloaded binary to compile the compiler source from tag
+- [x] Create Git tag `0.0.1` at the verified release commit.
+- [x] Push the release commit and tag to `J45k4/flexscript`.
+- [x] Create the GitHub release for tag `0.0.1`.
+- [x] Upload `flexscript-0.0.1-linux-x86_64` and `SHA256SUMS` to that release.
+- [x] Download the published binary and verify its checksum and version.
+- [x] Use that downloaded binary to compile the compiler source from tag
       `0.0.1`, then run the rebuilt compiler and the language fixtures.
-- [ ] Verify the remote tag points to the intended commit and the release assets
+- [x] Verify the remote tag points to the intended commit and the release assets
       are accessible.
 
 **Completion:** release `0.0.1` provides a downloadable, verified bootstrap
@@ -137,3 +137,28 @@ When extending the language, first implement new features using syntax supported
 by the previous released compiler. Build and verify an updated compiler before
 using those new features in the compiler's own source. Preserve that sequence so
 every release has a working bootstrap path from an earlier release.
+
+## Completion evidence
+
+- Published release: https://github.com/J45k4/flexscript/releases/tag/0.0.1
+- Tag `0.0.1` points to source commit
+  `eae21182ac95392e4ceb252a2a5e526ace792dc6`.
+- Uploaded stage 2 asset: `flexscript-0.0.1-linux-x86_64` (34,429 bytes), plus
+  `SHA256SUMS`.
+- Compiler SHA-256:
+  `5384cb7725746a49957ab732a230b9cb1a6ac70a2495c103f72028aadc0e3124`.
+- Rust-seed bootstrap: stages 1, 2, and 3 are byte-identical; 252 checks passed
+  across the Rust seed, stage 1, and stage 2.
+- The clean-room test rebuilt the compiler, compiled the sample with the rebuilt
+  compiler, and ran that sample in an empty root with no Rust, Cargo, libc, or
+  other compiler.
+- The downloaded release binary matched its published checksum, rebuilt the
+  compiler source extracted from tag `0.0.1` three times identically, and passed
+  168 checks against the tagged fixtures together with its rebuilt compiler.
+- The documented `--compiler` bootstrap command was run with the downloaded
+  binary: no Rust invocation, another 252 checks passed, and the clean-room
+  verification passed.
+- `readme.md` remained unchanged.
+
+The release tag preserves the exact source used for the binary. This completion
+record is a subsequent documentation update on `master`.
