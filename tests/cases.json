@@ -1,0 +1,318 @@
+{
+  "valid": [
+    {
+      "source": "valid/basic.flex",
+      "exit": 14,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/associativity.flex",
+      "exit": 15,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/no-spaces.flex",
+      "exit": 3,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/arguments.flex",
+      "exit": 12,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/recursion.flex",
+      "exit": 120,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/mutual-recursion.flex",
+      "exit": 1,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/loop.flex",
+      "exit": 55,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/branches.flex",
+      "exit": 9,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/shadowing.flex",
+      "exit": 7,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/global.flex",
+      "exit": 5,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/global-shadow.flex",
+      "exit": 1,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/default-return.flex",
+      "exit": 0,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/boolean.flex",
+      "exit": 8,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/signed-division.flex",
+      "exit": 3,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/bitwise.flex",
+      "exit": 36,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/shifts.flex",
+      "exit": 5,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/wrapping.flex",
+      "exit": 3,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/negate.flex",
+      "exit": 7,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/short-circuit.flex",
+      "exit": 23,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/short-circuit-trap.flex",
+      "exit": 1,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/memory.flex",
+      "exit": 3,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/store-result.flex",
+      "exit": 2,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/string.flex",
+      "exit": 0,
+      "stdout": "Hello, Flexscript!\n",
+      "args": []
+    },
+    {
+      "source": "valid/string-escapes.flex",
+      "exit": 6,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/utf8-string.flex",
+      "exit": 0,
+      "stdout": "你好",
+      "args": []
+    },
+    {
+      "source": "valid/parameter-mutation.flex",
+      "exit": 11,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/argument-order.flex",
+      "exit": 12,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/comments.flex",
+      "exit": 42,
+      "stdout": "",
+      "args": []
+    },
+    {
+      "source": "valid/argc.flex",
+      "exit": 3,
+      "stdout": "",
+      "args": [
+        "first",
+        "second"
+      ]
+    },
+    {
+      "source": "valid/argv.flex",
+      "exit": 0,
+      "stdout": "demo",
+      "args": [
+        "demo"
+      ]
+    },
+    {
+      "source": "valid/file-io.flex",
+      "exit": 1,
+      "stdout": "",
+      "args": [
+        "{work}/file.txt"
+      ],
+      "file_content": "native"
+    },
+    {
+      "source": "valid/errno.flex",
+      "exit": 1,
+      "stdout": "",
+      "args": []
+    }
+  ],
+  "invalid": [
+    {
+      "source": "invalid/missing-main.flex",
+      "error": "missing main"
+    },
+    {
+      "source": "invalid/main-arity.flex",
+      "error": "main must take"
+    },
+    {
+      "source": "invalid/undefined-variable.flex",
+      "error": "undefined variable"
+    },
+    {
+      "source": "invalid/undefined-function.flex",
+      "error": "undefined function"
+    },
+    {
+      "source": "invalid/call-arity.flex",
+      "error": "wrong function argument"
+    },
+    {
+      "source": "invalid/builtin-arity.flex",
+      "error": "wrong builtin argument"
+    },
+    {
+      "source": "invalid/duplicate-function.flex",
+      "error": "duplicate function"
+    },
+    {
+      "source": "invalid/duplicate-global.flex",
+      "error": "duplicate global"
+    },
+    {
+      "source": "invalid/namespace-conflict.flex",
+      "error": "duplicate function"
+    },
+    {
+      "source": "invalid/duplicate-local.flex",
+      "error": "duplicate local"
+    },
+    {
+      "source": "invalid/duplicate-parameter.flex",
+      "error": "duplicate local"
+    },
+    {
+      "source": "invalid/parameter-local.flex",
+      "error": "duplicate local"
+    },
+    {
+      "source": "invalid/out-of-scope.flex",
+      "error": "undefined variable"
+    },
+    {
+      "source": "invalid/reserved-name.flex",
+      "error": "reserved declaration"
+    },
+    {
+      "source": "invalid/reserved-function.flex",
+      "error": "reserved declaration"
+    },
+    {
+      "source": "invalid/global-expression.flex",
+      "error": "unexpected token"
+    },
+    {
+      "source": "invalid/global-after-function.flex",
+      "error": "globals must precede"
+    },
+    {
+      "source": "invalid/missing-semicolon.flex",
+      "error": "unexpected token"
+    },
+    {
+      "source": "invalid/unterminated-block.flex",
+      "error": "unterminated block"
+    },
+    {
+      "source": "invalid/invalid-byte.flex",
+      "error": "unexpected source byte"
+    },
+    {
+      "source": "invalid/unterminated-string.flex",
+      "error": "unterminated string"
+    },
+    {
+      "source": "invalid/invalid-escape.flex",
+      "error": "invalid string escape"
+    },
+    {
+      "source": "invalid/overflow-decimal.flex",
+      "error": "decimal integer out of range"
+    },
+    {
+      "source": "invalid/overflow-hex.flex",
+      "error": "hexadecimal integer out of range"
+    },
+    {
+      "source": "invalid/empty-hex.flex",
+      "error": "expected hexadecimal digits"
+    },
+    {
+      "source": "invalid/invalid-number.flex",
+      "error": "invalid integer literal"
+    },
+    {
+      "source": "invalid/empty-expression.flex",
+      "error": "expected expression"
+    },
+    {
+      "source": "invalid/missing-comma.flex",
+      "error": "unexpected token"
+    }
+  ]
+}

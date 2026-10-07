@@ -1,0 +1,1 @@
+fn main(argc,argv) { let path=load64(argv+8); let fd=syscall(2,path,577,384,0,0,0); if fd<0 { return 90; } if syscall(1,fd,"native",6,0,0,0)!=6 { return 91; } syscall(3,fd,0,0,0,0,0); fd=syscall(2,path,0,0,0,0,0); let b=alloc(8); let n=syscall(0,fd,b,8,0,0,0); syscall(3,fd,0,0,0,0,0); return (n==6) && (load8(b)==110) && (load8(b+5)==101); }
