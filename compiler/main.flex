@@ -1,6 +1,7 @@
 import "../lib/http.flex";
 import "../lib/signature.flex";
 import "../vm/runtime.flex";
+import "baremetal.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
@@ -39,6 +40,8 @@ global ffi_entries = 0;
 global ffi_fixups = 0;
 global ffi_fixup_count = 0;
 global ffi_dynamic = 0;
+global baremetal_target = 0;
+global native_main_call = 132;
 
 
 // State used only by the upgrade subcommand.
@@ -152,7 +155,11 @@ fn reserved(name, size) {
         || equal(name, size, "return", 6) || equal(name, size, "load8", 5)
         || equal(name, size, "load64", 6) || equal(name, size, "store8", 6)
         || equal(name, size, "store64", 7) || equal(name, size, "alloc", 5)
-        || equal(name, size, "syscall", 7) || equal(name, size, "import", 6);
+        || equal(name, size, "syscall", 7) || equal(name, size, "import", 6)
+        || equal(name, size, "port_in8", 8) || equal(name, size, "port_out8", 9)
+        || equal(name, size, "port_in16", 9) || equal(name, size, "port_out16", 10)
+        || equal(name, size, "port_in32", 9) || equal(name, size, "port_out32", 10)
+        || equal(name, size, "cpu_halt", 8);
 }
 
 fn next() {
@@ -439,8 +446,22 @@ fn call(name, size) {
     else if equal(name, size, "store64", 7) { builtin = 4; arity = 2; }
     else if equal(name, size, "alloc", 5) { builtin = 5; arity = 1; }
     else if equal(name, size, "syscall", 7) { builtin = 6; arity = 7; }
+    else if equal(name, size, "port_in8", 8) { builtin = 7; arity = 1; }
+    else if equal(name, size, "port_out8", 9) { builtin = 8; arity = 2; }
+    else if equal(name, size, "cpu_halt", 8) { builtin = 9; arity = 0; }
+    else if equal(name, size, "port_in16", 9) { builtin = 10; arity = 1; }
+    else if equal(name, size, "port_out16", 10) { builtin = 11; arity = 2; }
+    else if equal(name, size, "port_in32", 9) { builtin = 12; arity = 1; }
+    else if equal(name, size, "port_out32", 10) { builtin = 13; arity = 2; }
     if builtin {
         if count != arity { fail("wrong builtin argument count"); }
+        if baremetal_target && (builtin == 5 || builtin == 6) {
+            fail("alloc and syscall require Linux; use a bare-metal platform adapter");
+        }
+        if builtin >= 7 {
+            if !baremetal_target { fail("hardware builtins require --target baremetal-x86_64"); }
+            baremetal_builtin(builtin);return 0;
+        }
         if vm_mode {vm_emit(17,builtin);return 0;}
         if builtin == 1 || builtin == 2 {
             emit(95);
@@ -721,6 +742,7 @@ fn function_definition() {
 
 fn initialize_output() {
     if vm_mode {return 0;}
+    if baremetal_target {return baremetal_initialize();}
     let i = 0;
     while i < 120 { emit(0); i = i + 1; }
     store8(output, 127); store8(output + 1, 69);
@@ -749,13 +771,15 @@ fn resolve() {
     let count = load64(entry + 24);
     if count != 0 && count != 2 { fail("main must take zero or two parameters"); }
     if vm_mode {vm_resolve();return 0;}
-    patch32(132, load64(entry + 16) - 136);
+    if baremetal_target && count != 0 {fail("bare-metal main must take zero parameters");}
+    patch32(native_main_call, load64(entry + 16) - native_main_call - 4);
     let i = 0;
     while i < call_count {
         let site = calls + i * 32;
         let index = find(functions, function_count, load64(site), load64(site + 8));
         let target = 0;
         if index < 0 {
+            if baremetal_target {locate_name(load64(site));fail("undefined function; FFI is unavailable on bare metal");}
             target = ffi_resolve(load64(site),load64(site+8),load64(site+24));
             if !target { locate_name(load64(site)); fail("undefined function"); }
         } else {
@@ -770,8 +794,8 @@ fn resolve() {
         i = i + 1;
     }
     if ffi_dynamic { ffi_finish(load64(entry+16)); }
-    store64(output + 96, output_size);
-    store64(output + 104, output_size);
+    if baremetal_target {baremetal_finish();}
+    else {store64(output + 96, output_size);store64(output + 104, output_size);}
     return 0;
 }
 
@@ -1759,16 +1783,20 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flex upgrade [--check]\n       flex run [options] <source.flex> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript --target baremetal-x86_64 <source.flex> -o <kernel.bin>\n       flex upgrade [--check]\n       flex run [options] <source.flex> [args...]\n"); return 0;
         }
     }
-    if argc != 4 { print(2, "Usage: flexscript <source.flex> -o <binary>\n       flex upgrade [--check]\n       flex run [options] <source.flex> [args...]\n"); return 1; }
-    let option = load64(argv + 16);
+    let first=1;
+    if argc==6 && up_text(load64(argv+8),"--target") {
+        if !up_text(load64(argv+16),"baremetal-x86_64") {print(2,"unknown compiler target\n");return 1;}
+        baremetal_target=1;first=3;
+    }else if argc != 4 { print(2, "Usage: flexscript [--target baremetal-x86_64] <source.flex> -o <binary>\n"); return 1; }
+    let option = load64(argv + (first+1)*8);
     if !equal(option, length(option), "-o", 2) {
         print(2, "expected -o <binary>\n"); return 1;
     }
-    source_path = load64(argv + 8);
-    let destination = load64(argv + 24);
+    source_path = load64(argv + first*8);
+    let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
     }

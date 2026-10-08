@@ -29,7 +29,7 @@ jobs:
       - name: Install verification dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc xvfb xauth libx11-6 libpng-dev
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc xvfb xauth libx11-6 libpng-dev qemu-system-x86
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -82,6 +82,11 @@ jobs:
           xvfb-run --auto-servernum --server-args='-screen 0 1280x960x24 -nolisten tcp' \
             build/tools/test-todo --compiler build/stage2 --gui
           build/tools/test-http --compiler build/stage2
+
+      - name: Test the freestanding x86-64 backend in QEMU
+        run: |
+          build/stage2 scripts/test-baremetal.flex -o build/test-baremetal
+          build/test-baremetal --compiler build/stage2 --report build/baremetal-tests.json
 
       - name: Check release tag and package the verified compiler
         env:
