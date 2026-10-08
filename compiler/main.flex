@@ -1,6 +1,6 @@
 import "../lib/http.flex";
 import "../lib/signature.flex";
-// Flexscript compiler 0.0.4. Native Linux x86-64 / ELF backend.
+// Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
 global source_size = 0;
@@ -989,7 +989,7 @@ fn compile_modules() {
 }
 
 // Upgrade logic is Flexscript; the HTTPS library uses OpenSSL through FFI.
-fn compiler_version() { return "0.0.4"; }
+fn compiler_version() { return "0.0.5"; }
 fn up_copy(to,from,n) { let i=0; while i<n { store8(to+i,load8(from+i)); i=i+1; } return 0; }
 fn up_text(a,b) { return equal(a,length(a),b,length(b)); }
 fn up_join(a,b,c) {
