@@ -221,7 +221,9 @@ def suite(compiler):
 
         # Observe generated code mappings while a compiled leaf loop is live.
         program('fn spin(){while 1 {}return 0;}fn main(){return spin();}')
-        process=subprocess.Popen([str(compiler),'run','--jit','--fuel=1000000000','--timeout-ms=500',str(fixture)],
+        # Keep the deadline well below the time needed to consume this fuel
+        # budget, including on faster CI hosts.
+        process=subprocess.Popen([str(compiler),'run','--jit','--fuel=1000000000','--timeout-ms=100',str(fixture)],
                                  stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         observed=False
         try:
