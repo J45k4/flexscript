@@ -1,5 +1,6 @@
 import "../lib/http.flex";
 import "../lib/signature.flex";
+import "../vm/runtime.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
@@ -278,12 +279,17 @@ fn emit64(value) {
 }
 
 fn patch32(at, value) {
+    if vm_mode {store64(output+at,at+4+value);return 0;}
     let i = 0;
     while i < 4 { store8(output + at + i, value >> (i * 8)); i = i + 1; }
     return 0;
 }
 
 fn jump(opcode) {
+    if vm_mode {
+        let kind=10;if opcode==132 {kind=11;}else if opcode==133 {kind=12;}
+        return vm_emit(kind,0)+8;
+    }
     if opcode != 233 { emit(15); }
     emit(opcode);
     let at = output_size;
@@ -291,10 +297,11 @@ fn jump(opcode) {
     return at;
 }
 
-fn patch_jump(at) { patch32(at, output_size - at - 4); return 0; }
-fn test_rax() { emit(72); emit(133); emit(192); return 0; }
-fn immediate(n) { emit(72); emit(184); emit64(n); return 0; }
-fn epilogue() { emit(201); emit(195); return 0; }
+fn patch_jump(at) {if vm_mode {store64(output+at,output_size);}else {patch32(at,output_size-at-4);}return 0;}
+fn test_rax() {if vm_mode {return 0;}emit(72);emit(133);emit(192);return 0;}
+fn immediate(n) {if vm_mode {vm_emit(1,n);return 0;}emit(72);emit(184);emit64(n);return 0;}
+fn epilogue() {if vm_mode {vm_emit(9,0);return 0;}emit(201);emit(195);return 0;}
+fn push_value() {if vm_mode {vm_emit(2,0);}else {emit(80);}return 0;}
 
 fn find(table, count, name, size) {
     let i = count - 1;
@@ -326,6 +333,10 @@ fn declare_local(name, size) {
 fn variable(name, size, storing) {
     let index = find(locals, local_count, name, size);
     if index >= 0 {
+        if vm_mode {
+            let op=3;if storing {op=4;}
+            vm_emit(op,load64(locals+index*32+16));return 0;
+        }
         emit(72);
         if storing { emit(137); } else { emit(139); }
         emit(133);
@@ -333,6 +344,10 @@ fn variable(name, size, storing) {
     } else {
         index = find(globals, global_count, name, size);
         if index < 0 { fail("undefined variable"); }
+        if vm_mode {
+            let op=5;if storing {op=6;}
+            vm_emit(op,load64(globals+index*32+16));return 0;
+        }
         emit(72);
         if storing { emit(137); } else { emit(139); }
         emit(5);
@@ -357,6 +372,7 @@ fn precedence(t) {
 }
 
 fn normalize() {
+    if vm_mode {vm_emit(13,0);return 0;}
     test_rax();
     emit(15); emit(149); emit(192);
     emit(72); emit(15); emit(182); emit(192);
@@ -364,6 +380,7 @@ fn normalize() {
 }
 
 fn binary(op) {
+    if vm_mode {vm_emit(7,op);return 0;}
     emit(89); // pop rcx (left); rax is right
     if op == 43 { emit(72); emit(1); emit(200); }
     else if op == 45 {
@@ -405,7 +422,7 @@ fn call(name, size) {
         let more = 1;
         while more {
             expression(1);
-            emit(80);
+            push_value();
             count = count + 1;
             if token == 44 { next(); } else { more = 0; }
         }
@@ -421,6 +438,7 @@ fn call(name, size) {
     else if equal(name, size, "syscall", 7) { builtin = 6; arity = 7; }
     if builtin {
         if count != arity { fail("wrong builtin argument count"); }
+        if vm_mode {vm_emit(17,builtin);return 0;}
         if builtin == 1 || builtin == 2 {
             emit(95);
             emit(72);
@@ -446,6 +464,11 @@ fn call(name, size) {
         }
     } else {
         if call_count >= 65536 { fail("too many calls"); }
+        if vm_mode {
+            let site=calls+call_count*32;
+            store64(site,name);store64(site+8,size);store64(site+16,vm_emit(8,0)+8);
+            store64(site+24,count);call_count=call_count+1;return 0;
+        }
         emit(232);
         let entry = calls + call_count * 32;
         store64(entry, name);
@@ -464,6 +487,7 @@ fn prefix() {
         immediate(token_value);
         next();
     } else if token == 258 {
+        if vm_mode {immediate(vm_string_literal());next();return 0;}
         let start = token_start + 1;
         let end = token_start + token_size - 1;
         let skip = jump(233);
@@ -497,6 +521,10 @@ fn prefix() {
     } else if token == 45 || token == 33 || token == 126 {
         let op = token;
         next(); expression(11);
+        if vm_mode {
+            let kind=15;if op==45 {kind=14;}else if op==126 {kind=16;}
+            vm_emit(kind,0);return 0;
+        }
         if op == 45 { emit(72); emit(247); emit(216); }
         else if op == 126 { emit(72); emit(247); emit(208); }
         else {
@@ -524,7 +552,7 @@ fn expression(minimum) {
             normalize();
             patch_jump(skip);
         } else {
-            emit(80);
+            push_value();
             expression(priority + 1);
             binary(op);
         }
@@ -628,6 +656,10 @@ fn global_definition() {
     store64(entry + 8, size);
     store64(entry + 16, output_size);
     global_count = global_count + 1;
+    if vm_mode {
+        let address=vm_allocate(8);if address<0 {fail("VM memory limit exceeded by globals");}
+        store64(vm_heap+address,value);store64(entry+16,address);return 0;
+    }
     emit64(value);
     return 0;
 }
@@ -662,6 +694,10 @@ fn function_definition() {
     expect(41);
     let count = local_count;
     store64(entry + 24, count);
+    if vm_mode {
+        let frame=vm_emit(18,0);depth=0;block();immediate(0);epilogue();
+        store64(output+frame+8,slots);return 0;
+    }
     emit(85); emit(72); emit(137); emit(229);
     emit(72); emit(129); emit(236);
     let frame = output_size;
@@ -681,6 +717,7 @@ fn function_definition() {
 }
 
 fn initialize_output() {
+    if vm_mode {return 0;}
     let i = 0;
     while i < 120 { emit(0); i = i + 1; }
     store8(output, 127); store8(output + 1, 69);
@@ -708,6 +745,7 @@ fn resolve() {
     let entry = functions + main_index * 32;
     let count = load64(entry + 24);
     if count != 0 && count != 2 { fail("main must take zero or two parameters"); }
+    if vm_mode {vm_resolve();return 0;}
     patch32(132, load64(entry + 16) - 136);
     let i = 0;
     while i < call_count {
@@ -1559,6 +1597,7 @@ fn up_sha_constants() {
 
 fn main(argc, argv) {
     source_path = "flexscript";
+    if argc>=2 && up_text(load64(argv+8),"run") {return vm_main(argc,argv);}
     if argc >= 2 && up_text(load64(argv + 8), "upgrade") { return up_main(argc, argv); }
     if argc == 2 {
         let arg = load64(argv + 8);
@@ -1566,10 +1605,10 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flex upgrade [--check]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flex upgrade [--check]\n       flex run [options] <source.flex> [args...]\n"); return 0;
         }
     }
-    if argc != 4 { print(2, "Usage: flexscript <source.flex> -o <binary>\n       flex upgrade [--check]\n"); return 1; }
+    if argc != 4 { print(2, "Usage: flexscript <source.flex> -o <binary>\n       flex upgrade [--check]\n       flex run [options] <source.flex> [args...]\n"); return 1; }
     let option = load64(argv + 16);
     if !equal(option, length(option), "-o", 2) {
         print(2, "expected -o <binary>\n"); return 1;
@@ -1579,19 +1618,7 @@ fn main(argc, argv) {
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
     }
-    source_arena = alloc(16777216);
-    source = source_arena;
-    output = alloc(67108864);
-    globals = alloc(2048 * 32);
-    functions = alloc(2048 * 32);
-    locals = alloc(4096 * 32);
-    calls = alloc(65536 * 32);
-    ffi_entries = alloc(40);
-    ffi_fixups = alloc(64);
-    modules = alloc(256 * 64);
-    input_stat = alloc(144);
-    if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0
-        || calls < 0 || modules < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0 { fail("memory allocation failed"); }
+    compiler_initialize();
     load_module(source_path);
     initialize_output();
     compile_modules();
@@ -1617,5 +1644,21 @@ fn main(argc, argv) {
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
     if syscall(91, fd, 493, 0, 0, 0, 0) < 0 { fail("cannot make output executable"); }
     if syscall(3, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot close output"); }
+    return 0;
+}
+fn compiler_initialize() {
+    source_arena = alloc(16777216);
+    source = source_arena;
+    output = alloc(67108864);
+    globals = alloc(2048 * 32);
+    functions = alloc(2048 * 32);
+    locals = alloc(4096 * 32);
+    calls = alloc(65536 * 32);
+    ffi_entries = alloc(40);
+    ffi_fixups = alloc(64);
+    modules = alloc(256 * 64);
+    input_stat = alloc(144);
+    if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0
+        || calls < 0 || modules < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0 { fail("memory allocation failed"); }
     return 0;
 }

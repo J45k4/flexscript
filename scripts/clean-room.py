@@ -14,7 +14,7 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def isolated(compiler, source=None, output=None, args=()):
+def isolated(compiler, source=None, output=None, args=(), run_source=False):
     command = [
         "bwrap", "--unshare-all", "--die-with-parent", "--clearenv",
         "--tmpfs", "/", "--dir", "/work", "--chdir", "/work",
@@ -31,7 +31,10 @@ def isolated(compiler, source=None, output=None, args=()):
         command += ["--bind", str(output.parent.resolve()), "/work"]
     command += ["/compiler"]
     if source is not None:
-        command += [input_path, "-o", f"/work/{output.name}"]
+        if run_source:
+            command += ['run','--interpret',input_path,*args]
+        else:
+            command += [input_path, "-o", f"/work/{output.name}"]
     else:
         command += list(args)
     return subprocess.run(command, capture_output=True, timeout=30)
@@ -60,6 +63,8 @@ def main():
         ((hello,), b"Hello from native Flexscript!\n"),
         ((rebuilt, ROOT / "examples/imports", imported), b""),
         ((imported,), b"Hello from imported Flexscript!\n"),
+        ((rebuilt,ROOT/'examples/hello.flex',None,(),True),b'Hello from native Flexscript!\n'),
+        ((rebuilt,ROOT/'examples/imports',None,(),True),b'Hello from imported Flexscript!\n'),
     ]
     for command, expected in checks:
         result = isolated(*command)
@@ -75,7 +80,7 @@ def main():
     }
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + "\n")
-    print("Clean room: self-rebuild, native sample, and nested imports passed; no toolchain or libc present.")
+    print("Clean room: self-rebuild, native samples, imports and VM interpretation passed; no toolchain or libc present.")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ python3 scripts/bootstrap.py --compiler /path/to/flexscript-0.0.1-linux-x86_64
 # Or: python3 scripts/bootstrap.py
 ```
 
-The compiler implementation, networking, HTTPS and signature-verification libraries are Flexscript.
+The compiler implementation, networking, HTTPS, signature verification and VM/JIT are Flexscript.
 Python orchestrates builds and verification. The Rust seed stays frozen at 0.0.1.
 Compilation emits machine code and ELF linking metadata directly.
 
@@ -29,9 +29,12 @@ libc, OpenSSL, Rust or other compiler to run. It can build programs using FFI an
 can build the full compiler, but cannot perform HTTPS upgrades.
 
 Verification runs core language tests, imports, C ABI tests, local TCP/TLS/HTTPS
-integration tests, Ed25519 verification/signing tests and atomic-upgrade tests. Bubblewrap then verifies the static
+integration tests, Ed25519 verification/signing tests, atomic-upgrade tests and
+native/interpreter/JIT differential tests with capability and resource checks.
+Bubblewrap then verifies the static
 core's self-rebuild, native hello program and nested imports in an empty root
-with an empty environment and no network, toolchain or libc.
+with an empty environment and no network, toolchain or libc. The same isolated
+core interprets hello and nested imports through `run --interpret`.
 
 Build verification requires Python, bubblewrap, OpenSSL's CLI and a C compiler
 for the independent ABI fixture. `libssl.so.3` is required to run the local TLS
@@ -44,3 +47,9 @@ and static core, with SHA-256 checksums. The tag-driven CI release workflow
 signs the version-bound checksums with its private Ed25519 key and uploads both
 binaries, checksums and the detached signature. Branch and pull-request builds
 run signature tests using disposable test keys and never need the release secret.
+
+The VM and JIT live in `vm/runtime.flex` and `vm/jit.flex`. The CLI compiles VM
+bytecode using the existing language parser. `flexvm.flex` imports the same
+compiler/VM implementation and can be built using the released Flexscript
+compiler. JIT uses machine code and the full runtime's existing C ABI adapter;
+the static core supports interpretation. See [the VM documentation](vm.md).

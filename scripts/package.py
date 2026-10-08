@@ -36,10 +36,10 @@ def main():
     assert all(result['checks'] >= 88 for result in report['upgrade_tests']['results'])
     assert len(report['signature_tests']['results']) == 2
     assert all(result['checks'] >= 37 for result in report['signature_tests']['results'])
-    for key, minimum in [('ffi_tests', 24), ('network_tests', 38)]:
+    for key, minimum in [('ffi_tests', 24), ('network_tests', 38), ('vm_tests', 335)]:
         assert len(report[key]['results']) == 2
         assert all(result['checks'] >= minimum for result in report[key]['results'])
-    assert report['clean_room']['checks'] >= 8
+    assert report['clean_room']['checks'] >= 10
     native_elf(binary)
     native_elf(core, standalone=True)
     assert subprocess.check_output([str(binary.resolve()), '--version']) == f'flexscript {VERSION}\n'.encode()
@@ -63,6 +63,7 @@ Verified build:
 - {report['tests']['total']} core checks, {report['import_tests']['total']} import checks and {report['upgrade_tests']['total']} upgrade checks across the bootstrap stages.
 - {report['signature_tests']['total']} Ed25519 and release-signing checks across the bootstrap stages.
 - {report['ffi_tests']['total']} FFI checks and {report['network_tests']['total']} networking checks across the bootstrap stages.
+- {report['vm_tests']['total']} interpreter, JIT and capability checks across the bootstrap stages.
 - {report['clean_room']['checks']} checks of the static core in an empty filesystem with no toolchain or libc, including self-rebuild and nested imports.
 
 The downloadable binary is the verified stage 2 compiler. Verify it with
@@ -75,6 +76,9 @@ public key before downloading, executing or installing the candidate compiler.
 See `docs/signing.md` for the signature format and manual verification.
 The separate `flexscript-core` artifact is standalone and can build the full
 compiler. Foreign calls and HTTPS upgrades are unavailable in the core itself.
+The full compiler also provides `flex run [options] app.flex` with a restricted
+interpreter and a baseline x86-64 JIT. The static core can use `run --interpret`.
+See `docs/vm.md` for capabilities, resource limits and current JIT coverage.
 
 ```sh
 ./{artifact.name} --version

@@ -47,7 +47,8 @@ def suite(compiler):
     help_result = run([compiler, "--help"])
     check(help_result)
     legacy_help = b"Usage: flexscript <source.flex> -o <binary>\n"
-    assert help_result.stdout in (legacy_help, legacy_help + b"       flex upgrade [--check]\n"), help_result.stdout
+    upgrade_help=legacy_help+b"       flex upgrade [--check]\n"
+    assert help_result.stdout in (legacy_help,upgrade_help,upgrade_help+b"       flex run [options] <source.flex> [args...]\n"), help_result.stdout
     check(run([compiler]), status=1)
     count += 3
     with tempfile.TemporaryDirectory(prefix="flexscript-tests-") as directory:

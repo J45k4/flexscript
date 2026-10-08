@@ -126,6 +126,8 @@ def main():
         '--report', out / 'ffi-tests.json')
     run(sys.executable, ROOT / 'scripts/test-network.py', *stages[:2],
         '--report', out / 'network-tests.json')
+    run(sys.executable, ROOT / 'scripts/test-vm.py', *stages[:2],
+        '--report', out / 'vm-tests.json')
     run(sys.executable, ROOT / "scripts/clean-room.py", core,
         '--source', core_source,
         "--out-dir", out / "clean", "--report", out / "clean-room.json")
@@ -146,6 +148,7 @@ def main():
         "signature_tests": json.loads((out / "signature-tests.json").read_text()),
         "ffi_tests": json.loads((out / 'ffi-tests.json').read_text()),
         "network_tests": json.loads((out / 'network-tests.json').read_text()),
+        "vm_tests": json.loads((out / 'vm-tests.json').read_text()),
         "clean_room": json.loads((out / "clean-room.json").read_text()),
     }
     assert git("rev-parse", "HEAD") == source_commit, "source commit changed during build"
