@@ -1,4 +1,4 @@
-# TCP and HTTPS
+# TCP, HTTP and HTTPS
 
 Networking libraries are written in Flexscript. TCP socket operations use raw
 Linux syscalls; hostname resolution uses the system's `getaddrinfo` through FFI.
@@ -55,18 +55,23 @@ the server's certificate chain and hostname, sends SNI, and requires TLS 1.2 or
 newer. The default OpenSSL trust store is used, including OpenSSL's
 `SSL_CERT_FILE` and `SSL_CERT_DIR` configuration. There is no insecure mode.
 
-## HTTPS downloads
+## HTTP and HTTPS downloads
 
 Import `lib/http.flex`. `https_get(url, max_bytes, timeout_ms)` returns 1 or 0.
+`http_get(url, max_bytes, timeout_ms)` accepts both HTTP and HTTPS. Plain HTTP
+uses Flexscript TCP sockets without loading OpenSSL. HTTPS verifies certificates
+and hostnames through OpenSSL; `https_get` continues to require HTTPS throughout.
 On success, `http_output` points to the downloaded bytes and `http_size` is the
 length. Data can contain zero bytes; use the length rather than string operations.
 
 The client handles HTTP/1.0 and HTTP/1.1, Content-Length, chunked framing with
-trailers, and clean close-delimited bodies. It follows up to five HTTPS redirects,
-including root-relative redirects, and rejects redirects to HTTP. Metadata and
+trailers, and clean close-delimited bodies. It follows up to five redirects,
+including root-relative redirects. `http_get` can follow HTTP-to-HTTPS redirects;
+both entry points reject HTTPS-to-HTTP redirects. Metadata and
 headers are bounded; truncated, ambiguous and oversized responses are rejected.
 Scratch storage is reclaimed after each request. The returned body stays valid
-until the next `https_get` or an explicit `https_free()` call. The maximum body
+until the next `http_get`/`https_get` or an explicit `https_free()` call. The final
+URL is available in `http_url` for relative source resolution. The maximum body
 limit is 64 MiB. This first client uses direct connections,
 DNS names or IPv4 URL hosts, and identity content encoding. IPv6 URL literals,
 proxy configuration, HTTP/2, compression, interim responses and arbitrary relative

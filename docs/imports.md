@@ -1,4 +1,4 @@
-# Local imports
+# Source imports
 
 Flexscript 0.0.2 supports importing local `.flex` source files:
 
@@ -46,6 +46,61 @@ import chain including the entry, less than 16 MiB of combined source, and
 4095 bytes per resolved import path. Existing global, function, local, call,
 and output limits apply across the entire program.
 
+## HTTP and HTTPS imports
+
+The current compiler can fetch source directly from an HTTP or HTTPS URL:
+
+```flexscript
+import "https://example.com/flex/math.flex";
+import "http://localhost:8080/flex/helpers.flex";
+
+fn main() {
+    return add(20, 22);
+}
+```
+
+Within a downloaded file, `import "helpers.flex"` resolves against that file's
+URL directory, and `import "../shared.flex"` resolves against its parent.
+Paths starting with `/` resolve against the same origin, not the host
+filesystem. `//host/path` retains the importing URL's scheme. Query strings are supported. After a
+redirect, relative imports use the final URL. The downloader accepts up to five
+redirects with absolute or origin-relative locations. HTTP-to-HTTPS redirects
+are supported; redirects from HTTPS back to HTTP are rejected. A source can
+explicitly import either scheme, including a mixed HTTP/HTTPS dependency graph.
+
+URL identity lowercases hostnames, removes the default port and literal dot
+segments, and preserves query strings, repeated slashes and percent escapes.
+Repeated URLs and diamond dependencies share definitions. Redirects to an
+already loaded URL share that module too. URL cycles are rejected. Diagnostics
+include the source URL, line and column.
+
+HTTP imports use Flexscript's TCP implementation. HTTPS imports use OpenSSL 3
+directly, with certificate and hostname verification and the host's trusted CA
+store. No curl or external downloader is invoked. Credentials in URLs, fragments
+and IPv6 literal authorities are unsupported. Downloads share a 30-second deadline per
+compilation and the same file-count, nesting and combined source-size limits as
+local imports. Sources are kept in memory for this compilation; there is no
+persistent download cache. The static core cannot fetch URL sources because
+the system DNS resolver requires FFI.
+
+Native compilation and VM execution fetch URL sources by default:
+
+```sh
+flex run app.flex
+# The entry source can also be a URL:
+flex run https://example.com/flex/app.flex
+flex run http://localhost:8080/app.flex
+# Disable downloads when running local source:
+flex run --no-url-imports app.flex
+```
+
+`--no-url-imports` rejects URL sources before making a network request.
+`flex run --restricted` also disables downloads unless `--allow-url-imports`
+is provided. In restricted mode, source downloads do not grant network or FFI
+access to guest code. Ordinary `flex run` permits native host operations.
+Use immutable URLs, such as a Git commit path, when builds
+need to reproduce the same source.
+
 ## Build from the bootstrap point
 
 The released 0.0.1 compiler does not itself recognize imports. Its unchanged
@@ -78,6 +133,7 @@ Build `build/tools` once using the [Flexscript tooling instructions](bootstrappi
 
 ```sh
 build/tools/test-imports build/flexscript
+build/tools/test-url-imports build/flexscript
 ```
 
 Repeat the full bootstrap chain, core tests, import tests, and a rebuild in an

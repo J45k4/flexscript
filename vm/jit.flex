@@ -66,7 +66,7 @@ fn vm_jit_compile(index) {
         // the checked interpreter. No speculative assumptions or deoptimization.
         if op<1 || op>16 || op==8 {return 0;}
         if (op==3 || op==4) && (arg<0 || arg>=slots) {return 0;}
-        if (op==5 || op==6) && (arg<16 || arg>vm_heap_used-8) {return 0;}
+        if (op==5 || op==6) && vm_restricted && (arg<16 || arg>vm_heap_used-8) {return 0;}
         if (op==10 || op==11 || op==12) && (arg<start+16 || arg>=end || arg%16) {return 0;}
         if op==7 && !precedence(arg) {return 0;}
         pc=pc+16;
@@ -96,7 +96,7 @@ fn vm_jit_compile(index) {
         else if op==2 {emit(80);}
         else if op==3 || op==4 {vm_jit_local(arg,op==4);}
         else if op==5 || op==6 {
-            emit(72);emit(186);emit64(vm_heap+arg);
+            emit(72);emit(186);emit64(vm_address(arg,8));
             emit(72);if op==5 {emit(139);}else {emit(137);}emit(2);
         }else if op==7 {if arg==47 || arg==37 {vm_jit_division_guard();}binary(arg);}
         else if op==9 {epilogue();}

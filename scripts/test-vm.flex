@@ -1,7 +1,12 @@
 import "lib/harness.flex";
 import "lib/build.flex";
+import "lib/tls-fixture.flex";
 fn tv_args(engine,options,source,params) {
+    return tv_command(engine,options,source,params,1);
+}
+fn tv_command(engine,options,source,params,restricted) {
     let args=h_args(t_compiler,"run",engine,0,0,0);
+    if restricted {h_add(args,"--restricted");}
     let i=0;
     if options {
         while i<h_count(options) {
@@ -23,6 +28,61 @@ fn tv_args(engine,options,source,params) {
 }
 fn tv_run(engine,options,source,params) {
     return h_run(tv_args(engine,options,source,params));
+}
+fn tv_host(engine,options,source,params) {
+    return h_run(tv_command(engine,options,source,params,0));
+}
+fn tv_host_tests() {
+    let cases=j_need(j_parse(h_read("tests/cases.json")),"valid");
+    let engines=h_args("--interpret","--jit",0,0,0,0);
+    let i=0;
+    while i<j_count(cases) {
+        let mark=h_mark();let item=j_at(cases,i);let params=h_vec();
+        let strings=j_need(item,"args");let j=0;
+        while j<j_count(strings) {
+            h_add(params,h_replace(j_value(j_at(strings,j)),"{work}",t_work));j=j+1;
+        }
+        j=0;while j<2 {
+            h_check(tv_host(h_at(engines,j),0,h_join("tests",j_s(item,"source")),params),j_n(item,"exit"),j_s(item,"stdout"));
+            t_checks=t_checks+1;j=j+1;
+        }
+        h_reset(mark);i=i+1;
+    }
+    let args=h_args("cc","-shared","-fPIC","-O2","tests/tooling/ffi.c","-o");
+    h_add(args,h_join(t_work,"library.so"));h_ok(args);
+    cases=j_parse(h_read("tests/tooling/ffi.json"));
+    let root=h_real(".");i=0;
+    while i<j_count(cases) {
+        let mark=h_mark();let item=j_at(cases,i);let environment=h_env;
+        if j_count(j_need(item,"environment")) {h_setenv("FLEX_FFI_TEST","yes");}
+        t_program(h_replace(h_replace(j_s(item,"source"),"{work}",t_work),"{root}",root));
+        let j=0;while j<2 {
+            h_check(tv_host(h_at(engines,j),0,t_fixture,0),j_n(item,"status"),j_s(item,"stdout"));
+            t_checks=t_checks+1;j=j+1;
+        }
+        h_env=environment;h_reset(mark);i=i+1;
+    }
+    let dir=h_join(t_work,"tcp");h_mkdir(dir);let server=sf_start(dir,3);
+    let port=h_int(sf_port);
+    let j=0;while j<2 {
+        let engine=h_at(engines,j);
+        t_program("fn main(){let p=alloc(4096);if p<0{return 1;}store64(p,42);if load64(p)!=42{return 2;}return syscall(11,p,4096,0,0,0,0);}");
+        h_check(tv_host(engine,0,t_fixture,0),0,"");t_checks=t_checks+1;
+        t_program("fn main(){return alloc(8192)==-12;}");
+        h_check(tv_host(engine,h_args("--memory=4096",0,0,0,0,0),t_fixture,0),1,"");t_checks=t_checks+1;
+        t_program("fn main(){let p=alloc(8);let n=syscall(0,0,p,8,0,0,0);syscall(1,1,p,n,0,0,0);return 0;}");
+        h_check(h_wait(h_spawn(tv_command(engine,0,t_fixture,0,0),"input",0)),0,"input");t_checks=t_checks+1;
+        t_program("fn main(){let pid=syscall(57,0,0,0,0,0,0);if pid<0{return 1;}if !pid{return 7;}let status=alloc(8);if syscall(61,pid,status,0,0,0,0)!=pid{return 2;}return load64(status)==1792;}");
+        h_check(tv_host(engine,0,t_fixture,0),1,"");t_checks=t_checks+1;
+        t_program(h_cat3("import \"",h_join(root,"lib/net.flex"),h_cat3("\";fn main(){let fd=tcp_connect(\"localhost\",\"",port,"\",2000);if fd<0{return 1;}let p=alloc(2);if !tcp_write(fd,\"vm\",2,net_now()+2000){return 2;}let got=0;while got<2 {let n=tcp_read(fd,p+got,2-got,net_now()+2000);if n<=0{return 3;}got=got+n;}tcp_close(fd);return load8(p)!=118 || load8(p+1)!=109;}")));
+        h_check(tv_host(engine,0,t_fixture,0),0,"");t_checks=t_checks+1;
+        t_program("fn main(){let p=alloc(4096);let i=0;while i<257 {if syscall(1,1,p,4096,0,0,0)!=4096{return 1;}i=i+1;}return 0;}");
+        let output=h_check(tv_host(engine,0,t_fixture,0),0,0);
+        t_assert(h_size(load64(output+16))==1052672,"trusted output retained restricted output quota");
+        j=j+1;
+    }
+    h_stop(server);
+    return 0;
 }
 fn tv_stats(p) {
     let text=h_err(p);
@@ -221,6 +281,7 @@ fn suite(compiler) {
     h_close(descriptor);
     let root=h_real(".");
     let args=h_args(t_compiler,"run","--interpret",h_cat("--allow-read=",root),"--memory=256m","--fuel=100000000");
+    h_add(args,"--restricted");
     h_add(args,"--timeout-ms=10000");
     h_add(args,h_join(root,"flexvm.flex"));
     h_add(args,"run");
@@ -233,6 +294,7 @@ fn suite(compiler) {
     h_save(h_join(sandbox,"flexvm.flex"),b_flatten(0));
     h_save(h_join(sandbox,"network.flex"),"fn main(){return syscall(41,2,1,0,0,0,0);}");
     args=h_args(t_compiler,"run","--interpret",h_cat("--allow-read=",sandbox),"--memory=256m","--fuel=100000000");
+    h_add(args,"--restricted");
     h_add(args,"--timeout-ms=10000");
     h_add(args,h_join(sandbox,"flexvm.flex"));
     h_add(args,"run");
@@ -337,6 +399,7 @@ fn suite(compiler) {
     h_check(tv_run("--help",0,0,0),0,0);
     t_checks=t_checks+1;
     h_env=environment;
+    tv_host_tests();
     return t_done();
 }
 fn main(argc,argv) {

@@ -37,11 +37,12 @@ fn main(argc,argv) {
     h_assert(j_n(j_need(report,"harness_tests"),"checks")>=29,"missing harness verification");
     pk_checks(report,"tests",3,84);
     pk_checks(report,"import_tests",2,46);
+    pk_checks(report,"url_import_tests",2,100);
     pk_checks(report,"upgrade_tests",2,88);
     pk_checks(report,"signature_tests",2,37);
     pk_checks(report,"ffi_tests",2,24);
     pk_checks(report,"network_tests",2,38);
-    pk_checks(report,"vm_tests",2,335);
+    pk_checks(report,"vm_tests",2,447);
     h_assert(j_n(clean,"checks")>=10,"missing clean-room verification");
     h_elf(binary,0);
     h_elf(core,1);
@@ -65,15 +66,17 @@ fn main(argc,argv) {
     h_text(notes,"- Stages 2 and 3 are byte-identical native Linux x86-64 compilers.\n");
     let keys=h_args("tests","import_tests","upgrade_tests","signature_tests","ffi_tests","network_tests");
     h_add(keys,"vm_tests");
+    h_add(keys,"url_import_tests");
     let labels=h_args("core","imports","upgrades","Ed25519 and signing","FFI","networking");
     h_add(labels,"interpreter, JIT and capabilities");
+    h_add(labels,"HTTP/HTTPS source imports and VM import defaults");
     let i=0;
     while i<h_count(keys) {
         h_text(notes,h_cat3("- ",h_int(j_n(j_need(report,h_at(keys,i)),"total")),h_cat3(" checks: ",h_at(labels,i),".\n")));
         i=i+1;
     }
     h_text(notes,h_cat3("- ",h_int(j_n(clean,"checks"))," clean-room checks without a toolchain or libc.\n\n"));
-    h_text(notes,"The full compiler requires the Linux x86-64 glibc loader and libc. HTTPS upgrades require OpenSSL 3 and a trusted CA store. Upgrades verify the Ed25519 signature over version-bound checksums before downloading or executing a candidate. The separate static core can rebuild the full compiler without libc.\n\nThe full compiler provides `flex run [options] app.flex` with a restricted interpreter and baseline x86-64 JIT. The core supports `run --interpret`. See `docs/vm.md` and `docs/signing.md`.\n\nBuild orchestration, tests, packaging and signing are written in Flexscript. See `docs/bootstrapping.md` to reproduce the build without Python or Rust using released compiler binaries.\n\n");
+    h_text(notes,"The full compiler requires the Linux x86-64 glibc loader and libc. HTTPS upgrades require OpenSSL 3 and a trusted CA store. Upgrades verify the Ed25519 signature over version-bound checksums before downloading or executing a candidate. The separate static core can rebuild the full compiler without libc.\n\nThe full compiler provides `flex run [options] app.flex` with trusted execution by default and a baseline x86-64 JIT. Use `--restricted` for guest memory isolation and explicit host capabilities. HTTP/HTTPS source imports are enabled by default; `--no-url-imports` disables downloads. Restricted mode requires `--allow-url-imports` to enable downloads. The core supports `run --interpret`. See `docs/vm.md` and `docs/signing.md`.\n\nBuild orchestration, tests, packaging and signing are written in Flexscript. See `docs/bootstrapping.md` to reproduce the build without Python or Rust using released compiler binaries.\n\n");
     h_text(notes,h_cat3("Compiler SHA-256: `",checksum,"`\n"));
     h_save(h_join(dist,"release-notes.md"),h_data(notes));
     h_print(1,h_cat3("Packaged ",name,h_cat3(": ",checksum,"\n")));

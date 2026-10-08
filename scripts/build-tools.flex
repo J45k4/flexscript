@@ -6,6 +6,7 @@ fn main(argc,argv) {
     h_mkdir(out);
     let names=h_args("bootstrap","package","sign-release","clean-room","test","test-imports");
     h_add(names,"test-upgrade");
+    h_add(names,"test-url-imports");
     h_add(names,"test-signature");
     h_add(names,"test-ffi");
     h_add(names,"test-network");

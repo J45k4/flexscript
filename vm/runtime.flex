@@ -1,7 +1,9 @@
 import "jit.flex";
-// VM values are words. Guest pointers are offsets, never host addresses.
+// Trusted execution uses native pointers/syscalls/FFI. Restricted execution
+// uses guest offsets and explicitly granted host capabilities.
 // Bytecode is compiler-owned: 16-byte records (opcode, operand).
 global vm_mode=0;
+global vm_restricted=0;
 global vm_heap=0;
 global vm_heap_limit=16777216;
 global vm_heap_used=16;
@@ -45,9 +47,14 @@ fn vm_allocate(size) {
     if !size {return -22;}
     if size<0 || size>vm_heap_limit-vm_heap_used {return -12;}
     let rounded=((size+7)/8)*8;if rounded>vm_heap_limit-vm_heap_used {return -12;}
-    let address=vm_heap_used;vm_heap_used=vm_heap_used+rounded;return address;
+    let address=vm_heap_used;vm_heap_used=vm_heap_used+rounded;
+    if !vm_restricted {return vm_heap+address;}return address;
 }
 fn vm_address(offset,size) {
+    if !vm_restricted {
+        if !offset || size<0 {vm_error=3;return 0;}
+        return offset;
+    }
     if offset<16 || offset>vm_heap_used || size<0 || size>vm_heap_used-offset {
         vm_error=3;return 0;
     }
@@ -56,6 +63,7 @@ fn vm_address(offset,size) {
 fn vm_string_literal() {
     let start=token_start+1;let end=token_start+token_size-1;
     let address=vm_allocate(end-start+1);if address<0 {fail("VM memory limit exceeded by strings");}
+    let bytes=vm_address(address,end-start+1);
     let n=0;
     while start<end {
         let c=load8(source+start);start=start+1;
@@ -63,9 +71,9 @@ fn vm_string_literal() {
             c=load8(source+start);start=start+1;
             if c==110 {c=10;}else if c==114 {c=13;}else if c==116 {c=9;}else if c==48 {c=0;}
         }
-        store8(vm_heap+address+n,c);n=n+1;
+        store8(bytes+n,c);n=n+1;
     }
-    store8(vm_heap+address+n,0);return address;
+    store8(bytes+n,0);return address;
 }
 fn vm_ffi_kind(name,size) {
     if equal(name,size,"ffi_open",8) {return 7;}
@@ -212,6 +220,7 @@ fn vm_poll_guest(pointer,count,timeout) {
 fn vm_syscall(number,a,b,c,d,e,f) {
     vm_denied_syscall=number;
     if number==60 {vm_acc=a;vm_finished=1;return a;}
+    if !vm_restricted {return syscall(number,a,b,c,d,e,f);}
     if number==2 {return vm_open_file(a,b);}
     if number==7 {return vm_poll_guest(a,b,c);}
     if number==3 {
@@ -243,7 +252,17 @@ fn vm_syscall(number,a,b,c,d,e,f) {
     vm_error=5;return -1;
 }
 fn vm_builtin(kind) {
-    if kind>=7 {vm_error=5;vm_denied_ffi=kind;vm_denied_syscall=-1;return 0;}
+    if kind>=7 {
+        if vm_restricted {vm_error=5;vm_denied_ffi=kind;vm_denied_syscall=-1;return 0;}
+        if kind==7 {return ffi_open(vm_pop());}
+        if kind==8 {let name=vm_pop();let library=vm_pop();return ffi_symbol(library,name);}
+        let f=vm_pop();let e=vm_pop();let d=vm_pop();let c=vm_pop();let b=vm_pop();let a=vm_pop();let pointer=vm_pop();
+        if vm_error {return 0;}
+        if kind==9 {return ffi_call(pointer,a,b,c,d,e,f);}
+        if kind==10 {return ffi_call_i32(pointer,a,b,c,d,e,f);}
+        if kind==11 {return ffi_call_u32(pointer,a,b,c,d,e,f);}
+        vm_error=9;return 0;
+    }
     if kind==1 || kind==2 {
         let pointer=vm_pop();let size=1;if kind==2 {size=8;}
         let address=vm_address(pointer,size);if !address {return 0;}
@@ -254,7 +273,14 @@ fn vm_builtin(kind) {
         let address=vm_address(pointer,size);if !address {return 0;}
         if kind==3 {store8(address,value);}else {store64(address,value);}return value;
     }
-    if kind==5 {return vm_allocate(vm_pop());}
+    if kind==5 {
+        let size=vm_pop();let budget=vm_allocate(size);
+        if vm_restricted || budget<0 {return budget;}
+        // Native mappings preserve alloc/munmap and FFI pointer semantics.
+        let pointer=alloc(size);
+        if pointer<0 {vm_heap_used=vm_heap_used-((size+7)/8)*8;}
+        return pointer;
+    }
     if kind==6 {
         let f=vm_pop();let e=vm_pop();let d=vm_pop();let c=vm_pop();let b=vm_pop();let a=vm_pop();let number=vm_pop();
         if vm_error {return 0;}return vm_syscall(number,a,b,c,d,e,f);
@@ -316,7 +342,8 @@ fn vm_help(fd) {
     print(fd,"Usage: flex run [options] <source.flex> [args...]\n");
     print(fd,"  --interpret          bytecode interpreter only\n  --jit                compile eligible functions on first call\n  --stats              report interpreter/JIT counters\n");
     print(fd,"  --fuel=N             instruction budget (default 10000000)\n  --memory=N           guest heap bytes; k/m suffixes accepted (default 16m)\n  --timeout-ms=N       execution deadline (default 5000)\n");
-    print(fd,"  --allow-read=DIR     read-only files beneath DIR\n  --allow-stdin        allow reads from standard input\n");return 0;
+    print(fd,"  --restricted        use isolated guest memory and capability-limited host calls\n");
+    print(fd,"  --allow-read=DIR     grant read-only files in restricted mode\n  --allow-stdin        grant standard input in restricted mode\n  --allow-url-imports  enable source downloads in restricted mode\n  --no-url-imports     disable HTTP/HTTPS source downloads\n");return 0;
 }
 fn vm_initialize() {
     vm_heap=alloc(vm_heap_limit);vm_stack=alloc(524288);vm_local_memory=alloc(8388608);
@@ -336,17 +363,21 @@ fn vm_initialize() {
 }
 fn vm_copy_arg(text) {
     let n=length(text);let address=vm_allocate(n+1);if address<0 {vm_error=3;return 0;}
-    let i=0;while i<=n {store8(vm_heap+address+i,load8(text+i));i=i+1;}return address;
+    let bytes=vm_address(address,n+1);
+    let i=0;while i<=n {store8(bytes+i,load8(text+i));i=i+1;}return address;
 }
 fn vm_main(argc,argv) {
-    let first=2;let root=0;
+    let first=2;let root=0;let imports=-1;
     while first<argc && load8(load64(argv+first*8))==45 {
         let arg=load64(argv+first*8);
         if up_text(arg,"--help") {vm_help(1);return 0;}
         if up_text(arg,"--interpret") {vm_jit_enabled=0;}
         else if up_text(arg,"--jit") {vm_jit_enabled=1;vm_jit_explicit=1;vm_jit_threshold=1;}
         else if up_text(arg,"--stats") {vm_show_stats=1;}
+        else if up_text(arg,"--restricted") {vm_restricted=1;}
         else if up_text(arg,"--allow-stdin") {vm_stdin=1;}
+        else if up_text(arg,"--allow-url-imports") {imports=1;}
+        else if up_text(arg,"--no-url-imports") {imports=0;}
         else if vm_prefix(arg,"--allow-read=") {root=arg+13;if !length(root) {vm_help(2);return 1;}}
         else if vm_prefix(arg,"--fuel=") {vm_fuel=vm_number(arg+7);if vm_fuel<0 {vm_help(2);return 1;}}
         else if vm_prefix(arg,"--memory=") {vm_heap_limit=vm_number(arg+9);if vm_heap_limit<4096 {vm_help(2);return 1;}}
@@ -355,8 +386,9 @@ fn vm_main(argc,argv) {
         first=first+1;
     }
     if first>=argc {vm_help(2);return 1;}
+    url_import_allowed=!vm_restricted;if imports>=0 {url_import_allowed=imports;}
     if !vm_initialize() {print(2,"flex vm: cannot initialize VM.\n");return 70;}
-    if root {
+    if root && vm_restricted {
         vm_read_root=syscall(2,root,0x2b0000,0,0,0,0);
         if vm_read_root<0 {print(2,"flex vm: cannot open read capability directory.\n");return 70;}
         let path=up_join("/proc/self/fd/",up_number(vm_read_root),"");vm_root_name=alloc(4096);
@@ -371,7 +403,8 @@ fn vm_main(argc,argv) {
         let guest_argc=argc-first;let guest_argv=vm_allocate((guest_argc+1)*8);
         if guest_argv<0 {vm_error=3;}
         else {
-            let i=0;while i<guest_argc {store64(vm_heap+guest_argv+i*8,vm_copy_arg(load64(argv+(first+i)*8)));i=i+1;}
+            let bytes=vm_address(guest_argv,(guest_argc+1)*8);
+            let i=0;while i<guest_argc {store64(bytes+i*8,vm_copy_arg(load64(argv+(first+i)*8)));i=i+1;}
             vm_push(guest_argc);vm_push(guest_argv);
         }
     }

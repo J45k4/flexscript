@@ -130,8 +130,9 @@ compiler built from the tagged Flexscript source.
 
 Download and verify the 0.0.1 compiler binary, then use it to compile subsequent
 Flexscript compiler source. The normal bootstrap path no longer needs Rust.
-Keep the Rust seed and initial build instructions available to reproduce the
-first bootstrap from source.
+The Rust seed and initial build instructions are archived in the `0.0.1` tag
+to reproduce the first bootstrap from source. Current builds require an existing
+Flexscript compiler and do not include the Rust seed.
 
 When extending the language, first implement new features using syntax supported
 by the previous released compiler. Build and verify an updated compiler before

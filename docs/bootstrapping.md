@@ -1,9 +1,9 @@
 # Building and verifying with Flexscript
 
 The compiler, VM/JIT, build orchestration, test harness, local TCP/TLS fixtures,
-packaging, benchmarks and release signer are written in Flexscript. The frozen
-Rust seed records the original 0.0.1 bootstrap origin. A published compiler can
-build the entire current toolchain without Rust or Python.
+packaging, benchmarks and release signer are written in Flexscript. A published
+compiler builds the entire current toolchain without Rust or Python. The original
+Rust seed is archived in the `0.0.1` tag; it is no longer part of the current tree.
 
 Use an existing full Flexscript compiler with imports and FFI (0.0.5 or newer)
 to build the host tools, and the original 0.0.1 compiler as the independent seed:
@@ -15,9 +15,10 @@ build/stage2 scripts/build-tools.flex -o build/build-tools
 build/build-tools --compiler build/stage2
 ```
 
-`--out-dir PATH` chooses another bootstrap build directory. Omit `--compiler`
-only when intentionally reconstructing the origin with the frozen Rust/Cargo
-seed (`--release --locked --offline`). Host tools still build with Flexscript.
+`--compiler PATH` is required and selects an existing Flexscript compiler.
+`--out-dir PATH` chooses another bootstrap build directory. To reconstruct the
+original Rust bootstrap, use a separate checkout of the `0.0.1` tag and follow
+the [historical build instructions](bootstrap-0.0.1.md).
 
 The Flexscript bootstrap flattens the compiler's known import graph into
 `build/core.flex`, with globals before functions and ordinary definitions of the
@@ -40,8 +41,9 @@ HTTP responses are checked-in data under `tests/tooling/`; they require no code
 generator at build or test time. `scripts/test-harness.flex` checks the harness
 itself, including literal argv, pipe draining, malformed JSON and timeouts.
 
-Bootstrap runs 1,398 compiler/runtime checks: 252 core, 92 imports, 176 upgrades,
-74 signatures, 48 FFI, 76 networking, 670 VM/JIT and 10 clean-room checks. It also
+Bootstrap runs 1,822 compiler/runtime checks: 252 core, 92 local imports,
+200 HTTP/HTTPS imports, 176 upgrades, 74 signatures, 48 FFI, 76 networking, 894 VM/JIT
+and 10 clean-room checks. It also
 runs 29 host-harness checks. Bubblewrap verifies the core's self-rebuild, native
 hello and imported hello, and VM interpretation in an empty root with an empty
 environment and no network, toolchain or libc.

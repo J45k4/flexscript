@@ -103,6 +103,7 @@ jobs:
             build/bootstrap-report.json
             build/tests.json
             build/import-tests.json
+            build/url-imports-tests.json
             build/upgrade-tests.json
             build/signature-tests.json
             build/ffi-tests.json

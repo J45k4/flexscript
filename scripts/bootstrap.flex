@@ -7,24 +7,23 @@ fn bs_suite(compiler,out,name,seed,first,second) {
     }
     h_compile(compiler,source,binary);
     let args=h_args(binary,seed,first,second,"--report",h_join(out,h_cat(name,"-tests.json")));
+    let timeout=h_timeout;
+    // TLS graph-limit fixtures fetch hundreds of modules across both stages.
+    if h_equal(name,"url-imports") { h_timeout=300000; }
     h_print(1,h_out(h_ok(args)));
+    h_timeout=timeout;
     return j_parse(h_read(h_join(out,h_cat(name,"-tests.json"))));
 }
 fn main(argc,argv) {
     h_environment(argc,argv);
     let seed=b_option(argc,argv,"--compiler",0);
+    h_assert(seed,"bootstrap requires --compiler PATH to an existing Flexscript compiler; use the published 0.0.1 compiler to reproduce the original bootstrap path");
     let out=h_absolute(b_option(argc,argv,"--out-dir","build"));
     h_mkdir(out);
     let version=b_version();
     let commit=b_git("rev-parse","HEAD",0,0);
     let clean=!h_len(b_git("status","--porcelain",0,0));
     let manifest=j_dump(b_manifest());
-    if !seed {
-        let args=h_args("cargo","build","--manifest-path","bootstrap/Cargo.toml","--release","--locked");
-        h_add(args,"--offline");
-        h_ok(args);
-        seed="bootstrap/target/release/flexscript-seed";
-    }
     seed=h_real(seed);
     let core_source=h_join(out,"core.flex");
     h_save(core_source,b_flatten(1));
@@ -73,7 +72,9 @@ fn main(argc,argv) {
     j_set(report,"tests",result);
     j_save(h_join(out,"tests.json"),result);
     let names=h_args("imports","upgrade","signature","ffi","network","vm");
+    h_add(names,"url-imports");
     let keys=h_args("import_tests","upgrade_tests","signature_tests","ffi_tests","network_tests","vm_tests");
+    h_add(keys,"url_import_tests");
     i=0;
     while i<h_count(names) {
         result=bs_suite(compiler,out,h_at(names,i),0,h_at(stages,0),h_at(stages,1));

@@ -32,6 +32,9 @@ global import_depth = 0;
 global source_arena = 0;
 global arena_size = 0;
 global input_stat = 0;
+global module_urls = 0;
+global url_import_allowed = 1;
+global source_deadline = 0;
 global ffi_entries = 0;
 global ffi_fixups = 0;
 global ffi_fixup_count = 0;
@@ -658,7 +661,7 @@ fn global_definition() {
     global_count = global_count + 1;
     if vm_mode {
         let address=vm_allocate(8);if address<0 {fail("VM memory limit exceeded by globals");}
-        store64(vm_heap+address,value);store64(entry+16,address);return 0;
+        store64(vm_address(address,8),value);store64(entry+16,address);return 0;
     }
     emit64(value);
     return 0;
@@ -885,6 +888,133 @@ fn locate_name(name) {
     return 0;
 }
 
+fn source_prefix(text, prefix) {
+    let n = length(prefix);
+    return length(text) >= n && equal(text, n, prefix, n);
+}
+
+fn source_scheme(path) {
+    let i = 0;
+    while load8(path + i) && load8(path + i) != 47 && load8(path + i) != 63 {
+        if load8(path + i) == 58 { return 1; }
+        i = i + 1;
+    }
+    return 0;
+}
+
+fn source_url(url) {
+    // Normalize authority and literal dot segments; query bytes remain opaque.
+    let scheme = 8; let default_port = 443;
+    if !source_prefix(url, "https://") {
+        if !source_prefix(url, "http://") { fail("source URLs must use HTTP or HTTPS"); }
+        scheme = 7; default_port = 80;
+    }
+    if length(url) > 4095 { fail("import path exceeds 4095 bytes"); }
+    let result = alloc(4096);
+    if result < 0 { fail("memory allocation failed"); }
+    net_copy(result, url, scheme);
+    let i = scheme; let end = scheme; let colon = 0;
+    while load8(url + end) && load8(url + end) != 47 && load8(url + end) != 63 {
+        let c = load8(url + end);
+        if c == 58 { if colon { fail("invalid source URL authority"); } colon = end; }
+        else if !((c >= 48 && c <= 57) || (c >= 65 && c <= 90)
+            || (c >= 97 && c <= 122) || c == 45 || c == 46) { fail("invalid source URL authority"); }
+        end = end + 1;
+    }
+    let host_end = end; if colon { host_end = colon; }
+    if host_end == scheme || end - scheme > 253 { fail("invalid source URL authority"); }
+    while i < host_end { store8(result + i, http_lower(load8(url + i))); i = i + 1; }
+    let used = host_end;
+    if colon {
+        let port = 0; let j = colon + 1;
+        if j == end { fail("invalid source URL port"); }
+        while j < end {
+            let c = load8(url + j);
+            if c < 48 || c > 57 || port > 6553 { fail("invalid source URL port"); }
+            port = port * 10 + c - 48; j = j + 1;
+        }
+        if port < 1 || port > 65535 { fail("invalid source URL port"); }
+        if port != default_port {
+            store8(result + used, 58); used = used + 1;
+            let number = up_number(port); let n = length(number);
+            net_copy(result + used, number, n); used = used + n;
+        }
+    }
+    let root = used; i = end;
+    while load8(url + i) && load8(url + i) != 63 {
+        let c = load8(url + i);
+        if c <= 32 || c >= 127 || c == 35 { fail("invalid source URL path"); }
+        i = i + 1;
+    }
+    let path_end = i; i = end;
+    // Remove /./ and /../ without merging repeated slashes or decoding %xx.
+    while i < path_end {
+        if load8(url + i) == 47 && load8(url + i + 1) == 46
+            && (i + 2 == path_end || load8(url + i + 2) == 47) {
+            i = i + 2;
+            if i == path_end { store8(result + used, 47); used = used + 1; }
+        } else if load8(url + i) == 47 && load8(url + i + 1) == 46 && load8(url + i + 2) == 46
+            && (i + 3 == path_end || load8(url + i + 3) == 47) {
+            while used > root && load8(result + used - 1) != 47 { used = used - 1; }
+            if used > root { used = used - 1; }
+            i = i + 3;
+            if i == path_end { store8(result + used, 47); used = used + 1; }
+        } else {
+            store8(result + used, load8(url + i)); used = used + 1; i = i + 1;
+            while i < path_end && load8(url + i) != 47 {
+                store8(result + used, load8(url + i)); used = used + 1; i = i + 1;
+            }
+        }
+    }
+    if used == root { store8(result + used, 47); used = used + 1; }
+    i = path_end;
+    while load8(url + i) {
+        let c = load8(url + i);
+        if c <= 32 || c >= 127 || c == 35 { fail("invalid source URL query"); }
+        if used == 4095 { fail("import path exceeds 4095 bytes"); }
+        store8(result + used, c); used = used + 1; i = i + 1;
+    }
+    store8(result + used, 0);
+    return result;
+}
+
+fn source_resolve(path) {
+    if source_scheme(path) { return source_url(path); }
+    if source_prefix(source_path, "https://") || source_prefix(source_path, "http://") {
+        let scheme = "https:"; let end = 8;
+        if source_prefix(source_path, "http://") { scheme = "http:"; end = 7; }
+        if source_prefix(path, "//") { return source_url(up_join(scheme, path, "")); }
+        while load8(source_path + end) && load8(source_path + end) != 47 && load8(source_path + end) != 63 { end = end + 1; }
+        let prefix = end;
+        if load8(path) != 47 {
+            let i = end;
+            while load8(source_path + i) && load8(source_path + i) != 63 {
+                if load8(source_path + i) == 47 { prefix = i + 1; }
+                i = i + 1;
+            }
+            if load8(path) == 63 { prefix = i; }
+        }
+        let base = alloc(prefix + 1);
+        if base < 0 { fail("memory allocation failed"); }
+        net_copy(base, source_path, prefix);
+        return source_url(up_join(base, path, ""));
+    }
+    if load8(path) == 47 { return path; }
+    let prefix = 0; let i = 0;
+    while load8(source_path + i) {
+        if load8(source_path + i) == 47 { prefix = i + 1; }
+        i = i + 1;
+    }
+    let size = length(path);
+    if prefix + size > 4095 { fail("import path exceeds 4095 bytes"); }
+    i = size;
+    while i > 0 { i = i - 1; store8(path + prefix + i, load8(path + i)); }
+    i = 0;
+    while i < prefix { store8(path + i, load8(source_path + i)); i = i + 1; }
+    store8(path + prefix + size, 0);
+    return path;
+}
+
 fn import_path() {
     if token != 258 { fail("expected quoted import path"); }
     let path = alloc(4096);
@@ -907,50 +1037,74 @@ fn import_path() {
         store8(path + size, c); size = size + 1;
     }
     if size == 0 { fail("import path cannot be empty"); }
-    if load8(path) == 47 { return path; }
-    let prefix = 0; i = 0;
-    while load8(source_path + i) {
-        if load8(source_path + i) == 47 { prefix = i + 1; }
-        i = i + 1;
-    }
-    if prefix + size > 4095 { fail("import path exceeds 4095 bytes"); }
-    i = size;
-    while i > 0 { i = i - 1; store8(path + prefix + i, load8(path + i)); }
-    i = 0;
-    while i < prefix { store8(path + i, load8(source_path + i)); i = i + 1; }
-    store8(path + prefix + size, 0);
-    return path;
+    return source_resolve(path);
 }
 
-fn load_module(path) {
-    // File identity, rather than spelling, deduplicates ./, ../ and aliases.
-    let fd = syscall(2, path, 2048, 0, 0, 0, 0);
-    if fd < 0 {
-        print(2, "cannot open source file: "); print(2, path); print(2, "\n");
-        fail("cannot open source");
-    }
-    if syscall(5, fd, input_stat, 0, 0, 0, 0) < 0 { fail("cannot stat source"); }
-    if (load64(input_stat + 24) & 61440) != 32768 { fail("source must be a regular file"); }
-    let device = load64(input_stat);
-    let inode = load64(input_stat + 8);
+fn source_known(path, device, inode) {
     let i = 0;
     while i < module_count {
         let known = modules + i * 64;
-        if load64(known + 24) == device && load64(known + 32) == inode {
-            syscall(3, fd, 0, 0, 0, 0, 0);
+        let same = load64(known + 24) == device && load64(known + 32) == inode;
+        if device == -1 {
+            same = load64(known + 24) == -1 && (up_text(path, load64(known))
+                || up_text(path, load64(module_urls + i * 8)));
+        }
+        if same {
             if load64(known + 40) == 1 { fail("circular import"); }
             return i;
         }
         i = i + 1;
     }
+    return -1;
+}
+
+fn load_module(path) {
+    let remote = source_scheme(path);
+    let requested = 0; let fd = -1; let device = -1; let inode = 0;
+    if remote {
+        if !url_import_allowed { fail("URL imports are disabled (--restricted or --no-url-imports); use --allow-url-imports to enable downloads"); }
+        path = source_url(path); requested = path;
+    } else {
+        // File identity, rather than spelling, deduplicates ./, ../ and aliases.
+        fd = syscall(2, path, 2048, 0, 0, 0, 0);
+        if fd < 0 {
+            print(2, "cannot open source file: "); print(2, path); print(2, "\n");
+            fail("cannot open source");
+        }
+        if syscall(5, fd, input_stat, 0, 0, 0, 0) < 0 { fail("cannot stat source"); }
+        if (load64(input_stat + 24) & 61440) != 32768 { fail("source must be a regular file"); }
+        device = load64(input_stat); inode = load64(input_stat + 8);
+    }
+    let known = source_known(path, device, inode);
+    if known >= 0 { if fd >= 0 { syscall(3, fd, 0, 0, 0, 0, 0); } return known; }
     if module_count == 256 { fail("too many imported files (maximum 256 including entry)"); }
     if import_depth == 64 { fail("import nesting exceeds 64 files"); }
+    if remote {
+        if !source_deadline { source_deadline = net_now() + 30000; }
+        let remaining = source_deadline - net_now();
+        if remaining <= 0 { fail("URL import downloads timed out"); }
+        if arena_size >= 16777215 { fail("combined source must be smaller than 16 MiB"); }
+        if !http_get(path, 16777215 - arena_size, remaining) {
+            print(2, "cannot fetch source URL: "); print(2, path); print(2, "\n");
+            fail(net_message);
+        }
+        path = source_url(http_url);
+        known = source_known(path, device, inode);
+        if known >= 0 { https_free(); return known; }
+    }
     let index = module_count;
     let module = modules + index * 64;
     module_count = module_count + 1;
     store64(module, path); store64(module + 8, source_arena + arena_size);
     store64(module + 24, device); store64(module + 32, inode); store64(module + 40, 1);
+    store64(module_urls + index * 8, requested);
     let size = 0; let done = 0;
+    if remote {
+        size = http_size;
+        net_copy(source_arena + arena_size, http_output, size);
+        arena_size = arena_size + size;
+        https_free(); done = 1;
+    }
     while !done {
         if arena_size >= 16777216 { fail("combined source must be smaller than 16 MiB"); }
         let n = syscall(0, fd, source_arena + arena_size, 16777216 - arena_size, 0, 0, 0);
@@ -959,7 +1113,7 @@ fn load_module(path) {
         else if n == 0 { done = 1; }
         size = size + n; arena_size = arena_size + n;
     }
-    syscall(3, fd, 0, 0, 0, 0, 0);
+    if fd >= 0 { syscall(3, fd, 0, 0, 0, 0, 0); }
     store64(module + 16, size);
     select_module(index); next();
     import_depth = import_depth + 1;
@@ -1657,8 +1811,9 @@ fn compiler_initialize() {
     ffi_entries = alloc(40);
     ffi_fixups = alloc(64);
     modules = alloc(256 * 64);
+    module_urls = alloc(256 * 8);
     input_stat = alloc(144);
     if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0
-        || calls < 0 || modules < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0 { fail("memory allocation failed"); }
+        || calls < 0 || modules < 0 || module_urls < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0 { fail("memory allocation failed"); }
     return 0;
 }

@@ -16,7 +16,7 @@ Build them with the published Flexscript compiler:
 and executes it in a new VM. It uses the same parser, name resolution and
 language semantics as native compilation. There is no temporary executable,
 external compiler or shell. The native `<source> -o <binary>` command remains
-available. The frozen Rust seed remains unchanged.
+available. The original Rust seed is archived in the `0.0.1` tag.
 
 ## Execution tiers
 
@@ -51,7 +51,36 @@ backedges. JIT code has a 16 MiB cache budget, individual functions are limited
 to 8,192 bytecode records, and ineligible or oversized functions fall back to
 interpretation.
 
-## Guest memory and capabilities
+## Trusted execution by default
+
+`flex run app.flex` runs trusted code with native pointers, direct Linux syscalls
+and raw FFI. Programs can read and write files, use TCP/TLS, read standard input,
+create processes and call host libraries using the same interfaces as native
+compilation. URL sources and imports are enabled by default. `--no-url-imports`
+disables source downloads.
+
+Loads and stores use host addresses in this mode, including pointers returned
+by native libraries. Runtime `alloc` returns native mappings, so `munmap` and
+FFI buffers retain their normal behavior. The VM accounts requested allocation
+sizes against its memory budget; raw mmap/FFI allocations are outside that
+budget. Trusted code has the host process's permissions. Host calls can block
+or change process state, and the VM's execution deadline does not interrupt
+blocking syscalls or foreign functions.
+
+The interpreter and JIT remain available in both execution modes, with the same
+fuel, deadline, call-stack and managed-memory limits. Standard output has no
+VM quota in trusted mode. Guest `exit` ends the invocation.
+
+```sh
+flex run app.flex
+flex run http://localhost:8080/app.flex
+flex run --jit --stats examples/vm-compute.flex
+```
+
+## Restricted execution
+
+Use `flex run --restricted app.flex` to opt into guest memory isolation and
+explicit host capabilities.
 
 Guest pointers are offsets into the VM's private, initially zeroed linear heap.
 They cannot name the compiler, bytecode, local-frame storage, descriptors or JIT
@@ -61,7 +90,7 @@ no garbage collector or individual-allocation reclamation in this first version.
 Pointers can access other allocations in the same guest heap; this is isolation
 between host and guest, not memory safety between guest objects.
 
-Defaults:
+Limits shared by both modes, followed by restricted-mode permissions:
 
 - 16 MiB guest heap; 10,000,000 bytecode instructions; a 5-second execution deadline.
 - At most 256 call frames, 4,096 local slots per function and 65,536 operand words.
@@ -71,8 +100,9 @@ Defaults:
 ```sh
 flex run --interpret --fuel=100000 --memory=4m --timeout-ms=1000 app.flex
 flex run --jit --stats examples/vm-compute.flex
-flex run --allow-read=./data examples/vm-read.flex example.txt
-flex run --allow-stdin app.flex
+flex run --restricted --allow-read=./data examples/vm-read.flex example.txt
+flex run --restricted --allow-stdin app.flex
+flex run --restricted --allow-url-imports https://example.com/app.flex
 ```
 
 Resource options accept positive decimal values up to 1,000,000,000; `k` and `m`
@@ -81,7 +111,7 @@ the source path; arguments after it are forwarded unchanged. A two-parameter
 `main(argc,argv)` receives its script path as `argv[0]` and a null-terminated
 guest argv array. Zero-parameter `main()` remains supported.
 
-The VM virtualizes a small syscall interface for existing Flexscript programs:
+Restricted mode virtualizes a small syscall interface for existing Flexscript programs:
 `read`, `write`, read-only `open`, `close`, `fstat`, bounded `poll`, monotonic
 `clock_gettime` and guest `exit`. Host descriptors are translated through a
 private table and are never accepted directly. Unknown syscalls and raw FFI
@@ -95,6 +125,11 @@ up to 64 read-only file descriptors. This feature requires Linux `openat2`;
 there is no weaker fallback if it is unavailable.
 Only regular files are admitted. Opens use nonblocking mode and reject FIFOs,
 devices and directories after opening.
+
+Restricted mode disables URL imports by default. `--allow-url-imports` lets the
+compiler fetch the entry source and its imports; it does not grant network
+access to guest code. `--no-url-imports` disables downloads in either mode.
+See [source imports](imports.md) for URL resolution and download limits.
 
 Fuel limits computation. Poll and standard-input waits are bounded by the execution
 deadline, but fuel does not meter kernel time. Filesystem operations can block
@@ -111,7 +146,7 @@ code also needs process/filesystem isolation around the compiler and VM.
 The same Flexscript implementation can execute inside its own interpreter:
 
 ```sh
-flex run --interpret --allow-read=. --memory=256m --fuel=100000000 \
+flex run --restricted --interpret --allow-read=. --memory=256m --fuel=100000000 \
   --timeout-ms=10000 flexvm.flex run --interpret examples/hello.flex
 ```
 
@@ -141,6 +176,9 @@ fixtures, and checks exact fuel accounting, malformed source, arithmetic and
 memory traps, resource exhaustion, filesystem confinement, inherited-descriptor
 isolation, denied network/process/FFI operations, blocked input deadlines,
 virtualized polling, hot-call tiering and nested VM execution.
+Trusted-mode checks cover all valid language fixtures, the independent FFI ABI
+corpus, filesystem writes, standard input, subprocesses, TCP echo, native
+allocation/unmapping, output beyond the restricted quota and memory budgets.
 It also observes generated RX mappings while a JIT loop is running and checks
 that there are no writable/executable anonymous JIT mappings.
 

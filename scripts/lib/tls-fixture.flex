@@ -1,5 +1,5 @@
 // Local test server: Flexscript owns TCP/processes; OpenSSL supplies TLS.
-import "../../lib/tls.flex";
+import "../../lib/http.flex";
 import "json.flex";
 global sf_context=0;
 global sf_accept=0;
@@ -45,8 +45,9 @@ fn sf_start(dir,mode) {
     h_assert(sf_listener>=0,net_message);
     sf_port=sf_port_of(sf_listener);
     sf_url=h_cat("https://localhost:",h_int(sf_port));
+    if mode==5 {sf_url=h_cat("http://localhost:",h_int(sf_port));}
     sf_context=0;
-    if mode!=3 {
+    if mode!=3 && mode!=5 {
         sf_cert(dir);
         h_assert(tls_init(),net_message);
         sf_accept=sf_ssl("SSL_accept");
@@ -93,7 +94,7 @@ fn sf_start(dir,mode) {
     return process;
 }
 fn sf_write(session,p,n) {
-    return tls_write(session,p,n);
+    return http_write(session,p,n);
 }
 fn sf_payload(session,content,n,status,headers) {
     let head=h_cat3("HTTP/1.1 ",h_int(status)," Response\r\nContent-Length: ");
@@ -134,8 +135,9 @@ fn sf_serve(fd) {
         h_close(fd);
         return 0;
     }
-    let ssl=ffi_call(tls_new,sf_context,0,0,0,0,0);
-    if !ssl {
+    let ssl=0;
+    if sf_mode!=5 {ssl=ffi_call(tls_new,sf_context,0,0,0,0,0);}
+    if !ssl && sf_mode!=5 {
         h_close(fd);
         return 0;
     }
@@ -143,11 +145,11 @@ fn sf_serve(fd) {
     store64(session,ssl);
     store64(session+16,fd);
     store64(session+24,net_now()+10000);
-    if ffi_call_i32(tls_fd,ssl,fd,0,0,0,0)!=1 {
+    if ssl && ffi_call_i32(tls_fd,ssl,fd,0,0,0,0)!=1 {
         tls_close(session);
         return 0;
     }
-    let accepted=0;
+    let accepted=sf_mode==5;
     let more=1;
     while !accepted && more {
         let n=ffi_call_i32(sf_accept,ssl,0,0,0,0,0);
@@ -164,7 +166,7 @@ fn sf_serve(fd) {
     let request=h_buffer();
     let p=h_take(4096);
     while !h_has(h_data(request),"\r\n\r\n") && h_size(request)<65536 {
-        let n=tls_read(session,p,4096);
+        let n=http_read(session,p,4096);
         if n<=0 {
             tls_close(session);
             return 0;
@@ -183,12 +185,35 @@ fn sf_serve(fd) {
     let path=h_slice(text+4,at-4);
     if sf_mode==1 {
         sf_network(session,path);
+    }else if sf_mode==4 || sf_mode==5 {
+        sf_sources(session,path);
     }else {
         sf_upgrade(session,path);
     }
-    ffi_call_i32(sf_shutdown,ssl,0,0,0,0,0);
+    if ssl {ffi_call_i32(sf_shutdown,ssl,0,0,0,0,0);}
     tls_close(session);
     return 0;
+}
+fn sf_sources(session,path) {
+    sf_append_file(h_join(sf_directory,"requests"),h_cat(path,"\n"));
+    let routes=j_parse(h_read(h_join(sf_directory,"routes.json")));
+    let route=j_get(routes,path);
+    if !route {
+        return sf_payload(session,"missing source",14,404,"");
+    }
+    let location=j_get(route,"location");
+    if location {
+        return sf_payload(session,"",0,302,h_cat3("Location: ",j_value(location),"\r\n"));
+    }
+    let raw=j_get(route,"raw");
+    if raw {return sf_write(session,j_value(raw),h_len(j_value(raw)));}
+    let file=j_get(route,"file");
+    if file {
+        let bytes=h_read(j_value(file));
+        return sf_payload(session,bytes,h_file_size,200,"");
+    }
+    let body=j_s(route,"body");
+    return sf_payload(session,body,h_len(body),200,"");
 }
 fn sf_network(session,path) {
     let body="hello https\n";
