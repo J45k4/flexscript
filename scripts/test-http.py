@@ -120,7 +120,8 @@ def main():
             check_response(raw(port, [request]), 400)
         check_response(raw(port, [b'GET / HTTP/1.1\r\nHost: a\r\nContent-Length: 1\r\n\r\nx']), 413)
         check_response(raw(port, [b'GET / HTTP/1.1\r\nHost: a\r\nTransfer-Encoding: chunked\r\n\r\n']), 501)
-        check_response(raw(port, [b'GET / HTTP/1.1\r\nHost: a\r\nX-Large: ' + b'x' * 8192]), 431)
+        for _ in range(5):
+            check_response(raw(port, [b'GET / HTTP/1.1\r\nHost: a\r\nX-Large: ' + b'x' * 8192]), 431)
         started = time.monotonic()
         check_response(raw(port, [b'GET / HTTP/1.1\r\nHost: ']), 408)
         assert 1.5 <= time.monotonic() - started < 3.5

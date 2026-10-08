@@ -25,20 +25,31 @@ def main():
     binary = args.build_dir / 'stage2'
     checksum = digest(binary)
     assert checksum == report['stages']['stage2'] == report['stages']['stage3']
-    assert checksum == report['clean_room']['compiler_sha256'] == report['clean_room']['rebuilt_sha256']
+    core = args.build_dir / 'core'
+    core_checksum = digest(core)
+    assert core_checksum == report['core_sha256'] == report['clean_room']['compiler_sha256'] == report['clean_room']['rebuilt_sha256']
     assert len(report['tests']['results']) == 3
     assert all(result['checks'] >= 84 for result in report['tests']['results'])
     assert len(report['import_tests']['results']) == 2
     assert all(result['checks'] >= 46 for result in report['import_tests']['results'])
+    assert len(report['upgrade_tests']['results']) == 2
+    assert all(result['checks'] >= 76 for result in report['upgrade_tests']['results'])
+    for key, minimum in [('ffi_tests', 24), ('network_tests', 38)]:
+        assert len(report[key]['results']) == 2
+        assert all(result['checks'] >= minimum for result in report[key]['results'])
     assert report['clean_room']['checks'] >= 8
     native_elf(binary)
+    native_elf(core, standalone=True)
     assert subprocess.check_output([str(binary.resolve()), '--version']) == f'flexscript {VERSION}\n'.encode()
     summary = (ROOT / 'docs/releases' / f'{VERSION}.md').read_text().strip()
     args.dist_dir.mkdir(parents=True, exist_ok=True)
     artifact = args.dist_dir / f'flexscript-{VERSION}-linux-x86_64'
     shutil.copyfile(binary, artifact)
     artifact.chmod(0o755)
-    (args.dist_dir / 'SHA256SUMS').write_text(f'{checksum}  {artifact.name}\n')
+    core_artifact = args.dist_dir / f'flexscript-core-{VERSION}-linux-x86_64'
+    shutil.copyfile(core, core_artifact)
+    core_artifact.chmod(0o755)
+    (args.dist_dir / 'SHA256SUMS').write_text(f'{checksum}  {artifact.name}\n{core_checksum}  {core_artifact.name}\n')
     notes = f'''{summary}
 
 Verified build:
@@ -47,11 +58,16 @@ Verified build:
 - Compiler version: `flexscript {VERSION}`.
 - Bootstrap input: `{report['seed_version']}`; SHA-256 `{report['seed_sha256']}`.
 - Native stage 1 -> stage 2 -> stage 3; stages 2 and 3 are byte-identical.
-- {report['tests']['total']} core checks and {report['import_tests']['total']} import checks across the bootstrap stages.
-- {report['clean_room']['checks']} checks in an empty filesystem with no toolchain or libc, including self-rebuild and nested imports.
+- {report['tests']['total']} core checks, {report['import_tests']['total']} import checks and {report['upgrade_tests']['total']} upgrade checks across the bootstrap stages.
+- {report['ffi_tests']['total']} FFI checks and {report['network_tests']['total']} networking checks across the bootstrap stages.
+- {report['clean_room']['checks']} checks of the static core in an empty filesystem with no toolchain or libc, including self-rebuild and nested imports.
 
 The downloadable binary is the verified stage 2 compiler. Verify it with
 `sha256sum -c SHA256SUMS`, then make it executable with `chmod +x {artifact.name}`.
+It requires the Linux x86-64 glibc loader and libc. HTTPS upgrades additionally
+require OpenSSL 3 (`libssl.so.3`) and a trusted CA certificate store. No curl is needed.
+The separate `flexscript-core` artifact is standalone and can build the full
+compiler. Foreign calls and HTTPS upgrades are unavailable in the core itself.
 
 ```sh
 ./{artifact.name} --version

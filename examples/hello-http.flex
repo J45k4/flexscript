@@ -153,6 +153,16 @@ fn serve(fd) {
     else if status==413 { respond(fd,"413 Content Too Large","Request bodies are not supported\n",""); }
     else if status==431 { respond(fd,"431 Request Header Fields Too Large","Request headers are too large\n",""); }
     else if status==501 { respond(fd,"501 Not Implemented","Transfer encoding is not supported\n",""); }
+    // Queue a FIN after the response, then drain rejected request bytes before
+    // close. Closing with unread data can send a reset and truncate the reply.
+    syscall(48,fd,1,0,0,0,0);
+    let deadline=now_ms()+250; let done=0;
+    while !done && now_ms()<deadline {
+        let n=syscall(0,fd,request_bytes,8192,0,0,0);
+        if n==0 { done=1; }
+        else if n==-11 { if !ready(fd,1,deadline) { done=1; } }
+        else if n<0 && n!=-4 { done=1; }
+    }
     syscall(3,fd,0,0,0,0,0); return 0;
 }
 fn main(argc,argv) {

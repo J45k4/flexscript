@@ -1,4 +1,5 @@
-// Flexscript compiler 0.0.2. Native Linux x86-64 / ELF backend.
+import "../lib/http.flex";
+// Flexscript compiler 0.0.3. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
 global source_size = 0;
@@ -29,6 +30,42 @@ global import_depth = 0;
 global source_arena = 0;
 global arena_size = 0;
 global input_stat = 0;
+global ffi_entries = 0;
+global ffi_fixups = 0;
+global ffi_fixup_count = 0;
+global ffi_dynamic = 0;
+
+
+// State used only by the upgrade subcommand.
+global up_environment = 0;
+global up_poll = 0;
+global up_clock = 0;
+global up_pipe = 0;
+global up_status = 0;
+global up_mask = 0;
+global up_oldmask = 0;
+global up_signal = 0;
+global up_oldstat = 0;
+global up_stat = 0;
+global up_json_string = 0;
+global up_k = 0;
+global up_words = 0;
+global up_hash = 0;
+global up_block = 0;
+global up_digest = 0;
+global up_cancelled = 0;
+global up_data = 0;
+global up_size = 0;
+global up_json_pos = 0;
+global up_version = 0;
+global up_expected = 0;
+global up_target = 0;
+global up_dir = 0;
+global up_stage = 0;
+global up_owns_dir = 0;
+global up_message = 0;
+global up_signal_fd = -1;
+global up_exe_fd = -1;
 
 fn length(text) {
     let n = 0;
@@ -675,17 +712,111 @@ fn resolve() {
     while i < call_count {
         let site = calls + i * 32;
         let index = find(functions, function_count, load64(site), load64(site + 8));
-        if index < 0 { locate_name(load64(site)); fail("undefined function"); }
-        let function = functions + index * 32;
-        if load64(function + 24) != load64(site + 24) {
-            locate_name(load64(site)); fail("wrong function argument count");
+        let target = 0;
+        if index < 0 {
+            target = ffi_resolve(load64(site),load64(site+8),load64(site+24));
+            if !target { locate_name(load64(site)); fail("undefined function"); }
+        } else {
+            let function = functions + index * 32;
+            if load64(function + 24) != load64(site + 24) {
+                locate_name(load64(site)); fail("wrong function argument count");
+            }
+            target=load64(function+16);
         }
         let at = load64(site + 16);
-        patch32(at, load64(function + 16) - at - 4);
+        patch32(at, target - at - 4);
         i = i + 1;
     }
+    if ffi_dynamic { ffi_finish(load64(entry+16)); }
     store64(output + 96, output_size);
     store64(output + 104, output_size);
+    return 0;
+}
+
+// FFI adapters bridge Flexscript's internal stack ABI to System V AMD64.
+// Named Flexscript functions take precedence, allowing a frozen bootstrap shim.
+fn ffi_argument(reg,offset) {
+    emit(72); if reg>=8 { store8(output+output_size-1,76); }
+    emit(139); emit(133|((reg&7)<<3)); emit32(offset); return 0;
+}
+fn ffi_indirect(symbol) {
+    emit(255); emit(21);
+    store64(ffi_fixups+ffi_fixup_count*16,output_size);
+    store64(ffi_fixups+ffi_fixup_count*16+8,symbol);
+    ffi_fixup_count=ffi_fixup_count+1; emit32(0); return 0;
+}
+fn ffi_resolve(name,size,count) {
+    let kind=-1; let arity=7;
+    if equal(name,size,"ffi_open",8) {kind=0;arity=1;}
+    else if equal(name,size,"ffi_symbol",10) {kind=1;arity=2;}
+    else if equal(name,size,"ffi_call",8) {kind=2;}
+    else if equal(name,size,"ffi_call_i32",12) {kind=3;}
+    else if equal(name,size,"ffi_call_u32",12) {kind=4;}
+    if kind<0 {return 0;}
+    if count!=arity {locate_name(name);fail("wrong FFI argument count");}
+    let cached=load64(ffi_entries+kind*8); if cached {return cached;}
+    let at=output_size;store64(ffi_entries+kind*8,at);
+    emit(85);emit(72);emit(137);emit(229); // preserve rbp
+    if kind==0 {ffi_argument(7,16);emit(190);emit32(2);ffi_dynamic=1;}
+    else if kind==1 {ffi_argument(7,24);ffi_argument(6,16);ffi_dynamic=1;}
+    else {
+        ffi_argument(0,64);ffi_argument(7,56);ffi_argument(6,48);
+        ffi_argument(2,40);ffi_argument(1,32);ffi_argument(8,24);ffi_argument(9,16);
+    }
+    emit(72);emit(131);emit(228);emit(240); // and rsp,-16 before C call
+    if kind<2 {ffi_indirect(kind);} else {emit(255);emit(208);}
+    if kind==3 {emit(72);emit(152);} // sign extend C int
+    else if kind==4 {emit(137);emit(192);} // zero extend C unsigned int
+    epilogue();return at;
+}
+fn ffi_align() {while output_size%8 {emit(0);}return 0;}
+fn ffi_tag(tag,value) {emit64(tag);emit64(value);return 0;}
+fn ffi_phdr(kind,flags,offset,size,alignment) {
+    emit32(kind);emit32(flags);emit64(offset);emit64(4194304+offset);
+    emit64(4194304+offset);emit64(size);emit64(size);emit64(alignment);return 0;
+}
+fn ffi_finish(main_address) {
+    // C runtime startup initializes environ, TLS and libc before calling our
+    // stack-ABI main, and returns through libc for orderly library cleanup.
+    let main_bridge=output_size;
+    emit(85);emit(72);emit(137);emit(229);emit(87);emit(86);
+    emit(232);emit32(main_address-output_size-4);
+    emit(72);emit(131);emit(196);emit(16);epilogue();
+    let start=output_size;store64(output+24,4194304+start);
+    emit(49);emit(237);emit(73);emit(137);emit(209); // rbp=0, r9=rtld_fini
+    emit(94);emit(72);emit(137);emit(226); // argc -> rsi, argv -> rdx
+    emit(72);emit(131);emit(228);emit(240);emit(80);emit(84);
+    emit(69);emit(49);emit(192);emit(49);emit(201);
+    emit(72);emit(141);emit(61);emit32(main_bridge-output_size-4);
+    ffi_indirect(2);emit(244);
+    ffi_align();let got=output_size;emit64(0);emit64(0);emit64(0);
+    let i=0;while i<ffi_fixup_count {
+        let at=load64(ffi_fixups+i*16);let symbol=load64(ffi_fixups+i*16+8);
+        patch32(at,got+symbol*8-at-4);i=i+1;
+    }
+    let strings=output_size;
+    let names="\0dlopen\0dlsym\0__libc_start_main\0libc.so.6\0";
+    i=0;while i<42 {emit(load8(names+i));i=i+1;}
+    ffi_align();let symbols=output_size;i=0;while i<24 {emit(0);i=i+1;}
+    i=0;while i<3 {
+        let name_offset=1;if i==1 {name_offset=8;}else if i==2 {name_offset=14;}
+        emit32(name_offset);emit(18);emit(0);emit(0);emit(0);emit64(0);emit64(0);i=i+1;
+    }
+    let hashes=output_size;emit32(1);emit32(4);emit32(1);
+    emit32(0);emit32(2);emit32(3);emit32(0);
+    ffi_align();let relocations=output_size;i=0;while i<3 {
+        emit64(4194304+got+i*8);emit64(((i+1)<<32)|6);emit64(0);i=i+1;
+    }
+    let dynamic=output_size;
+    ffi_tag(1,32);ffi_tag(4,4194304+hashes);ffi_tag(5,4194304+strings);ffi_tag(10,42);
+    ffi_tag(6,4194304+symbols);ffi_tag(11,24);ffi_tag(7,4194304+relocations);
+    ffi_tag(8,72);ffi_tag(9,24);ffi_tag(0,0);
+    let interpreter=output_size;names="/lib64/ld-linux-x86-64.so.2";
+    i=0;while i<=length(names) {emit(load8(names+i));i=i+1;}
+    ffi_align();let headers=output_size;let total=headers+224;
+    store64(output+32,headers);store8(output+56,4);
+    ffi_phdr(6,4,headers,224,8);ffi_phdr(3,4,interpreter,28,1);
+    ffi_phdr(1,7,0,total,4096);ffi_phdr(2,6,dynamic,160,8);
     return 0;
 }
 
@@ -856,18 +987,565 @@ fn compile_modules() {
     return 0;
 }
 
+// Upgrade logic is Flexscript; the HTTPS library uses OpenSSL through FFI.
+fn compiler_version() { return "0.0.3"; }
+fn up_copy(to,from,n) { let i=0; while i<n { store8(to+i,load8(from+i)); i=i+1; } return 0; }
+fn up_text(a,b) { return equal(a,length(a),b,length(b)); }
+fn up_join(a,b,c) {
+    let an=length(a); let bn=length(b); let cn=length(c);
+    let p=alloc(an+bn+cn+1); if p<0 { return 0; }
+    up_copy(p,a,an); up_copy(p+an,b,bn); up_copy(p+an+bn,c,cn); return p;
+}
+fn up_number(n) {
+    let p=alloc(32); if p<0 { return 0; } let i=31;
+    while n>=10 { i=i-1; store8(p+i,48+n%10); n=n/10; }
+    i=i-1; store8(p+i,48+n); return p+i;
+}
+fn up_u16(p) { return load8(p)|(load8(p+1)<<8); }
+fn up_u32(p) { return up_u16(p)|(up_u16(p+2)<<16); }
+fn up_env(name) {
+    let n=length(name); let i=0;
+    while load64(up_environment+i*8) {
+        let value=load64(up_environment+i*8);
+        if length(value)>n && equal(value,n,name,n) && load8(value+n)==61 { return value+n+1; }
+        i=i+1;
+    }
+    return 0;
+}
+fn up_init() {
+    up_poll=alloc(16); up_clock=alloc(16); up_pipe=alloc(8); up_status=alloc(8);
+    up_mask=alloc(8); up_oldmask=alloc(8); up_signal=alloc(128);
+    up_oldstat=alloc(144); up_stat=alloc(144); up_json_string=alloc(65537);
+    up_k=alloc(512); up_words=alloc(512); up_hash=alloc(64); up_block=alloc(64); up_digest=alloc(65);
+    if up_poll<0 || up_clock<0 || up_pipe<0 || up_status<0 || up_mask<0 || up_oldmask<0
+        || up_signal<0 || up_oldstat<0 || up_stat<0 || up_json_string<0 || up_k<0
+        || up_words<0 || up_hash<0 || up_block<0 || up_digest<0 { return 0; }
+    up_sha_constants(); return 1;
+}
+fn up_now() {
+    if syscall(228,1,up_clock,0,0,0,0)<0 { return -1; }
+    return load64(up_clock)*1000+load64(up_clock+8)/1000000;
+}
+fn up_start_signals() {
+    store64(up_mask,0x5007);
+    if syscall(14,0,up_mask,up_oldmask,8,0,0)<0 { return 0; }
+    up_signal_fd=syscall(289,-1,up_mask,8,0x80800,0,0);
+    if up_signal_fd<0 { syscall(14,2,up_oldmask,0,8,0,0); return 0; }
+    return 1;
+}
+fn up_poll_io(fd,events,timeout) {
+    store64(up_poll,(fd&0xffffffff)|(events<<32));
+    store64(up_poll+8,up_signal_fd|(1<<32));
+    let result=syscall(7,up_poll,2,timeout,0,0,0);
+    if up_u16(up_poll+14)&1 {
+        if syscall(0,up_signal_fd,up_signal,128,0,0,0)>0 { up_cancelled=128+up_u32(up_signal); }
+    }
+    if up_cancelled { up_message="Upgrade interrupted; compiler left unchanged."; return -1; }
+    return result;
+}
+fn up_stop_signals() {
+    if up_signal_fd>=0 {
+        while syscall(0,up_signal_fd,up_signal,128,0,0,0)>0 { }
+        syscall(3,up_signal_fd,0,0,0,0,0); up_signal_fd=-1;
+        syscall(14,2,up_oldmask,0,8,0,0);
+    }
+    return 0;
+}
+fn up_capture(executable,args,limit) {
+    up_data=alloc(limit+1); up_size=0;
+    if up_data<0 { up_message="Cannot allocate download buffer."; return 0; }
+    if syscall(293,up_pipe,0x80000,0,0,0,0)<0 { up_message="Cannot create command pipe."; return 0; }
+    let reader=up_u32(up_pipe); let writer=up_u32(up_pipe+4);
+    let pid=syscall(57,0,0,0,0,0,0);
+    if pid==0 {
+        syscall(3,reader,0,0,0,0,0);
+        if syscall(33,writer,1,0,0,0,0)<0 { syscall(60,127,0,0,0,0,0); }
+        if writer!=1 { syscall(3,writer,0,0,0,0,0); }
+        syscall(14,2,up_oldmask,0,8,0,0);
+        syscall(59,executable,args,up_environment,0,0,0);
+        syscall(60,127,0,0,0,0,0); return 0;
+    }
+    syscall(3,writer,0,0,0,0,0);
+    if pid<0 { syscall(3,reader,0,0,0,0,0); up_message="Cannot start command."; return 0; }
+    return up_collect(pid,reader,limit);
+}
+fn up_collect(pid,reader,limit) {
+    let deadline=up_now()+30000; let finished=0; let ok=1;
+    while !finished && ok {
+        let now=up_now(); let remaining=deadline-now;
+        if now<0 || remaining<=0 { up_message="Upgrade command timed out."; ok=0; }
+        else {
+            let ready=up_poll_io(reader,1,remaining);
+            if ready<0 && ready!=-4 { ok=0; }
+            else if ready==0 { up_message="Upgrade command timed out."; ok=0; }
+            else if ready>0 {
+                let n=syscall(0,reader,up_data+up_size,limit+1-up_size,0,0,0);
+                if n==0 { finished=1; }
+                else if n>0 {
+                    up_size=up_size+n;
+                    if up_size>limit { up_message="Upgrade command output exceeds size limit."; ok=0; }
+                } else if n!=-4 { up_message="Cannot read command output."; ok=0; }
+            }
+        }
+    }
+    syscall(3,reader,0,0,0,0,0);
+    if !ok { syscall(62,pid,9,0,0,0,0); syscall(61,pid,up_status,0,0,0,0); return 0; }
+    let waited=0;
+    while !waited {
+        let result=syscall(61,pid,up_status,1,0,0,0);
+        if result==pid { waited=1; }
+        else if result<0 && result!=-4 { up_message="Cannot wait for command."; return 0; }
+        else if up_now()>=deadline || up_poll_io(-1,0,10)<0 {
+            syscall(62,pid,9,0,0,0,0); syscall(61,pid,up_status,0,0,0,0);
+            if !up_cancelled { up_message="Upgrade command timed out."; } return 0;
+        }
+    }
+    if up_u32(up_status)!=0 { up_message="Upgrade command failed; compiler left unchanged."; return 0; }
+    return 1;
+}
+fn up_get(url,limit) {
+    up_data=alloc(limit+1);up_size=0;if up_data<0 {return 0;}
+    if syscall(293,up_pipe,0x80000,0,0,0,0)<0 {return 0;}
+    let reader=up_u32(up_pipe);let writer=up_u32(up_pipe+4);
+    let pid=syscall(57,0,0,0,0,0,0);
+    if pid==0 {
+        syscall(3,reader,0,0,0,0,0);syscall(14,2,up_oldmask,0,8,0,0);
+        let ok=https_get(url,limit,30000);
+        if ok {ok=write_all(writer,http_output,http_size);}
+        else if net_message {print(2,net_message);print(2,"\n");}
+        syscall(3,writer,0,0,0,0,0);let status=1;if ok {status=0;}
+        syscall(60,status,0,0,0,0,0);return 0;
+    }
+    syscall(3,writer,0,0,0,0,0);
+    if pid<0 {syscall(3,reader,0,0,0,0,0);return 0;}
+    return up_collect(pid,reader,limit);
+}
+
+fn up_space() {
+    while up_json_pos<up_size && (load8(up_data+up_json_pos)==32 || load8(up_data+up_json_pos)==9
+        || load8(up_data+up_json_pos)==10 || load8(up_data+up_json_pos)==13) { up_json_pos=up_json_pos+1; }
+    return 0;
+}
+fn up_hex(c) {
+    if c>=48 && c<=57 { return c-48; }
+    if c>=97 && c<=102 { return c-87; }
+    if c>=65 && c<=70 { return c-55; }
+    return -1;
+}
+fn up_json_text() {
+    if up_json_pos>=up_size || load8(up_data+up_json_pos)!=34 { return 0; }
+    up_json_pos=up_json_pos+1; let n=0; let done=0;
+    while up_json_pos<up_size && !done {
+        let c=load8(up_data+up_json_pos); up_json_pos=up_json_pos+1;
+        if c==34 { done=1; }
+        else {
+            if c<32 { return 0; }
+            if c==92 {
+                if up_json_pos==up_size { return 0; }
+                c=load8(up_data+up_json_pos); up_json_pos=up_json_pos+1;
+                if c==117 {
+                    let j=0; c=0;
+                    while j<4 {
+                        if up_json_pos==up_size { return 0; }
+                        let digit=up_hex(load8(up_data+up_json_pos)); if digit<0 { return 0; }
+                        c=c*16+digit; up_json_pos=up_json_pos+1; j=j+1;
+                    }
+                    // Non-ASCII fields are skipped, not interpreted as names.
+                    if c>127 || !c { c=255; }
+                } else if c==110 { c=10; }
+                else if c==114 { c=13; }
+                else if c==116 { c=9; }
+                else if c==98 { c=8; }
+                else if c==102 { c=12; }
+                else if c!=34 && c!=92 && c!=47 { return 0; }
+            }
+            store8(up_json_string+n,c); n=n+1;
+        }
+    }
+    store8(up_json_string+n,0); return done;
+}
+fn up_json_literal(text) {
+    let n=length(text);
+    if up_json_pos+n>up_size || !equal(up_data+up_json_pos,n,text,n) { return 0; }
+    up_json_pos=up_json_pos+n; return 1;
+}
+fn up_json_value(depth) {
+    if depth>64 { return 0; } up_space();
+    if up_json_pos>=up_size { return 0; }
+    let c=load8(up_data+up_json_pos);
+    if c==34 { return up_json_text(); }
+    if c==123 || c==91 {
+        up_json_pos=up_json_pos+1; up_space(); let end=93; if c==123 { end=125; }
+        if up_json_pos<up_size && load8(up_data+up_json_pos)==end { up_json_pos=up_json_pos+1; return 1; }
+        let more=1;
+        while more {
+            if c==123 {
+                if !up_json_text() { return 0; } up_space();
+                if up_json_pos==up_size || load8(up_data+up_json_pos)!=58 { return 0; }
+                up_json_pos=up_json_pos+1;
+            }
+            if !up_json_value(depth+1) { return 0; } up_space();
+            if up_json_pos==up_size { return 0; }
+            if load8(up_data+up_json_pos)==end { up_json_pos=up_json_pos+1; return 1; }
+            if load8(up_data+up_json_pos)!=44 { return 0; }
+            up_json_pos=up_json_pos+1; up_space();
+        }
+    }
+    if c==116 { return up_json_literal("true"); }
+    if c==102 { return up_json_literal("false"); }
+    if c==110 { return up_json_literal("null"); }
+    if c==45 { up_json_pos=up_json_pos+1; }
+    if up_json_pos==up_size || !digit(load8(up_data+up_json_pos)) { return 0; }
+    if load8(up_data+up_json_pos)==48 { up_json_pos=up_json_pos+1; }
+    else { while up_json_pos<up_size && digit(load8(up_data+up_json_pos)) { up_json_pos=up_json_pos+1; } }
+    if up_json_pos<up_size && load8(up_data+up_json_pos)==46 {
+        up_json_pos=up_json_pos+1; let start=up_json_pos;
+        while up_json_pos<up_size && digit(load8(up_data+up_json_pos)) { up_json_pos=up_json_pos+1; }
+        if start==up_json_pos { return 0; }
+    }
+    if up_json_pos<up_size && (load8(up_data+up_json_pos)==101 || load8(up_data+up_json_pos)==69) {
+        up_json_pos=up_json_pos+1;
+        if up_json_pos<up_size && (load8(up_data+up_json_pos)==43 || load8(up_data+up_json_pos)==45) { up_json_pos=up_json_pos+1; }
+        let start=up_json_pos;
+        while up_json_pos<up_size && digit(load8(up_data+up_json_pos)) { up_json_pos=up_json_pos+1; }
+        if start==up_json_pos { return 0; }
+    }
+    return 1;
+}
+fn up_release() {
+    up_json_pos=0; up_version=0; up_space(); let found=0;
+    if up_json_pos==up_size || load8(up_data+up_json_pos)!=123 { return 0; }
+    up_json_pos=up_json_pos+1; up_space(); let more=1;
+    while more {
+        if !up_json_text() { return 0; }
+        let tag=up_text(up_json_string,"tag_name");
+        let stable=up_text(up_json_string,"draft") || up_text(up_json_string,"prerelease");
+        up_space(); if up_json_pos==up_size || load8(up_data+up_json_pos)!=58 { return 0; }
+        up_json_pos=up_json_pos+1; up_space();
+        if tag {
+            if found || !up_json_text() || length(up_json_string)>32 { return 0; }
+            up_version=up_join(up_json_string,"",""); if !up_version { return 0; } found=1;
+        } else if stable { if !up_json_literal("false") { return 0; } }
+        else if !up_json_value(1) { return 0; }
+        up_space(); if up_json_pos==up_size { return 0; }
+        let c=load8(up_data+up_json_pos); up_json_pos=up_json_pos+1;
+        if c==125 { more=0; }
+        else if c!=44 { return 0; }
+        up_space();
+    }
+    return found && up_json_pos==up_size;
+}
+fn up_version_parts(text,parts) {
+    let pos=0; let i=0;
+    while i<3 {
+        if !digit(load8(text+pos)) { return 0; }
+        let start=pos; let n=0;
+        while digit(load8(text+pos)) {
+            n=n*10+load8(text+pos)-48; if n>999999999 { return 0; } pos=pos+1;
+        }
+        if pos-start>1 && load8(text+start)==48 { return 0; }
+        store64(parts+i*8,n); i=i+1;
+        if i<3 { if load8(text+pos)!=46 { return 0; } pos=pos+1; }
+    }
+    return load8(text+pos)==0;
+}
+fn up_compare_versions(a,b) {
+    let left=alloc(24); let right=alloc(24); if left<0 || right<0 { return -2; }
+    if !up_version_parts(a,left) || !up_version_parts(b,right) { return -2; }
+    let i=0;
+    while i<3 {
+        if load64(left+i*8)>load64(right+i*8) { return 1; }
+        if load64(left+i*8)<load64(right+i*8) { return -1; } i=i+1;
+    }
+    return 0;
+}
+
+fn up_rotr(x,n) { return ((x>>n)|(x<<(32-n)))&0xffffffff; }
+fn up_sha256(bytes,size) {
+    store64(up_hash,0x6a09e667); store64(up_hash+8,0xbb67ae85);
+    store64(up_hash+16,0x3c6ef372); store64(up_hash+24,0xa54ff53a);
+    store64(up_hash+32,0x510e527f); store64(up_hash+40,0x9b05688c);
+    store64(up_hash+48,0x1f83d9ab); store64(up_hash+56,0x5be0cd19);
+    let total=((size+9+63)/64)*64; let offset=0;
+    while offset<total {
+        let i=0;
+        while i<64 {
+            let p=offset+i; let c=0;
+            if p<size { c=load8(bytes+p); }
+            else if p==size { c=128; }
+            else if p>=total-8 { c=(size*8)>>(8*(total-p-1)); }
+            store8(up_block+i,c); i=i+1;
+        }
+        i=0;
+        while i<16 {
+            let p=up_block+i*4;
+            store64(up_words+i*8,(load8(p)<<24)|(load8(p+1)<<16)|(load8(p+2)<<8)|load8(p+3)); i=i+1;
+        }
+        while i<64 {
+            let x=load64(up_words+(i-15)*8); let y=load64(up_words+(i-2)*8);
+            let s0=up_rotr(x,7)^up_rotr(x,18)^(x>>3);
+            let s1=up_rotr(y,17)^up_rotr(y,19)^(y>>10);
+            store64(up_words+i*8,(load64(up_words+(i-16)*8)+s0+load64(up_words+(i-7)*8)+s1)&0xffffffff); i=i+1;
+        }
+        let a=load64(up_hash); let b=load64(up_hash+8); let c=load64(up_hash+16); let d=load64(up_hash+24);
+        let e=load64(up_hash+32); let f=load64(up_hash+40); let g=load64(up_hash+48); let h=load64(up_hash+56);
+        i=0;
+        while i<64 {
+            let s1=up_rotr(e,6)^up_rotr(e,11)^up_rotr(e,25);
+            let choice=(e&f)^((~e)&g);
+            let t1=(h+s1+choice+load64(up_k+i*8)+load64(up_words+i*8))&0xffffffff;
+            let s0=up_rotr(a,2)^up_rotr(a,13)^up_rotr(a,22);
+            let majority=(a&b)^(a&c)^(b&c); let t2=(s0+majority)&0xffffffff;
+            h=g; g=f; f=e; e=(d+t1)&0xffffffff; d=c; c=b; b=a; a=(t1+t2)&0xffffffff; i=i+1;
+        }
+        store64(up_hash,(load64(up_hash)+a)&0xffffffff); store64(up_hash+8,(load64(up_hash+8)+b)&0xffffffff);
+        store64(up_hash+16,(load64(up_hash+16)+c)&0xffffffff); store64(up_hash+24,(load64(up_hash+24)+d)&0xffffffff);
+        store64(up_hash+32,(load64(up_hash+32)+e)&0xffffffff); store64(up_hash+40,(load64(up_hash+40)+f)&0xffffffff);
+        store64(up_hash+48,(load64(up_hash+48)+g)&0xffffffff); store64(up_hash+56,(load64(up_hash+56)+h)&0xffffffff);
+        offset=offset+64;
+    }
+    let alphabet="0123456789abcdef"; let i=0;
+    while i<64 {
+        let value=load64(up_hash+(i/8)*8); let shift=28-(i%8)*4;
+        store8(up_digest+i,load8(alphabet+((value>>shift)&15))); i=i+1;
+    }
+    return up_digest;
+}
+fn up_manifest(name) {
+    let p=0; let found=0;
+    while p<up_size {
+        let start=p; while p<up_size && load8(up_data+p)!=10 { p=p+1; }
+        let end=p; if end>start && load8(up_data+end-1)==13 { end=end-1; }
+        if end>start {
+            if end-start<67 { return 0; }
+            let i=0; while i<64 { if up_hex(load8(up_data+start+i))<0 { return 0; } i=i+1; }
+            if load8(up_data+start+64)!=32 { return 0; }
+            let marker=load8(up_data+start+65); if marker!=32 && marker!=42 { return 0; }
+            if equal(up_data+start+66,end-start-66,name,length(name)) {
+                if found { return 0; } found=1;
+                i=0; while i<64 {
+                    let value=up_hex(load8(up_data+start+i)); store8(up_expected+i,load8("0123456789abcdef"+value)); i=i+1;
+                }
+            }
+        }
+        p=p+1;
+    }
+    return found;
+}
+fn up_native(bytes,size) {
+    if size<120 || load8(bytes)!=127 || !equal(bytes+1,3,"ELF",3)
+        || load8(bytes+4)!=2 || load8(bytes+5)!=1 || load8(bytes+6)!=1
+        || up_u16(bytes+16)!=2 || up_u16(bytes+18)!=62 || up_u16(bytes+52)!=64
+        || up_u16(bytes+54)!=56 {return 0;}
+    let phoff=load64(bytes+32);let count=up_u16(bytes+56);
+    if phoff<64 || (count!=1 && count!=4) || phoff>size-count*56 {return 0;}
+    let i=0;let loads=0;let dynamic=0;let interpreter=0;let entry=load64(bytes+24);
+    while i<count {
+        let ph=bytes+phoff+i*56;let kind=up_u32(ph);
+        let offset=load64(ph+8);let file_size=load64(ph+32);
+        if offset<0 || file_size<0 || offset>size || file_size>size-offset {return 0;}
+        if kind==1 {
+            if loads || offset || load64(ph+16)!=4194304 || file_size!=size || load64(ph+40)<size
+                || entry<4194424 || entry>=4194304+size {return 0;}loads=1;
+        } else if kind==3 {
+            if interpreter || file_size!=28 || !equal(bytes+offset,28,"/lib64/ld-linux-x86-64.so.2\0",28) {return 0;}interpreter=1;
+        } else if kind==2 {if dynamic || file_size<16 || file_size%16 {return 0;}dynamic=1;}
+        else if kind!=6 {return 0;}
+        i=i+1;
+    }
+    return loads && ((count==1 && !dynamic && !interpreter) || (count==4 && dynamic && interpreter));
+}
+
+fn up_resolve_target() {
+    up_target=alloc(4096); if up_target<0 { return 0; }
+    let n=syscall(89,"/proc/self/exe",up_target,4095,0,0,0);
+    if n<=0 || n>=4095 { return 0; } store8(up_target+n,0);
+    up_exe_fd=syscall(2,up_target,0xa0000,0,0,0,0); if up_exe_fd<0 { return 0; }
+    if syscall(5,up_exe_fd,up_oldstat,0,0,0,0)<0 || (up_u32(up_oldstat+24)&0xf000)!=0x8000 { return 0; }
+    let running=syscall(2,"/proc/self/exe",0x80000,0,0,0,0); if running<0 { return 0; }
+    let ok=syscall(5,running,up_stat,0,0,0,0)==0 && load64(up_stat)==load64(up_oldstat)
+        && load64(up_stat+8)==load64(up_oldstat+8);
+    syscall(3,running,0,0,0,0,0); if !ok { return 0; }
+    if up_u32(up_oldstat+24)&0xc00 { up_message="Cannot upgrade a setuid or setgid compiler."; return 0; }
+    if syscall(73,up_exe_fd,6,0,0,0,0)<0 { up_message="Another upgrade is in progress."; return 0; }
+    return 1;
+}
+fn up_install(bytes,size) {
+    let process=up_number(syscall(39,0,0,0,0,0,0)); if !process { return 0; }
+    up_dir=up_join(up_target,".upgrade.",process);
+    if !up_dir || length(up_dir)>4095 { up_message="Installation path is too long."; return 0; }
+    if syscall(83,up_dir,448,0,0,0,0)<0 { up_message="Cannot create staging directory beside the compiler. Check installation permissions."; return 0; }
+    up_owns_dir=1; up_stage=up_join(up_dir,"/compiler",""); if !up_stage { return 0; }
+    let fd=syscall(2,up_stage,0xa00c1,384,0,0,0);
+    if fd<0 { up_message="Cannot create staged compiler."; return 0; }
+    let ok=write_all(fd,bytes,size);
+    if syscall(74,fd,0,0,0,0,0)<0 || syscall(91,fd,493,0,0,0,0)<0 { ok=0; }
+    syscall(3,fd,0,0,0,0,0);
+    if !ok { up_message="Cannot write staged compiler."; return 0; }
+    let args=alloc(24); if args<0 { return 0; }
+    store64(args,up_stage); store64(args+8,"--version");
+    if !up_capture(up_stage,args,256) { return 0; }
+    let expected=up_join("flexscript ",up_version,"\n"); if !expected { return 0; }
+    if !equal(up_data,up_size,expected,length(expected)) { up_message="Downloaded compiler version does not match the release."; return 0; }
+    fd=syscall(2,up_stage,0xa0001,0,0,0,0); if fd<0 { return 0; }
+    let uid=(load64(up_oldstat+24)>>32)&0xffffffff; let gid=up_u32(up_oldstat+32);
+    ok=syscall(5,fd,up_stat,0,0,0,0)==0;
+    if ok && (((load64(up_stat+24)>>32)&0xffffffff)!=uid || up_u32(up_stat+32)!=gid) {
+        if syscall(93,fd,uid,gid,0,0,0)<0 { ok=0; }
+    }
+    if syscall(91,fd,up_u32(up_oldstat+24)&511,0,0,0,0)<0 || syscall(74,fd,0,0,0,0,0)<0 { ok=0; }
+    syscall(3,fd,0,0,0,0,0);
+    if !ok { up_message="Cannot preserve compiler ownership or permissions."; return 0; }
+    // A process that began on the old inode must not replace a newer install.
+    fd=syscall(2,up_target,0xa0000,0,0,0,0); if fd<0 { up_message="Installed compiler changed during upgrade."; return 0; }
+    ok=syscall(5,fd,up_stat,0,0,0,0)==0 && load64(up_stat)==load64(up_oldstat)
+        && load64(up_stat+8)==load64(up_oldstat+8);
+    syscall(3,fd,0,0,0,0,0);
+    if !ok { up_message="Installed compiler changed during upgrade."; return 0; }
+    if up_poll_io(-1,0,0)<0 { return 0; }
+    if syscall(82,up_stage,up_target,0,0,0,0)<0 { up_message="Cannot replace installed compiler."; return 0; }
+    let parent=alloc(4096); if parent>0 {
+        let i=0; let last=0; while load8(up_target+i) { if load8(up_target+i)==47 { last=i; } i=i+1; }
+        if !last { last=1; } up_copy(parent,up_target,last); store8(parent+last,0);
+        fd=syscall(2,parent,0x90000,0,0,0,0);
+        if fd>=0 { syscall(74,fd,0,0,0,0,0); syscall(3,fd,0,0,0,0,0); }
+    }
+    print(1,"Upgraded to Flexscript "); print(1,up_version); print(1,".\n"); return 1;
+}
+fn up_execute(check) {
+    print(1,"Checking the latest Flexscript release...\n");
+    if !up_get("https://api.github.com/repos/J45k4/flexscript/releases/latest",65536) { return 1; }
+    if !up_release() { up_message="Invalid latest-release metadata."; return 1; }
+    let comparison=up_compare_versions(up_version,compiler_version());
+    if comparison==-2 { up_message="Release tag must be a numeric major.minor.patch version."; return 1; }
+    if comparison<=0 {
+        if comparison==0 { print(1,"Already up to date ("); print(1,compiler_version()); print(1,").\n"); }
+        else { print(1,"Installed compiler is newer than the latest release; keeping "); print(1,compiler_version()); print(1,".\n"); }
+        return 0;
+    }
+    if check {
+        print(1,"Upgrade available: "); print(1,compiler_version()); print(1," -> "); print(1,up_version);
+        print(1,". Run flex upgrade to install.\n"); return 0;
+    }
+    up_message="Cannot locate or lock the running compiler.";
+    if !up_resolve_target() { return 1; }
+    let name=up_join("flexscript-",up_version,"-linux-x86_64");
+    let base=up_join("https://github.com/J45k4/flexscript/releases/download/",up_version,"/");
+    up_expected=alloc(65);
+    if !name || !base || up_expected<0 { up_message="Cannot allocate upgrade paths."; return 1; }
+    let url=up_join(base,"SHA256SUMS",""); if !url { return 1; }
+    if !up_get(url,65536) { return 1; }
+    if !up_manifest(name) { up_message="Release checksums do not uniquely identify the compiler."; return 1; }
+    print(1,"Downloading Flexscript "); print(1,up_version); print(1,"...\n");
+    url=up_join(base,name,""); if !url { return 1; }
+    if !up_get(url,67108864) { return 1; }
+    if !up_text(up_sha256(up_data,up_size),up_expected) { up_message="Compiler SHA-256 checksum mismatch; installed compiler left unchanged."; return 1; }
+    if !up_native(up_data,up_size) { up_message="Downloaded file is not a native Linux x86-64 Flexscript compiler."; return 1; }
+    let bytes=up_data; let size=up_size;
+    if !up_install(bytes,size) { return 1; }
+    return 0;
+}
+fn up_main(argc,argv) {
+    let check=0;
+    if argc==3 && up_text(load64(argv+16),"--check") { check=1; }
+    else if argc!=2 {
+        print(2,"Usage: flex upgrade [--check]\n"); return 1;
+    }
+    up_environment=argv+(argc+1)*8;
+    if !up_init() { print(2,"flex upgrade: memory allocation failed\n"); return 1; }
+    if !up_start_signals() { print(2,"flex upgrade: cannot initialize signal handling\n"); return 1; }
+    up_message="Upgrade failed; installed compiler left unchanged.";
+    let status=up_execute(check);
+    if up_owns_dir {
+        if up_stage { syscall(87,up_stage,0,0,0,0,0); }
+        syscall(84,up_dir,0,0,0,0,0);
+    }
+    if up_exe_fd>=0 { syscall(3,up_exe_fd,0,0,0,0,0); }
+    if status { print(2,"flex upgrade: "); print(2,up_message); print(2,"\n"); }
+    up_stop_signals(); if up_cancelled { return up_cancelled; } return status;
+}
+
+fn up_sha_constants() {
+    store64(up_k+0,0x428a2f98);
+    store64(up_k+8,0x71374491);
+    store64(up_k+16,0xb5c0fbcf);
+    store64(up_k+24,0xe9b5dba5);
+    store64(up_k+32,0x3956c25b);
+    store64(up_k+40,0x59f111f1);
+    store64(up_k+48,0x923f82a4);
+    store64(up_k+56,0xab1c5ed5);
+    store64(up_k+64,0xd807aa98);
+    store64(up_k+72,0x12835b01);
+    store64(up_k+80,0x243185be);
+    store64(up_k+88,0x550c7dc3);
+    store64(up_k+96,0x72be5d74);
+    store64(up_k+104,0x80deb1fe);
+    store64(up_k+112,0x9bdc06a7);
+    store64(up_k+120,0xc19bf174);
+    store64(up_k+128,0xe49b69c1);
+    store64(up_k+136,0xefbe4786);
+    store64(up_k+144,0x0fc19dc6);
+    store64(up_k+152,0x240ca1cc);
+    store64(up_k+160,0x2de92c6f);
+    store64(up_k+168,0x4a7484aa);
+    store64(up_k+176,0x5cb0a9dc);
+    store64(up_k+184,0x76f988da);
+    store64(up_k+192,0x983e5152);
+    store64(up_k+200,0xa831c66d);
+    store64(up_k+208,0xb00327c8);
+    store64(up_k+216,0xbf597fc7);
+    store64(up_k+224,0xc6e00bf3);
+    store64(up_k+232,0xd5a79147);
+    store64(up_k+240,0x06ca6351);
+    store64(up_k+248,0x14292967);
+    store64(up_k+256,0x27b70a85);
+    store64(up_k+264,0x2e1b2138);
+    store64(up_k+272,0x4d2c6dfc);
+    store64(up_k+280,0x53380d13);
+    store64(up_k+288,0x650a7354);
+    store64(up_k+296,0x766a0abb);
+    store64(up_k+304,0x81c2c92e);
+    store64(up_k+312,0x92722c85);
+    store64(up_k+320,0xa2bfe8a1);
+    store64(up_k+328,0xa81a664b);
+    store64(up_k+336,0xc24b8b70);
+    store64(up_k+344,0xc76c51a3);
+    store64(up_k+352,0xd192e819);
+    store64(up_k+360,0xd6990624);
+    store64(up_k+368,0xf40e3585);
+    store64(up_k+376,0x106aa070);
+    store64(up_k+384,0x19a4c116);
+    store64(up_k+392,0x1e376c08);
+    store64(up_k+400,0x2748774c);
+    store64(up_k+408,0x34b0bcb5);
+    store64(up_k+416,0x391c0cb3);
+    store64(up_k+424,0x4ed8aa4a);
+    store64(up_k+432,0x5b9cca4f);
+    store64(up_k+440,0x682e6ff3);
+    store64(up_k+448,0x748f82ee);
+    store64(up_k+456,0x78a5636f);
+    store64(up_k+464,0x84c87814);
+    store64(up_k+472,0x8cc70208);
+    store64(up_k+480,0x90befffa);
+    store64(up_k+488,0xa4506ceb);
+    store64(up_k+496,0xbef9a3f7);
+    store64(up_k+504,0xc67178f2);
+    return 0;
+}
+
 fn main(argc, argv) {
     source_path = "flexscript";
+    if argc >= 2 && up_text(load64(argv + 8), "upgrade") { return up_main(argc, argv); }
     if argc == 2 {
         let arg = load64(argv + 8);
         if equal(arg, length(arg), "--version", 9) {
-            print(1, "flexscript 0.0.2\n"); return 0;
+            print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flex upgrade [--check]\n"); return 0;
         }
     }
-    if argc != 4 { print(2, "Usage: flexscript <source.flex> -o <binary>\n"); return 1; }
+    if argc != 4 { print(2, "Usage: flexscript <source.flex> -o <binary>\n       flex upgrade [--check]\n"); return 1; }
     let option = load64(argv + 16);
     if !equal(option, length(option), "-o", 2) {
         print(2, "expected -o <binary>\n"); return 1;
@@ -884,10 +1562,12 @@ fn main(argc, argv) {
     functions = alloc(2048 * 32);
     locals = alloc(4096 * 32);
     calls = alloc(65536 * 32);
+    ffi_entries = alloc(40);
+    ffi_fixups = alloc(64);
     modules = alloc(256 * 64);
     input_stat = alloc(144);
     if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0
-        || calls < 0 || modules < 0 || input_stat < 0 { fail("memory allocation failed"); }
+        || calls < 0 || modules < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0 { fail("memory allocation failed"); }
     load_module(source_path);
     initialize_output();
     compile_modules();

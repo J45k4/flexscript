@@ -44,7 +44,10 @@ def suite(compiler):
     check(version)
     current = (ROOT / "VERSION").read_text().strip()
     assert version.stdout in (b"flexscript 0.0.1\n", f"flexscript {current}\n".encode()), version.stdout
-    check(run([compiler, "--help"]), stdout="Usage: flexscript <source.flex> -o <binary>\n")
+    help_result = run([compiler, "--help"])
+    check(help_result)
+    legacy_help = b"Usage: flexscript <source.flex> -o <binary>\n"
+    assert help_result.stdout in (legacy_help, legacy_help + b"       flex upgrade [--check]\n"), help_result.stdout
     check(run([compiler]), status=1)
     count += 3
     with tempfile.TemporaryDirectory(prefix="flexscript-tests-") as directory:
