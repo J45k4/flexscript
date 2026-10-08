@@ -33,7 +33,9 @@ def main():
     assert len(report['import_tests']['results']) == 2
     assert all(result['checks'] >= 46 for result in report['import_tests']['results'])
     assert len(report['upgrade_tests']['results']) == 2
-    assert all(result['checks'] >= 76 for result in report['upgrade_tests']['results'])
+    assert all(result['checks'] >= 88 for result in report['upgrade_tests']['results'])
+    assert len(report['signature_tests']['results']) == 2
+    assert all(result['checks'] >= 37 for result in report['signature_tests']['results'])
     for key, minimum in [('ffi_tests', 24), ('network_tests', 38)]:
         assert len(report[key]['results']) == 2
         assert all(result['checks'] >= minimum for result in report[key]['results'])
@@ -59,13 +61,18 @@ Verified build:
 - Bootstrap input: `{report['seed_version']}`; SHA-256 `{report['seed_sha256']}`.
 - Native stage 1 -> stage 2 -> stage 3; stages 2 and 3 are byte-identical.
 - {report['tests']['total']} core checks, {report['import_tests']['total']} import checks and {report['upgrade_tests']['total']} upgrade checks across the bootstrap stages.
+- {report['signature_tests']['total']} Ed25519 and release-signing checks across the bootstrap stages.
 - {report['ffi_tests']['total']} FFI checks and {report['network_tests']['total']} networking checks across the bootstrap stages.
 - {report['clean_room']['checks']} checks of the static core in an empty filesystem with no toolchain or libc, including self-rebuild and nested imports.
 
 The downloadable binary is the verified stage 2 compiler. Verify it with
 `sha256sum -c SHA256SUMS`, then make it executable with `chmod +x {artifact.name}`.
 It requires the Linux x86-64 glibc loader and libc. HTTPS upgrades additionally
-require OpenSSL 3 (`libssl.so.3`) and a trusted CA certificate store. No curl is needed.
+require OpenSSL 3 (`libssl.so.3`, `libcrypto.so.3`) and a trusted CA certificate store. No curl is needed.
+The release job signs the version-bound checksums as `SHA256SUMS.sig` using
+Ed25519. The updater requires that signature and verifies it against its pinned
+public key before downloading, executing or installing the candidate compiler.
+See `docs/signing.md` for the signature format and manual verification.
 The separate `flexscript-core` artifact is standalone and can build the full
 compiler. Foreign calls and HTTPS upgrades are unavailable in the core itself.
 

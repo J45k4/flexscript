@@ -19,15 +19,23 @@ The executable can have any name. For a local build, for example:
 ```
 
 This command is implemented in Flexscript. HTTPS downloads use the Flexscript
-TCP/HTTP libraries and OpenSSL 3 through C FFI. Install `libssl.so.3` and a trusted
+TCP/HTTP libraries and OpenSSL 3 through C FFI. Install `libssl.so.3`, `libcrypto.so.3` and a trusted
 CA certificate store. Curl and shell subprocesses are not used. Compilation
 emits machine code directly; the full compiler requires the glibc loader and libc.
 Programs without FFI retain standalone native executables. The separate static
 bootstrap core can build the full compiler but cannot perform HTTPS upgrades.
 A failed download returns an error and leaves the compiler intact.
 
-Before installation, Flexscript calculates SHA-256 itself and compares the binary
-with the release's `SHA256SUMS`. It checks the native Linux x86-64 ELF layout, stages
+Before downloading the candidate compiler, Flexscript verifies the release's
+`SHA256SUMS.sig` with the Ed25519 public key hardcoded into the compiler. The signed
+message includes the release version, `linux-x86_64` target and exact `SHA256SUMS`
+bytes. This prevents substituting checksums or reusing a signature for another
+version or target. Missing, malformed or invalid signatures stop the upgrade;
+there is no unsigned fallback or downloaded-key trust. `--check` only queries
+release metadata; it reports availability without authenticating release assets.
+
+Flexscript then calculates SHA-256 itself and compares the binary with the signed
+`SHA256SUMS`. It checks the native Linux x86-64 ELF layout, stages
 the executable beside the installation, and requires its `--version` output to
 match the release tag. It then preserves the installation's owner and permission
 bits and atomically renames the staged file over the installed compiler.
@@ -40,12 +48,19 @@ are rejected. Like other atomic file replacements, existing hard links continue
 to refer to the old executable.
 
 Release metadata and checksum files are limited to 64 KiB, compiler downloads to
-64 MiB, and each download or version probe to 30 seconds. Downloads run in worker processes so the deadline also bounds DNS resolution. HTTPS and the published checksum protect the download;
-there is no separate release-signature verification.
+64 MiB, detached signatures to exactly 64 bytes, and each download or version
+probe to 30 seconds. Downloads run in worker processes so the deadline also
+bounds DNS resolution. Signature verification happens before the candidate is
+executed, including its `--version` probe. See [Release signing](signing.md).
 
-The published 0.0.2 binary predates this command. Install 0.0.3 manually once;
-future releases can be installed with `flex upgrade`. Rename the downloaded
-binary to `flex` if desired. The static core cannot perform HTTPS upgrades.
+Signature enforcement begins with 0.0.4. The published 0.0.2 binary predates
+the upgrade command. The published 0.0.3 updater
+checks HTTPS and checksums but does not enforce release signatures. Install the
+0.0.4 through a trusted one-time installation;
+later upgrades enforce the pinned key automatically. Updating from 0.0.3 uses
+its older checks, so that first transition does not gain signature enforcement
+retroactively. Rename the binary to `flex` if desired. The static core cannot
+perform HTTPS upgrades.
 
 ## Verification
 
@@ -60,9 +75,13 @@ They cover successful upgrades, imports after an upgrade, symlink launchers,
 permission preservation, check-only operation, version comparison, invalid
 metadata, download failures, checksums, ELF validation, failed version probes,
 concurrent upgrades, target replacement, staging collisions and interruption
-cleanup. SHA-256 is independently checked against Python's `hashlib`, including
+cleanup. Signature tests reject missing, truncated, oversized, corrupted and
+wrong-key signatures, changed manifests, and signatures for another version or
+target before fetching the binary. Successful signed upgrades work with an empty
+executable search path. SHA-256 is independently checked against Python's `hashlib`, including
 padding boundaries, binary messages and a million-byte message.
 
 The bootstrap script runs the upgrade suite against stages 1 and 2. Its report
 and the separate `upgrade-tests.json` are included in CI build artifacts; packaging
-requires both stages to pass.
+requires both stages to pass. `scripts/test-signature.py` additionally checks
+RFC 8032 Ed25519 vectors, non-canonical signatures and the CI signing helper.

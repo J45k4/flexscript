@@ -120,6 +120,8 @@ def main():
         "--report", out / "import-tests.json")
     run(sys.executable, ROOT / "scripts/test-upgrade.py", *stages[:2],
         "--report", out / "upgrade-tests.json")
+    run(sys.executable, ROOT / "scripts/test-signature.py", *stages[:2],
+        "--report", out / "signature-tests.json")
     run(sys.executable, ROOT / 'scripts/test-ffi.py', *stages[:2],
         '--report', out / 'ffi-tests.json')
     run(sys.executable, ROOT / 'scripts/test-network.py', *stages[:2],
@@ -141,6 +143,7 @@ def main():
         "tests": json.loads((out / "tests.json").read_text()),
         "import_tests": json.loads((out / "import-tests.json").read_text()),
         "upgrade_tests": json.loads((out / "upgrade-tests.json").read_text()),
+        "signature_tests": json.loads((out / "signature-tests.json").read_text()),
         "ffi_tests": json.loads((out / 'ffi-tests.json').read_text()),
         "network_tests": json.loads((out / 'network-tests.json').read_text()),
         "clean_room": json.loads((out / "clean-room.json").read_text()),

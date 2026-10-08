@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import resource
 import shutil
 import signal
@@ -30,7 +31,8 @@ class ReleaseHandler(QuietHandler):
         with (d / 'requests').open('a') as f:
             f.write(url + '\n')
         name = 'metadata' if self.path.endswith('/releases/latest') else (
-            'manifest' if self.path.endswith('/SHA256SUMS') else 'binary')
+            'manifest' if self.path.endswith('/SHA256SUMS') else (
+                'signature' if self.path.endswith('/SHA256SUMS.sig') else 'binary'))
         control = json.loads((d / 'control').read_text())
         if control.get('fail') == name:
             self.payload(b'download failed', 503)
@@ -84,15 +86,39 @@ def suite(compiler):
     count = 0
     with tempfile.TemporaryDirectory(prefix='flexscript-upgrade-') as temp:
         work = Path(temp)
+        key = work / 'test-private.pem'
+        success(run('openssl', 'genpkey', '-algorithm', 'ED25519', '-out', key))
+        key.chmod(0o600)
+        other_key = work / 'other-private.pem'
+        success(run('openssl', 'genpkey', '-algorithm', 'ED25519', '-out', other_key))
+        other_key.chmod(0o600)
+        public = run('openssl', 'pkey', '-in', key, '-pubout', '-outform', 'DER')
+        success(public)
+        assert len(public.stdout) == 44 and public.stdout[:12].hex() == '302a300506032b6570032100'
+
+        def sign(manifest, version=FUTURE, private=key):
+            message = work / 'signed-message'
+            message.write_bytes((f'Flexscript release signature v1\nversion={version}\n'
+                                 'target=linux-x86_64\n').encode() + manifest)
+            signature = work / 'signed-signature'
+            success(run('openssl', 'pkeyutl', '-sign', '-rawin', '-inkey', private,
+                        '-in', message, '-out', signature))
+            return signature.read_bytes()
+
         with TLSServer(work, ReleaseHandler) as server:
             # TemporaryDirectory cleanup also runs after every assertion failure.
             fixture_source = bootstrap_source().split('// Static bootstrap core:')[0]
+            fixture_source, replaced = re.subn(
+                r'fn release_public_key\(\) \{ return "[0-9a-f]{64}"; \}',
+                f'fn release_public_key() {{ return "{public.stdout[12:].hex()}"; }}', fixture_source)
+            assert replaced == 1, 'fixture must use its own test signing key'
             fixture_source = fixture_source.replace(API, server.url + '/releases/latest').replace(
                 'https://github.com/J45k4/flexscript/releases/download/', server.url + '/download/')
             original = compiler
             compiler = build(original, work, 'test-compiler', fixture_source)
             expected_requests = [server.url + '/releases/latest',
                                  server.url + '/download/' + FUTURE + '/SHA256SUMS',
+                                 server.url + '/download/' + FUTURE + '/SHA256SUMS.sig',
                                  server.url + '/download/' + FUTURE + '/' + NAME]
             future = build(compiler, work, 'future', fixture_source.replace(
                 f'fn compiler_version() {{ return "{VERSION}"; }}',
@@ -104,7 +130,8 @@ def suite(compiler):
             hanging = build(compiler, work, 'hanging',
                             'fn main(){syscall(7,0,0,60000,0,0,0);return 0;}').read_bytes()
 
-            def fixture(name, metadata=None, binary=payload, manifest=None, control=None):
+            def fixture(name, metadata=None, binary=payload, manifest=None, control=None,
+                        signature=None, sign_version=FUTURE, sign_key=key):
                 directory = work / name
                 directory.mkdir()
                 installed = directory / 'flex'
@@ -122,6 +149,9 @@ def suite(compiler):
                 if manifest is None:
                     manifest = f'{hashlib.sha256(binary).hexdigest()}  {NAME}\n'
                 (directory / 'manifest').write_text(manifest)
+                if signature is None:
+                    signature = sign(manifest.encode(), sign_version, sign_key)
+                (directory / 'signature').write_bytes(signature)
                 (directory / 'replacement').write_bytes(wrong)
                 settings = {'target': str(installed), **(control or {})}
                 (directory / 'control').write_text(json.dumps(settings))
@@ -144,6 +174,7 @@ def suite(compiler):
                     name, result.returncode, result.stdout, result.stderr)
                 unchanged(directory, installed, before)
                 count += 1
+                return directory
 
             directory, installed, before, env = fixture('success')
             success(run(installed, 'upgrade', env=env))
@@ -196,8 +227,44 @@ def suite(compiler):
                 reject(f'tag-{i}', 'numeric major.minor.patch', metadata=json.dumps({'tag_name': tag}))
             reject('metadata-limit', 'size limit', metadata=b' ' * 65537)
             reject('manifest-limit', 'size limit', manifest=' ' * 65537)
-            for item in ['metadata', 'manifest', 'binary']:
+            for item in ['metadata', 'manifest', 'signature', 'binary']:
                 reject('https-fail-' + item, 'command failed', control={'fail': item})
+
+            # Reject unauthenticated content before downloading or executing it.
+            altered = hashlib.sha256(wrong).hexdigest() + f'  {NAME}\n'
+            good_signature = sign((hashlib.sha256(payload).hexdigest() + f'  {NAME}\n').encode())
+            attacks = [
+                ('missing-signature', 'command failed', {'control': {'fail': 'signature'}}),
+                ('empty-signature', 'signature verification failed', {'signature': b''}),
+                ('short-signature', 'signature verification failed', {'signature': good_signature[:-1]}),
+                ('long-signature', 'size limit', {'signature': good_signature + b'\x00'}),
+                ('wrong-key', 'signature verification failed', {'sign_key': other_key}),
+                ('version-replay', 'signature verification failed', {'sign_version': VERSION}),
+                ('damaged-signature', 'signature verification failed',
+                 {'signature': bytes([good_signature[0] ^ 1]) + good_signature[1:]}),
+                ('replaced-manifest', 'signature verification failed',
+                 {'binary': wrong, 'manifest': altered, 'signature': good_signature}),
+                ('changed-manifest-byte', 'signature verification failed',
+                 {'manifest': hashlib.sha256(payload).hexdigest().upper() + f'  {NAME}\n',
+                  'signature': good_signature}),
+                ('wrong-target', 'signature verification failed', {'signature': b'\x00' * 64}),
+            ]
+            # Generate a real signature for another target, rather than merely corrupting one.
+            (work / 'signed-message').write_bytes(
+                (f'Flexscript release signature v1\nversion={FUTURE}\ntarget=linux-aarch64\n'
+                 + hashlib.sha256(payload).hexdigest() + f'  {NAME}\n').encode())
+            success(run('openssl', 'pkeyutl', '-sign', '-rawin', '-inkey', key,
+                        '-in', work / 'signed-message', '-out', work / 'signed-signature'))
+            attacks[-1][2]['signature'] = (work / 'signed-signature').read_bytes()
+            for name, expected, settings in attacks:
+                directory = reject(name, expected, **settings)
+                assert (directory / 'requests').read_text().splitlines() == expected_requests[:3], name
+
+            directory, installed, before, env = fixture('signature-no-tools')
+            env['PATH'] = '/no/executables'
+            success(run(installed, 'upgrade', env=env))
+            assert installed.read_bytes() == payload
+            count += 1
 
             for i, manifest in enumerate(['', '0' * 64 + '  other-file\n',
                                           'z' * 64 + f'  {NAME}\n',

@@ -1,5 +1,6 @@
 import "../lib/http.flex";
-// Flexscript compiler 0.0.3. Native Linux x86-64 / ELF backend.
+import "../lib/signature.flex";
+// Flexscript compiler 0.0.4. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
 global source_size = 0;
@@ -988,7 +989,7 @@ fn compile_modules() {
 }
 
 // Upgrade logic is Flexscript; the HTTPS library uses OpenSSL through FFI.
-fn compiler_version() { return "0.0.3"; }
+fn compiler_version() { return "0.0.4"; }
 fn up_copy(to,from,n) { let i=0; while i<n { store8(to+i,load8(from+i)); i=i+1; } return 0; }
 fn up_text(a,b) { return equal(a,length(a),b,length(b)); }
 fn up_join(a,b,c) {
@@ -1412,6 +1413,22 @@ fn up_install(bytes,size) {
     }
     print(1,"Upgraded to Flexscript "); print(1,up_version); print(1,".\n"); return 1;
 }
+// This is the trust anchor. Never accept a replacement key from a release.
+fn release_public_key() { return "a7c0caa5f351e2b735dad15a832fa62d1c7834db98fee7f61c0eb941b492de05"; }
+fn up_verify_manifest(manifest,size,signature,signature_size) {
+    let header=up_join("Flexscript release signature v1\nversion=",up_version,"\ntarget=linux-x86_64\n");
+    if !header {return 0;}
+    let n=length(header);let message=alloc(n+size);let key=alloc(32);
+    if message<0 || key<0 {return 0;}
+    up_copy(message,header,n);up_copy(message+n,manifest,size);
+    let hex=release_public_key();let i=0;
+    while i<32 {
+        let a=up_hex(load8(hex+i*2));let b=up_hex(load8(hex+i*2+1));
+        if a<0 || b<0 {return 0;}store8(key+i,a*16+b);i=i+1;
+    }
+    let valid=ed25519_verify(key,32,signature,signature_size,message,n+size);
+    syscall(11,message,n+size,0,0,0,0);syscall(11,key,32,0,0,0,0);return valid;
+}
 fn up_execute(check) {
     print(1,"Checking the latest Flexscript release...\n");
     if !up_get("https://api.github.com/repos/J45k4/flexscript/releases/latest",65536) { return 1; }
@@ -1435,6 +1452,13 @@ fn up_execute(check) {
     if !name || !base || up_expected<0 { up_message="Cannot allocate upgrade paths."; return 1; }
     let url=up_join(base,"SHA256SUMS",""); if !url { return 1; }
     if !up_get(url,65536) { return 1; }
+    let manifest=up_data;let manifest_size=up_size;
+    url=up_join(base,"SHA256SUMS.sig","");if !url {return 1;}
+    if !up_get(url,64) {return 1;}
+    if !up_verify_manifest(manifest,manifest_size,up_data,up_size) {
+        up_message="Release signature verification failed; installed compiler left unchanged.";return 1;
+    }
+    up_data=manifest;up_size=manifest_size;
     if !up_manifest(name) { up_message="Release checksums do not uniquely identify the compiler."; return 1; }
     print(1,"Downloading Flexscript "); print(1,up_version); print(1,"...\n");
     url=up_join(base,name,""); if !url { return 1; }
