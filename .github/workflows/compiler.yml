@@ -30,6 +30,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes bubblewrap
+          # Ubuntu's default unconfined user-namespace policy denies the
+          # network setup needed by --unshare-all. Permit namespaces for this
+          # verifier alone on the disposable runner, without a global sysctl.
+          if [ -f /sys/module/apparmor/parameters/enabled ] && \
+             grep -q Y /sys/module/apparmor/parameters/enabled; then
+            for profile in /etc/apparmor.d/bwrap /etc/apparmor.d/bwrap-userns-restrict; do
+              if [ -f "$profile" ]; then
+                sudo apparmor_parser --remove "$profile"
+              fi
+            done
+            sudo tee /etc/apparmor.d/flexscript-bwrap >/dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile flexscript-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+            sudo apparmor_parser --replace /etc/apparmor.d/flexscript-bwrap
+          fi
 
       - name: Download and verify the original bootstrap compiler
         env:
