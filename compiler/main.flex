@@ -1,4 +1,4 @@
-// Flexscript compiler 0.0.1. Native Linux x86-64 / ELF backend.
+// Flexscript compiler 0.0.2. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
 global source_size = 0;
@@ -22,6 +22,13 @@ global nesting = 0;
 global conditional_depth = 0;
 global calls = 0;
 global call_count = 0;
+// File records: path, bytes, size, device, inode, state, declarations, functions.
+global modules = 0;
+global module_count = 0;
+global import_depth = 0;
+global source_arena = 0;
+global arena_size = 0;
+global input_stat = 0;
 
 fn length(text) {
     let n = 0;
@@ -103,7 +110,7 @@ fn reserved(name, size) {
         || equal(name, size, "return", 6) || equal(name, size, "load8", 5)
         || equal(name, size, "load64", 6) || equal(name, size, "store8", 6)
         || equal(name, size, "store64", 7) || equal(name, size, "alloc", 5)
-        || equal(name, size, "syscall", 7);
+        || equal(name, size, "syscall", 7) || equal(name, size, "import", 6);
 }
 
 fn next() {
@@ -668,10 +675,10 @@ fn resolve() {
     while i < call_count {
         let site = calls + i * 32;
         let index = find(functions, function_count, load64(site), load64(site + 8));
-        if index < 0 { token_start = load64(site) - source; fail("undefined function"); }
+        if index < 0 { locate_name(load64(site)); fail("undefined function"); }
         let function = functions + index * 32;
         if load64(function + 24) != load64(site + 24) {
-            token_start = load64(site) - source; fail("wrong function argument count");
+            locate_name(load64(site)); fail("wrong function argument count");
         }
         let at = load64(site + 16);
         patch32(at, load64(function + 16) - at - 4);
@@ -682,12 +689,179 @@ fn resolve() {
     return 0;
 }
 
+fn select_module(index) {
+    let module = modules + index * 64;
+    source_path = load64(module);
+    source = load64(module + 8);
+    source_size = load64(module + 16);
+    pos = 0;
+    token_start = 0;
+    return 0;
+}
+
+fn locate_name(name) {
+    let i = 0;
+    while i < module_count {
+        let module = modules + i * 64;
+        let bytes = load64(module + 8);
+        if name >= bytes && name < bytes + load64(module + 16) {
+            select_module(i);
+            token_start = name - source;
+            return 0;
+        }
+        i = i + 1;
+    }
+    fail("internal source location error");
+    return 0;
+}
+
+fn import_path() {
+    if token != 258 { fail("expected quoted import path"); }
+    let path = alloc(4096);
+    if path < 0 { fail("memory allocation failed"); }
+    let size = 0;
+    let i = token_start + 1;
+    let end = token_start + token_size - 1;
+    while i < end {
+        let c = load8(source + i);
+        i = i + 1;
+        if c == 92 {
+            c = load8(source + i); i = i + 1;
+            if c == 110 { c = 10; }
+            else if c == 114 { c = 13; }
+            else if c == 116 { c = 9; }
+            else if c == 48 { c = 0; }
+        }
+        if c == 0 { fail("import path cannot contain a zero byte"); }
+        if size == 4095 { fail("import path exceeds 4095 bytes"); }
+        store8(path + size, c); size = size + 1;
+    }
+    if size == 0 { fail("import path cannot be empty"); }
+    if load8(path) == 47 { return path; }
+    let prefix = 0; i = 0;
+    while load8(source_path + i) {
+        if load8(source_path + i) == 47 { prefix = i + 1; }
+        i = i + 1;
+    }
+    if prefix + size > 4095 { fail("import path exceeds 4095 bytes"); }
+    i = size;
+    while i > 0 { i = i - 1; store8(path + prefix + i, load8(path + i)); }
+    i = 0;
+    while i < prefix { store8(path + i, load8(source_path + i)); i = i + 1; }
+    store8(path + prefix + size, 0);
+    return path;
+}
+
+fn load_module(path) {
+    // File identity, rather than spelling, deduplicates ./, ../ and aliases.
+    let fd = syscall(2, path, 2048, 0, 0, 0, 0);
+    if fd < 0 {
+        print(2, "cannot open source file: "); print(2, path); print(2, "\n");
+        fail("cannot open source");
+    }
+    if syscall(5, fd, input_stat, 0, 0, 0, 0) < 0 { fail("cannot stat source"); }
+    if (load64(input_stat + 24) & 61440) != 32768 { fail("source must be a regular file"); }
+    let device = load64(input_stat);
+    let inode = load64(input_stat + 8);
+    let i = 0;
+    while i < module_count {
+        let known = modules + i * 64;
+        if load64(known + 24) == device && load64(known + 32) == inode {
+            syscall(3, fd, 0, 0, 0, 0, 0);
+            if load64(known + 40) == 1 { fail("circular import"); }
+            return i;
+        }
+        i = i + 1;
+    }
+    if module_count == 256 { fail("too many imported files (maximum 256 including entry)"); }
+    if import_depth == 64 { fail("import nesting exceeds 64 files"); }
+    let index = module_count;
+    let module = modules + index * 64;
+    module_count = module_count + 1;
+    store64(module, path); store64(module + 8, source_arena + arena_size);
+    store64(module + 24, device); store64(module + 32, inode); store64(module + 40, 1);
+    let size = 0; let done = 0;
+    while !done {
+        if arena_size >= 16777216 { fail("combined source must be smaller than 16 MiB"); }
+        let n = syscall(0, fd, source_arena + arena_size, 16777216 - arena_size, 0, 0, 0);
+        if n == -4 { n = 0; }
+        else if n < 0 { fail("cannot read source"); }
+        else if n == 0 { done = 1; }
+        size = size + n; arena_size = arena_size + n;
+    }
+    syscall(3, fd, 0, 0, 0, 0, 0);
+    store64(module + 16, size);
+    select_module(index); next();
+    import_depth = import_depth + 1;
+    while token == 256 && is("import") {
+        let site = token_start;
+        next(); let child_path = import_path(); next();
+        if token != 59 { fail("expected ';' after import"); }
+        let resume = pos;
+        token_start = site;
+        load_module(child_path);
+        select_module(index); pos = resume; next();
+    }
+    import_depth = import_depth - 1;
+    store64(module + 48, token_start);
+    store64(module + 40, 2);
+    return index;
+}
+
+fn skip_function() {
+    // Strings and comments are already tokens, so their braces cannot affect
+    // this scan. Function syntax is checked fully during the emission pass.
+    while token != 123 {
+        if token == 0 { fail("expected function body"); }
+        next();
+    }
+    let braces = 1; next();
+    while braces {
+        if token == 0 { fail("unterminated block"); }
+        if token == 123 { braces = braces + 1; }
+        else if token == 125 { braces = braces - 1; }
+        next();
+    }
+    return 0;
+}
+
+fn compile_modules() {
+    // All globals exist before any function is emitted, even across files.
+    // Each individual file still requires globals before functions.
+    let i = 0;
+    while i < module_count {
+        let module = modules + i * 64;
+        select_module(i); pos = load64(module + 48); next();
+        let seen_function = 0;
+        store64(module + 56, source_size);
+        while token {
+            if is("global") {
+                if seen_function { fail("globals must precede functions"); }
+                global_definition();
+            } else if is("fn") {
+                if !seen_function { store64(module + 56, token_start); }
+                seen_function = 1; skip_function();
+            } else if is("import") { fail("imports must precede declarations"); }
+            else { fail("expected global or function definition"); }
+        }
+        i = i + 1;
+    }
+    i = 0;
+    while i < module_count {
+        let module = modules + i * 64;
+        select_module(i); pos = load64(module + 56); next();
+        while token { function_definition(); }
+        i = i + 1;
+    }
+    return 0;
+}
+
 fn main(argc, argv) {
     source_path = "flexscript";
     if argc == 2 {
         let arg = load64(argv + 8);
         if equal(arg, length(arg), "--version", 9) {
-            print(1, "flexscript 0.0.1\n"); return 0;
+            print(1, "flexscript 0.0.2\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
             print(1, "Usage: flexscript <source.flex> -o <binary>\n"); return 0;
@@ -703,47 +877,37 @@ fn main(argc, argv) {
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
     }
-    source = alloc(16777216);
+    source_arena = alloc(16777216);
+    source = source_arena;
     output = alloc(67108864);
     globals = alloc(2048 * 32);
     functions = alloc(2048 * 32);
     locals = alloc(4096 * 32);
     calls = alloc(65536 * 32);
-    if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0 || calls < 0 {
-        fail("memory allocation failed");
-    }
-    let fd = syscall(2, source_path, 0, 0, 0, 0, 0);
-    if fd < 0 { fail("cannot open source"); }
-    let stat = alloc(144);
-    if stat < 0 { fail("memory allocation failed"); }
-    if syscall(5, fd, stat, 0, 0, 0, 0) < 0 { fail("cannot stat source"); }
-    let source_device = load64(stat);
-    let source_inode = load64(stat + 8);
-    let done = 0;
-    while !done {
-        if source_size >= 16777216 { fail("source must be smaller than 16 MiB"); }
-        let n = syscall(0, fd, source + source_size, 16777216 - source_size, 0, 0, 0);
-        if n == -4 { n = 0; }
-        else if n < 0 { fail("cannot read source"); }
-        else if n == 0 { done = 1; }
-        source_size = source_size + n;
-    }
-    syscall(3, fd, 0, 0, 0, 0, 0);
+    modules = alloc(256 * 64);
+    input_stat = alloc(144);
+    if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0
+        || calls < 0 || modules < 0 || input_stat < 0 { fail("memory allocation failed"); }
+    load_module(source_path);
     initialize_output();
-    next();
-    while token != 0 {
-        if is("global") { global_definition(); }
-        else if is("fn") { function_definition(); }
-        else { fail("expected global or function definition"); }
-    }
+    compile_modules();
+    select_module(0);
+    token_start = source_size;
     resolve();
+    let stat = input_stat;
     // O_NOFOLLOW prevents writing through output symlinks. No output is opened
     // until the complete source has passed compilation and symbol resolution.
-    fd = syscall(2, destination, 131137, 493, 0, 0, 0);
+    let fd = syscall(2, destination, 131137, 493, 0, 0, 0);
     if fd < 0 { fail("cannot open output"); }
     if syscall(5, fd, stat, 0, 0, 0, 0) < 0 { fail("cannot stat output"); }
-    if load64(stat) == source_device && load64(stat + 8) == source_inode {
-        fail("source and output refer to the same file");
+    let i = 0;
+    while i < module_count {
+        let module = modules + i * 64;
+        if load64(stat) == load64(module + 24) && load64(stat + 8) == load64(module + 32) {
+            select_module(i); token_start = 0;
+            fail("source and output refer to the same file");
+        }
+        i = i + 1;
     }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }

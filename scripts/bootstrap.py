@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = (ROOT / "VERSION").read_text().strip()
 
 
 def run(*args):
@@ -64,13 +65,20 @@ def main():
     for binary in stages:
         run(compiler, ROOT / "compiler/main.flex", "-o", binary)
         native_elf(binary)
+        assert subprocess.check_output([str(binary), "--version"]) == f"flexscript {VERSION}\n".encode()
         compiler = binary
     assert stages[1].read_bytes() == stages[2].read_bytes(), "stages 2 and 3 differ"
     run(sys.executable, ROOT / "scripts/test.py", seed, *stages[:2], "--report", out / "tests.json")
+    # The frozen seed and published 0.0.1 binary build the extended compiler,
+    # but only the newly built compilers implement imports.
+    run(sys.executable, ROOT / "scripts/test-imports.py", *stages[:2],
+        "--report", out / "import-tests.json")
     run(sys.executable, ROOT / "scripts/clean-room.py", stages[1],
         "--out-dir", out / "clean", "--report", out / "clean-room.json")
     report = {
-        "version": "0.0.1",
+        "version": VERSION,
+        "seed_version": subprocess.check_output([str(seed), "--version"]).decode().strip(),
+        "seed_sha256": digest(seed),
         "target": "linux-x86_64",
         "source_commit": source_commit,
         "source_clean": source_clean,
@@ -78,6 +86,7 @@ def main():
         "compiler_source_sha256": digest(ROOT / "compiler/main.flex"),
         "stages": {p.name: digest(p) for p in stages},
         "tests": json.loads((out / "tests.json").read_text()),
+        "import_tests": json.loads((out / "import-tests.json").read_text()),
         "clean_room": json.loads((out / "clean-room.json").read_text()),
     }
     assert git("rev-parse", "HEAD") == source_commit, "source commit changed during build"

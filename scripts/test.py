@@ -40,7 +40,10 @@ def rejected(compiler, source, destination, message):
 
 def suite(compiler):
     count = 0
-    check(run([compiler, "--version"]), stdout="flexscript 0.0.1\n")
+    version = run([compiler, "--version"])
+    check(version)
+    current = (ROOT / "VERSION").read_text().strip()
+    assert version.stdout in (b"flexscript 0.0.1\n", f"flexscript {current}\n".encode()), version.stdout
     check(run([compiler, "--help"]), stdout="Usage: flexscript <source.flex> -o <binary>\n")
     check(run([compiler]), status=1)
     count += 3

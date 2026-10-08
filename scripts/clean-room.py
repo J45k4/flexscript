@@ -21,12 +21,17 @@ def isolated(compiler, source=None, output=None, args=()):
         "--ro-bind", str(compiler.resolve()), "/compiler",
     ]
     if source is not None:
-        command += ["--ro-bind", str(source.resolve()), "/source.flex"]
+        if source.is_dir():
+            command += ["--ro-bind", str(source.resolve()), "/sources"]
+            input_path = "/sources/main.flex"
+        else:
+            command += ["--ro-bind", str(source.resolve()), "/source.flex"]
+            input_path = "/source.flex"
     if output is not None:
         command += ["--bind", str(output.parent.resolve()), "/work"]
     command += ["/compiler"]
     if source is not None:
-        command += ["/source.flex", "-o", f"/work/{output.name}"]
+        command += [input_path, "-o", f"/work/{output.name}"]
     else:
         command += list(args)
     return subprocess.run(command, capture_output=True, timeout=30)
@@ -43,12 +48,16 @@ def main():
     args.out_dir.mkdir(parents=True, exist_ok=True)
     rebuilt = args.out_dir / "rebuilt"
     hello = args.out_dir / "hello"
+    imported = args.out_dir / "imported"
+    version = f"flexscript {(ROOT / 'VERSION').read_text().strip()}\n".encode()
     checks = [
-        ((args.compiler, None, None, ("--version",)), b"flexscript 0.0.1\n"),
+        ((args.compiler, None, None, ("--version",)), version),
         ((args.compiler, ROOT / "compiler/main.flex", rebuilt), b""),
-        ((rebuilt, None, None, ("--version",)), b"flexscript 0.0.1\n"),
+        ((rebuilt, None, None, ("--version",)), version),
         ((rebuilt, ROOT / "examples/hello.flex", hello), b""),
         ((hello,), b"Hello from native Flexscript!\n"),
+        ((rebuilt, ROOT / "examples/imports", imported), b""),
+        ((imported,), b"Hello from imported Flexscript!\n"),
     ]
     for command, expected in checks:
         result = isolated(*command)
@@ -64,7 +73,7 @@ def main():
     }
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + "\n")
-    print("Clean room: self-rebuild, rebuilt compiler, and native sample passed; no toolchain or libc present.")
+    print("Clean room: self-rebuild, native sample, and nested imports passed; no toolchain or libc present.")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,10 @@ Its compiler emits ELF executables containing native instructions directly.
 There is no interpreter, intermediate C, assembler, linker, or libc dependency
 in generated executables. Source files use `.flex`.
 
+This document describes the released bootstrap core. The 0.0.2
+compiler also supports [local imports](imports.md); the published 0.0.1 binary
+must first compile that updated compiler to use this extension.
+
 ```text
 global total = 0;
 
