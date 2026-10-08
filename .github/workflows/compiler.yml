@@ -29,7 +29,7 @@ jobs:
       - name: Install verification dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc xvfb xauth libx11-6 libpng-dev
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -60,15 +60,28 @@ jobs:
           (cd build/seed && sha256sum --check SHA256SUMS)
           chmod +x build/seed/flexscript-0.0.1-linux-x86_64
           test "$(build/seed/flexscript-0.0.1-linux-x86_64 --version)" = 'flexscript 0.0.1'
+          # Released Flexscript builds the host tools; the frozen 0.0.1 seed
+          # still supplies the independent compiler bootstrap origin.
+          mkdir -p build/tools-seed
+          gh release download 0.0.5 --repo J45k4/flexscript --dir build/tools-seed \
+            --pattern flexscript-0.0.5-linux-x86_64 \
+            --pattern flexscript-core-0.0.5-linux-x86_64 --pattern SHA256SUMS
+          (cd build/tools-seed && sha256sum --check SHA256SUMS)
+          chmod +x build/tools-seed/flexscript-0.0.5-linux-x86_64
+          test "$(build/tools-seed/flexscript-0.0.5-linux-x86_64 --version)" = 'flexscript 0.0.5'
+          build/tools-seed/flexscript-0.0.5-linux-x86_64 scripts/bootstrap.flex -o build/bootstrap
 
       - name: Build three stages and verify self-hosting, imports, FFI, networking, signatures, upgrades and VM/JIT
-        run: python3 scripts/bootstrap.py --compiler build/seed/flexscript-0.0.1-linux-x86_64
+        run: build/bootstrap --compiler build/seed/flexscript-0.0.1-linux-x86_64
 
       - name: Test native application examples
         run: |
-          python3 scripts/test-tetris.py --compiler build/stage2
-          python3 scripts/test-todo.py --compiler build/stage2
-          python3 scripts/test-http.py --compiler build/stage2
+          build/stage2 scripts/build-tools.flex -o build/build-tools
+          build/build-tools --compiler build/stage2
+          build/tools/test-tetris --compiler build/stage2
+          xvfb-run --auto-servernum --server-args='-screen 0 1280x960x24 -nolisten tcp' \
+            build/tools/test-todo --compiler build/stage2 --gui
+          build/tools/test-http --compiler build/stage2
 
       - name: Check release tag and package the verified compiler
         env:
@@ -78,7 +91,7 @@ jobs:
           if [ "$REF_TYPE" = tag ]; then
             test "$REF_NAME" = "$(cat VERSION)"
           fi
-          python3 scripts/package.py
+          build/tools/package
           (cd dist && sha256sum --check SHA256SUMS)
 
       - name: Upload compiler, checksums, release notes and verification reports
@@ -96,6 +109,7 @@ jobs:
             build/network-tests.json
             build/vm-tests.json
             build/clean-room.json
+            build/harness-tests.json
           if-no-files-found: error
           retention-days: 30
 
@@ -123,7 +137,10 @@ jobs:
         env:
           FLEXSCRIPT_RELEASE_SIGNING_KEY: ${{ secrets.FLEXSCRIPT_RELEASE_SIGNING_KEY }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: python3 scripts/sign-release.py --dist-dir artifact/dist --version "$RELEASE_TAG"
+        run: |
+          chmod +x "artifact/dist/flexscript-$RELEASE_TAG-linux-x86_64"
+          "artifact/dist/flexscript-$RELEASE_TAG-linux-x86_64" scripts/sign-release.flex -o /tmp/sign-release
+          /tmp/sign-release --dist-dir artifact/dist --version "$RELEASE_TAG"
 
       - name: Verify and publish the release assets
         env:

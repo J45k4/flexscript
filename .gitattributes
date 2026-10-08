@@ -1,0 +1,2 @@
+# HTTP framing fixtures must preserve exact bytes, including CRLF boundaries.
+tests/tooling/http-responses/* binary

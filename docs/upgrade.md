@@ -64,8 +64,10 @@ perform HTTPS upgrades.
 
 ## Verification
 
+Build `build/tools` once using the [Flexscript tooling instructions](bootstrapping.md).
+
 ```sh
-python3 scripts/test-upgrade.py build/stage2
+build/tools/test-upgrade build/stage2
 ```
 
 Tests use disposable installations and a local HTTPS release server, exercising
@@ -78,10 +80,10 @@ concurrent upgrades, target replacement, staging collisions and interruption
 cleanup. Signature tests reject missing, truncated, oversized, corrupted and
 wrong-key signatures, changed manifests, and signatures for another version or
 target before fetching the binary. Successful signed upgrades work with an empty
-executable search path. SHA-256 is independently checked against Python's `hashlib`, including
+executable search path. SHA-256 is independently checked against OpenSSL's independent SHA-256 implementation, including
 padding boundaries, binary messages and a million-byte message.
 
 The bootstrap script runs the upgrade suite against stages 1 and 2. Its report
 and the separate `upgrade-tests.json` are included in CI build artifacts; packaging
-requires both stages to pass. `scripts/test-signature.py` additionally checks
+requires both stages to pass. `scripts/test-signature.flex` additionally checks
 RFC 8032 Ed25519 vectors, non-canonical signatures and the CI signing helper.

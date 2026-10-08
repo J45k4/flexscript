@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+
+5;extension=yes
+hello
+7
+ https
+
+0
+Trailer: value
+

@@ -49,8 +49,10 @@ Run the game's deterministic rules tests without a terminal:
 
 Compile and run both the game rules and pseudo-terminal integration tests:
 
+Build `build/tools` once using the [Flexscript tooling instructions](bootstrapping.md).
+
 ```sh
-python3 scripts/test-tetris.py --compiler /path/to/flexscript
+build/tools/test-tetris --compiler /path/to/flexscript
 ```
 
 The integration tests exercise keyboard polling, split arrow sequences,

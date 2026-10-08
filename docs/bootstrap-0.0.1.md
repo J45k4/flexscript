@@ -1,5 +1,9 @@
 # Building and using the bootstrap compiler
 
+This is a historical description of the archived `0.0.1` source tree. Its Python
+commands apply to that tag. The current checkout uses [Flexscript build and test
+tools](bootstrapping.md), with no Python dependency.
+
 Version 0.0.1 targets Linux x86-64. The language specification is in
 `docs/language-0.0.1.md`, and the complete self-hosted compiler is
 `compiler/main.flex`. `bootstrap/src/main.rs` is a standalone, mechanical Rust

@@ -1,0 +1,161 @@
+[
+  {
+    "name": "division-zero",
+    "source": "fn main(){return 1/0;}",
+    "error": "division trap",
+    "options": []
+  },
+  {
+    "name": "division-overflow",
+    "source": "fn main(){return 0x8000000000000000/-1;}",
+    "error": "division trap",
+    "options": []
+  },
+  {
+    "name": "remainder-overflow",
+    "source": "fn main(){return 0x8000000000000000%-1;}",
+    "error": "division trap",
+    "options": []
+  },
+  {
+    "name": "store-boundary",
+    "source": "fn main(){let p=alloc(8);store64(p+1,1);return 0;}",
+    "error": "out of bounds",
+    "options": []
+  },
+  {
+    "name": "read-boundary",
+    "source": "fn main(){let p=alloc(8);return load8(p+8);}",
+    "error": "out of bounds",
+    "options": []
+  },
+  {
+    "name": "fuel",
+    "source": "fn main(){while 1 {}return 0;}",
+    "error": "budget exhausted",
+    "options": [
+      "--fuel=100"
+    ]
+  },
+  {
+    "name": "fuel-called",
+    "source": "fn spin(){while 1 {}return 0;}fn main(){return spin();}",
+    "error": "budget exhausted",
+    "options": [
+      "--fuel=100"
+    ]
+  },
+  {
+    "name": "deadline",
+    "source": "fn main(){while 1 {}return 0;}",
+    "error": "deadline exceeded",
+    "options": [
+      "--fuel=1000000000",
+      "--timeout-ms=10"
+    ]
+  },
+  {
+    "name": "recursion",
+    "source": "fn recurse(){return recurse();}fn main(){return recurse();}",
+    "error": "stack limit",
+    "options": []
+  },
+  {
+    "name": "open-denied",
+    "source": "fn main(){return syscall(2,\"secret\",0,0,0,0,0);}",
+    "error": "capability denied",
+    "options": []
+  },
+  {
+    "name": "network-denied",
+    "source": "fn main(){return syscall(41,2,1,0,0,0,0);}",
+    "error": "capability denied",
+    "options": []
+  },
+  {
+    "name": "fork-denied",
+    "source": "fn main(){return syscall(57,0,0,0,0,0,0);}",
+    "error": "capability denied",
+    "options": []
+  },
+  {
+    "name": "mmap-denied",
+    "source": "fn main(){return syscall(9,0,4096,7,34,-1,0);}",
+    "error": "capability denied",
+    "options": []
+  },
+  {
+    "name": "ffi-denied",
+    "source": "fn main(){return ffi_open(\"libc.so.6\");}",
+    "error": "capability denied",
+    "options": []
+  },
+  {
+    "name": "function-pointer-denied",
+    "source": "fn main(){return ffi_call(1,0,0,0,0,0,0);}",
+    "error": "capability denied",
+    "options": []
+  },
+  {
+    "name": "stdin-denied",
+    "source": "fn main(){let p=alloc(8);return syscall(0,0,p,8,0,0,0);}",
+    "error": "capability denied",
+    "options": []
+  },
+  {
+    "name": "output-pointer",
+    "source": "fn main(){return syscall(1,1,0,8,0,0,0);}",
+    "error": "out of bounds",
+    "options": []
+  },
+  {
+    "name": "output-limit",
+    "source": "fn main(){let p=alloc(1048577);return syscall(1,1,p,1048577,0,0,0);}",
+    "error": "output limit",
+    "options": []
+  },
+  {
+    "name": "poll-pointer",
+    "source": "fn main(){return syscall(7,0,1,0,0,0,0);}",
+    "error": "out of bounds",
+    "options": []
+  },
+  {
+    "name": "poll-deadline",
+    "source": "fn main(){return syscall(7,0,0,-1,0,0,0);}",
+    "error": "deadline exceeded",
+    "options": [
+      "--timeout-ms=10"
+    ]
+  },
+  {
+    "name": "poll-events",
+    "source": "fn main(){let p=alloc(8);store64(p,1|(32768<<32));return syscall(7,p,1,0,0,0,0);}",
+    "error": "capability denied",
+    "options": []
+  },
+  {
+    "name": "pointer-0",
+    "source": "fn main(){return load64(0);}",
+    "error": "out of bounds",
+    "options": []
+  },
+  {
+    "name": "pointer--1",
+    "source": "fn main(){return load64(-1);}",
+    "error": "out of bounds",
+    "options": []
+  },
+  {
+    "name": "pointer-0x7ffffffffffffff8",
+    "source": "fn main(){return load64(0x7ffffffffffffff8);}",
+    "error": "out of bounds",
+    "options": []
+  },
+  {
+    "name": "pointer-0x8000000000000000",
+    "source": "fn main(){return load64(0x8000000000000000);}",
+    "error": "out of bounds",
+    "options": []
+  }
+]

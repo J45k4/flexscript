@@ -45,8 +45,10 @@ not a complete implementation of those specifications.
 
 Compile and run real loopback integration tests:
 
+Build `build/tools` once using the [Flexscript tooling instructions](bootstrapping.md).
+
 ```sh
-python3 scripts/test-http.py
+build/tools/test-http
 ```
 
 Use `--compiler /path/to/flexscript` to choose another native compiler. Tests

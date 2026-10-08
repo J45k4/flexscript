@@ -1,0 +1,242 @@
+[
+  {
+    "name": "global-only",
+    "files": {
+      "main.flex": "import \"value.flex\"; fn main(){return answer;}",
+      "value.flex": "global answer=42;"
+    },
+    "status": 42,
+    "stdout": "",
+    "source": "main.flex"
+  },
+  {
+    "name": "imported-main",
+    "files": {
+      "main.flex": "import \"entry.flex\";",
+      "entry.flex": "fn main(){return 7;}"
+    },
+    "status": 7,
+    "stdout": "",
+    "source": "main.flex"
+  },
+  {
+    "name": "empty",
+    "files": {
+      "main.flex": "import \"empty.flex\"; fn main(){return 0;}",
+      "empty.flex": ""
+    },
+    "status": 0,
+    "stdout": "",
+    "source": "main.flex"
+  },
+  {
+    "name": "cross-file-globals",
+    "files": {
+      "main.flex": "import \"lib/a.flex\"; import \"lib/b.flex\"; global root=2; fn main(){return get();}",
+      "lib/a.flex": "global a=3; fn get(){return root+a+b;}",
+      "lib/b.flex": "global b=5;"
+    },
+    "status": 10,
+    "stdout": "",
+    "source": "main.flex"
+  },
+  {
+    "name": "forward-calls",
+    "files": {
+      "main.flex": "import \"even.flex\"; import \"odd.flex\"; fn main(){return even(8);}",
+      "even.flex": "fn even(n){if n==0{return 1;} return odd(n-1);}",
+      "odd.flex": "fn odd(n){if n==0{return 0;} return even(n-1);}"
+    },
+    "status": 1,
+    "stdout": "",
+    "source": "main.flex"
+  },
+  {
+    "name": "relative-nesting",
+    "files": {
+      "entry/main.flex": "import \"../library/one.flex\"; fn main(){return one();}",
+      "library/one.flex": "import \"nested/two.flex\"; fn one(){return two();}",
+      "library/nested/two.flex": "fn two(){return 12;}"
+    },
+    "status": 12,
+    "stdout": "",
+    "source": "entry/main.flex"
+  },
+  {
+    "name": "escaped-path",
+    "files": {
+      "main.flex": "import \"a\\\"b.flex\"; fn main(){return value();}",
+      "a\"b.flex": "fn value(){return 14;}"
+    },
+    "status": 14,
+    "stdout": "",
+    "source": "main.flex"
+  },
+  {
+    "name": "unicode-path",
+    "files": {
+      "main.flex": "import \"你好.flex\"; fn main(){return value();}",
+      "你好.flex": "fn value(){return 15;}"
+    },
+    "status": 15,
+    "stdout": "",
+    "source": "main.flex"
+  },
+  {
+    "name": "not-directives",
+    "files": {
+      "main.flex": "fn main(){let s=\"import \\\"missing.flex\\\";\";return load8(s);}\n// import \"missing.flex\";"
+    },
+    "status": 105,
+    "stdout": "",
+    "source": "main.flex"
+  },
+  {
+    "name": "global-order",
+    "files": {
+      "main.flex": "import \"bad.flex\"; fn main(){}",
+      "bad.flex": "fn f(){} global x=0;"
+    },
+    "status": 0,
+    "stdout": "",
+    "source": "main.flex",
+    "error": "globals must precede functions"
+  },
+  {
+    "name": "duplicate-function",
+    "files": {
+      "main.flex": "import \"a.flex\"; import \"b.flex\"; fn main(){}",
+      "a.flex": "fn duplicate(){}",
+      "b.flex": "fn duplicate(){}"
+    },
+    "status": 0,
+    "stdout": "",
+    "source": "main.flex",
+    "error": "duplicate function"
+  },
+  {
+    "name": "duplicate-global",
+    "files": {
+      "main.flex": "import \"a.flex\"; import \"b.flex\"; fn main(){}",
+      "a.flex": "global duplicate=0;",
+      "b.flex": "global duplicate=0;"
+    },
+    "status": 0,
+    "stdout": "",
+    "source": "main.flex",
+    "error": "duplicate global"
+  },
+  {
+    "name": "namespace-conflict",
+    "files": {
+      "main.flex": "import \"a.flex\"; global x=0; fn main(){}",
+      "a.flex": "fn x(){}"
+    },
+    "status": 0,
+    "stdout": "",
+    "source": "main.flex",
+    "error": "duplicate function"
+  },
+  {
+    "name": "self-cycle",
+    "files": {
+      "main.flex": "import \"main.flex\"; fn main(){}"
+    },
+    "status": 0,
+    "stdout": "",
+    "source": "main.flex",
+    "error": "circular import"
+  },
+  {
+    "name": "cycle",
+    "files": {
+      "main.flex": "import \"a.flex\"; fn main(){}",
+      "a.flex": "import \"b.flex\";",
+      "b.flex": "import \"a.flex\";"
+    },
+    "status": 0,
+    "stdout": "",
+    "source": "main.flex",
+    "error": "circular import"
+  },
+  {
+    "name": "unquoted",
+    "files": {
+      "main.flex": "import library; fn main(){}",
+      "library.flex": ""
+    },
+    "error": "expected quoted import path"
+  },
+  {
+    "name": "empty-path",
+    "files": {
+      "main.flex": "import \"\"; fn main(){}",
+      "library.flex": ""
+    },
+    "error": "import path cannot be empty"
+  },
+  {
+    "name": "null-path",
+    "files": {
+      "main.flex": "import \"a\\0.flex\"; fn main(){}",
+      "library.flex": ""
+    },
+    "error": "import path cannot contain a zero byte"
+  },
+  {
+    "name": "long-path",
+    "files": {
+      "main.flex": "import \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"; fn main(){}",
+      "library.flex": ""
+    },
+    "error": "import path exceeds"
+  },
+  {
+    "name": "semicolon",
+    "files": {
+      "main.flex": "import \"library.flex\" fn main(){}",
+      "library.flex": ""
+    },
+    "error": "expected ';' after import"
+  },
+  {
+    "name": "after-global",
+    "files": {
+      "main.flex": "global x=0; import \"library.flex\"; fn main(){}",
+      "library.flex": ""
+    },
+    "error": "imports must precede"
+  },
+  {
+    "name": "after-function",
+    "files": {
+      "main.flex": "fn main(){} import \"library.flex\";",
+      "library.flex": ""
+    },
+    "error": "imports must precede"
+  },
+  {
+    "name": "reserved-global",
+    "files": {
+      "main.flex": "global import=0; fn main(){}",
+      "library.flex": ""
+    },
+    "error": "reserved declaration name"
+  },
+  {
+    "name": "reserved-function",
+    "files": {
+      "main.flex": "fn import(){} fn main(){}",
+      "library.flex": ""
+    },
+    "error": "reserved declaration name"
+  },
+  {
+    "name": "reserved-local",
+    "files": {
+      "main.flex": "fn main(){let import=0;}",
+      "library.flex": ""
+    },
+    "error": "reserved declaration name"
+  }
+]

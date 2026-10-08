@@ -53,10 +53,12 @@ a loader dependency.
 `lib/ffi.flex` provides `ffi_close(handle)` for `dlclose`. A symbol pointer must
 not outlive its library handle.
 
+Build `build/tools` once using the [Flexscript tooling instructions](bootstrapping.md).
+
 ```sh
 ./build/flex examples/ffi.flex -o build/ffi-example
 ./build/ffi-example
-python3 scripts/test-ffi.py build/flex
+build/tools/test-ffi build/flex
 ```
 
 The integration tests use a tiny C fixture library to independently check the

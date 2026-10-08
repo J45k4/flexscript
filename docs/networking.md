@@ -72,10 +72,12 @@ DNS names or IPv4 URL hosts, and identity content encoding. IPv6 URL literals,
 proxy configuration, HTTP/2, compression, interim responses and arbitrary relative
 redirects are not implemented.
 
+Build `build/tools` once using the [Flexscript tooling instructions](bootstrapping.md).
+
 ```sh
 ./build/flex examples/https-get.flex -o build/https-get
 ./build/https-get https://api.github.com/repos/J45k4/flexscript/releases/latest
-python3 scripts/test-network.py build/flex
+build/tools/test-network build/flex
 ```
 
 The test suite uses local TCP and TLS servers and checks certificate/hostname

@@ -1,0 +1,130 @@
+[
+  {
+    "source": "fn main(){return 42;}",
+    "status": 42,
+    "stdout": "",
+    "dynamic": false,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let p=alloc(4096);store8(p,72);store8(p+1,137);store8(p+2,224);store8(p+3,131);store8(p+4,224);store8(p+5,15);store8(p+6,195);if syscall(10,p,4096,5,0,0,0)<0 {return 99;}return ffi_call(p,0,0,0,0,0,0);}",
+    "status": 8,
+    "stdout": "",
+    "dynamic": false,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}let f=ffi_symbol(lib,\"six\");return ffi_call(f,1,2,3,4,5,6);}",
+    "status": 91,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}let f=ffi_symbol(lib,\"negative\");return ffi_call_i32(f,0,0,0,0,0,0)==-17;}",
+    "status": 1,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}let f=ffi_symbol(lib,\"high\");return ffi_call_u32(f,0,0,0,0,0,0)==0xf1234567;}",
+    "status": 1,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}let f=ffi_symbol(lib,\"word\");return ffi_call(f,0,0,0,0,0,0)==0xf123456789abcdef;}",
+    "status": 1,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}let f=ffi_symbol(lib,\"same\");let p=alloc(32);return ffi_call(f,p,0,0,0,0,0)==p;}",
+    "status": 1,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}let f=ffi_symbol(lib,\"aligned\");return 1+ffi_call(f,0,0,0,0,0,0);}",
+    "status": 2,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}let f=ffi_symbol(lib,\"aligned\");return 1+(2+ffi_call(f,0,0,0,0,0,0));}",
+    "status": 4,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}let f=ffi_symbol(lib,\"aligned\");return ffi_call(f,0,0,0,0,0,0)+ffi_call(f,0,0,0,0,0,0);}",
+    "status": 2,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}ffi_call(ffi_symbol(lib,\"set\"),73,0,0,0,0,0);return ffi_call(ffi_symbol(lib,\"get\"),0,0,0,0,0,0);}",
+    "status": 73,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let lib=ffi_open(\"{work}/library.so\");if !lib{return 99;}return ffi_symbol(lib,\"missing_symbol\")==0;}",
+    "status": 1,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){return ffi_open(\"/no/such/library.so\")==0;}",
+    "status": 1,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let l=ffi_open(\"libc.so.6\");return ffi_call(ffi_symbol(l,\"strlen\"),\"abc\",0,0,0,0,0);}",
+    "status": 3,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  },
+  {
+    "source": "fn main(){let l=ffi_open(\"libc.so.6\");let p=ffi_call(ffi_symbol(l,\"getenv\"),\"FLEX_FFI_TEST\",0,0,0,0,0);return load8(p)==121;}",
+    "status": 1,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {
+      "FLEX_FFI_TEST": "yes"
+    }
+  },
+  {
+    "source": "fn ffi_open(x){return x+1;} fn main(){return ffi_open(40);}",
+    "status": 41,
+    "stdout": "",
+    "dynamic": false,
+    "environment": {}
+  },
+  {
+    "source": "fn ffi_call(p,a,b,c,d,e,f){return a;} fn main(){return ffi_call(0,42,0,0,0,0,0);}",
+    "status": 42,
+    "stdout": "",
+    "dynamic": false,
+    "environment": {}
+  },
+  {
+    "source": "import \"{root}/lib/ffi.flex\"; fn main(){let l=ffi_open(\"libc.so.6\");return ffi_close(l);}",
+    "status": 0,
+    "stdout": "",
+    "dynamic": true,
+    "environment": {}
+  }
+]

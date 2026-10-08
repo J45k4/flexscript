@@ -124,10 +124,17 @@ creation are unavailable to guest code.
 
 ## Verification and measurement
 
+Build `build/tools` once using the [Flexscript tooling instructions](bootstrapping.md).
+
 ```sh
-python3 scripts/test-vm.py build/flex-next
-python3 scripts/bench-vm.py --compiler build/flex-next --report build/vm-benchmark.json
+build/tools/test-vm build/flex-next
+build/tools/bench-vm --compiler build/flex-next --report build/vm-benchmark.json
 ```
+
+The benchmark reports median nanoseconds from three complete process runs, including
+startup and source compilation. Its arithmetic result is checked before timing
+is reported. `--iterations N` selects the number of calls to the loop function
+(default 100, with 50,000 additions per call).
 
 The VM suite compares native, interpreted and JIT results using the language
 fixtures, and checks exact fuel accounting, malformed source, arithmetic and

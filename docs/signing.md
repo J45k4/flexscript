@@ -18,9 +18,10 @@ gh secret set FLEXSCRIPT_RELEASE_SIGNING_KEY --repo J45k4/flexscript < private.p
 ```
 
 Only the tag-triggered release job receives this secret. After bootstrap tests
-and packaging succeed, `scripts/sign-release.py` checks both compiler hashes,
-the source version and the pinned public key before signing. A missing or
-mismatched private key fails publication. Branch and pull-request builds use
+and packaging succeed, `scripts/sign-release.flex` checks both compiler hashes,
+the source version and the pinned public key before signing. The Flexscript signer calls OpenSSL directly through FFI; the private key stays
+in memory and is never passed to a child process or written to a temporary file.
+A missing or mismatched private key fails publication. Branch and pull-request builds use
 independent, temporary test keys and produce unsigned verification artifacts.
 
 The release assets are the full compiler, static core, `SHA256SUMS` and

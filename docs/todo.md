@@ -83,15 +83,17 @@ Wayland, clipboard paste, or Unicode text entry.
 
 Run deterministic model and persistence checks without opening a window:
 
+Build `build/tools` once using the [Flexscript tooling instructions](bootstrapping.md).
+
 ```sh
-python3 scripts/test-todo.py
+build/tools/test-todo
 ```
 
 Use `--compiler /path/to/flexscript` to select another compiler. To also exercise
 the actual native window on the current display:
 
 ```sh
-python3 scripts/test-todo.py --gui
+build/tools/test-todo --gui
 ```
 
 The GUI test opens its own temporary task list, sends input only to the newly
@@ -99,8 +101,7 @@ created app window, and verifies saved data after adding, editing, completing,
 filtering, deleting, clearing, and scrolling. It also checks save failure and
 retry, restart, concurrent-instance locking, normal window close, and SIGTERM
 cleanup. A screenshot containing only the synthetic test window is saved to
-`build/todo.png`; no desktop screenshot is taken. Python, Xlib, and Pillow are
-used by the test driver only.
+`build/todo.png`; no desktop screenshot is taken. The test driver is Flexscript; it calls Xlib and libpng through FFI.
 
 For a direct model check:
 

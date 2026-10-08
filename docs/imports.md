@@ -74,15 +74,17 @@ remain the original bootstrap point.
 
 Run import graph, diagnostic, path, limit, and source-protection tests:
 
+Build `build/tools` once using the [Flexscript tooling instructions](bootstrapping.md).
+
 ```sh
-python3 scripts/test-imports.py build/flexscript
+build/tools/test-imports build/flexscript
 ```
 
 Repeat the full bootstrap chain, core tests, import tests, and a rebuild in an
 empty filesystem with no Rust, libc, or other compiler:
 
 ```sh
-python3 scripts/bootstrap.py --compiler build/downloaded/flexscript-0.0.1-linux-x86_64 \
+build/tools/bootstrap --compiler build/downloaded/flexscript-0.0.1-linux-x86_64 \
     --out-dir build/imports-bootstrap
 ```
 
