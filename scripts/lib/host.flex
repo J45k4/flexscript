@@ -9,6 +9,7 @@ global h_file_size=0;
 global h_timeout=30000;
 global h_output_limit=33554432;
 global h_child_memory=0;
+global h_inherit_fd=-1;
 global h_ffi_bridge=0;
 fn h_len(s) {
     let n=0;
@@ -466,6 +467,21 @@ fn h_restore_sigpipe() {
     h_assert(syscall(13,13,action,0,8,0,0)==0,"reset child SIGPIPE failed");
     return 0;
 }
+fn h_close_inherited() {
+    // Match subprocess close_fds semantics. One explicitly passed descriptor
+    // is supported for the VM's inherited-host-descriptor isolation test.
+    let last=0xffffffff;
+    if h_inherit_fd>=3 {
+        h_assert(syscall(72,h_inherit_fd,2,0,0,0,0)==0,"passed descriptor is invalid");
+        if h_inherit_fd>3 {
+            h_assert(syscall(436,3,h_inherit_fd-1,0,0,0,0)==0,"close_range failed");
+        }
+        h_assert(syscall(436,h_inherit_fd+1,last,0,0,0,0)==0,"close_range failed");
+    } else {
+        h_assert(syscall(436,3,last,0,0,0,0)==0,"close_range failed");
+    }
+    return 0;
+}
 fn h_getenv(key) {
     let n=h_len(key);
     let i=0;
@@ -553,6 +569,7 @@ fn h_spawn(args,input,cwd) {
             h_close((load64(pipes+(i/2)*8)>>(32*(i%2)))&0xffffffff);
             i=i+1;
         }
+        h_close_inherited();
         if cwd && syscall(80,cwd,0,0,0,0,0)<0 {
             syscall(60,126,0,0,0,0,0);
         }

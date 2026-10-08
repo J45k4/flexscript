@@ -37,6 +37,7 @@ fn hp_open(binary) {
         syscall(33,s,2,0,0,0,0);
         h_close(m);
         h_close(s);
+        h_close_inherited();
         syscall(59,binary,args,h_env,0,0,0);
         syscall(60,127,0,0,0,0,0);
     }

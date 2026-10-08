@@ -34,7 +34,7 @@ fn main(argc,argv) {
     let core_checksum=h_sha(core);
     let clean=j_need(report,"clean_room");
     h_assert(h_equal(core_checksum,j_s(report,"core_sha256")) && h_equal(core_checksum,j_s(clean,"compiler_sha256")) && h_equal(core_checksum,j_s(clean,"rebuilt_sha256")),"core hashes differ");
-    h_assert(j_n(j_need(report,"harness_tests"),"checks")>=27,"missing harness verification");
+    h_assert(j_n(j_need(report,"harness_tests"),"checks")>=29,"missing harness verification");
     pk_checks(report,"tests",3,84);
     pk_checks(report,"import_tests",2,46);
     pk_checks(report,"upgrade_tests",2,88);

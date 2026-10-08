@@ -42,7 +42,7 @@ itself, including literal argv, pipe draining, malformed JSON and timeouts.
 
 Bootstrap runs 1,398 compiler/runtime checks: 252 core, 92 imports, 176 upgrades,
 74 signatures, 48 FFI, 76 networking, 670 VM/JIT and 10 clean-room checks. It also
-runs 27 host-harness checks. Bubblewrap verifies the core's self-rebuild, native
+runs 29 host-harness checks. Bubblewrap verifies the core's self-rebuild, native
 hello and imported hello, and VM interpretation in an empty root with an empty
 environment and no network, toolchain or libc.
 

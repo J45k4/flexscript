@@ -145,7 +145,13 @@ fn main(argc,argv) {
         i=i+1;
     }
     h_assert(h_equal(maps,h_read(h_join(root,"maps"))),"HTTP mappings leaked");
-    h_assert(h_count(h_entries(h_join(root,"fd")))==4,"HTTP sockets leaked");
+    // A response EOF is sent before the server drains and closes the client.
+    // Wait for that bounded drain, then require the steady-state FD count.
+    let idle_deadline=net_now()+1000;
+    while h_count(h_entries(h_join(root,"fd")))!=4 {
+        h_pump(process,5);
+        h_assert(h_status(process)==-999 && net_now()<idle_deadline,"HTTP sockets leaked");
+    }
     let conflict=h_check(h_run(h_args(binary,h_int(port),0,0,0,0)),1,0);
     h_assert(h_has(h_err(conflict),"Cannot listen"),h_err(conflict));
     hr_stop(process,2);

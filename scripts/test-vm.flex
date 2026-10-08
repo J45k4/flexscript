@@ -214,7 +214,9 @@ fn suite(compiler) {
     let descriptor=syscall(2,outside,0,0,0,0,0);
     h_assert(descriptor>=3,"inherited descriptor");
     t_program(h_cat3("fn main(){let p=alloc(32);return syscall(0,",h_int(descriptor),",p,32,0,0,0)==-9;}"));
+    h_inherit_fd=descriptor;
     h_check(tv_run(0,0,t_fixture,0),1,0);
+    h_inherit_fd=-1;
     t_checks=t_checks+1;
     h_close(descriptor);
     let root=h_real(".");
