@@ -42,6 +42,7 @@ global vm_jit_cache=0;
 global vm_jit_context=0;
 global vm_jit_compilations=0;
 global vm_jit_calls=0;
+global vm_word_buffer=0;
 fn vm_emit(op,value) {let at=output_size;emit64(op);emit64(value);return at;}
 fn vm_allocate(size) {
     if !size {return -22;}
@@ -319,12 +320,23 @@ fn vm_execute(main_index) {
                     else if op==15 {vm_acc=!vm_acc;}
                     else if op==16 {vm_acc=~vm_acc;}
                     else if op==17 {vm_acc=vm_builtin(arg);}
+                    else if op==19 || op==20 {vm_acc=vm_word_io(op==20);}
                     else {vm_error=9;}
                 }
             }
         }
     }
     return vm_acc;
+}
+fn vm_word_io(reading) {
+    if !vm_word_buffer {vm_word_buffer=vm_allocate(8);if vm_word_buffer<0 {vm_error=3;return -1;}}
+    let address=vm_address(vm_word_buffer,8);if !address {return -1;}
+    let value=vm_acc;if reading {value=0;}store64(address,value);let offset=0;
+    while offset<8 && !vm_error {
+        let kind=1;if reading {kind=0;}let n=vm_syscall(kind,kind,vm_word_buffer+offset,8-offset,0,0,0);
+        if n==-4 {}else if n<=0 {return -1;}else {offset=offset+n;}
+    }
+    if vm_error {return -1;}return load64(address);
 }
 fn vm_number(text) {
     let n=0;let i=0;

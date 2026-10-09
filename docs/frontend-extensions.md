@@ -96,7 +96,7 @@ This does not claim 32-bit arithmetic or full parity with the original checker.
 Decimal integer literals are supported; hexadecimal, floats and unit-bearing
 literals are not supported yet.
 
-Floats/fixed point, vectors, records, collections, actors/state, handlers,
+Floats/fixed point, vectors, records, collections, replicated actors, handlers,
 assets, host calls, imports and nonempty plugin configuration currently produce
 errors. Typed floating-point/aggregate IR and host-service interfaces are the
 next steps before compiling the actual Setaworld engine and content. Supported
@@ -164,6 +164,56 @@ accepted as FIR1. Extending the portable profile requires a versioned format
 and consistent semantics in all consumers. Existing Flexscript source retains
 its established native backend; portable frontend output uses the new IR
 lowering, sharing the x86 instruction emitters.
+
+## FIR2: persistent state and platform messages
+
+The engine profile extends FIR1 with magic `0x32524946` (FIR2). Header word 56
+contains a state-word count (0..2048); that many little-endian initial values
+follow the name section. The SDK's `ir_state_word(value)` adds a word and returns
+its zero-based index. Loading a module creates independent mutable state, then
+relocates instruction operands in a private instruction copy. Saving/replaying
+IR preserves the original artifact bytes.
+
+| Opcode | Operation |
+| --- | --- |
+| 5 / 6 | Load / store a checked state-word index |
+| 19 | Write accumulator as one eight-byte little-endian platform message |
+| 20 | Read one eight-byte platform message into the accumulator |
+
+Message instructions have a zero operand. Native output uses stdin/stdout and
+retries interrupted/partial reads and writes; input EOF/error returns -1. VM
+execution uses the existing stdin grant and output/fuel/time budgets. Wasm
+imports `flex.read_word() -> i64` and `flex.write_word(i64) -> i64`; embeddings
+provide these capabilities explicitly. A successful write returns its word;
+native/VM I/O failure returns -1. Wasm host exceptions propagate. The application
+protocol decides how to encode input and render commands; FIR2 contains no
+game-specific opcodes and still exposes no raw pointers or general syscalls.
+
+SetaScript's engine extension adds one module-owned state block before its
+functions:
+
+```seta
+plugin demo v1 {}
+state { count: i32 = 0 enabled: bool = true }
+fn frame(input: i32) -> i32 {
+    state.count += 1
+    write_word(state.count)
+    return 0
+}
+fn main() -> i32 {
+    repeat (1000000) {
+        let input = read_word()
+        if input < 0 { return 0 }
+        frame(input)
+    }
+    return 0
+}
+```
+
+This singleton `state` block is a new engine-module extension, separate from
+the original language's replicated actor state. Initializers are typed literal
+values; fields use explicit `state.name` access. The same state persists across
+exported Wasm `frame` calls. Pure source continues to emit FIR1.
 
 `scripts/test-extensions.flex` tests execution routes, saved-IR replay, frontend
 identity, type errors, invalid IR and capability/budget failures. CI runs it

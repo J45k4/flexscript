@@ -48,6 +48,36 @@ fn te_extension(body) {
     h_save(path,h_cat3("import \"",sdk,h_cat3("\";fn frontend_compile(text,size,version,path){ir_init(text,size,path,version);",body,"}")));
     return path;
 }
+fn te_input(args,bytes,count) {
+    let process=h_spawn(args,0,0);store64(process+56,bytes);store64(process+64,count);return h_wait(process);
+}
+fn te_state_io() {
+    te_frontend=0;t_program("plugin test v1 {} state {count:i32=40 ready:bool=false} fn bump()->i32{state.count+=1 return state.count}fn main()->i32{state.ready=true let input=read_word() write_word(input) write_word(bump()) write_word(bump()) return state.ready ? 0 : 1}");
+    let input=alloc(8);store64(input,0x1234567800000000);let expected=alloc(24);store64(expected,load64(input));store64(expected+8,41);store64(expected+16,42);
+    let hex=h_hex(expected,24);let modes=h_args("--interpret","--jit",0,0,0,0);let i=0;
+    while i<2 {
+        let args=h_args(t_compiler,"run",h_at(modes,i),"--restricted","--allow-stdin",t_fixture);
+        let p=te_input(args,input,8);h_check(p,0,0);t_assert(h_equal(h_hex(h_out(p),h_size(load64(p+16))),hex),"FIR2 VM state and word I/O");i=i+1;
+    }
+    let denied=h_run(h_args(t_compiler,"run","--restricted",t_fixture,0,0));h_check(denied,70,0);t_assert(h_has(h_err(denied),"capability denied"),"word input obeys VM stdin capability");
+    te_compile(t_fixture,0,t_binary);let p=te_input(h_args(t_binary,0,0,0,0,0),input,8);h_check(p,0,0);
+    t_assert(h_equal(h_hex(h_out(p),h_size(load64(p+16))),hex),"FIR2 native state and complete-word I/O");
+    let module=h_join(t_work,"state.wasm");te_compile(t_fixture,"wasm32",module);let request=j_object();j_set(request,"module",j_string(module));j_set(request,"binary",j_bool(1));
+    let words=j_array();j_push(words,j_string(h_int(load64(input))));j_set(request,"wordInput",words);let path=h_join(t_work,"words.json");j_save(path,request);
+    let result=j_parse(h_out(h_ok(h_args(te_bun,"scripts/wasm-runner.js",path,0,0,0))));
+    t_assert(j_n(result,"valid") && !j_get(result,"error"),"FIR2 Wasm executes");t_assert(h_equal(j_s(result,"stdoutHex"),hex),"FIR2 native/VM/Wasm byte parity");
+    let artifact=h_join(t_work,"state.fir");te_compile(t_fixture,"ir",artifact);let original=h_read(artifact);
+    t_assert(load64(original)==0x32524946 && load64(original+56)==2,"FIR2 serializes engine state");
+    let replay=h_join(t_work,"state-copy.fir");let args=h_args(t_compiler,"--language","ir","--target","ir",artifact);h_add(args,"-o");h_add(args,replay);h_ok(args);
+    t_assert(h_equal(h_sha(artifact),h_sha(replay)),"state relocation does not mutate serialized IR");
+    te_ir_bad(original,56,2049);te_ir_bad(original,56,-1);te_ir_bad(original,48,-1);
+    let code=load64(original+24);te_ir_bad(original,code+40,2048);
+    te_reject("state {flag:bool=1} fn main()->i32{return 0}","boolean state initializer");
+    te_reject("state {x:i32=1 x:i32=2} fn main()->i32{return 0}","duplicate engine state");
+    te_reject("state {x:i32=1} fn main()->i32{state.x=false return 0}","type mismatch");
+    te_reject("fn main()->i32{return state.missing}","unknown engine state");
+    te_reject("fn main()->i32{return write_word(true)}","type mismatch");return 0;
+}
 fn suite(compiler) {
     t_init(compiler);te_bun=h_executable("bun");te_frontend=0;t_fixture=h_join(t_work,"test.seta");
     te_routes("examples/seta/policy.seta",42);
@@ -124,6 +154,6 @@ fn suite(compiler) {
     let alias=h_join(t_work,"sdk-alias.flex");h_ok(h_args("ln",sdk_copy,alias,0,0,0));let hash=h_sha(alias);
     let p=h_run(h_args(t_compiler,"--frontend",te_frontend,"examples/extensions/answer.postfix","-o",alias));h_check(p,1,0);
     t_assert(h_has(h_err(p),"frontend source file") && h_equal(hash,h_sha(alias)),"output must preserve extension inputs");
-    te_frontend=0;return t_done();
+    te_frontend=0;te_state_io();return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}

@@ -17,6 +17,7 @@ global s_readonly=0;
 global s_depth=0;
 global s_nesting=0;
 global s_edges=0;
+global s_state_fields=0;
 fn s_fail(message) {return ir_error(message,s_start);}
 fn s_letter(c) {return (c>=65 && c<=90) || (c>=97 && c<=122) || c==95;}
 fn s_digit(c) {return c>=48 && c<=57;}
@@ -62,7 +63,8 @@ fn s_expect(t) {if s_token!=t {s_fail("unexpected SetaScript token");}s_next();r
 fn s_keyword() {
     return s_is("fn") || s_is("cosmetic") || s_is("gen") || s_is("plugin") || s_is("let") || s_is("return")
         || s_is("if") || s_is("else") || s_is("for") || s_is("in") || s_is("repeat") || s_is("while")
-        || s_is("true") || s_is("false") || s_is("i32") || s_is("bool");
+        || s_is("true") || s_is("false") || s_is("i32") || s_is("bool") || s_is("state")
+        || s_is("read_word") || s_is("write_word");
 }
 fn s_name() {if s_token!=256 || s_keyword() {s_fail("expected SetaScript name");}return 0;}
 fn s_type() {
@@ -88,6 +90,9 @@ fn s_priority(op) {
     if op==265 || op==266 {return 8;}if op==43 || op==45 {return 9;}if op==42 || op==47 || op==37 {return 10;}return 0;
 }
 fn s_prefix() {
+    if s_is("state") {let index=s_state_reference();ir_emit(5,index);return load64(s_state_fields+index*32+16);}
+    if s_is("read_word") {s_next();s_expect(40);s_expect(41);ir_emit(20,0);return 1;}
+    if s_is("write_word") {s_next();s_expect(40);s_require(s_expression(1),1);s_expect(41);ir_emit(19,0);return 1;}
     if s_token==257 {ir_emit(1,s_value);s_next();return 1;}
     if s_is("true") || s_is("false") {ir_emit(1,s_is("true"));s_next();return 2;}
     if s_token==45 || s_token==33 || s_token==126 {
@@ -157,6 +162,11 @@ fn s_loop() {
     s_local_count=before;s_depth=s_depth-1;return 0;
 }
 fn s_statement() {
+    if s_is("state") {
+        let index=s_state_reference();let op=s_token;
+        if op!=61 && (op<272 || op>275) {s_fail("expected state assignment");}
+        s_assignment(index,load64(s_state_fields+index*32+16),op,6);return 0;
+    }
     if s_is("let") {
         s_next();s_name();let name=ir_source+s_start;let size=s_size;s_next();let declared=0;
         if s_token==58 {s_next();declared=s_type();}s_expect(61);let ty=s_expression(1);
@@ -172,14 +182,34 @@ fn s_statement() {
         if s_token==61 || (s_token>=272 && s_token<=275) {
             let op=s_token;let local=s_find_local(name,size);if local<0 {s_fail("unknown assignment local");}
             let slot=load64(s_locals+local*32+16);let ty=load64(s_types+slot*8);
-            if load64(s_readonly+slot*8) {s_fail("loop index is read-only");}s_next();
-            if op!=61 {s_require(ty,1);ir_emit(3,slot);ir_emit(2,0);}
-            s_require(s_expression(1),ty);
-            if op!=61 {let binary_op=43;if op==273 {binary_op=45;}else if op==274 {binary_op=42;}else if op==275 {binary_op=47;}ir_emit(7,binary_op);}
-            ir_emit(4,slot);s_semicolon();return 0;
+            if load64(s_readonly+slot*8) {s_fail("loop index is read-only");}
+            s_assignment(slot,ty,op,4);return 0;
         }
     }
     s_pos=start;s_next();s_expression(1);s_semicolon();return 0;
+}
+fn s_assignment(index,ty,op,storing) {
+    s_next();if op!=61 {s_require(ty,1);ir_emit(storing-1,index);ir_emit(2,0);}
+    s_require(s_expression(1),ty);
+    if op!=61 {let binary_op=43;if op==273 {binary_op=45;}else if op==274 {binary_op=42;}else if op==275 {binary_op=47;}ir_emit(7,binary_op);}
+    ir_emit(storing,index);s_semicolon();return 0;
+}
+fn s_state_reference() {
+    s_next();s_expect(46);s_name();let i=0;let index=-1;
+    while i<ir_state_count {let f=s_state_fields+i*32;if s_equal(load64(f),load64(f+8),ir_source+s_start,s_size) {index=i;}i=i+1;}
+    if index<0 {s_fail("unknown engine state field");}s_next();return index;
+}
+fn s_state_definition() {
+    s_next();s_expect(123);
+    while s_token!=125 {
+        s_name();let name=ir_source+s_start;let size=s_size;let i=0;
+        while i<ir_state_count {let f=s_state_fields+i*32;if s_equal(load64(f),load64(f+8),name,size) {s_fail("duplicate engine state field");}i=i+1;}
+        s_next();s_expect(58);let ty=s_type();s_expect(61);let value=0;
+        if ty==2 {if !s_is("true") && !s_is("false") {s_fail("boolean state initializer required");}value=s_is("true");s_next();}
+        else {value=s_literal();}
+        let index=ir_state_word(value);let f=s_state_fields+index*32;
+        store64(f,name);store64(f+8,size);store64(f+16,ty);s_semicolon();
+    }s_next();return 0;
 }
 fn s_block() {
     s_depth=s_depth+1;if s_depth>128 {s_fail("SetaScript block nesting limit exceeded");}
@@ -192,6 +222,7 @@ fn s_signatures() {
     while s_token==46 {s_next();s_name();s_next();}
     if !s_is("v1") {s_fail("expected plugin version v1");}s_next();s_expect(123);
     if s_token!=125 {s_fail("plugin configuration is not supported by this frontend yet");}s_next();
+    if s_is("state") {s_state_definition();}
     while s_token {
         if s_is("cosmetic") {s_next();}if !s_is("fn") {s_fail("only pure function declarations are supported yet");}s_next();s_name();
         if s_count>=256 {s_fail("too many SetaScript functions");}
@@ -219,7 +250,8 @@ fn s_no_recursion() {
 fn seta_frontend(text,size,version,path) {
     ir_init(text,size,path,version);s_pos=0;s_count=0;s_nesting=0;
     s_functions=alloc(256*64);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);s_edges=alloc(256*256);
-    if s_functions<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_edges<0 {s_fail("frontend allocation failed");}
+    s_state_fields=alloc(2048*32);
+    if s_functions<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_edges<0 || s_state_fields<0 {s_fail("frontend allocation failed");}
     s_signatures();s_current=0;
     while s_current<s_count {
         let f=s_functions+s_current*64;s_local_count=0;s_slots=0;s_depth=1;

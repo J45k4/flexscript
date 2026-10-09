@@ -28,7 +28,7 @@ export async function instantiateFlexscript(bytes, host = {}) {
 		if (number === 60n || number === 231n) throw new FlexExit(a)
 		return -38n // ENOSYS: the browser has no Linux syscall table.
 	}
-	const names = ['syscall', 'ffi_open', 'ffi_symbol', 'ffi_call', 'ffi_call_i32', 'ffi_call_u32']
+	const names = ['syscall', 'ffi_open', 'ffi_symbol', 'ffi_call', 'ffi_call_i32', 'ffi_call_u32', 'read_word', 'write_word']
 	const flex = Object.fromEntries(names.map(name => [name, (...args) => {
 		const handler = host[name] ?? (name === 'syscall' ? syscall : null)
 		if (!handler) throw new Error(`Flexscript host capability unavailable: flex.${name}`)

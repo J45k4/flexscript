@@ -17,6 +17,16 @@ try {
 	const module = new WebAssembly.Module(bytes)
 	report.imports = WebAssembly.Module.imports(module).map(item => `${item.module}.${item.name}`)
 	const host = createMemoryHost(request.files, { stdout: bytes => stdout.push(bytes), stderr: bytes => stderr.push(bytes) })
+	if (request.wordInput) {
+		let position = 0
+		host.read_word = () => position < request.wordInput.length ? BigInt(request.wordInput[position++]) : -1n
+		host.write_word = value => {
+			const data = new Uint8Array(8)
+			new DataView(data.buffer).setBigInt64(0, value, true)
+			stdout.push(data)
+			return value
+		}
+	}
 	if (request.ffi) Object.assign(host, {
 		ffi_open: () => 101n,
 		ffi_symbol: () => 102n,

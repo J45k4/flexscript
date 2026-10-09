@@ -9,6 +9,9 @@ global ir_count=0;
 global ir_names=0;
 global ir_names_size=0;
 global ir_current=-1;
+global ir_profile=1;
+global ir_state=0;
+global ir_state_count=0;
 fn ir_length(text) {let n=0;while load8(text+n) {n=n+1;}return n;}
 fn ir_print(text) {let n=ir_length(text);while n>0 {let k=syscall(1,2,text,n,0,0,0);if k<=0 {return 0;}text=text+k;n=n-k;}return 0;}
 fn ir_number(n) {let b=alloc(32);let i=31;while n>=10 {i=i-1;store8(b+i,48+n%10);n=n/10;}i=i-1;store8(b+i,48+n);return ir_print(b+i);}
@@ -23,9 +26,16 @@ fn ir_init(text,size,path,version) {
     if version!=1 {ir_error("unsupported frontend API version",0);}
     ir_code=alloc(1048576);ir_functions=alloc(2048*64);ir_names=alloc(524288);
     if ir_code<0 || ir_functions<0 || ir_names<0 {ir_error("frontend allocation failed",0);}
-    ir_code_size=0;ir_count=0;ir_names_size=0;ir_current=-1;return 0;
+    ir_code_size=0;ir_count=0;ir_names_size=0;ir_current=-1;
+    ir_profile=1;ir_state=alloc(2048*8);ir_state_count=0;
+    if ir_state<0 {ir_error("frontend allocation failed",0);}return 0;
+}
+fn ir_state_word(value) {
+    if ir_state_count>=2048 {ir_error("too many IR state words",0);}
+    ir_profile=2;let index=ir_state_count;store64(ir_state+index*8,value);ir_state_count=index+1;return index;
 }
 fn ir_emit(op,arg) {
+    if op==19 || op==20 {ir_profile=2;}
     if ir_code_size>=1048576 {ir_error("frontend IR exceeds 1 MiB",0);}
     let at=ir_code_size;store64(ir_code+at,op);store64(ir_code+at+8,arg);ir_code_size=at+16;return at;
 }
@@ -46,12 +56,14 @@ fn ir_end(slots) {
 }
 fn ir_finish() {
     if ir_current>=0 {ir_error("unfinished IR function",0);}
-    let code_at=64+ir_count*64;let names_at=code_at+ir_code_size;let total=names_at+ir_names_size;
+    let code_at=64+ir_count*64;let names_at=code_at+ir_code_size;let total=names_at+ir_names_size+ir_state_count*8;
     let blob=alloc(total);if blob<0 {ir_error("frontend allocation failed",0);}
-    store64(blob,0x31524946);store64(blob+8,total);store64(blob+16,ir_count);
+    let magic=0x31524946;if ir_profile==2 {magic=0x32524946;}
+    store64(blob,magic);store64(blob+8,total);store64(blob+16,ir_count);store64(blob+56,ir_state_count);
     store64(blob+24,code_at);store64(blob+32,ir_code_size);store64(blob+40,names_at);store64(blob+48,ir_names_size);
     let i=0;while i<ir_count*64 {store8(blob+64+i,load8(ir_functions+i));i=i+1;}
     i=0;while i<ir_code_size {store8(blob+code_at+i,load8(ir_code+i));i=i+1;}
     i=0;while i<ir_names_size {store8(blob+names_at+i,load8(ir_names+i));i=i+1;}
+    i=0;while i<ir_state_count*8 {store8(blob+names_at+ir_names_size+i,load8(ir_state+i));i=i+1;}
     return blob;
 }

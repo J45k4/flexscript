@@ -67,6 +67,7 @@ fn w_arity(op,arg) {
     fail("unsupported WebAssembly builtin");return 0;
 }
 fn w_import_name(kind) {
+    if kind==12 {return "read_word";}if kind==13 {return "write_word";}
     if kind==6 {return "syscall";}if kind==7 {return "ffi_open";}
     if kind==8 {return "ffi_symbol";}if kind==9 {return "ffi_call";}
     if kind==10 {return "ffi_call_i32";}return "ffi_call_u32";
@@ -174,6 +175,9 @@ fn w_function(index) {
         else if op==15 {w_get(w_acc);emit(80);emit(173);w_set(w_acc);}
         else if op==16 {w_get(w_acc);w_const(-1);emit(133);w_set(w_acc);}
         else if op==17 {let arity=w_arity(op,arg);w_depth=w_depth-arity;w_builtin(arg,w_slots+1+w_depth);}
+        else if op==19 || op==20 {
+            let kind=12;if op==19 {kind=13;w_get(w_acc);}emit(16);w_u(load64(w_imports+kind*8));w_set(w_acc);
+        }
         else {fail("invalid WebAssembly instruction");}
         if op!=9 && op!=10 && op!=11 && op!=12 && pc+16<end && w_block_of(pc+16)>=0 {
             w_dispatch(w_block_of(pc+16),label);
@@ -201,12 +205,16 @@ fn w_allocator() {
 }
 fn wasm_finish() {
     w_ir=output;w_ir_size=output_size;output=alloc(67108864);output_size=0;
-    w_imports=alloc(12*8);w_blocks=alloc((w_ir_size/16+1)*8);
+    w_imports=alloc(14*8);w_blocks=alloc((w_ir_size/16+1)*8);
     if output<0 || w_imports<0 || w_blocks<0 {fail("cannot allocate WebAssembly output");}
-    let i=0;while i<12 {store64(w_imports+i*8,-1);i=i+1;}
+    let i=0;while i<14 {store64(w_imports+i*8,-1);i=i+1;}
     i=0;let max_arity=1;
     while i<function_count {let n=load64(functions+i*32+24);if n>max_arity {max_arity=n;}i=i+1;}
     i=0;while i<w_ir_size {
+        if load64(w_ir+i)==19 || load64(w_ir+i)==20 {
+            let kind=12;if load64(w_ir+i)==19 {kind=13;}
+            if load64(w_imports+kind*8)<0 {store64(w_imports+kind*8,w_import_count);w_import_count=w_import_count+1;}
+        }
         if load64(w_ir+i)==17 {
             let kind=load64(w_ir+i+8);
             if kind>=6 {
@@ -223,7 +231,8 @@ fn wasm_finish() {
         // Preserve the function indices assigned by the scan, not kind order.
         i=0;while i<w_import_count {
             let kind=6;while load64(w_imports+kind*8)!=i {kind=kind+1;}
-            w_name("flex",4);let name=w_import_name(kind);w_name(name,length(name));emit(0);w_u(w_arity(17,kind));i=i+1;
+            w_name("flex",4);let name=w_import_name(kind);w_name(name,length(name));emit(0);
+            let arity=0;if kind==13 {arity=1;}else if kind!=12 {arity=w_arity(17,kind);}w_u(arity);i=i+1;
         }w_end();
     }
     w_begin(3);w_u(function_count+1);i=0;
