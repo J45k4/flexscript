@@ -188,7 +188,7 @@ fn te_complete_scene_tables() {
     let source=h_cat(h_repeat(" ",16777216),"plugin test v1 {} fn main()->i32{return 42}");
     t_program(source);te_compile(t_fixture,0,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),42,"");t_checks=t_checks+1;
     te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,0,t_binary);te_frontend=0;h_check(h_run(h_args(t_binary,0,0,0,0,0)),42,"");t_checks=t_checks+1;
-    t_program(h_repeat(" ",33554432));te_bad(t_fixture,"frontend source must be smaller than 32 MiB");
+    te_frontend="examples/extensions/seta.flex";t_program(h_repeat(" ",33554432));te_bad(t_fixture,"frontend source must be smaller than 32 MiB");te_frontend=0;
     return 0;
 }
 // FIR6 extends instruction capacity without relaxing any old artifact profile.
@@ -245,7 +245,7 @@ fn te_function_graphs() {
     wide=h_cat(wide,"return sum==42924 ? f1022(42) : 0}");
     te_program(h_cat3("plugin test v1 {} ",funcs,wide),42);
     let artifact=h_join(t_work,"wide.fir");te_compile(t_fixture,"ir",artifact);
-    let original=h_read(artifact);t_assert(load64(original+16)==1024,"maximum Seta function count is serialized");
+    let original=h_read(artifact);t_assert(load64(original+16)==1024,"1024-function Seta graph is serialized");
     te_language="ir";te_routes(artifact,42);te_language=0;
     let copy=h_join(t_work,"wide-external.fir");te_frontend="examples/extensions/seta.flex";
     te_routes(t_fixture,42);te_compile(t_fixture,"ir",copy);te_frontend=0;
@@ -256,7 +256,8 @@ fn te_function_graphs() {
     te_language="ir";te_routes(artifact,42);te_language=0;
     te_frontend="examples/extensions/seta.flex";te_routes(t_fixture,42);te_compile(t_fixture,"ir",copy);te_frontend=0;
     t_assert(h_equal(h_sha(artifact),h_sha(copy)),"maximum-depth bundled/external IR equality");
-    let overflow=h_cat(funcs,"fn extra()->i32{return 1} fn main()->i32{return 0}");
+    let extra="";k=0;while k<1025 {extra=h_cat3(extra,"fn extra",h_cat3(h_int(k),"()->i32{return 1} ",""));k=k+1;}
+    let overflow=h_cat3(funcs,extra,"fn main()->i32{return 0}");
     te_reject(overflow,"too many SetaScript functions");
     te_frontend="examples/extensions/seta.flex";te_reject(overflow,"too many SetaScript functions");te_frontend=0;
     let direct=h_cat(h_replace(funcs,"fn f1022(value:i32)->i32{return value}","fn f1022(value:i32)->i32{return f1022(value)}"),"fn main()->i32{return f1022(42)}");
@@ -267,6 +268,17 @@ fn te_function_graphs() {
     let wrong=h_cat(funcs,"fn main()->i32{return f1022(true)}");te_reject(wrong,"type mismatch");
     te_frontend="examples/extensions/seta.flex";te_reject(direct,"recursion");te_reject(mutual,"recursion");te_reject(last,"recursion");te_reject(wrong,"type mismatch");te_frontend=0;
     return 0;
+}
+// Bundled SetaScript source can carry generated model tables beyond32MiB,
+// while the64MiB transport boundary still rejects without replacing output.
+fn te_large_source() {
+    let path=h_join(t_work,"large-source.seta");let count=33554432+1024;
+    let padding=alloc(count+1);let i=0;while i<count {store8(padding+i,32);i=i+1;}store8(padding+count,0);
+    h_save(path,h_cat("plugin test v1 {}\nfn main()->i32 {return 42}\n",padding));
+    te_routes(path,42);
+    let large=alloc(67108864);i=0;while i<67108864 {store8(large+i,32);i=i+1;}
+    h_save_bytes(path,large,67108864,420);
+    te_bad(path,"SetaScript source must be smaller than 64 MiB");return 0;
 }
 fn suite(compiler) {
     t_init(compiler);te_bun=h_executable("bun");te_frontend=0;t_fixture=h_join(t_work,"test.seta");
@@ -345,7 +357,7 @@ fn suite(compiler) {
     let p=h_run(h_args(t_compiler,"--frontend",te_frontend,"examples/extensions/answer.postfix","-o",alias));h_check(p,1,0);
     t_assert(h_has(h_err(p),"frontend source file") && h_equal(hash,h_sha(alias)),"output must preserve extension inputs");
     te_frontend=0;te_state_io();te_arrays();te_world_tables();te_complete_scene_tables();
-    te_function_graphs();te_large_code();
+    te_function_graphs();te_large_code();te_large_source();
     return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}

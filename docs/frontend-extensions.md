@@ -295,7 +295,7 @@ artifact exceeds 16 MiB. Validation rejects older profile tags on oversized
 artifacts before relocation or backend emission.
 
 Frontend source files (SetaScript, external frontend input and saved IR) may be
-smaller than 32 MiB. Flexscript source/import graphs retain their 16 MiB limit.
+smaller than 64 MiB for bundled SetaScript or 32 MiB for an external frontend. Flexscript source/import graphs retain their 16 MiB limit.
 External frontends use a 128 MiB restricted heap, one billion instructions and
 a 60-second deadline, with no new device capabilities. Native/Wasm/IR compilation
 uses a 32 MiB state-image budget. Application execution retains the default
@@ -331,7 +331,7 @@ one-billion-instruction and 60-second limits. Compilation uses a 128 MiB
 state-image budget and FIR6 native/Wasm output bound; earlier profiles keep
 their 64 MiB output bound. Application execution retains its default 16 MiB budget.
 Maximum-state FIR6 programs require `flex run --memory=128m ...`. Frontend source
-remains smaller than 32 MiB; saved IR input may be smaller than 128 MiB.
+is smaller than 64 MiB for the bundled SetaScript frontend (32 MiB for external frontend source); saved IR input may be smaller than 128 MiB.
 
 Artifacts are validated before relocation or execution on every backend;
 changing a larger artifact's tag to an older profile is rejected.
