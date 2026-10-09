@@ -93,7 +93,8 @@ between host and guest, not memory safety between guest objects.
 Limits shared by both modes, followed by restricted-mode permissions:
 
 - 16 MiB guest heap; 10,000,000 bytecode instructions; a 5-second execution deadline.
-- At most 512 call frames, 4,096 local slots per function and 65,536 operand words.
+- At most 1,024 call frames, 4,096 local slots per function, 8 MiB total active
+  local storage and 65,536 operand words.
 - Standard output/error writes, bounded to 1 MiB combined; no standard input.
 - No filesystem, networking, process creation, raw FFI or arbitrary syscalls.
 

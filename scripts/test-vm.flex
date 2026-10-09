@@ -139,8 +139,19 @@ fn tv_words(line) {
     }
     return v;
 }
+fn tv_frame_boundaries() {
+    let modes=h_args("--interpret","--jit",0,0,0,0);let i=0;
+    while i<2 {
+        t_program("fn descend(n){if n==0{return 42;}return descend(n-1);}fn main(){return descend(1022);}");
+        h_check(tv_run(h_at(modes,i),0,t_fixture,0),42,"");t_checks=t_checks+1;
+        t_program("fn descend(n){if n==0{return 42;}return descend(n-1);}fn main(){return descend(1023);}");
+        let p=tv_run(h_at(modes,i),0,t_fixture,0);h_check(p,70,0);
+        t_assert(h_has(h_err(p),"VM stack limit exceeded"),"1,025th VM frame traps before entering");i=i+1;
+    }return 0;
+}
 fn suite(compiler) {
     t_init(compiler);
+    tv_frame_boundaries();
     let environment=h_env;
     h_setenv("PATH","/no/executables");
     let cases=j_parse(h_read("tests/cases.json"));

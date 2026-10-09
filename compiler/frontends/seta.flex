@@ -117,7 +117,7 @@ fn s_prefix() {
                 if s_token==44 {s_next();}else {more=0;}
             }}
             s_expect(41);if count!=load64(f+24) {s_fail("wrong SetaScript argument count");}
-            store8(s_edges+s_current*512+target,1);ir_emit(8,target);return load64(f+32);
+            store8(s_edges+s_current*1024+target,1);ir_emit(8,target);return load64(f+32);
         }
         let local=s_find_local(name,size);if local<0 {s_fail("unknown SetaScript local");}
         let slot=load64(s_locals+local*32+16);ir_emit(3,slot);return load64(s_types+slot*8);
@@ -254,7 +254,7 @@ fn s_signatures() {
     if s_is("state") {s_state_definition();}
     while s_token {
         if s_is("cosmetic") {s_next();}if !s_is("fn") {s_fail("only pure function declarations are supported yet");}s_next();s_name();
-        if s_count>=512 {s_fail("too many SetaScript functions");}
+        if s_count>=1024 {s_fail("too many SetaScript functions");}
         let name=ir_source+s_start;let size=s_size;if s_find_function(name,size)>=0 {s_fail("duplicate SetaScript function");}
         let f=s_functions+s_count*64;store64(f,name);store64(f+8,size);let args=s_locals;s_next();s_expect(40);
         let count=0;if s_token!=41 {let more=1;while more {
@@ -268,17 +268,17 @@ fn s_signatures() {
     }return 0;
 }
 fn s_no_recursion() {
-    let degrees=alloc(s_count*8);let i=0;while i<s_count {let j=0;while j<s_count {if load8(s_edges+i*512+j) {store64(degrees+j*8,load64(degrees+j*8)+1);}j=j+1;}i=i+1;}
+    let degrees=alloc(s_count*8);let i=0;while i<s_count {let j=0;while j<s_count {if load8(s_edges+i*1024+j) {store64(degrees+j*8,load64(degrees+j*8)+1);}j=j+1;}i=i+1;}
     let removed=0;let progress=1;while progress {
         progress=0;i=0;while i<s_count {if load64(degrees+i*8)==0 {
             store64(degrees+i*8,-1);removed=removed+1;progress=1;let j=0;
-            while j<s_count {if load8(s_edges+i*512+j) {store64(degrees+j*8,load64(degrees+j*8)-1);}j=j+1;}
+            while j<s_count {if load8(s_edges+i*1024+j) {store64(degrees+j*8,load64(degrees+j*8)-1);}j=j+1;}
         }i=i+1;}
     }if removed!=s_count {s_fail("SetaScript recursion is not allowed");}return 0;
 }
 fn seta_frontend(text,size,version,path) {
     ir_init(text,size,path,version);s_pos=0;s_count=0;s_nesting=0;s_state_count=0;
-    s_functions=alloc(512*64);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);s_edges=alloc(512*512);
+    s_functions=alloc(1024*64);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);s_edges=alloc(1024*1024);
     s_state_fields=alloc(2048*40);
     if s_functions<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_edges<0 || s_state_fields<0 {s_fail("frontend allocation failed");}
     s_signatures();s_current=0;

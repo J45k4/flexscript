@@ -113,7 +113,7 @@ fn vm_pop() {
     vm_sp=vm_sp-8;return load64(vm_stack+vm_sp);
 }
 fn vm_enter(index,return_pc) {
-    if index<0 || index>=function_count || vm_depth>=512 {vm_error=4;return 0;}
+    if index<0 || index>=function_count || vm_depth>=1024 {vm_error=4;return 0;}
     let entry=functions+index*32;let pc=load64(entry+16);let count=load64(entry+24);
     let slots=load64(output+pc+8);
     if load64(output+pc)!=18 || slots<count || slots>4096 || vm_sp<count*8
@@ -365,7 +365,7 @@ fn vm_help(fd) {
 }
 fn vm_initialize() {
     vm_heap=alloc(vm_heap_limit);vm_stack=alloc(524288);vm_local_memory=alloc(8388608);
-    vm_frames=alloc(512*40);vm_time=alloc(16);vm_path=alloc(4096);vm_open_how=alloc(24);
+    vm_frames=alloc(1024*40);vm_time=alloc(16);vm_path=alloc(4096);vm_open_how=alloc(24);
     vm_fds=alloc(67*8);vm_jit_cache=alloc(2048*32);vm_jit_context=alloc(64);
     vm_poll_records=alloc(67*8);
     vm_file_stat=alloc(144);

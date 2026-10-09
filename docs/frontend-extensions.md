@@ -271,7 +271,7 @@ Instruction code remains bounded to 1 MiB. FIR1, FIR2 and FIR3 retain their
 earlier state and artifact limits; an artifact that exceeds those limits must
 declare FIR4. The builder selects it automatically when necessary.
 
-The SetaScript frontend permits 512 nonrecursive functions. Its call graph,
+The SetaScript frontend permits 1,024 nonrecursive functions. Its call graph,
 state arrays, typed initializers and checked access rules remain bounded. An
 external frontend originally used a 64 MiB guest heap and a 30-second deadline;
 FIR5's larger transport now uses the bounded budgets below. Application `--memory` limits continue to apply independently: a module
@@ -281,7 +281,7 @@ Setaworld's complete countryside collider inventory and original population
 tables exceed FIR3's aggregate capacity. FIR4 preserves these data sets instead
 of reducing the simulated world. The extension suite checks the maximum state,
 overflow rejection, saved-IR replay, old-profile rejection, both frontend paths,
-explicit guest budgets, 512-function call graphs and all execution backends.
+explicit guest budgets, 1,024-function call graphs and all execution backends.
 The Wasm suite also builds and executes a maximum-state application through
 the byte-identical self-built Wasm compiler.
 
@@ -314,3 +314,23 @@ aggregate/single-array overflow, older-profile rejection, saved-IR replay,
 bundled/external equality, application-memory limits and frontend-source bounds.
 The Wasm suite builds maximum-state FIR5 native and Wasm applications using
 the self-built compiler running inside Wasm, then executes both outputs.
+
+## Bounded Seta function graphs
+
+The Seta frontend accepts at most 1,024 functions, including `main`. Its fixed
+call-graph matrix uses 1,048,576 bytes and rejects direct or mutual recursion
+before producing output, including edges between the highest function indices.
+The SDK and FIR validator retain their 2,048-function bound; no IR version,
+state, source, local-slot or instruction limits change.
+
+Interpreter and JIT permit 1,024 simultaneous frames, so a nonrecursive chain
+through every Seta function executes consistently with native and Wasm output.
+The VM still limits all active locals to 8 MiB, individual frames to 4,096 local
+slots, and the operand stack to 65,536 words. A graph within the function limit
+can therefore exceed other explicit runtime budgets. Flexscript recursion is
+still supported; entering a 1,025th VM frame traps with a stack-limit error.
+
+The extension suite checks the maximum-width graph and maximum-depth chain,
+both bundled and external frontend routes, saved IR on all four backends,
+1,025-function rejection without replacing existing output, and high-index
+direct/mutual recursion. The VM suite checks the frame boundary independently.

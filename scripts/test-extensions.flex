@@ -181,6 +181,37 @@ fn te_complete_scene_tables() {
     t_program(h_repeat(" ",33554432));te_bad(t_fixture,"frontend source must be smaller than 32 MiB");
     return 0;
 }
+fn te_function_graphs() {
+    te_frontend=0;
+    let funcs="";let k=0;while k<1022 {funcs=h_cat3(funcs,"fn f",h_cat3(h_int(k),"()->i32{return 42} ",""));k=k+1;}
+    funcs=h_cat(funcs,"fn f1022(value:i32)->i32{return value} ");
+    let wide="fn main()->i32{let sum=0 ";k=0;while k<1022 {wide=h_cat3(wide,"sum+=f",h_cat3(h_int(k),"() ",""));k=k+1;}
+    wide=h_cat(wide,"return sum==42924 ? f1022(42) : 0}");
+    te_program(h_cat3("plugin test v1 {} ",funcs,wide),42);
+    let artifact=h_join(t_work,"wide.fir");te_compile(t_fixture,"ir",artifact);
+    let original=h_read(artifact);t_assert(load64(original+16)==1024,"maximum Seta function count is serialized");
+    te_language="ir";te_routes(artifact,42);te_language=0;
+    let copy=h_join(t_work,"wide-external.fir");te_frontend="examples/extensions/seta.flex";
+    te_routes(t_fixture,42);te_compile(t_fixture,"ir",copy);te_frontend=0;
+    t_assert(h_equal(h_sha(artifact),h_sha(copy)),"maximum-width bundled/external IR equality");
+    let chain="plugin test v1 {} ";k=0;while k<1023 {let body="return 42";if k<1022 {body=h_cat3("return f",h_int(k+1),"()");}chain=h_cat3(chain,"fn f",h_cat3(h_int(k),"()->i32{",h_cat(body,"} ")));k=k+1;}
+    te_program(h_cat(chain,"fn main()->i32{return f0()}"),42);
+    artifact=h_join(t_work,"chain.fir");te_compile(t_fixture,"ir",artifact);
+    te_language="ir";te_routes(artifact,42);te_language=0;
+    te_frontend="examples/extensions/seta.flex";te_routes(t_fixture,42);te_compile(t_fixture,"ir",copy);te_frontend=0;
+    t_assert(h_equal(h_sha(artifact),h_sha(copy)),"maximum-depth bundled/external IR equality");
+    let overflow=h_cat(funcs,"fn extra()->i32{return 1} fn main()->i32{return 0}");
+    te_reject(overflow,"too many SetaScript functions");
+    te_frontend="examples/extensions/seta.flex";te_reject(overflow,"too many SetaScript functions");te_frontend=0;
+    let direct=h_cat(h_replace(funcs,"fn f1022(value:i32)->i32{return value}","fn f1022(value:i32)->i32{return f1022(value)}"),"fn main()->i32{return f1022(42)}");
+    te_reject(direct,"recursion");
+    let mutual=h_cat(h_replace(funcs,"fn f1022(value:i32)->i32{return value}","fn f1022(value:i32)->i32{return main()}"),"fn main()->i32{return f1022(42)}");
+    te_reject(mutual,"recursion");
+    let last=h_cat(funcs,"fn main()->i32{return main()}");te_reject(last,"recursion");
+    let wrong=h_cat(funcs,"fn main()->i32{return f1022(true)}");te_reject(wrong,"type mismatch");
+    te_frontend="examples/extensions/seta.flex";te_reject(direct,"recursion");te_reject(mutual,"recursion");te_reject(last,"recursion");te_reject(wrong,"type mismatch");te_frontend=0;
+    return 0;
+}
 fn suite(compiler) {
     t_init(compiler);te_bun=h_executable("bun");te_frontend=0;t_fixture=h_join(t_work,"test.seta");
     te_routes("examples/seta/policy.seta",42);
@@ -258,13 +289,7 @@ fn suite(compiler) {
     let p=h_run(h_args(t_compiler,"--frontend",te_frontend,"examples/extensions/answer.postfix","-o",alias));h_check(p,1,0);
     t_assert(h_has(h_err(p),"frontend source file") && h_equal(hash,h_sha(alias)),"output must preserve extension inputs");
     te_frontend=0;te_state_io();te_arrays();te_world_tables();te_complete_scene_tables();
-    let funcs="";let k=0;while k<511 {funcs=h_cat3(funcs,"fn f",h_cat3(h_int(k),"()->i32{return 42} ",""));k=k+1;}
-    te_program(h_cat3("plugin test v1 {} ",funcs,"fn main()->i32{return f510()}"),42);
-    te_frontend="examples/extensions/seta.flex";te_routes(t_fixture,42);te_frontend=0;
-    let chain="plugin test v1 {} ";k=0;while k<511 {let body="return 42";if k<510 {body=h_cat3("return f",h_int(k+1),"()");}chain=h_cat3(chain,"fn f",h_cat3(h_int(k),"()->i32{",h_cat(body,"} ")));k=k+1;}
-    te_program(h_cat(chain,"fn main()->i32{return f0()}"),42);
-    te_reject(h_cat(funcs,"fn extra()->i32{return 1} fn main()->i32{return 0}"),"too many SetaScript functions");
-    te_reject(h_cat(h_replace(funcs,"fn f510()->i32{return 42}","fn f510()->i32{return main()}"),"fn main()->i32{return f510()}"),"recursion");
+    te_function_graphs();
     return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}
