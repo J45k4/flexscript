@@ -24,15 +24,19 @@ fn f64_shr_jam(a,n) {
 }
 fn f64_pack(sign,exponent,sig) {
 	if sig==0 {return sign;}
-	let i=0;
-	while i<64 {
-		if sig>=72057594037927936 {sig=f64_shr_jam(sig,1);exponent=exponent+1;}
-		i=i+1;
+	if sig>=72057594037927936 {
+		let i=0;
+		while i<64 {
+			if sig>=72057594037927936 {sig=f64_shr_jam(sig,1);exponent=exponent+1;}
+			i=i+1;
+		}
 	}
-	i=0;
-	while i<64 {
-		if sig<36028797018963968 && exponent>1 {sig=sig<<1;exponent=exponent-1;}
-		i=i+1;
+	if sig<36028797018963968 && exponent>1 {
+		let i=0;
+		while i<64 {
+			if sig<36028797018963968 && exponent>1 {sig=sig<<1;exponent=exponent-1;}
+			i=i+1;
+		}
 	}
 	if exponent<=0 {sig=f64_shr_jam(sig,1-exponent);exponent=1;}
 	let mant=sig>>3;let remainder=sig&7;
@@ -58,6 +62,7 @@ fn f64_add(a,b) {
 }
 fn f64_sub(a,b) {return f64_add(a,b^(-9223372036854775807-1));}
 fn f64_normal_shift(mant) {
+	if mant<=0 || mant>=4503599627370496 {return 0;}
 	let n=0;let i=0;
 	while i<64 {
 		if mant>0 && mant<4503599627370496 {mant=mant<<1;n=n+1;}

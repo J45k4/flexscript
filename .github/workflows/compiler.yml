@@ -94,6 +94,9 @@ jobs:
       - name: Test frontend extensions across interpreter, JIT, native and WebAssembly
         run: build/tools/test-extensions build/stage2 --report build/extensions-tests.json
 
+      - name: Test portable binary64 arithmetic against preserved Rust bit patterns
+        run: build/tools/test-f64 build/stage2 --report build/f64-tests.json
+
       - name: Test the freestanding x86-64 backend in QEMU
         run: |
           build/stage2 scripts/test-baremetal.flex -o build/test-baremetal

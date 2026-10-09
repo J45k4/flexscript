@@ -234,6 +234,8 @@ fn suite(compiler) {
     let funcs="";let k=0;while k<511 {funcs=h_cat3(funcs,"fn f",h_cat3(h_int(k),"()->i32{return 42} ",""));k=k+1;}
     te_program(h_cat3("plugin test v1 {} ",funcs,"fn main()->i32{return f510()}"),42);
     te_frontend="examples/extensions/seta.flex";te_routes(t_fixture,42);te_frontend=0;
+    let chain="plugin test v1 {} ";k=0;while k<511 {let body="return 42";if k<510 {body=h_cat3("return f",h_int(k+1),"()");}chain=h_cat3(chain,"fn f",h_cat3(h_int(k),"()->i32{",h_cat(body,"} ")));k=k+1;}
+    te_program(h_cat(chain,"fn main()->i32{return f0()}"),42);
     te_reject(h_cat(funcs,"fn extra()->i32{return 1} fn main()->i32{return 0}"),"too many SetaScript functions");
     te_reject(h_cat(h_replace(funcs,"fn f510()->i32{return 42}","fn f510()->i32{return main()}"),"fn main()->i32{return f510()}"),"recursion");
     return t_done();

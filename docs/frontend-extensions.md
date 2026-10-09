@@ -60,7 +60,7 @@ resolution. `examples/extensions/seta.flex` wraps the same parser that is bundle
 in the compiler; both routes produce byte-identical IR.
 
 On a Linux compiler host, an external frontend runs in a separate process's
-restricted Flexscript VM with a 64 MiB guest heap, 100 million instruction fuel,
+restricted Flexscript VM with a 64 MiB guest heap, 500 million instruction fuel,
 30-second execution deadline and 1 MiB diagnostic output budget. It receives the
 source as memory and has no guest file, network or raw FFI grants. These bounds
 apply to frontend execution; source loading uses the normal compiler loader.
