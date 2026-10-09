@@ -2,9 +2,10 @@ import "lib/build.flex";
 import "lib/harness.flex";
 global te_bun=0;
 global te_frontend=0;
+global te_language=0;
 fn te_compile(source,target,out) {
     let args=h_args(t_compiler,0,0,0,0,0);
-    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}
+    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}
     if target {h_add(args,"--target");h_add(args,target);}
     h_add(args,source);h_add(args,"-o");h_add(args,out);h_ok(args);return 0;
 }
@@ -17,10 +18,10 @@ fn te_wasm(module,expected) {
 }
 fn te_routes(source,expected) {
     let args=h_args(t_compiler,"run","--interpret","--restricted",0,0);
-    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}h_add(args,source);
+    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}h_add(args,source);
     h_check(h_run(args),expected,"");t_checks=t_checks+1;
     args=h_args(t_compiler,"run","--jit","--stats",0,0);
-    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}h_add(args,source);
+    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}h_add(args,source);
     let jit=h_run(args);h_check(jit,expected,"");
     t_assert(!h_has(h_err(jit),"JIT compilations: 0;"),"extension IR uses the existing JIT");
     te_compile(source,0,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),expected,"");t_checks=t_checks+1;
@@ -30,7 +31,7 @@ fn te_routes(source,expected) {
 fn te_program(text,expected) {h_save(t_fixture,text);te_routes(t_fixture,expected);return 0;}
 fn te_bad(source,message) {
     let before=h_sha(t_binary);let args=h_args(t_compiler,0,0,0,0,0);
-    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}
+    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}else if te_language {h_add(args,"--language");h_add(args,te_language);}
     else {h_add(args,"--language");h_add(args,"seta");}
     h_add(args,source);h_add(args,"-o");h_add(args,t_binary);let p=h_run(args);h_check(p,1,0);
     t_assert(h_has(h_err(p),message),h_err(p));t_assert(t_location(h_err(p)),"frontend diagnostic location");
@@ -77,6 +78,57 @@ fn te_state_io() {
     te_reject("state {x:i32=1} fn main()->i32{state.x=false return 0}","type mismatch");
     te_reject("fn main()->i32{return state.missing}","unknown engine state");
     te_reject("fn main()->i32{return write_word(true)}","type mismatch");return 0;
+}
+fn te_array_trap(body) {
+    t_program(h_cat3("plugin test v1 {} state {a:i32[3]=[1,2,3] guard:i32=99} fn bad(i:i32)->i32{",body,"} fn main()->i32{return bad(read_word())}"));
+    te_compile(t_fixture,0,t_binary);let module=h_join(t_work,"trap.wasm");te_compile(t_fixture,"wasm32",module);
+    let indices=h_args("-1","3","4294967296","9223372036854775807",0,0);let i=0;
+    while i<h_count(indices) {
+        let input=alloc(8);let index=-1;if i==1 {index=3;}else if i==2 {index=4294967296;}else if i==3 {index=9223372036854775807;}store64(input,index);
+        let args=h_args(t_compiler,"run","--interpret","--restricted","--allow-stdin",t_fixture);
+        let p=te_input(args,input,8);h_check(p,70,0);t_assert(h_has(h_err(p),"memory"),"interpreter checked array trap");
+        args=h_args(t_compiler,"run","--jit","--stats","--restricted","--allow-stdin");h_add(args,t_fixture);
+        p=te_input(args,input,8);h_check(p,70,0);t_assert(!h_has(h_err(p),"JIT compilations: 0;"),"bounds tested in real JIT code");
+        p=te_input(h_args(t_binary,0,0,0,0,0),input,8);t_assert(h_status(p)==-4,"native bounds trap is SIGILL, not a memory fault");
+        let request=j_object();j_set(request,"module",j_string(module));let words=j_array();j_push(words,j_string(h_at(indices,i)));j_set(request,"wordInput",words);
+        let path=h_join(t_work,"array-trap.json");j_save(path,request);
+        let result=j_parse(h_out(h_ok(h_args(te_bun,"scripts/wasm-runner.js",path,0,0,0))));t_assert(j_n(result,"trap"),"Wasm checked array trap");i=i+1;
+    }return 0;
+}
+fn te_arrays() {
+    te_frontend=0;
+    te_program("plugin test v1 {} state {a:i32[10000]=0 b:i32[3]=[4,5,6] flags:bool[2]=[true,false] calls:i32=0} fn idx()->i32{state.calls+=1 return 9999} fn add(i:i32)->i32{state.a[i]+=state.b[1] return state.a[i]} fn main()->i32{for i in 0..8 {add(9999)} state.a[idx()]+=5 state.flags[1]=true return state.flags[0] and state.flags[1] and state.calls==1 ? state.a[9999]-3 : 0}",42);
+    let artifact=h_join(t_work,"array.fir");te_compile(t_fixture,"ir",artifact);let original=h_read(artifact);
+    t_assert(load64(original)==0x33524946 && load64(original+56)==10006,"FIR3 initialized large tables");
+    let code_size=load64(original+32);t_assert(code_size<8192,"indexed code size is independent of array capacity");
+    let copy=h_join(t_work,"array-copy.fir");let args=h_args(t_compiler,"--language","ir","--target","ir",artifact);h_add(args,"-o");h_add(args,copy);h_ok(args);
+    t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR3 saved IR remains unrelocated");
+    let code=load64(original+24);let pc=0;let access=-1;
+    while pc<code_size {if load64(original+code+pc)==21 {access=code+pc;}pc=pc+16;}
+    t_assert(access>=0,"FIR3 direct indexed opcode");
+    te_ir_bad(original,access+8,0);te_ir_bad(original,access+8,(10007<<32));te_ir_bad(original,access+8,(3<<32)|10005);
+    te_ir_bad(original,56,262145);te_ir_bad(original,0,0x32524946);
+    te_language="ir";te_routes(artifact,42);te_language=0;
+    te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,"ir",copy);
+    t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR3 external and bundled frontends agree");te_frontend=0;
+    let modes=h_args("--interpret","--jit",0,0,0,0);let m=0;let bad=h_join(t_work,"bad.fir");
+    while m<2 {h_check(h_run(h_args(t_compiler,"run",h_at(modes,m),"--language","ir",bad)),1,0);m=m+1;}
+    args=h_args(t_compiler,"--target","wasm32","--language","ir",bad);h_add(args,"-o");h_add(args,copy);h_check(h_run(args),1,0);
+    // Each Wasm module owns its tables. Exports retain state across calls.
+    t_program("plugin test v1 {} state {a:i32[3]=[4,5,6]} fn bump()->i32{state.a[1]+=1 return state.a[1]} fn main()->i32{return bump()}");
+    let module=h_join(t_work,"isolation.wasm");te_compile(t_fixture,"wasm32",module);let request=j_object();j_set(request,"module",j_string(module));
+    let calls=j_array();let i=0;while i<3 {let call=j_object();j_set(call,"name",j_string("bump"));j_set(call,"instance",j_int(i==2));j_push(calls,call);i=i+1;}j_set(request,"calls",calls);
+    let path=h_join(t_work,"isolation.json");j_save(path,request);let result=j_parse(h_out(h_ok(h_args(te_bun,"scripts/wasm-runner.js",path,0,0,0))));
+    let values=j_get(result,"values");t_assert(h_equal(j_value(j_at(values,0)),"6") && h_equal(j_value(j_at(values,1)),"7") && h_equal(j_value(j_at(values,2)),"6"),"Wasm initialized table state is isolated");
+    te_reject("state {a:i32[0]=0} fn main()->i32{return 0}","array span");
+    te_reject("state {a:i32[262145]=0} fn main()->i32{return 0}","array span");
+    te_reject("state {a:i32[2]=[1]} fn main()->i32{return 0}","unexpected SetaScript token");
+    te_reject("state {a:i32[2]=[1,2,3]} fn main()->i32{return 0}","unexpected SetaScript token");
+    te_reject("state {a:bool[2]=[true,1]} fn main()->i32{return 0}","boolean state initializer");
+    te_reject("state {a:i32[2]=0} fn main()->i32{return state.a[false]}","type mismatch");
+    te_reject("state {a:i32[2]=0} fn main()->i32{state.a[0]=true return 0}","type mismatch");
+    te_reject("state {a:i32[2]=0} fn main()->i32{return state.a}","unexpected SetaScript token");
+    te_array_trap("return state.a[i]");te_array_trap("state.a[i]=44 return 0");return 0;
 }
 fn suite(compiler) {
     t_init(compiler);te_bun=h_executable("bun");te_frontend=0;t_fixture=h_join(t_work,"test.seta");
@@ -154,6 +206,6 @@ fn suite(compiler) {
     let alias=h_join(t_work,"sdk-alias.flex");h_ok(h_args("ln",sdk_copy,alias,0,0,0));let hash=h_sha(alias);
     let p=h_run(h_args(t_compiler,"--frontend",te_frontend,"examples/extensions/answer.postfix","-o",alias));h_check(p,1,0);
     t_assert(h_has(h_err(p),"frontend source file") && h_equal(hash,h_sha(alias)),"output must preserve extension inputs");
-    te_frontend=0;te_state_io();return t_done();
+    te_frontend=0;te_state_io();te_arrays();return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}

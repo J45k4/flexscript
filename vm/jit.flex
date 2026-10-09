@@ -64,9 +64,10 @@ fn vm_jit_compile(index) {
         let op=load64(bytecode+pc);let arg=load64(bytecode+pc+8);
         // Calls, allocation, guest pointer accesses, FFI and host I/O stay in
         // the checked interpreter. No speculative assumptions or deoptimization.
-        if op<1 || op>16 || op==8 {return 0;}
+        if op<1 || (op>16 && op!=21 && op!=22) || op==8 {return 0;}
         if (op==3 || op==4) && (arg<0 || arg>=slots) {return 0;}
         if (op==5 || op==6) && vm_restricted && (arg<16 || arg>vm_heap_used-8) {return 0;}
+        if (op==21 || op==22) && ((arg>>32)<1 || (arg&4294967295)<16 || (arg>>32)>(vm_heap_used-(arg&4294967295))/8) {return 0;}
         if (op==10 || op==11 || op==12) && (arg<start+16 || arg>=end || arg%16) {return 0;}
         if op==7 && !precedence(arg) {return 0;}
         pc=pc+16;
@@ -98,6 +99,10 @@ fn vm_jit_compile(index) {
         else if op==5 || op==6 {
             emit(72);emit(186);emit64(vm_address(arg,8));
             emit(72);if op==5 {emit(139);}else {emit(137);}emit(2);
+        }else if op==21 || op==22 {
+            if op==21 {emit(72);emit(137);emit(193);}else {emit(89);}
+            emit(72);emit(129);emit(249);emit32(arg>>32);vm_jit_error_jump(131,3);
+            emit(72);emit(186);emit64(vm_heap+(arg&4294967295));emit(72);if op==21 {emit(139);}else {emit(137);}emit(4);emit(202);
         }else if op==7 {if arg==47 || arg==37 {vm_jit_division_guard();}binary(arg);}
         else if op==9 {epilogue();}
         else if op==10 || op==11 || op==12 {
@@ -114,10 +119,11 @@ fn vm_jit_compile(index) {
     let failure=output_size;vm_jit_load_context();emit(73);emit(199);emit(67);emit(16);emit32(9);immediate(0);epilogue();
     let fuel=output_size;vm_jit_load_context();emit(73);emit(199);emit(67);emit(16);emit32(1);immediate(0);epilogue();
     let division=output_size;vm_jit_load_context();emit(73);emit(199);emit(67);emit(16);emit32(2);immediate(0);epilogue();
+    let bounds=output_size;vm_jit_load_context();emit(73);emit(199);emit(67);emit(16);emit32(3);immediate(0);epilogue();
     let timeout=output_size;vm_jit_load_context();emit(73);emit(199);emit(67);emit(16);emit32(8);immediate(0);epilogue();
     i=0;while i<vm_jit_error_count {
         let record=vm_jit_errors+i*16;let at=load64(record);let kind=load64(record+8);let target=failure;
-        if kind==1 {target=fuel;}else if kind==2 {target=division;}else if kind==8 {target=timeout;}
+        if kind==1 {target=fuel;}else if kind==2 {target=division;}else if kind==8 {target=timeout;}else if kind==3 {target=bounds;}
         patch32(at,target-at-4);i=i+1;
     }
     i=0;while i<vm_jit_branch_count {

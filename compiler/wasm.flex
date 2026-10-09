@@ -124,7 +124,7 @@ fn w_function(index) {
     while pc<end {
         let op=load64(w_ir+pc);let arg=load64(w_ir+pc+8);
         if op==2 {w_depth=w_depth+1;if w_depth>maximum {maximum=w_depth;}}
-        else if op==7 {w_depth=w_depth-1;}
+        else if op==7 || op==22 {w_depth=w_depth-1;}
         else if op==8 || op==17 {w_depth=w_depth-w_arity(op,arg);}
         if w_depth<0 {fail("invalid WebAssembly expression stack");}
         if op==10 || op==11 || op==12 {
@@ -159,6 +159,13 @@ fn w_function(index) {
         else if op==4 {w_get(w_acc);w_set(arg);}
         else if op==5 {w_i32(arg);w_mem(41);w_set(w_acc);}
         else if op==6 {w_i32(arg);w_get(w_acc);w_mem(55);}
+        else if op==21 || op==22 {
+            let index=w_acc;if op==22 {w_depth=w_depth-1;index=w_slots+1+w_depth;}
+            w_get(index);w_const(arg>>32);emit(90); // unsigned >= also rejects negative and high bits
+            emit(4);emit(64);emit(0);emit(11);
+            w_get(index);w_const(8);emit(126);w_const(arg&4294967295);emit(124);emit(167);
+            if op==21 {w_mem(41);w_set(w_acc);}else {w_get(w_acc);w_mem(55);}
+        }
         else if op==7 {w_depth=w_depth-1;w_binary(arg,w_slots+1+w_depth);}
         else if op==8 {
             let arity=w_arity(op,arg);w_depth=w_depth-arity;i=0;

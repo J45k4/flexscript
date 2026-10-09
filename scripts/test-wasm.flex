@@ -134,7 +134,7 @@ fn suite(compiler) {
     // The bundled frontend and portable IR lowerers also run inside the compiler's
     // own WebAssembly build, without subprocesses or a native frontend adapter.
     h_save_bytes(t_binary,h_read(wasm_compiler),h_file_size,420);
-    request=j_object();files=j_object();j_set(files,"policy.seta",j_string(h_read("examples/seta/policy.seta")));j_set(request,"files",files);
+    request=j_object();files=j_object();j_set(files,"policy.seta",j_string("plugin test v1 {} state {a:i32[10000]=0 b:i32[3]=[4,5,6]} fn main()->i32{state.a[9999]=state.b[1]*8+2 return state.a[9999]}"));j_set(request,"files",files);
     argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("--target"));j_push(argv,j_string("wasm32"));j_push(argv,j_string("policy.seta"));j_push(argv,j_string("-o"));j_push(argv,j_string("policy.wasm"));j_set(request,"argv",argv);
     j_set(request,"output",j_string("policy.wasm"));j_set(request,"save",j_string(child));
     result=tw_run(request);tw_success(result);t_assert(h_equal(j_s(result,"result"),"0"),"WASM compiler runs bundled SetaScript frontend");

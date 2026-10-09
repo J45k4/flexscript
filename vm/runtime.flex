@@ -308,6 +308,11 @@ fn vm_execute(main_index) {
                     }else if op==5 || op==6 {
                         let address=vm_address(arg,8);
                         if address {if op==5 {vm_acc=load64(address);}else {store64(address,vm_acc);}}
+                    }else if op==21 || op==22 {
+                        let index=vm_acc;if op==22 {index=vm_pop();}
+                        let span=arg>>32;
+                        if !vm_error && (index<0 || index>=span) {vm_error=3;}
+                        if !vm_error {let offset=(arg&4294967295)+index*8;let address=vm_heap+offset;if offset<16 || offset>vm_heap_used-8 {vm_error=3;address=0;}if address {if op==21 {vm_acc=load64(address);}else {store64(address,vm_acc);}}}
                     }else if op==7 {let a=vm_pop();if !vm_error {vm_acc=vm_binary(arg,a,vm_acc);}}
                     else if op==8 {
                         if vm_enter(arg,vm_pc) && vm_jit_enabled {vm_try_jit(arg);}

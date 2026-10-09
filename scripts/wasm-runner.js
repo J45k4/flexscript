@@ -35,7 +35,10 @@ try {
 		ffi_call_u32: () => -1n,
 	})
 	const app = await instantiateFlexscript(module, host)
-	if (request.probe === 'alloc') {
+	if (request.calls) {
+		const apps = [app, await instantiateFlexscript(module, createMemoryHost())]
+		report.values = request.calls.map(call => apps[call.instance ?? 0].exports[call.name](...(call.args ?? []).map(BigInt)).toString())
+	} else if (request.probe === 'alloc') {
 		report.values = [0n, -1n, 1073741825n, 8n, 70000n].map(size => app.exports.__flex_alloc(size).toString())
 		report.pages = app.memory.buffer.byteLength / 65536
 	} else {

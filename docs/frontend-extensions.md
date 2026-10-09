@@ -218,3 +218,47 @@ exported Wasm `frame` calls. Pure source continues to emit FIR1.
 `scripts/test-extensions.flex` tests execution routes, saved-IR replay, frontend
 identity, type errors, invalid IR and capability/budget failures. CI runs it
 after installing the same Bun host used by the Wasm tests.
+
+## FIR3: bounded indexed state and initialized tables
+
+FIR3 (`0x33524946`) retains the FIR2 layout, with up to 262,144 state
+words (2 MiB). The complete artifact remains bounded to 4 MiB, and code to
+1 MiB. FIR1 and FIR2 remain accepted with their original limits.
+
+```seta
+state {
+    actors: i32[16384] = 0
+    stops: i32[3] = [12, 34, 56]
+    enabled: bool[2] = [true, false]
+}
+```
+
+A literal initializer fills every element. An explicit initializer must contain
+exactly the declared number of typed literals. Array capacity is a positive
+literal; the module owns all storage. `state.actors[index]` supports loads,
+assignment and compound assignment. Index expressions run once. There are no
+raw pointers, implicit resizing or host allocations in the guest protocol.
+
+| Opcode | Operation |
+| --- | --- |
+| 21 | Checked array load: accumulator is index, result replaces accumulator |
+| 22 | Checked array store: pop index, store accumulator, retain accumulator |
+
+The serialized operand packs the first state-word index in its low 32 bits and
+the positive word span in its high 32 bits. Validation requires the complete
+span to fit inside module state, and verifies the store's expression-stack
+consumption on all control-flow edges. Relocation occurs only in a private
+instruction copy; indexed instructions use module-relative byte offsets.
+Negative, out-of-span and full-width indices trap before accessing memory:
+SIGILL (`ud2`) in native ELF, VM memory trap in interpreter/JIT, and Wasm
+`unreachable`. No index is truncated to 32 bits before validation. These bounds
+checks and loads/stores lower to a constant number of instructions independent
+of table capacity, including the actual JIT path.
+
+All numeric values still use signed i64 word semantics. Setaworld deliberately
+uses millimetres and millidegrees; this extension does not add floats, rich
+records, actor syntax or collections. The extension suite checks large tables,
+explicit/broadcast initializers, type errors, index evaluation once, real JIT
+execution, all four bounds routes, module isolation, serialized-IR replay and
+malformed spans. The Wasm suite compiles FIR3 Seta source inside a byte-identical
+self-built Wasm compiler and executes its native and Wasm outputs.
