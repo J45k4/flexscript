@@ -17,6 +17,7 @@ global token_size = 0;
 global token_value = 0;
 global output = 0;
 global output_size = 0;
+global output_limit = 67108864;
 global globals = 0;
 global global_count = 0;
 global functions = 0;
@@ -274,7 +275,7 @@ fn expect(t) {
 }
 
 fn emit(b) {
-    if output_size >= 67108864 { fail("output exceeds 64 MiB"); }
+    if output_size >= output_limit {if output_limit==134217728 {fail("output exceeds 128 MiB");}fail("output exceeds 64 MiB");}
     store8(output + output_size, b);
     output_size = output_size + 1;
     return 0;
@@ -1088,7 +1089,7 @@ fn source_known(path, device, inode) {
 }
 
 fn load_module(path) {
-    let source_limit=16777216;if frontend_language {source_limit=33554432;}
+    let source_limit=16777216;if frontend_language {source_limit=33554432;}if frontend_language==3 {source_limit=134217728;}
     let remote = source_scheme(path);
     let requested = 0; let fd = -1; let device = -1; let inode = 0;
     if remote {
@@ -1113,7 +1114,7 @@ fn load_module(path) {
         if !source_deadline { source_deadline = net_now() + 30000; }
         let remaining = source_deadline - net_now();
         if remaining <= 0 { fail("URL import downloads timed out"); }
-        if arena_size >= source_limit-1 {if frontend_language {fail("frontend source must be smaller than 32 MiB");}fail("combined source must be smaller than 16 MiB");}
+        if arena_size >= source_limit-1 {if frontend_language==3 {fail("IR input must be smaller than 128 MiB");}if frontend_language {fail("frontend source must be smaller than 32 MiB");}fail("combined source must be smaller than 16 MiB");}
         if !http_get(path, source_limit-1 - arena_size, remaining) {
             print(2, "cannot fetch source URL: "); print(2, path); print(2, "\n");
             fail(net_message);
@@ -1136,7 +1137,7 @@ fn load_module(path) {
         https_free(); done = 1;
     }
     while !done {
-        if arena_size >= source_limit {if frontend_language {fail("frontend source must be smaller than 32 MiB");}fail("combined source must be smaller than 16 MiB");}
+        if arena_size >= source_limit {if frontend_language==3 {fail("IR input must be smaller than 128 MiB");}if frontend_language {fail("frontend source must be smaller than 32 MiB");}fail("combined source must be smaller than 16 MiB");}
         let n = syscall(0, fd, source_arena + arena_size, source_limit - arena_size, 0, 0, 0);
         if n == -4 { n = 0; }
         else if n < 0 { fail("cannot read source"); }
@@ -1817,7 +1818,7 @@ fn main(argc, argv) {
     }
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
-    if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=33554432;}
+    if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=134217728;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
@@ -1860,7 +1861,7 @@ fn main(argc, argv) {
     return 0;
 }
 fn compiler_initialize() {
-    let source_limit=16777216;if frontend_language {source_limit=33554432;}
+    let source_limit=16777216;if frontend_language {source_limit=33554432;}if frontend_language==3 {source_limit=134217728;}
     source_arena = alloc(source_limit);
     source = source_arena;
     output = alloc(67108864);

@@ -40,10 +40,20 @@ fn te_bad(source,message) {
 }
 fn te_reject(text,message) {h_save(t_fixture,h_cat("plugin test v1 {}\n",text));te_bad(t_fixture,message);return 0;}
 fn te_ir_bad(original,offset,value) {
-    let size=load64(original+8);let copy=alloc(size);let i=0;while i<size {store8(copy+i,load8(original+i));i=i+1;}store64(copy+offset,value);
-    let path=h_join(t_work,"bad.fir");h_save_bytes(path,copy,size,420);let before=h_sha(t_binary);
+    let size=load64(original+8);let previous=load64(original+offset);store64(original+offset,value);
+    let path=h_join(t_work,"bad.fir");h_save_bytes(path,original,size,420);store64(original+offset,previous);let before=h_sha(t_binary);
     let p=h_run(h_args(t_compiler,"--language","ir",path,"-o",t_binary));h_check(p,1,0);
     t_assert(h_has(h_err(p),"invalid frontend IR"),h_err(p));t_assert(h_equal(before,h_sha(t_binary)),"malformed IR changed output");return 0;
+}
+// Read a bounded large IR directly, without the text helper's64MiB cap or
+// geometric buffer reallocations for a maximum-state binary artifact.
+fn te_ir_read(path) {
+    let fd=syscall(2,path,0x80000,0,0,0,0);h_assert(fd>=0,"cannot read large IR");
+    let stat=alloc(144);h_assert(syscall(5,fd,stat,0,0,0,0)==0,"cannot stat large IR");
+    let size=load64(stat+48);h_assert(size>=64 && size<=134217728,"large IR read bound");
+    let blob=alloc(size);h_assert(blob>=0,"cannot allocate large IR");let used=0;
+    while used<size {let n=syscall(0,fd,blob+used,size-used,0,0,0);if n!=-4 {h_assert(n>0,"short large IR read");used=used+n;}}
+    h_close(fd);return blob;
 }
 fn te_extension(body) {
     let path=h_join(t_work,"parser.flex");let sdk=h_real("compiler/extension-sdk.flex");
@@ -122,7 +132,7 @@ fn te_arrays() {
     let path=h_join(t_work,"isolation.json");j_save(path,request);let result=j_parse(h_out(h_ok(h_args(te_bun,"scripts/wasm-runner.js",path,0,0,0))));
     let values=j_get(result,"values");t_assert(h_equal(j_value(j_at(values,0)),"6") && h_equal(j_value(j_at(values,1)),"7") && h_equal(j_value(j_at(values,2)),"6"),"Wasm initialized table state is isolated");
     te_reject("state {a:i32[0]=0} fn main()->i32{return 0}","array span");
-    te_reject("state {a:i32[2097153]=0} fn main()->i32{return 0}","array span");
+    te_reject("state {a:i32[8388609]=0} fn main()->i32{return 0}","array span");
     te_reject("state {a:i32[2]=[1]} fn main()->i32{return 0}","unexpected SetaScript token");
     te_reject("state {a:i32[2]=[1,2,3]} fn main()->i32{return 0}","unexpected SetaScript token");
     te_reject("state {a:bool[2]=[true,1]} fn main()->i32{return 0}","boolean state initializer");
@@ -152,7 +162,7 @@ fn te_world_tables() {
     t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR4 bundled and isolated external frontend agree");
     let args=h_args(t_compiler,"run","--interpret","--restricted","--memory=4m",t_fixture);
     let p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR4 respects explicit guest memory budget");
-    te_reject("state {a:i32[2097152]=0 b:i32=1} fn main()->i32{return 0}","too many IR state words");
+    te_reject("state {a:i32[8388608]=0 b:i32=1} fn main()->i32{return 0}","too many IR state words");
     return 0;
 }
 fn te_complete_scene_tables() {
@@ -174,11 +184,57 @@ fn te_complete_scene_tables() {
     let p=h_run(h_args(t_compiler,"run","--interpret","--restricted",t_fixture,0));h_check(p,1,0);
     t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR5 preserves default16MiB application budget");
     te_memory=0;
-    te_reject("state {a:i32[2097153]=0} fn main()->i32{return 0}","invalid state array span");
+    te_reject("state {a:i32[8388609]=0} fn main()->i32{return 0}","invalid state array span");
     let source=h_cat(h_repeat(" ",16777216),"plugin test v1 {} fn main()->i32{return 42}");
     t_program(source);te_compile(t_fixture,0,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),42,"");t_checks=t_checks+1;
     te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,0,t_binary);te_frontend=0;h_check(h_run(h_args(t_binary,0,0,0,0,0)),42,"");t_checks=t_checks+1;
     t_program(h_repeat(" ",33554432));te_bad(t_fixture,"frontend source must be smaller than 32 MiB");
+    return 0;
+}
+// FIR6 extends instruction capacity without relaxing any old artifact profile.
+fn te_large_code() {
+    te_frontend=0;
+    let functions="";let calls="";let f=0;while f<14 {functions=h_cat(functions,h_cat3("fn f",h_int(f),h_cat3("()->i32{let n=0 ",h_repeat("n+=1 ",1000),"return n}")));calls=h_cat(calls,h_cat3("n+=f",h_int(f),"() "));f=f+1;}
+    te_program(h_cat3("plugin test v1 {} state {a:i32[3]=[4,5,6]} ",functions,h_cat3("fn main()->i32{let n=0 ",calls,"state.a[1]=n-13958 return state.a[1]}")),42);
+    let artifact=h_join(t_work,"large-code.fir");te_compile(t_fixture,"ir",artifact);let original=h_read(artifact);
+    t_assert(load64(original)==0x36524946 && load64(original+32)>1048576 && load64(original+32)<4194304,"FIR6 bundled source crosses the old instruction limit");
+    t_assert(load64(original+56)==3,"FIR6 retains initialized indexed state");
+    te_language="ir";te_routes(artifact,42);te_language=0;
+    let copy=h_join(t_work,"large-code-copy.fir");te_language="ir";te_compile(artifact,"ir",copy);te_language=0;
+    t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR6 serialized replay remains unrelocated");
+    te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,"ir",copy);te_frontend=0;
+    t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR6 bundled and restricted external frontend agree");
+    let profile=0;while profile<5 {te_ir_bad(original,0,0x31524946+profile*16777216);profile=profile+1;}
+    te_ir_bad(original,32,4194320);te_ir_bad(original,56,8388609);
+    let code=load64(original+24);te_ir_bad(original,code+32,17);
+    te_ir_bad(original,code+32,10);let branch=h_read(artifact);store64(branch+code+32,10);te_ir_bad(branch,code+40,load64(original+32));
+    te_memory="--memory=32m";
+    te_program("plugin test v1 {} state {a:i32[2097153]=0} fn main()->i32{state.a[2097152]=42 return state.a[2097152]}",42);
+    let state_artifact=h_join(t_work,"large-state.fir");te_compile(t_fixture,"ir",state_artifact);let state_blob=h_read(state_artifact);
+    t_assert(load64(state_blob)==0x36524946 && load64(state_blob+32)<1048576 && load64(state_blob+56)==2097153,"FIR6 selects larger state independently of larger code");
+    te_ir_bad(state_blob,0,0x35524946);te_memory=0;
+    // The SDK admits exactly4MiB and rejects the very next instruction before
+    // a write. Append state after code to ensure profile6 cannot become5 again.
+    te_frontend=te_extension("ir_begin(\"answer\",6,0);ir_emit(1,8388607);ir_emit(21,8388608<<32);ir_emit(9,0);ir_end(0);ir_begin(\"main\",4,0);while ir_code_size<4194272 {ir_emit(1,0);}ir_emit(8,0);ir_emit(9,0);ir_end(0);let i=0;while i<8388608 {let value=0;if i==8388607 {value=42;}ir_state_word(value);i=i+1;}return ir_finish();");
+    // Generate the maximum SDK artifact natively: an external frontend may
+    // legitimately exhaust its unchanged60s/fuel quota before filling64MiB.
+    let generator=te_frontend;te_frontend=0;
+    h_save(generator,h_cat(h_read(generator),"\nfn main(argc,argv){let blob=frontend_compile(\"\",0,1,\"sdk-boundary\");let fd=syscall(2,load64(argv+8),577,420,0,0,0);if fd<0{return 1;}let size=load64(blob+8);while size>0{let n=syscall(1,fd,blob,size,0,0,0);if n<=0{return 1;}blob=blob+n;size=size-n;}syscall(3,fd,0,0,0,0,0);return 0;}"));
+    let generator_binary=h_join(t_work,"sdk-generator");te_compile(generator,0,generator_binary);
+    let maximum=h_join(t_work,"maximum-code.fir");h_ok(h_args(generator_binary,maximum,0,0,0,0));
+    original=te_ir_read(maximum);
+    t_assert(load64(original)==0x36524946 && load64(original+32)==4194304 && load64(original+56)==8388608 && load64(original+8)<134217728,"FIR6 exact code and state boundaries fit the bounded artifact budget");
+    te_memory="--memory=128m";te_language="ir";te_routes(maximum,42);te_language=0;te_memory=0;
+    let p=h_run(h_args(t_compiler,"run","--interpret","--restricted","--language=ir",maximum));h_check(p,1,0);
+    t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR6 preserves the default16MiB application budget");
+    // Keep a small valid output as the rejection sentinel instead of hashing
+    // the64MiB application repeatedly through the text/file helper.
+    te_compile("examples/seta/policy.seta",0,t_binary);
+    te_ir_bad(original,32,4194320);te_ir_bad(original,56,8388609);te_ir_bad(original,8,134217729);
+    let access=load64(original+24)+48;
+    te_ir_bad(original,access+8,0);te_ir_bad(original,access+8,(8388609<<32));te_ir_bad(original,access+8,(3<<32)|8388607);
+    te_frontend=te_extension("ir_begin(\"main\",4,0);while ir_code_size<4194304 {ir_emit(1,0);}ir_emit(1,0);return ir_finish();");
+    te_bad("examples/extensions/answer.postfix","frontend IR exceeds 4 MiB");te_frontend=0;
     return 0;
 }
 fn te_function_graphs() {
@@ -289,7 +345,7 @@ fn suite(compiler) {
     let p=h_run(h_args(t_compiler,"--frontend",te_frontend,"examples/extensions/answer.postfix","-o",alias));h_check(p,1,0);
     t_assert(h_has(h_err(p),"frontend source file") && h_equal(hash,h_sha(alias)),"output must preserve extension inputs");
     te_frontend=0;te_state_io();te_arrays();te_world_tables();te_complete_scene_tables();
-    te_function_graphs();
+    te_function_graphs();te_large_code();
     return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}

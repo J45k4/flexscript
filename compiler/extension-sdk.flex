@@ -24,21 +24,21 @@ fn ir_error(message,offset) {
 fn ir_init(text,size,path,version) {
     ir_source=text;ir_source_size=size;ir_path=path;
     if version!=1 {ir_error("unsupported frontend API version",0);}
-    ir_code=alloc(1048576);ir_functions=alloc(2048*64);ir_names=alloc(524288);
+    ir_code=alloc(4194304);ir_functions=alloc(2048*64);ir_names=alloc(524288);
     if ir_code<0 || ir_functions<0 || ir_names<0 {ir_error("frontend allocation failed",0);}
     ir_code_size=0;ir_count=0;ir_names_size=0;ir_current=-1;
-    ir_profile=1;ir_state=alloc(2097152*8);ir_state_count=0;
+    ir_profile=1;ir_state=alloc(8388608*8);ir_state_count=0;
     if ir_state<0 {ir_error("frontend allocation failed",0);}return 0;
 }
 fn ir_state_word(value) {
-    if ir_state_count>=2097152 {ir_error("too many IR state words",0);}
-    if ir_profile<2 {ir_profile=2;}let index=ir_state_count;store64(ir_state+index*8,value);ir_state_count=index+1;if ir_state_count>2048 && ir_profile<3 {ir_profile=3;}if ir_state_count>262144 && ir_profile<4 {ir_profile=4;}if ir_state_count>1048576 {ir_profile=5;}return index;
+    if ir_state_count>=8388608 {ir_error("too many IR state words",0);}
+    if ir_profile<2 {ir_profile=2;}let index=ir_state_count;store64(ir_state+index*8,value);ir_state_count=index+1;if ir_state_count>2048 && ir_profile<3 {ir_profile=3;}if ir_state_count>262144 && ir_profile<4 {ir_profile=4;}if ir_state_count>1048576 && ir_profile<5 {ir_profile=5;}if ir_state_count>2097152 {ir_profile=6;}return index;
 }
 fn ir_emit(op,arg) {
     if (op==19 || op==20) && ir_profile<2 {ir_profile=2;}
     if (op==21 || op==22) && ir_profile<3 {ir_profile=3;}
-    if ir_code_size>=1048576 {ir_error("frontend IR exceeds 1 MiB",0);}
-    let at=ir_code_size;store64(ir_code+at,op);store64(ir_code+at+8,arg);ir_code_size=at+16;return at;
+    if ir_code_size>=4194304 {ir_error("frontend IR exceeds 4 MiB",0);}
+    let at=ir_code_size;store64(ir_code+at,op);store64(ir_code+at+8,arg);ir_code_size=at+16;if ir_code_size>1048576 {ir_profile=6;}return at;
 }
 fn ir_patch(at,value) {
     if at<0 || at>=ir_code_size || at%16 {ir_error("invalid IR patch",0);}
@@ -60,14 +60,15 @@ fn ir_finish() {
     let code_at=64+ir_count*64;let names_at=code_at+ir_code_size;let total=names_at+ir_names_size+ir_state_count*8;
     if total>4194304 && ir_profile<4 {ir_profile=4;}
     if total>16777216 && ir_profile<5 {ir_profile=5;}
-    if total>33554432 {ir_error("frontend IR exceeds 32 MiB",0);}
+    if total>33554432 {ir_profile=6;}
+    if total>134217728 {ir_error("frontend IR exceeds 128 MiB",0);}
     let blob=alloc(total);if blob<0 {ir_error("frontend allocation failed",0);}
-    let magic=0x31524946;if ir_profile==2 {magic=0x32524946;}else if ir_profile==3 {magic=0x33524946;}else if ir_profile==4 {magic=0x34524946;}else if ir_profile==5 {magic=0x35524946;}
+    let magic=0x31524946;if ir_profile==2 {magic=0x32524946;}else if ir_profile==3 {magic=0x33524946;}else if ir_profile==4 {magic=0x34524946;}else if ir_profile==5 {magic=0x35524946;}else if ir_profile==6 {magic=0x36524946;}
     store64(blob,magic);store64(blob+8,total);store64(blob+16,ir_count);store64(blob+56,ir_state_count);
     store64(blob+24,code_at);store64(blob+32,ir_code_size);store64(blob+40,names_at);store64(blob+48,ir_names_size);
     let i=0;while i<ir_count*64 {store8(blob+64+i,load8(ir_functions+i));i=i+1;}
     i=0;while i<ir_code_size {store8(blob+code_at+i,load8(ir_code+i));i=i+1;}
     i=0;while i<ir_names_size {store8(blob+names_at+i,load8(ir_names+i));i=i+1;}
-    i=0;while i<ir_state_count*8 {store8(blob+names_at+ir_names_size+i,load8(ir_state+i));i=i+1;}
+    i=0;while i<ir_state_count*8 {store64(blob+names_at+ir_names_size+i,load64(ir_state+i));i=i+8;}
     return blob;
 }

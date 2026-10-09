@@ -315,6 +315,38 @@ bundled/external equality, application-memory limits and frontend-source bounds.
 The Wasm suite builds maximum-state FIR5 native and Wasm applications using
 the self-built compiler running inside Wasm, then executes both outputs.
 
+## FIR6: larger engine instruction streams
+
+FIR6 (`0x36524946`) permits 4 MiB of instruction code, 8,388,608 state words
+(64 MiB), and a 128 MiB serialized artifact. Function, local-slot, checked-array,
+execution-fuel and application-memory limits remain
+unchanged. FIR1 through FIR5 still reject instruction streams above 1 MiB.
+
+The SDK allocates a bounded 4 MiB instruction buffer and selects FIR6 as soon
+as code exceeds 1 MiB, state exceeds 2,097,152 words, or the serialized artifact
+exceeds 32 MiB. Appending state after code preserves that selection.
+Smaller programs continue to serialize with their existing profile tags.
+The restricted external-frontend heap is bounded at 256 MiB, with the same
+one-billion-instruction and 60-second limits. Compilation uses a 128 MiB
+state-image budget and FIR6 native/Wasm output bound; earlier profiles keep
+their 64 MiB output bound. Application execution retains its default 16 MiB budget.
+Maximum-state FIR6 programs require `flex run --memory=128m ...`. Frontend source
+remains smaller than 32 MiB; saved IR input may be smaller than 128 MiB.
+
+Artifacts are validated before relocation or execution on every backend;
+changing a larger artifact's tag to an older profile is rejected.
+
+This permits a complete engine to include movement, replication, trains,
+vehicle models and camera logic without removing features to fit the previous
+code bound. It does not change native or Wasm output formats.
+
+The extension suite exercises a large Seta source through bundled and
+restricted external frontends; interpreter, JIT, native and Wasm execution;
+byte-identical saved-IR replay; a native SDK fixture with exact 4 MiB code
+combined with maximum state;
+overflow and malformed-instruction rejection; and the unchanged guest-memory
+budget. Compiler stage2 and stage3 must remain byte-identical.
+
 ## Bounded Seta function graphs
 
 The Seta frontend accepts at most 1,024 functions, including `main`. Its fixed

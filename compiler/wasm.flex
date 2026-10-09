@@ -211,7 +211,7 @@ fn w_allocator() {
     w_patch_length(w_body);return 0;
 }
 fn wasm_finish() {
-    w_ir=output;w_ir_size=output_size;output=alloc(67108864);output_size=0;
+    w_ir=output;w_ir_size=output_size;output=alloc(output_limit);output_size=0;
     w_imports=alloc(14*8);w_blocks=alloc((w_ir_size/16+1)*8);
     if output<0 || w_imports<0 || w_blocks<0 {fail("cannot allocate WebAssembly output");}
     let i=0;while i<14 {store64(w_imports+i*8,-1);i=i+1;}

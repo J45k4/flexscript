@@ -227,7 +227,7 @@ fn s_state_definition() {
         while i<s_state_count {let f=s_state_fields+i*40;if s_equal(load64(f),load64(f+8),name,size) {s_fail("duplicate engine state field");}i=i+1;}
         if s_state_count>=2048 {s_fail("too many engine state fields");}
         s_next();s_expect(58);let ty=s_type();let span=0;
-        if s_token==91 {s_next();span=s_literal();if span<1 || span>2097152 {s_fail("invalid state array span");}s_expect(93);if ir_profile<3 {ir_profile=3;}}
+        if s_token==91 {s_next();span=s_literal();if span<1 || span>8388608 {s_fail("invalid state array span");}s_expect(93);if ir_profile<3 {ir_profile=3;}}
         s_expect(61);let base=ir_state_count;
         if span && s_token==91 {
             s_next();i=0;while i<span {ir_state_word(s_initializer(ty));i=i+1;if i<span {s_expect(44);}}
