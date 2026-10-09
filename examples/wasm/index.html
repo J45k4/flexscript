@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Flexscript WebAssembly</title>
+<pre id="output"></pre>
+<script type="module">
+import { instantiateFlexscript } from '../../platform/wasm-host.js'
+const output = document.getElementById('output')
+const decoder = new TextDecoder()
+try {
+    const response = await fetch('./hello.wasm')
+    if (!response.ok) throw new Error(`Module fetch failed: ${response.status}`)
+    const app = await instantiateFlexscript(await response.arrayBuffer(), {
+        stdout(bytes) { output.textContent += decoder.decode(bytes, { stream: true }) },
+        stderr(bytes) { output.textContent += decoder.decode(bytes, { stream: true }) },
+    })
+    app.run()
+} catch (error) { output.textContent += String(error) }
+</script>
+</html>

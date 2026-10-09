@@ -1,0 +1,19 @@
+plugin flex.policy v1 {}
+
+cosmetic fn mode(plane: bool, car: bool, train: bool) -> i32 {
+    return plane ? 0 : car ? 1 : train ? 2 : 3
+}
+
+fn score(count: i32) -> i32 {
+    let total: i32 = 0
+    for i in 0..8 {
+        if i < count { total += i * 2 }
+    }
+    return total
+}
+
+fn main() -> i32 {
+    let enabled = not false and (true or 1 / 0 == 0)
+    repeat (2) { enabled = not enabled }
+    return enabled ? score(7) + mode(false, true, false) - 1 : 0
+}

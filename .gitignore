@@ -2,3 +2,5 @@
 /dist/
 __pycache__/
 /flexscript-todos.db*
+# Locally compiled browser example.
+/examples/wasm/hello.wasm

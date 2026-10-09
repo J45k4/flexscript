@@ -339,7 +339,8 @@ fn vm_number(text) {
 }
 fn vm_prefix(text,prefix) {return equal(text,length(prefix),prefix,length(prefix));}
 fn vm_help(fd) {
-    print(fd,"Usage: flex run [options] <source.flex> [args...]\n");
+    print(fd,"Usage: flex run [options] <source> [args...]\n");
+    print(fd,"  --language NAME      flex, seta or ir (.seta is detected automatically)\n  --frontend PATH      run a Flexscript frontend extension in a bounded VM\n");
     print(fd,"  --interpret          bytecode interpreter only\n  --jit                compile eligible functions on first call\n  --stats              report interpreter/JIT counters\n");
     print(fd,"  --fuel=N             instruction budget (default 10000000)\n  --memory=N           guest heap bytes; k/m suffixes accepted (default 16m)\n  --timeout-ms=N       execution deadline (default 5000)\n");
     print(fd,"  --restricted        use isolated guest memory and capability-limited host calls\n");
@@ -378,6 +379,12 @@ fn vm_main(argc,argv) {
         else if up_text(arg,"--allow-stdin") {vm_stdin=1;}
         else if up_text(arg,"--allow-url-imports") {imports=1;}
         else if up_text(arg,"--no-url-imports") {imports=0;}
+        else if up_text(arg,"--language") || up_text(arg,"--frontend") {
+            first=first+1;if first>=argc {vm_help(2);return 1;}
+            if up_text(arg,"--language") {frontend_select(load64(argv+first*8));}else {frontend_external(load64(argv+first*8));}
+        }
+        else if vm_prefix(arg,"--language=") {frontend_select(arg+11);}
+        else if vm_prefix(arg,"--frontend=") {frontend_external(arg+11);}
         else if vm_prefix(arg,"--allow-read=") {root=arg+13;if !length(root) {vm_help(2);return 1;}}
         else if vm_prefix(arg,"--fuel=") {vm_fuel=vm_number(arg+7);if vm_fuel<0 {vm_help(2);return 1;}}
         else if vm_prefix(arg,"--memory=") {vm_heap_limit=vm_number(arg+9);if vm_heap_limit<4096 {vm_help(2);return 1;}}
@@ -396,8 +403,9 @@ fn vm_main(argc,argv) {
         let n=syscall(89,path,vm_root_name,4095,0,0,0);
         if n<0 {return 70;}store8(vm_root_name+n,0);
     }
-    source_path=load64(argv+first*8);vm_mode=1;compiler_initialize();load_module(source_path);
-    initialize_output();compile_modules();select_module(0);token_start=source_size;resolve();
+    source_path=load64(argv+first*8);frontend_auto(source_path);vm_mode=1;compiler_initialize();load_module(source_path);
+    initialize_output();if frontend_language {frontend_compile_modules();}else {compile_modules();}
+    select_module(0);token_start=source_size;resolve();
     let main_index=find(functions,function_count,"main",4);let count=load64(functions+main_index*32+24);
     if count==2 {
         let guest_argc=argc-first;let guest_argv=vm_allocate((guest_argc+1)*8);

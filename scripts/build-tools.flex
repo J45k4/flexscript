@@ -11,6 +11,8 @@ fn main(argc,argv) {
     h_add(names,"test-ffi");
     h_add(names,"test-network");
     h_add(names,"test-vm");
+    h_add(names,"test-wasm");
+    h_add(names,"test-extensions");
     h_add(names,"test-tetris");
     h_add(names,"test-todo");
     h_add(names,"test-http");

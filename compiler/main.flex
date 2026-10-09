@@ -2,6 +2,9 @@ import "../lib/http.flex";
 import "../lib/signature.flex";
 import "../vm/runtime.flex";
 import "baremetal.flex";
+import "wasm.flex";
+import "ir.flex";
+import "extensions.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
@@ -1141,7 +1144,9 @@ fn load_module(path) {
     }
     if fd >= 0 { syscall(3, fd, 0, 0, 0, 0, 0); }
     store64(module + 16, size);
-    select_module(index); next();
+    select_module(index);
+    if frontend_language {store64(module+40,2);return index;}
+    next();
     import_depth = import_depth + 1;
     while token == 256 && is("import") {
         let site = token_start;
@@ -1785,30 +1790,48 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript --target baremetal-x86_64 <source.flex> -o <kernel.bin>\n       flex upgrade [--check]\n       flex run [options] <source.flex> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--target wasm32|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n"); return 0;
         }
     }
     let first=1;
-    if argc==6 && up_text(load64(argv+8),"--target") {
-        if !up_text(load64(argv+16),"baremetal-x86_64") {print(2,"unknown compiler target\n");return 1;}
-        baremetal_target=1;first=3;
-    }else if argc != 4 { print(2, "Usage: flexscript [--target baremetal-x86_64] <source.flex> -o <binary>\n"); return 1; }
+    let target_seen=0;
+    while first<argc && load8(load64(argv+first*8))==45 {
+        let arg=load64(argv+first*8);if first+1>=argc {print(2,"compiler option needs a value\n");return 1;}
+        let value=load64(argv+(first+1)*8);
+        if up_text(arg,"--target") {
+            if target_seen {print(2,"choose only one compiler target\n");return 1;}target_seen=1;
+            if up_text(value,"baremetal-x86_64") {baremetal_target=1;}
+            else if up_text(value,"wasm32") {wasm_target=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"ir") {frontend_ir_target=1;}
+            else {print(2,"unknown compiler target\n");return 1;}
+        }else if up_text(arg,"--language") {frontend_select(value);}
+        else if up_text(arg,"--frontend") {frontend_external(value);}
+        else {print(2,"unknown compiler option\n");return 1;}
+        first=first+2;
+    }
+    if argc!=first+3 {print(2,"Usage: flexscript [options] <source> -o <output>\n");return 1;}
     let option = load64(argv + (first+1)*8);
     if !equal(option, length(option), "-o", 2) {
         print(2, "expected -o <binary>\n"); return 1;
     }
     source_path = load64(argv + first*8);
+    frontend_auto(source_path);
+    if frontend_language {vm_mode=1;vm_restricted=1;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
     }
     compiler_initialize();
+    if wasm_target {wasm_initialize();}
     load_module(source_path);
     initialize_output();
-    compile_modules();
+    if frontend_language {frontend_compile_modules();}else {compile_modules();}
     select_module(0);
     token_start = source_size;
     resolve();
+    if frontend_ir_target {output=frontend_blob;output_size=frontend_blob_size;}
+    else if wasm_target {wasm_finish();}
+    else if frontend_language {ir_native();}
     let stat = input_stat;
     // O_NOFOLLOW prevents writing through output symlinks. No output is opened
     // until the complete source has passed compilation and symbol resolution.
@@ -1824,9 +1847,14 @@ fn main(argc, argv) {
         }
         i = i + 1;
     }
+    i=0;while i<frontend_input_count {
+        if load64(stat)==load64(frontend_inputs+i*16) && load64(stat+8)==load64(frontend_inputs+i*16+8) {fail("output refers to a frontend source file");}
+        i=i+1;
+    }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
-    if syscall(91, fd, 493, 0, 0, 0, 0) < 0 { fail("cannot make output executable"); }
+    let mode=493;if wasm_target || frontend_ir_target {mode=420;}
+    if syscall(91, fd, mode, 0, 0, 0, 0) < 0 { fail("cannot set output permissions"); }
     if syscall(3, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot close output"); }
     return 0;
 }
