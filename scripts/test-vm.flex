@@ -398,6 +398,10 @@ fn suite(compiler) {
     h_check(p,70,0);
     t_assert(h_has(h_err(p),"deadline exceeded"),h_err(p));
     let bad=h_args("--fuel=0","--fuel=-1","--memory=1","--timeout-ms=0","--fuel=99999999999999999999","--unknown");
+    h_add(bad,"--fuel=1000000000001");
+    h_add(bad,"--fuel=1000000000000m");
+    h_add(bad,"--memory=1000000001");
+    h_add(bad,"--timeout-ms=1000000001");
     h_add(bad,"--allow-read=");
     i=0;
     while i<h_count(bad) {
@@ -405,6 +409,10 @@ fn suite(compiler) {
         t_checks=t_checks+1;
         i=i+1;
     }
+    h_check(tv_run("--interpret",h_args("--fuel=20000000000",0,0,0,0,0),"examples/vm-compute.flex",0),0,0);
+    t_checks=t_checks+1;
+    h_check(tv_run("--jit",h_args("--fuel=1000000000000",0,0,0,0,0),"examples/vm-compute.flex",0),0,0);
+    t_checks=t_checks+1;
     h_check(tv_run(0,0,0,0),1,0);
     t_checks=t_checks+1;
     h_check(tv_run("--help",0,0,0),0,0);

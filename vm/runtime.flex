@@ -343,17 +343,19 @@ fn vm_word_io(reading) {
     }
     if vm_error {return -1;}return load64(address);
 }
-fn vm_number(text) {
+fn vm_number_limit(text,limit) {
     let n=0;let i=0;
     while digit(load8(text+i)) {
-        if n>1000000000 {return -1;}n=n*10+load8(text+i)-48;i=i+1;
+        let d=load8(text+i)-48;
+        if n>(limit-d)/10 {return -1;}n=n*10+d;i=i+1;
     }
     if !i {return -1;}
     let c=load8(text+i);
-    if c==109 || c==77 {n=n*1048576;i=i+1;}
-    else if c==107 || c==75 {n=n*1024;i=i+1;}
-    if load8(text+i) || n<=0 || n>1000000000 {return -1;}return n;
+    if c==109 || c==77 {if n>limit/1048576 {return -1;}n=n*1048576;i=i+1;}
+    else if c==107 || c==75 {if n>limit/1024 {return -1;}n=n*1024;i=i+1;}
+    if load8(text+i) || n<=0 || n>limit {return -1;}return n;
 }
+fn vm_number(text) {return vm_number_limit(text,1000000000);}
 fn vm_prefix(text,prefix) {return equal(text,length(prefix),prefix,length(prefix));}
 fn vm_help(fd) {
     print(fd,"Usage: flex run [options] <source> [args...]\n");
@@ -403,7 +405,7 @@ fn vm_main(argc,argv) {
         else if vm_prefix(arg,"--language=") {frontend_select(arg+11);}
         else if vm_prefix(arg,"--frontend=") {frontend_external(arg+11);}
         else if vm_prefix(arg,"--allow-read=") {root=arg+13;if !length(root) {vm_help(2);return 1;}}
-        else if vm_prefix(arg,"--fuel=") {vm_fuel=vm_number(arg+7);if vm_fuel<0 {vm_help(2);return 1;}}
+        else if vm_prefix(arg,"--fuel=") {vm_fuel=vm_number_limit(arg+7,1000000000000);if vm_fuel<0 {vm_help(2);return 1;}}
         else if vm_prefix(arg,"--memory=") {vm_heap_limit=vm_number(arg+9);if vm_heap_limit<4096 {vm_help(2);return 1;}}
         else if vm_prefix(arg,"--timeout-ms=") {vm_timeout=vm_number(arg+13);if vm_timeout<0 {vm_help(2);return 1;}}
         else {vm_help(2);return 1;}
