@@ -1088,6 +1088,7 @@ fn source_known(path, device, inode) {
 }
 
 fn load_module(path) {
+    let source_limit=16777216;if frontend_language {source_limit=33554432;}
     let remote = source_scheme(path);
     let requested = 0; let fd = -1; let device = -1; let inode = 0;
     if remote {
@@ -1112,8 +1113,8 @@ fn load_module(path) {
         if !source_deadline { source_deadline = net_now() + 30000; }
         let remaining = source_deadline - net_now();
         if remaining <= 0 { fail("URL import downloads timed out"); }
-        if arena_size >= 16777215 { fail("combined source must be smaller than 16 MiB"); }
-        if !http_get(path, 16777215 - arena_size, remaining) {
+        if arena_size >= source_limit-1 {if frontend_language {fail("frontend source must be smaller than 32 MiB");}fail("combined source must be smaller than 16 MiB");}
+        if !http_get(path, source_limit-1 - arena_size, remaining) {
             print(2, "cannot fetch source URL: "); print(2, path); print(2, "\n");
             fail(net_message);
         }
@@ -1135,8 +1136,8 @@ fn load_module(path) {
         https_free(); done = 1;
     }
     while !done {
-        if arena_size >= 16777216 { fail("combined source must be smaller than 16 MiB"); }
-        let n = syscall(0, fd, source_arena + arena_size, 16777216 - arena_size, 0, 0, 0);
+        if arena_size >= source_limit {if frontend_language {fail("frontend source must be smaller than 32 MiB");}fail("combined source must be smaller than 16 MiB");}
+        let n = syscall(0, fd, source_arena + arena_size, source_limit - arena_size, 0, 0, 0);
         if n == -4 { n = 0; }
         else if n < 0 { fail("cannot read source"); }
         else if n == 0 { done = 1; }
@@ -1816,7 +1817,7 @@ fn main(argc, argv) {
     }
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
-    if frontend_language {vm_mode=1;vm_restricted=1;}
+    if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=33554432;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
@@ -1859,7 +1860,8 @@ fn main(argc, argv) {
     return 0;
 }
 fn compiler_initialize() {
-    source_arena = alloc(16777216);
+    let source_limit=16777216;if frontend_language {source_limit=33554432;}
+    source_arena = alloc(source_limit);
     source = source_arena;
     output = alloc(67108864);
     globals = alloc(2048 * 32);

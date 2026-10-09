@@ -3,6 +3,7 @@ import "lib/harness.flex";
 global te_bun=0;
 global te_frontend=0;
 global te_language=0;
+global te_memory=0;
 fn te_compile(source,target,out) {
     let args=h_args(t_compiler,0,0,0,0,0);
     if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}
@@ -18,10 +19,10 @@ fn te_wasm(module,expected) {
 }
 fn te_routes(source,expected) {
     let args=h_args(t_compiler,"run","--interpret","--restricted",0,0);
-    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}h_add(args,source);
+    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}if te_memory {h_add(args,te_memory);}h_add(args,source);
     h_check(h_run(args),expected,"");t_checks=t_checks+1;
     args=h_args(t_compiler,"run","--jit","--stats",0,0);
-    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}h_add(args,source);
+    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}if te_memory {h_add(args,te_memory);}h_add(args,source);
     let jit=h_run(args);h_check(jit,expected,"");
     t_assert(!h_has(h_err(jit),"JIT compilations: 0;"),"extension IR uses the existing JIT");
     te_compile(source,0,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),expected,"");t_checks=t_checks+1;
@@ -121,7 +122,7 @@ fn te_arrays() {
     let path=h_join(t_work,"isolation.json");j_save(path,request);let result=j_parse(h_out(h_ok(h_args(te_bun,"scripts/wasm-runner.js",path,0,0,0))));
     let values=j_get(result,"values");t_assert(h_equal(j_value(j_at(values,0)),"6") && h_equal(j_value(j_at(values,1)),"7") && h_equal(j_value(j_at(values,2)),"6"),"Wasm initialized table state is isolated");
     te_reject("state {a:i32[0]=0} fn main()->i32{return 0}","array span");
-    te_reject("state {a:i32[1048577]=0} fn main()->i32{return 0}","array span");
+    te_reject("state {a:i32[2097153]=0} fn main()->i32{return 0}","array span");
     te_reject("state {a:i32[2]=[1]} fn main()->i32{return 0}","unexpected SetaScript token");
     te_reject("state {a:i32[2]=[1,2,3]} fn main()->i32{return 0}","unexpected SetaScript token");
     te_reject("state {a:bool[2]=[true,1]} fn main()->i32{return 0}","boolean state initializer");
@@ -151,7 +152,33 @@ fn te_world_tables() {
     t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR4 bundled and isolated external frontend agree");
     let args=h_args(t_compiler,"run","--interpret","--restricted","--memory=4m",t_fixture);
     let p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR4 respects explicit guest memory budget");
-    te_reject("state {a:i32[1048576]=0 b:i32=1} fn main()->i32{return 0}","too many IR state words");
+    te_reject("state {a:i32[2097152]=0 b:i32=1} fn main()->i32{return 0}","too many IR state words");
+    return 0;
+}
+fn te_complete_scene_tables() {
+    te_frontend=0;te_memory="--memory=32m";
+    te_program("plugin test v1 {} state {a:i32[2097148]=0 b:i32[3]=[4,5,6] guard:i32=99} fn main()->i32{state.a[2097147]=state.b[1]*8+2 return state.guard==99 ? state.a[2097147] : 1}",42);
+    let artifact=h_join(t_work,"scene.fir");te_compile(t_fixture,"ir",artifact);let original=h_read(artifact);
+    t_assert(load64(original)==0x35524946 && load64(original+56)==2097152,"FIR5 two-million-word state");
+    t_assert(load64(original+8)>16777216 && load64(original+32)<8192,"FIR5 large data remains constant-size indexed code");
+    te_ir_bad(original,0,0x34524946);te_ir_bad(original,0,0x33524946);te_ir_bad(original,56,2097153);te_ir_bad(original,56,-1);
+    let code=load64(original+24);let pc=0;let access=-1;
+    while pc<load64(original+32) {if load64(original+code+pc)==21 {access=code+pc;}pc=pc+16;}
+    t_assert(access>=0,"FIR5 checked indexed opcode");
+    te_ir_bad(original,access+8,0);te_ir_bad(original,access+8,(2097153<<32));te_ir_bad(original,access+8,(3<<32)|2097151);
+    te_language="ir";te_routes(artifact,42);te_language=0;
+    let copy=h_join(t_work,"scene-copy.fir");te_language="ir";te_compile(artifact,"ir",copy);te_language=0;
+    t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR5 serialized replay remains unrelocated");
+    te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,"ir",copy);te_frontend=0;
+    t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR5 bundled and restricted external frontend agree");
+    let p=h_run(h_args(t_compiler,"run","--interpret","--restricted",t_fixture,0));h_check(p,1,0);
+    t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR5 preserves default16MiB application budget");
+    te_memory=0;
+    te_reject("state {a:i32[2097153]=0} fn main()->i32{return 0}","invalid state array span");
+    let source=h_cat(h_repeat(" ",16777216),"plugin test v1 {} fn main()->i32{return 42}");
+    t_program(source);te_compile(t_fixture,0,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),42,"");t_checks=t_checks+1;
+    te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,0,t_binary);te_frontend=0;h_check(h_run(h_args(t_binary,0,0,0,0,0)),42,"");t_checks=t_checks+1;
+    t_program(h_repeat(" ",33554432));te_bad(t_fixture,"frontend source must be smaller than 32 MiB");
     return 0;
 }
 fn suite(compiler) {
@@ -230,7 +257,7 @@ fn suite(compiler) {
     let alias=h_join(t_work,"sdk-alias.flex");h_ok(h_args("ln",sdk_copy,alias,0,0,0));let hash=h_sha(alias);
     let p=h_run(h_args(t_compiler,"--frontend",te_frontend,"examples/extensions/answer.postfix","-o",alias));h_check(p,1,0);
     t_assert(h_has(h_err(p),"frontend source file") && h_equal(hash,h_sha(alias)),"output must preserve extension inputs");
-    te_frontend=0;te_state_io();te_arrays();te_world_tables();
+    te_frontend=0;te_state_io();te_arrays();te_world_tables();te_complete_scene_tables();
     let funcs="";let k=0;while k<511 {funcs=h_cat3(funcs,"fn f",h_cat3(h_int(k),"()->i32{return 42} ",""));k=k+1;}
     te_program(h_cat3("plugin test v1 {} ",funcs,"fn main()->i32{return f510()}"),42);
     te_frontend="examples/extensions/seta.flex";te_routes(t_fixture,42);te_frontend=0;

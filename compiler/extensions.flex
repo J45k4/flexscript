@@ -27,9 +27,9 @@ fn frontend_child(fd,text,size,path) {
     // bounded memory, fuel and time, and no file, network or raw FFI grants.
     source_path=frontend_path;module_count=0;arena_size=0;import_depth=0;source_deadline=0;
     function_count=0;global_count=0;call_count=0;output_size=0;frontend_language=0;
-    vm_mode=1;vm_restricted=1;wasm_target=0;vm_heap_limit=67108864;vm_heap_used=16;
+    vm_mode=1;vm_restricted=1;wasm_target=0;vm_heap_limit=134217728;vm_heap_used=16;
     vm_sp=0;vm_depth=0;vm_local_base=0;vm_local_top=0;vm_finished=0;vm_error=0;vm_steps=0;
-    vm_fuel=500000000;vm_timeout=30000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
+    vm_fuel=1000000000;vm_timeout=60000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
     vm_jit_enabled=1;vm_jit_explicit=0;vm_jit_threshold=1;
     if !vm_initialize() {fail("cannot initialize frontend VM");}
     compiler_initialize();load_module(frontend_path);compile_modules();vm_resolve();
@@ -42,7 +42,7 @@ fn frontend_child(fd,text,size,path) {
     source_path=path;source=text;source_size=size;token_start=0;
     if vm_error || vm_depth {fail("frontend execution failed (trap, capability, budget or early exit)");}
     let address=vm_address(vm_acc,64);if !address {fail("frontend returned an invalid IR pointer");}
-    let total=load64(address+8);if total<64 || total>16777216 {fail("frontend returned an invalid IR size");}
+    let total=load64(address+8);if total<64 || total>33554432 {fail("frontend returned an invalid IR size");}
     address=vm_address(vm_acc,total);if !address {fail("frontend returned IR outside guest memory");}
     let ids=alloc(8+module_count*16);store64(ids,module_count);let i=0;
     while i<module_count {store64(ids+8+i*16,load64(modules+i*64+24));store64(ids+16+i*16,load64(modules+i*64+32));i=i+1;}
@@ -50,7 +50,7 @@ fn frontend_child(fd,text,size,path) {
     syscall(3,fd,0,0,0,0,0);syscall(60,0,0,0,0,0,0);return 0;
 }
 fn frontend_run() {
-    let pipes=alloc(8);let status=alloc(8);let capacity=16777216+4104;let received=alloc(capacity);
+    let pipes=alloc(8);let status=alloc(8);let capacity=33554432+4104;let received=alloc(capacity);
     if pipes<0 || status<0 || received<0 {fail("cannot allocate frontend transport");}
     if syscall(293,pipes,524288,0,0,0,0)<0 {fail("external frontends require a Linux compiler host");}
     let read_fd=load64(pipes)&4294967295;let write_fd=(load64(pipes)>>32)&4294967295;

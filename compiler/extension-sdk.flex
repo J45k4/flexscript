@@ -27,12 +27,12 @@ fn ir_init(text,size,path,version) {
     ir_code=alloc(1048576);ir_functions=alloc(2048*64);ir_names=alloc(524288);
     if ir_code<0 || ir_functions<0 || ir_names<0 {ir_error("frontend allocation failed",0);}
     ir_code_size=0;ir_count=0;ir_names_size=0;ir_current=-1;
-    ir_profile=1;ir_state=alloc(1048576*8);ir_state_count=0;
+    ir_profile=1;ir_state=alloc(2097152*8);ir_state_count=0;
     if ir_state<0 {ir_error("frontend allocation failed",0);}return 0;
 }
 fn ir_state_word(value) {
-    if ir_state_count>=1048576 {ir_error("too many IR state words",0);}
-    if ir_profile<2 {ir_profile=2;}let index=ir_state_count;store64(ir_state+index*8,value);ir_state_count=index+1;if ir_state_count>2048 && ir_profile<3 {ir_profile=3;}if ir_state_count>262144 {ir_profile=4;}return index;
+    if ir_state_count>=2097152 {ir_error("too many IR state words",0);}
+    if ir_profile<2 {ir_profile=2;}let index=ir_state_count;store64(ir_state+index*8,value);ir_state_count=index+1;if ir_state_count>2048 && ir_profile<3 {ir_profile=3;}if ir_state_count>262144 && ir_profile<4 {ir_profile=4;}if ir_state_count>1048576 {ir_profile=5;}return index;
 }
 fn ir_emit(op,arg) {
     if (op==19 || op==20) && ir_profile<2 {ir_profile=2;}
@@ -59,9 +59,10 @@ fn ir_finish() {
     if ir_current>=0 {ir_error("unfinished IR function",0);}
     let code_at=64+ir_count*64;let names_at=code_at+ir_code_size;let total=names_at+ir_names_size+ir_state_count*8;
     if total>4194304 && ir_profile<4 {ir_profile=4;}
-    if total>16777216 {ir_error("frontend IR exceeds 16 MiB",0);}
+    if total>16777216 && ir_profile<5 {ir_profile=5;}
+    if total>33554432 {ir_error("frontend IR exceeds 32 MiB",0);}
     let blob=alloc(total);if blob<0 {ir_error("frontend allocation failed",0);}
-    let magic=0x31524946;if ir_profile==2 {magic=0x32524946;}else if ir_profile==3 {magic=0x33524946;}else if ir_profile==4 {magic=0x34524946;}
+    let magic=0x31524946;if ir_profile==2 {magic=0x32524946;}else if ir_profile==3 {magic=0x33524946;}else if ir_profile==4 {magic=0x34524946;}else if ir_profile==5 {magic=0x35524946;}
     store64(blob,magic);store64(blob+8,total);store64(blob+16,ir_count);store64(blob+56,ir_state_count);
     store64(blob+24,code_at);store64(blob+32,ir_code_size);store64(blob+40,names_at);store64(blob+48,ir_names_size);
     let i=0;while i<ir_count*64 {store8(blob+64+i,load8(ir_functions+i));i=i+1;}

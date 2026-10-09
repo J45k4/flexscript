@@ -273,9 +273,8 @@ declare FIR4. The builder selects it automatically when necessary.
 
 The SetaScript frontend permits 512 nonrecursive functions. Its call graph,
 state arrays, typed initializers and checked access rules remain bounded. An
-external frontend still runs with a 64 MiB guest heap and a 30-second deadline;
-its instruction budget is 500 million to serialize the larger initialized
-tables. Application `--memory` limits continue to apply independently: a module
+external frontend originally used a 64 MiB guest heap and a 30-second deadline;
+FIR5's larger transport now uses the bounded budgets below. Application `--memory` limits continue to apply independently: a module
 whose state cannot fit fails before execution.
 
 Setaworld's complete countryside collider inventory and original population
@@ -285,3 +284,33 @@ overflow rejection, saved-IR replay, old-profile rejection, both frontend paths,
 explicit guest budgets, 512-function call graphs and all execution backends.
 The Wasm suite also builds and executes a maximum-state application through
 the byte-identical self-built Wasm compiler.
+
+## FIR5: complete native scene data
+
+FIR5 (`0x35524946`) permits 2,097,152 state words (16 MiB) and a 32 MiB
+serialized artifact. Checked state opcodes, one-MiB instruction limit, function
+and local limits are unchanged. FIR1 through FIR4 retain their earlier bounds;
+the SDK selects FIR5 automatically when state exceeds 1,048,576 words or an
+artifact exceeds 16 MiB. Validation rejects older profile tags on oversized
+artifacts before relocation or backend emission.
+
+Frontend source files (SetaScript, external frontend input and saved IR) may be
+smaller than 32 MiB. Flexscript source/import graphs retain their 16 MiB limit.
+External frontends use a 128 MiB restricted heap, one billion instructions and
+a 60-second deadline, with no new device capabilities. Native/Wasm/IR compilation
+uses a 32 MiB state-image budget. Application execution retains the default
+16 MiB guest limit and explicit `--memory` limits: maximum-state FIR5 programs
+need `flex run --memory=32m ...`. Small and older-profile artifacts serialize
+unchanged.
+
+The preserved Setaworld native scene has 199,723 static cuboids, including
+city/storey floors, subway, Skyway and countryside props. Its exact binary32
+records, normalized quaternion pool, AABB bounds and cell index require
+1,132,446 words before other world state, and 19,851,287 bytes of generated
+table source. FIR5 allows the complete import without dropping colliders.
+
+The extension suite checks maximum state on all four routes, checked spans,
+aggregate/single-array overflow, older-profile rejection, saved-IR replay,
+bundled/external equality, application-memory limits and frontend-source bounds.
+The Wasm suite builds maximum-state FIR5 native and Wasm applications using
+the self-built compiler running inside Wasm, then executes both outputs.
