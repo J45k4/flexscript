@@ -97,6 +97,9 @@ jobs:
       - name: Test portable binary64 arithmetic against preserved Rust bit patterns
         run: build/tools/test-f64 build/stage2 --report build/f64-tests.json
 
+      - name: Test portable libm helpers against original result bits
+        run: build/tools/test-f64-math build/stage2 --report build/f64-math-tests.json
+
       - name: Test the freestanding x86-64 backend in QEMU
         run: |
           build/stage2 scripts/test-baremetal.flex -o build/test-baremetal
