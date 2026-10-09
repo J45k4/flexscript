@@ -24,6 +24,19 @@ fn baremetal_builtin(kind) {
     else {fail("invalid bare-metal builtin");}
     return 0;
 }
+// A six-word System V AMD64 callback into a Flexscript function. The callback
+// pushes C argument registers in source order for Flexscript's stack ABI.
+fn baremetal_callback() {
+    if !baremetal_target {fail("native_callback requires --target baremetal-x86_64");}
+    expect(40);if token!=256 {fail("native_callback expects a function name");}
+    let name=source+token_start;let size=token_size;next();expect(41);
+    if call_count>=65536 {fail("too many calls");}
+    let skip=jump(233);let address=output_size;
+    bm_hex("55 48 89 E5 57 56 52 51 41 50 41 51 E8");
+    let site=calls+call_count*32;store64(site,name);store64(site+8,size);
+    store64(site+16,output_size);store64(site+24,6);call_count=call_count+1;emit32(0);
+    epilogue();patch_jump(skip);bm_hex("48 8D 05");emit32(address-output_size-4);return 0;
+}
 fn baremetal_initialize() {
     let base=4194304;
     emit32(0x1badb002);emit32(0x10003);emit32(-(0x1badb002+0x10003));
@@ -43,7 +56,8 @@ fn baremetal_initialize() {
     emit(191);emit32(0x102000);emit(184);emit32(0x83);emit(185);emit32(2048);
     let page_loop=output_size;
     bm_hex("89 07 05");emit32(0x200000);bm_hex("83 C7 08 E2");emit(page_loop-output_size-1);
-    bm_hex("0F 20 E0 83 C8 20 0F 22 E0"); // CR4.PAE
+    bm_hex("0F 20 E0 0D");emit32(0x620);bm_hex("0F 22 E0"); // PAE, OSFXSR, OSXMMEXCPT
+    bm_hex("0F 20 C0 83 E0 F3 83 C8 02 0F 22 C0 DB E3"); // enable x87/SSE; fninit
     emit(184);emit32(0x100000);bm_hex("0F 22 D8"); // CR3 = PML4
     emit(185);emit32(0xc0000080);bm_hex("0F 32 0D");emit32(0x100);bm_hex("0F 30"); // EFER.LME
     bm_hex("0F 01 15");let gdtr_fix=output_size;emit32(0); // lgdt [absolute address]

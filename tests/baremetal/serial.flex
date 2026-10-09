@@ -4,6 +4,7 @@ fn serial_byte(c) {while !(port_in8(0x3fd)&32) {}port_out8(0x3f8,c);return 0;}
 fn serial_text(s) {let i=0;while load8(s+i) {serial_byte(load8(s+i));i=i+1;}return 0;}
 fn sum(n) {if !n {return 0;}return n+sum(n-1);}
 fn divide(n,d) {return n/d;}
+fn callback(a,b,c,d,e,f) {return a+b*3+c*5+d*7+e*11+f*13;}
 fn main() {
     port_out8(0x3f9,0);port_out8(0x3fb,128);port_out8(0x3f8,1);port_out8(0x3f9,0);
     port_out8(0x3fb,3);port_out8(0x3fa,199);port_out8(0x3fc,11);
@@ -18,6 +19,11 @@ fn main() {
         serial_text("FAIL: bare-metal runtime\n");cpu_halt();
     }
     serial_text("PASS: bare-metal arithmetic/globals/memory/calls\n");
+    let native=native_callback(callback);
+    if ffi_call(native,1,2,3,4,5,6)!=183 || ffi_call_i32(native,-1,0,0,0,0,0)!=-1 || ffi_call_u32(native,-1,0,0,0,0,0)!=0xffffffff {
+        serial_text("FAIL: native callback ABI\n");cpu_halt();
+    }
+    serial_text("PASS: native six-word callbacks and signed/unsigned C returns\n");
     let count=0;let c=0;
     while c!=10 {while !(port_in8(0x3fd)&1) {}c=port_in8(0x3f8);serial_byte(c);count=count+1;}
     if count==5 {serial_text("PASS: bare-metal serial input\n");}

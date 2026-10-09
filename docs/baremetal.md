@@ -33,11 +33,24 @@ target adds privileged hardware builtins:
 | `port_in32(port)` / `port_out32(port, value)` | Read/write a 32-bit I/O value. |
 | `cpu_halt()` | Disable interrupts and halt forever. |
 
-Linux `alloc`, `syscall` and FFI calls are rejected during compilation. Hardware
+Linux `alloc`, `syscall`, `ffi_open` and `ffi_symbol` are rejected during compilation. Hardware
 builtins are rejected on the Linux and VM targets. Interrupts stay disabled;
 drivers must poll until interrupt handling is implemented. This initial backend
 does not install an IDT or offer scheduling, protection between native tasks,
 automatic heap allocation, or a freestanding Flexscript VM.
+
+Static native payloads can call kernel services through
+`native_callback(service_function)`. The named Flexscript function must take
+exactly six word parameters; the result is a System V AMD64 function pointer.
+The compiler emits a bridge from C argument registers to Flexscript's stack
+calling convention. This intrinsic is available only on the bare-metal target.
+`ffi_call(pointer, a, b, c, d, e, f)` and its signed/unsigned 32-bit return
+variants work on bare metal without a dynamic loader. The kernel must load and
+validate payload code itself. These calls run with kernel privileges.
+
+The boot sequence initializes x87 and enables SSE/SSE2 for native C payloads.
+Flexscript still exposes integer words and pointers; floating-point arguments,
+variadic callbacks and aggregates passed by value are unsupported.
 
 Build the compiler containing this backend using an existing Flexscript compiler:
 

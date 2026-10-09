@@ -20,6 +20,7 @@ fn main(argc,argv) {
     h_add(args,"-vga");h_add(args,"std");
     if firmware {h_add(args,"-L");h_add(args,firmware);}
     tb_process=h_spawn(args,0,0);tb_until("PASS: bare-metal arithmetic/globals/memory/calls\n");
+    tb_until("PASS: native six-word callbacks and signed/unsigned C returns\n");
     h_trigger(tb_process,"QEMU\n");tb_until("QEMU\nPASS: bare-metal serial input\n");h_stop(tb_process);h_remove(temp);
     let report=b_option(argc,argv,"--report",0);if report {let result=j_object();j_set(result,"target",j_string("baremetal-x86_64"));j_set(result,"boot",j_bool(1));j_set(result,"runtime",j_bool(1));j_set(result,"serial_input",j_bool(1));j_save(report,result);}
     h_print(1,"Bare-metal x86-64 boot, runtime and serial input passed in QEMU\n");return 0;

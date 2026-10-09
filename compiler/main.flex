@@ -159,7 +159,8 @@ fn reserved(name, size) {
         || equal(name, size, "port_in8", 8) || equal(name, size, "port_out8", 9)
         || equal(name, size, "port_in16", 9) || equal(name, size, "port_out16", 10)
         || equal(name, size, "port_in32", 9) || equal(name, size, "port_out32", 10)
-        || equal(name, size, "cpu_halt", 8);
+        || equal(name, size, "cpu_halt", 8)
+        || equal(name, size, "native_callback", 15);
 }
 
 fn next() {
@@ -426,6 +427,7 @@ fn binary(op) {
 }
 
 fn call(name, size) {
+    if equal(name,size,"native_callback",15) {return baremetal_callback();}
     expect(40);
     let count = 0;
     if token != 41 {
@@ -779,9 +781,8 @@ fn resolve() {
         let index = find(functions, function_count, load64(site), load64(site + 8));
         let target = 0;
         if index < 0 {
-            if baremetal_target {locate_name(load64(site));fail("undefined function; FFI is unavailable on bare metal");}
             target = ffi_resolve(load64(site),load64(site+8),load64(site+24));
-            if !target { locate_name(load64(site)); fail("undefined function"); }
+            if !target { locate_name(load64(site)); if baremetal_target {fail("undefined function; dynamic FFI is unavailable on bare metal");}fail("undefined function"); }
         } else {
             let function = functions + index * 32;
             if load64(function + 24) != load64(site + 24) {
@@ -819,6 +820,7 @@ fn ffi_resolve(name,size,count) {
     else if equal(name,size,"ffi_call_i32",12) {kind=3;}
     else if equal(name,size,"ffi_call_u32",12) {kind=4;}
     if kind<0 {return 0;}
+    if baremetal_target && kind<2 {return 0;}
     if count!=arity {locate_name(name);fail("wrong FFI argument count");}
     let cached=load64(ffi_entries+kind*8); if cached {return cached;}
     let at=output_size;store64(ffi_entries+kind*8,at);
