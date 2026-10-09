@@ -6,13 +6,13 @@ fn ir_operator(op) {
         || op==265 || op==266 || op==259 || op==260 || op==60 || op==62 || op==261 || op==262;
 }
 fn ir_accept(blob,size) {
-    if size<64 || size>4194304 {ir_bad();}
+    if size<64 || size>16777216 {ir_bad();}
     let count=load64(blob+16);let code_at=load64(blob+24);let code_size=load64(blob+32);
     let names_at=load64(blob+40);let names_size=load64(blob+48);
     let profile=load64(blob);let state_count=load64(blob+56);
-    if (profile!=0x31524946 && profile!=0x32524946 && profile!=0x33524946) || load64(blob+8)!=size
-        || state_count<0 || state_count>262144 || (profile==0x32524946 && state_count>2048) || (profile==0x31524946 && state_count)
-        || count<1 || count>2048 || code_at!=64+count*64 || code_size<48 || code_size%16
+    if (profile!=0x31524946 && profile!=0x32524946 && profile!=0x33524946 && profile!=0x34524946) || load64(blob+8)!=size
+        || state_count<0 || state_count>1048576 || (profile!=0x34524946 && (state_count>262144 || size>4194304)) || (profile==0x32524946 && state_count>2048) || (profile==0x31524946 && state_count)
+        || count<1 || count>2048 || code_at!=64+count*64 || code_size<48 || code_size>1048576 || code_size%16
         || code_size>size-code_at || names_at!=code_at+code_size || names_size<0 || names_size!=size-names_at-state_count*8 {ir_bad();}
     let code=blob+code_at;let heights=alloc(code_size/2);let visited=alloc(code_size/2);let queue=alloc(code_size/2);
     if heights<0 || visited<0 || queue<0 {fail("cannot validate frontend IR");}
@@ -33,13 +33,13 @@ fn ir_accept(blob,size) {
             let op=load64(code+pc);let arg=load64(code+pc+8);store64(heights+pc/2,stack);
             if op==2 {if arg {ir_bad();}stack=stack+1;}
             else if op==3 || op==4 {if arg<0 || arg>=slots {ir_bad();}}
-            else if op==5 || op==6 {if (profile!=0x32524946 && profile!=0x33524946) || arg<0 || arg>=state_count {ir_bad();}}
+            else if op==5 || op==6 {if (profile!=0x32524946 && profile!=0x33524946 && profile!=0x34524946) || arg<0 || arg>=state_count {ir_bad();}}
             else if op==21 || op==22 {
                 let base=arg&4294967295;let span=arg>>32;
-                if profile!=0x33524946 || span<1 || span>state_count || base>state_count-span {ir_bad();}
+                if profile!=0x33524946 && profile!=0x34524946 || span<1 || span>state_count || base>state_count-span {ir_bad();}
                 if op==22 {stack=stack-1;}
             }
-            else if op==19 || op==20 {if (profile!=0x32524946 && profile!=0x33524946) || arg {ir_bad();}}
+            else if op==19 || op==20 {if (profile!=0x32524946 && profile!=0x33524946 && profile!=0x34524946) || arg {ir_bad();}}
             else if op==7 {if !ir_operator(arg) {ir_bad();}stack=stack-1;}
             else if op==8 {
                 if arg<0 || arg>=count {ir_bad();}
@@ -71,7 +71,7 @@ fn ir_accept(blob,size) {
     syscall(11,heights,code_size/2,0,0,0,0);syscall(11,visited,code_size/2,0,0,0,0);syscall(11,queue,code_size/2,0,0,0,0);
     frontend_blob=blob;frontend_blob_size=size;
     output=code;output_size=code_size;function_count=count;global_count=0;call_count=0;
-    if profile==0x32524946 || profile==0x33524946 {
+    if profile==0x32524946 || profile==0x33524946 || profile==0x34524946 {
         if !vm_heap {vm_heap=alloc(vm_heap_limit);if vm_heap<0 {fail("cannot allocate IR state");}}
         let state_base=vm_heap_used;let address=vm_allocate(state_count*8+8);if address<0 {fail("IR state exceeds VM memory");}
         net_copy(vm_address(address,state_count*8+8),blob+names_at+names_size,state_count*8);

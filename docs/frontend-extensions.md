@@ -262,3 +262,26 @@ explicit/broadcast initializers, type errors, index evaluation once, real JIT
 execution, all four bounds routes, module isolation, serialized-IR replay and
 malformed spans. The Wasm suite compiles FIR3 Seta source inside a byte-identical
 self-built Wasm compiler and executes its native and Wasm outputs.
+
+## FIR4: complete world tables
+
+FIR4 (`0x34524946`) uses the same checked state and indexed operations as FIR3,
+with up to 1,048,576 state words (8 MiB) and a 16 MiB serialized artifact.
+Instruction code remains bounded to 1 MiB. FIR1, FIR2 and FIR3 retain their
+earlier state and artifact limits; an artifact that exceeds those limits must
+declare FIR4. The builder selects it automatically when necessary.
+
+The SetaScript frontend permits 512 nonrecursive functions. Its call graph,
+state arrays, typed initializers and checked access rules remain bounded. An
+external frontend still runs with a 64 MiB guest heap and a 30-second deadline;
+its instruction budget is 500 million to serialize the larger initialized
+tables. Application `--memory` limits continue to apply independently: a module
+whose state cannot fit fails before execution.
+
+Setaworld's complete countryside collider inventory and original population
+tables exceed FIR3's aggregate capacity. FIR4 preserves these data sets instead
+of reducing the simulated world. The extension suite checks the maximum state,
+overflow rejection, saved-IR replay, old-profile rejection, both frontend paths,
+explicit guest budgets, 512-function call graphs and all execution backends.
+The Wasm suite also builds and executes a maximum-state application through
+the byte-identical self-built Wasm compiler.

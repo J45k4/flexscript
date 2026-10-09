@@ -144,6 +144,18 @@ fn suite(compiler) {
     h_elf(native,1);h_ok(h_args("chmod","+x",native,0,0,0));h_check(h_run(h_args(native,0,0,0,0,0)),42,"");t_checks=t_checks+1;
     h_save_bytes(t_binary,h_read(child),h_file_size,420);result=tw_run(j_object());tw_success(result);
     t_assert(h_equal(j_s(result,"result"),"42"),"SetaScript application compiled inside WASM executes");
+    // FIR4 crosses the former4MiB artifact limit inside the self-hosted compiler.
+    h_save_bytes(t_binary,h_read(wasm_compiler),h_file_size,420);
+    request=j_object();files=j_object();j_set(files,"world.seta",j_string("plugin test v1 {} state {a:i32[1048573]=0 b:i32[3]=[4,5,6]} fn main()->i32{state.a[1048572]=state.b[1]*8+2 return state.a[1048572]}"));j_set(request,"files",files);
+    argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("--target"));j_push(argv,j_string("wasm32"));j_push(argv,j_string("world.seta"));j_push(argv,j_string("-o"));j_push(argv,j_string("world.wasm"));j_set(request,"argv",argv);
+    j_set(request,"output",j_string("world.wasm"));j_set(request,"save",j_string(child));
+    result=tw_run(request);tw_success(result);t_assert(h_equal(j_s(result,"result"),"0"),"WASM compiler builds one-million-word FIR4 module");
+    argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("world.seta"));j_push(argv,j_string("-o"));j_push(argv,j_string("world.elf"));j_set(request,"argv",argv);
+    j_set(request,"output",j_string("world.elf"));j_set(request,"save",j_string(native));
+    result=tw_run(request);tw_success(result);t_assert(h_equal(j_s(result,"result"),"0"),"WASM compiler lowers FIR4 to native ELF");
+    h_elf(native,1);h_ok(h_args("chmod","+x",native,0,0,0));h_check(h_run(h_args(native,0,0,0,0,0)),42,"");t_checks=t_checks+1;
+    h_save_bytes(t_binary,h_read(child),h_file_size,420);result=tw_run(j_object());tw_success(result);
+    t_assert(h_equal(j_s(result,"result"),"42"),"FIR4 application compiled inside WASM executes");
     return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}

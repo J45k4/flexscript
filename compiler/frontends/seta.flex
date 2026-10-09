@@ -117,7 +117,7 @@ fn s_prefix() {
                 if s_token==44 {s_next();}else {more=0;}
             }}
             s_expect(41);if count!=load64(f+24) {s_fail("wrong SetaScript argument count");}
-            store8(s_edges+s_current*256+target,1);ir_emit(8,target);return load64(f+32);
+            store8(s_edges+s_current*512+target,1);ir_emit(8,target);return load64(f+32);
         }
         let local=s_find_local(name,size);if local<0 {s_fail("unknown SetaScript local");}
         let slot=load64(s_locals+local*32+16);ir_emit(3,slot);return load64(s_types+slot*8);
@@ -227,7 +227,7 @@ fn s_state_definition() {
         while i<s_state_count {let f=s_state_fields+i*40;if s_equal(load64(f),load64(f+8),name,size) {s_fail("duplicate engine state field");}i=i+1;}
         if s_state_count>=2048 {s_fail("too many engine state fields");}
         s_next();s_expect(58);let ty=s_type();let span=0;
-        if s_token==91 {s_next();span=s_literal();if span<1 || span>262144 {s_fail("invalid state array span");}s_expect(93);ir_profile=3;}
+        if s_token==91 {s_next();span=s_literal();if span<1 || span>1048576 {s_fail("invalid state array span");}s_expect(93);if ir_profile<3 {ir_profile=3;}}
         s_expect(61);let base=ir_state_count;
         if span && s_token==91 {
             s_next();i=0;while i<span {ir_state_word(s_initializer(ty));i=i+1;if i<span {s_expect(44);}}
@@ -254,31 +254,31 @@ fn s_signatures() {
     if s_is("state") {s_state_definition();}
     while s_token {
         if s_is("cosmetic") {s_next();}if !s_is("fn") {s_fail("only pure function declarations are supported yet");}s_next();s_name();
-        if s_count>=256 {s_fail("too many SetaScript functions");}
+        if s_count>=512 {s_fail("too many SetaScript functions");}
         let name=ir_source+s_start;let size=s_size;if s_find_function(name,size)>=0 {s_fail("duplicate SetaScript function");}
-        let f=s_functions+s_count*64;store64(f,name);store64(f+8,size);let args=alloc(4096*32);store64(f+16,args);s_next();s_expect(40);
+        let f=s_functions+s_count*64;store64(f,name);store64(f+8,size);let args=s_locals;s_next();s_expect(40);
         let count=0;if s_token!=41 {let more=1;while more {
             s_name();if count>=4096 {s_fail("too many parameters");}store64(args+count*32,ir_source+s_start);store64(args+count*32+8,s_size);
             s_next();s_expect(58);store64(args+count*32+16,s_type());count=count+1;
             if s_token==44 {s_next();}else {more=0;}
         }}
-        s_expect(41);store64(f+24,count);s_expect(270);store64(f+32,s_type());store64(f+40,s_start);s_expect(123);
+        s_expect(41);let saved=alloc((count+1)*32);if saved<0 {s_fail("frontend allocation failed");}let at=0;while at<count*32 {store8(saved+at,load8(args+at));at=at+1;}store64(f+16,saved);store64(f+24,count);s_expect(270);store64(f+32,s_type());store64(f+40,s_start);s_expect(123);
         let braces=1;while braces {if !s_token {s_fail("unterminated SetaScript function");}if s_token==123 {braces=braces+1;if braces>128 {s_fail("SetaScript block nesting limit exceeded");}}else if s_token==125 {braces=braces-1;}s_next();}
         s_count=s_count+1;
     }return 0;
 }
 fn s_no_recursion() {
-    let degrees=alloc(s_count*8);let i=0;while i<s_count {let j=0;while j<s_count {if load8(s_edges+i*256+j) {store64(degrees+j*8,load64(degrees+j*8)+1);}j=j+1;}i=i+1;}
+    let degrees=alloc(s_count*8);let i=0;while i<s_count {let j=0;while j<s_count {if load8(s_edges+i*512+j) {store64(degrees+j*8,load64(degrees+j*8)+1);}j=j+1;}i=i+1;}
     let removed=0;let progress=1;while progress {
         progress=0;i=0;while i<s_count {if load64(degrees+i*8)==0 {
             store64(degrees+i*8,-1);removed=removed+1;progress=1;let j=0;
-            while j<s_count {if load8(s_edges+i*256+j) {store64(degrees+j*8,load64(degrees+j*8)-1);}j=j+1;}
+            while j<s_count {if load8(s_edges+i*512+j) {store64(degrees+j*8,load64(degrees+j*8)-1);}j=j+1;}
         }i=i+1;}
     }if removed!=s_count {s_fail("SetaScript recursion is not allowed");}return 0;
 }
 fn seta_frontend(text,size,version,path) {
     ir_init(text,size,path,version);s_pos=0;s_count=0;s_nesting=0;s_state_count=0;
-    s_functions=alloc(256*64);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);s_edges=alloc(256*256);
+    s_functions=alloc(512*64);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);s_edges=alloc(512*512);
     s_state_fields=alloc(2048*40);
     if s_functions<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_edges<0 || s_state_fields<0 {s_fail("frontend allocation failed");}
     s_signatures();s_current=0;
