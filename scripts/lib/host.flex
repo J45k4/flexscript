@@ -27,7 +27,8 @@ fn h_die(s) {
     h_print(2,"Flexscript tool: ");
     h_print(2,s);
     h_print(2,"\n");
-    syscall(60,1,0,0,0,0,0);
+    // Driver/FFI libraries may have worker threads; terminate the whole tool.
+    syscall(231,1,0,0,0,0,0);
     return 0;
 }
 fn h_assert(ok,s) {

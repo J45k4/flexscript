@@ -3,6 +3,10 @@ import "../lib/signature.flex";
 import "../vm/runtime.flex";
 import "baremetal.flex";
 import "wasm.flex";
+import "gpu-intrinsics.flex";
+import "ptx.flex";
+import "sass.flex";
+import "sass-float.flex";
 import "ir.flex";
 import "extensions.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
@@ -517,6 +521,7 @@ fn prefix() {
         immediate(token_value);
         next();
     } else if token == 258 {
+        if ptx_target || sass_target {fail("GPU targets do not support string literals");}
         if vm_mode {immediate(vm_string_literal());next();return 0;}
         let start = token_start + 1;
         let end = token_start + token_size - 1;
@@ -771,6 +776,7 @@ fn initialize_output() {
 }
 
 fn resolve() {
+    if ptx_target || sass_target {vm_resolve();return 0;}
     let main_index = find(functions, function_count, "main", 4);
     if main_index < 0 { fail("missing main function"); }
     let entry = functions + main_index * 32;
@@ -1792,7 +1798,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--target wasm32|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--target wasm32|ptx|sass-sm75|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1804,6 +1810,8 @@ fn main(argc, argv) {
             if target_seen {print(2,"choose only one compiler target\n");return 1;}target_seen=1;
             if up_text(value,"baremetal-x86_64") {baremetal_target=1;}
             else if up_text(value,"wasm32") {wasm_target=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"ptx") {ptx_target=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"sass-sm75") {sass_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"ir") {frontend_ir_target=1;}
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}
@@ -1818,13 +1826,15 @@ fn main(argc, argv) {
     }
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
+    if ptx_target && frontend_language {fail("PTX target currently requires the Flexscript frontend");}
+    if sass_target && frontend_language {fail("SASS target currently requires the Flexscript frontend");}
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=134217728;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
     }
     compiler_initialize();
-    if wasm_target {wasm_initialize();}
+    if wasm_target || ptx_target || sass_target {wasm_initialize();}
     load_module(source_path);
     initialize_output();
     if frontend_language {frontend_compile_modules();}else {compile_modules();}
@@ -1833,6 +1843,8 @@ fn main(argc, argv) {
     resolve();
     if frontend_ir_target {output=frontend_blob;output_size=frontend_blob_size;}
     else if wasm_target {wasm_finish();}
+    else if ptx_target {ptx_finish();}
+    else if sass_target {sass_finish();}
     else if frontend_language {ir_native();}
     let stat = input_stat;
     // O_NOFOLLOW prevents writing through output symlinks. No output is opened
@@ -1855,7 +1867,7 @@ fn main(argc, argv) {
     }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
-    let mode=493;if wasm_target || frontend_ir_target {mode=420;}
+    let mode=493;if wasm_target || ptx_target || sass_target || frontend_ir_target {mode=420;}
     if syscall(91, fd, mode, 0, 0, 0, 0) < 0 { fail("cannot set output permissions"); }
     if syscall(3, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot close output"); }
     return 0;

@@ -12,6 +12,15 @@ fn main(argc,argv) {
     h_add(names,"test-network");
     h_add(names,"test-vm");
     h_add(names,"test-wasm");
+    h_add(names,"test-gpu");
+    h_add(names,"gpu-run");
+    h_add(names,"test-sass");
+    h_add(names,"test-sass-float");
+    h_add(names,"sass-run");
+    h_add(names,"test-gpu-features");
+    h_add(names,"graphics-run");
+    h_add(names,"ray-run");
+    h_add(names,"gpu-info");
     h_add(names,"test-extensions");
     h_add(names,"test-f64");
     h_add(names,"test-f64-math");

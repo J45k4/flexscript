@@ -91,6 +91,18 @@ jobs:
       - name: Test WebAssembly output and compiler self-hosting
         run: build/tools/test-wasm build/stage2 --report build/wasm-tests.json
 
+      - name: Test experimental GPU compilation without a device
+        run: build/tools/test-gpu --compiler build/stage2 --report build/gpu-tests.json
+
+      - name: Test direct Turing machine-code emission without CUDA tooling
+        run: build/tools/test-sass --compiler build/stage2 --report build/sass-tests.json
+
+      - name: Test GPU feature lowering without a device
+        run: build/tools/test-gpu-features --compiler build/stage2 --report build/gpu-features.json
+
+      - name: Test direct floating-point divide and square-root emission
+        run: build/tools/test-sass-float --compiler build/stage2 --report build/sass-float-tests.json
+
       - name: Test frontend extensions across interpreter, JIT, native and WebAssembly
         run: build/tools/test-extensions build/stage2 --report build/extensions-tests.json
 
@@ -132,6 +144,10 @@ jobs:
             build/network-tests.json
             build/vm-tests.json
             build/wasm-tests.json
+            build/gpu-tests.json
+            build/sass-tests.json
+            build/sass-float-tests.json
+            build/gpu-features.json
             build/extensions-tests.json
             build/clean-room.json
             build/harness-tests.json
