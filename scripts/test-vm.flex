@@ -52,6 +52,20 @@ fn tv_host_tests() {
     h_add(args,h_join(t_work,"library.so"));h_ok(args);
     cases=j_parse(h_read("tests/tooling/ffi.json"));
     let root=h_real(".");i=0;
+    let inherited_environment=h_env;h_setenv("FLEX_VM_ENV_TEST","inherited");
+    t_program(h_cat3("import \"",h_join(root,"scripts/lib/host.flex"),"\";fn main(argc,argv){h_environment(argc,argv);let value=h_getenv(\"FLEX_VM_ENV_TEST\");if value && h_equal(value,\"inherited\") {return 0;}return 1;}"));
+    let env_engine=0;while env_engine<2 {
+        h_check(tv_host(h_at(engines,env_engine),0,t_fixture,0),0,"");t_checks=t_checks+1;
+        env_engine=env_engine+1;
+    }
+    // Restricted startup must retain the envp terminator without copying host
+    // values; use direct word reads so this check needs no syscall capability.
+    t_program("fn main(argc,argv){if load64(argv+argc*8)==0 && load64(argv+(argc+1)*8)==0 {return 0;}return 1;}");
+    env_engine=0;while env_engine<2 {
+        h_check(tv_run(h_at(engines,env_engine),0,t_fixture,h_args("argument",0,0,0,0,0)),0,"");t_checks=t_checks+1;
+        env_engine=env_engine+1;
+    }
+    h_env=inherited_environment;
     while i<j_count(cases) {
         let mark=h_mark();let item=j_at(cases,i);let environment=h_env;
         if j_count(j_need(item,"environment")) {h_setenv("FLEX_FFI_TEST","yes");}
@@ -70,6 +84,18 @@ fn tv_host_tests() {
         h_check(tv_host(engine,0,t_fixture,0),0,"");t_checks=t_checks+1;
         t_program("fn main(){return alloc(8192)==-12;}");
         h_check(tv_host(engine,h_args("--memory=4096",0,0,0,0,0),t_fixture,0),1,"");t_checks=t_checks+1;
+        // Arena scratch blocks are unmapped on every redraw. Their budget must
+        // be reusable without overwriting internal strings or argv storage.
+        t_program("fn main(argc,argv){let i=0;while i<64 {let p=alloc(1048576);if p<0{return 1;}store64(p,42);if syscall(11,p,1048576,0,0,0,0){return 2;}i=i+1;}if load8(load64(argv+8))!=97 || load8(\"constant\")!=99 {return 3;}return 0;}");
+        h_check(tv_host(engine,h_args("--memory=2m",0,0,0,0,0),t_fixture,h_args("argument",0,0,0,0,0)),0,"");t_checks=t_checks+1;
+        // Reject invalid unmaps and refund only tracked bytes, including a
+        // middle-page hole and the two remaining portions of the mapping.
+        t_program("fn main(){let p=alloc(24576);if p<0{return 1;}if syscall(11,p+1,4096,0,0,0,0)!=-22{return 2;}if alloc(8192)!=-12{return 3;}let raw=syscall(9,0,8192,3,34,-1,0);if raw<0{return 4;}if syscall(11,raw,8192,0,0,0,0){return 5;}if alloc(8192)!=-12{return 6;}if syscall(11,p+8192,1,0,0,0,0){return 7;}let q=alloc(8192);if q<0{return 8;}if alloc(4096)!=-12{return 9;}store64(p,42);store64(p+12288,43);if load64(p)!=42 || load64(p+12288)!=43{return 10;}if syscall(11,p,8192,0,0,0,0) || syscall(11,p+12288,12288,0,0,0,0) || syscall(11,q,8192,0,0,0,0){return 11;}let r=alloc(28672);if r<0{return 12;}return syscall(11,r,28672,0,0,0,0);}");
+        h_check(tv_host(engine,h_args("--memory=32k",0,0,0,0,0),t_fixture,0),0,"");t_checks=t_checks+1;
+        // Exercise registry growth and an interior split when all slots are in
+        // use. Free records in a different order, then reuse the whole budget.
+        t_program("fn main(){let records=alloc(1024);let p=alloc(12288);if records<0 || p<0{return 1;}let i=0;while i<62 {let q=alloc(8);if q<0{return 2;}store64(records+i*8,q);i=i+1;}if syscall(11,p+4096,4096,0,0,0,0){return 3;}i=62;while i {i=i-1;if syscall(11,load64(records+i*8),1,0,0,0,0){return 4;}}if syscall(11,p,4096,0,0,0,0) || syscall(11,p+8192,4096,0,0,0,0) || syscall(11,records,1024,0,0,0,0){return 5;}let q=alloc(61440);if q<0{return 6;}return syscall(11,q,61440,0,0,0,0);}");
+        h_check(tv_host(engine,h_args("--memory=64k",0,0,0,0,0),t_fixture,0),0,"");t_checks=t_checks+1;
         t_program("fn main(){let p=alloc(8);let n=syscall(0,0,p,8,0,0,0);syscall(1,1,p,n,0,0,0);return 0;}");
         h_check(h_wait(h_spawn(tv_command(engine,0,t_fixture,0,0),"input",0)),0,"input");t_checks=t_checks+1;
         t_program("fn main(){let pid=syscall(57,0,0,0,0,0,0);if pid<0{return 1;}if !pid{return 7;}let status=alloc(8);if syscall(61,pid,status,0,0,0,0)!=pid{return 2;}return load64(status)==1792;}");

@@ -59,12 +59,20 @@ create processes and call host libraries using the same interfaces as native
 compilation. URL sources and imports are enabled by default. `--no-url-imports`
 disables source downloads.
 
+For `main(argc, argv)`, startup memory follows the native layout: argument
+pointers, a null terminator, environment pointers, and another null terminator.
+Trusted execution inherits the host environment. Restricted execution supplies
+an empty environment, so native-style helpers cannot read host environment
+values through `argv`.
+
 Loads and stores use host addresses in this mode, including pointers returned
 by native libraries. Runtime `alloc` returns native mappings, so `munmap` and
 FFI buffers retain their normal behavior. The VM accounts requested allocation
-sizes against its memory budget; raw mmap/FFI allocations are outside that
-budget. Trusted code has the host process's permissions. Host calls can block
-or change process state, and the VM's execution deadline does not interrupt
+sizes, rounded to eight bytes, against its memory budget. Successful `munmap`
+calls release the budget for the unmapped portions of those allocations;
+failed calls and unmapping unrelated memory do not. Raw mmap/FFI allocations
+are outside that budget. Trusted code has the host process's permissions.
+Host calls can block or change process state, and the VM's execution deadline does not interrupt
 blocking syscalls or foreign functions.
 
 The interpreter and JIT remain available in both execution modes, with the same

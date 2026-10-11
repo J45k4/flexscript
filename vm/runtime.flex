@@ -7,6 +7,10 @@ global vm_restricted=0;
 global vm_heap=0;
 global vm_heap_limit=16777216;
 global vm_heap_used=16;
+global vm_native_used=0;
+global vm_native_records=0;
+global vm_native_count=0;
+global vm_native_capacity=0;
 global vm_stack=0;
 global vm_sp=0;
 global vm_local_memory=0;
@@ -46,10 +50,69 @@ global vm_word_buffer=0;
 fn vm_emit(op,value) {let at=output_size;emit64(op);emit64(value);return at;}
 fn vm_allocate(size) {
     if !size {return -22;}
-    if size<0 || size>vm_heap_limit-vm_heap_used {return -12;}
-    let rounded=((size+7)/8)*8;if rounded>vm_heap_limit-vm_heap_used {return -12;}
+    if size<0 || size>vm_heap_limit-vm_heap_used-vm_native_used {return -12;}
+    let rounded=((size+7)/8)*8;if rounded>vm_heap_limit-vm_heap_used-vm_native_used {return -12;}
     let address=vm_heap_used;vm_heap_used=vm_heap_used+rounded;
     if !vm_restricted {return vm_heap+address;}return address;
+}
+// Keep native mappings separate from the internal bump arena. Reclaiming a
+// mapping must not rewind the cursor holding strings and startup arguments.
+fn vm_native_reserve() {
+    if vm_native_count<vm_native_capacity {return 1;}
+    let capacity=64;if vm_native_capacity {capacity=vm_native_capacity*2;}
+    let records=alloc(capacity*16);if records<0 {return 0;}
+    let i=0;while i<vm_native_count*16 {store64(records+i,load64(vm_native_records+i));i=i+8;}
+    if vm_native_records {syscall(11,vm_native_records,vm_native_capacity*16,0,0,0,0);}
+    vm_native_records=records;vm_native_capacity=capacity;return 1;
+}
+fn vm_native_allocate(size) {
+    if !size {return -22;}
+    if size<0 || size>vm_heap_limit-vm_heap_used-vm_native_used {return -12;}
+    let rounded=((size+7)/8)*8;
+    if rounded>vm_heap_limit-vm_heap_used-vm_native_used || !vm_native_reserve() {return -12;}
+    let pointer=alloc(size);if pointer<0 {return pointer;}
+    let record=vm_native_records+vm_native_count*16;
+    store64(record,pointer);store64(record+8,rounded);
+    vm_native_count=vm_native_count+1;vm_native_used=vm_native_used+rounded;return pointer;
+}
+fn vm_native_unmap(address,size) {
+    // Linux rounds the length to pages. Invalid requests cannot release budget.
+    if address<0 || address%4096 || size<=0 || size>0x7ffffffffffff000 {
+        return syscall(11,address,size,0,0,0,0);
+    }
+    let span=((size+4095)/4096)*4096;
+    if address>0x7fffffffffffffff-span {return syscall(11,address,size,0,0,0,0);}
+    let end=address+span;let i=0;
+    // One contiguous unmap can split at most one nonoverlapping allocation.
+    // Reserve its extra record before changing the actual mappings.
+    while i<vm_native_count {
+        let record=vm_native_records+i*16;let start=load64(record);let finish=start+load64(record+8);
+        if address>start && end<finish && !vm_native_reserve() {return -12;}
+        i=i+1;
+    }
+    let result=syscall(11,address,size,0,0,0,0);if result<0 {return result;}
+    i=0;while i<vm_native_count {
+        let record=vm_native_records+i*16;let start=load64(record);let bytes=load64(record+8);let finish=start+bytes;
+        if end<=start || address>=finish {i=i+1;}
+        else {
+            let left=0;let right=0;
+            if address>start {left=address-start;}if end<finish {right=finish-end;}
+            vm_native_used=vm_native_used-(bytes-left-right);
+            if left {
+                store64(record+8,left);
+                if right {
+                    let tail=vm_native_records+vm_native_count*16;store64(tail,end);store64(tail+8,right);
+                    vm_native_count=vm_native_count+1;
+                }
+                i=i+1;
+            }else if right {store64(record,end);store64(record+8,right);i=i+1;}
+            else {
+                vm_native_count=vm_native_count-1;let last=vm_native_records+vm_native_count*16;
+                store64(record,load64(last));store64(record+8,load64(last+8));
+            }
+        }
+    }
+    return result;
 }
 fn vm_address(offset,size) {
     if !vm_restricted {
@@ -221,7 +284,10 @@ fn vm_poll_guest(pointer,count,timeout) {
 fn vm_syscall(number,a,b,c,d,e,f) {
     vm_denied_syscall=number;
     if number==60 {vm_acc=a;vm_finished=1;return a;}
-    if !vm_restricted {return syscall(number,a,b,c,d,e,f);}
+    if !vm_restricted {
+        if number==11 {return vm_native_unmap(a,b);}
+        return syscall(number,a,b,c,d,e,f);
+    }
     if number==2 {return vm_open_file(a,b);}
     if number==7 {return vm_poll_guest(a,b,c);}
     if number==3 {
@@ -275,12 +341,8 @@ fn vm_builtin(kind) {
         if kind==3 {store8(address,value);}else {store64(address,value);}return value;
     }
     if kind==5 {
-        let size=vm_pop();let budget=vm_allocate(size);
-        if vm_restricted || budget<0 {return budget;}
-        // Native mappings preserve alloc/munmap and FFI pointer semantics.
-        let pointer=alloc(size);
-        if pointer<0 {vm_heap_used=vm_heap_used-((size+7)/8)*8;}
-        return pointer;
+        let size=vm_pop();if vm_restricted {return vm_allocate(size);}
+        return vm_native_allocate(size);
     }
     if kind==6 {
         let f=vm_pop();let e=vm_pop();let d=vm_pop();let c=vm_pop();let b=vm_pop();let a=vm_pop();let number=vm_pop();
@@ -427,11 +489,20 @@ fn vm_main(argc,argv) {
     select_module(0);token_start=source_size;resolve();
     let main_index=find(functions,function_count,"main",4);let count=load64(functions+main_index*32+24);
     if count==2 {
-        let guest_argc=argc-first;let guest_argv=vm_allocate((guest_argc+1)*8);
+        // Match the native startup layout: argv, NULL, envp, NULL. Host
+        // helpers find envp immediately after argv's terminator. Restricted
+        // guests receive an empty environment rather than host credentials.
+        let environment=argv+(argc+1)*8;let env_count=0;
+        if !vm_restricted {while load64(environment+env_count*8) {env_count=env_count+1;}}
+        let guest_argc=argc-first;let guest_words=guest_argc+env_count+2;
+        let guest_argv=vm_allocate(guest_words*8);
         if guest_argv<0 {vm_error=3;}
         else {
-            let bytes=vm_address(guest_argv,(guest_argc+1)*8);
+            let bytes=vm_address(guest_argv,guest_words*8);
             let i=0;while i<guest_argc {store64(bytes+i*8,vm_copy_arg(load64(argv+(first+i)*8)));i=i+1;}
+            store64(bytes+guest_argc*8,0);
+            i=0;while i<env_count {store64(bytes+(guest_argc+1+i)*8,vm_copy_arg(load64(environment+i*8)));i=i+1;}
+            store64(bytes+(guest_argc+1+env_count)*8,0);
             vm_push(guest_argc);vm_push(guest_argv);
         }
     }
