@@ -18,6 +18,11 @@ native instructions and dispatches them; execution still needs a compatible
 NVIDIA GPU and driver with `libcuda.so.1`. There is no PTX JIT step for this
 artifact. The runner's launch adapter needs CUDA 12+ driver interfaces.
 
+The [Pup tensor frontend](../libs/ml/pup/README.md) also compiles model graphs
+through this backend: `.pup -> primitive tensor graph -> scheduled Flexscript
+kernel -> word IR -> SASS cubin`. Its MNIST runner loads named F32 safetensors
+and launches the resulting stages through the same CUDA adapter.
+
 This target is specific to SM75, verified on an RTX 2070. It does not produce
 portable binaries for arbitrary NVIDIA GPUs. Use the PTX target when broader
 device compatibility is needed.

@@ -51,7 +51,10 @@ reports a failed kernel/context rather than a per-lane Flexscript exception.
 
 Kernel-reachable allocation, syscalls, FFI and recursion are rejected. This first
 backend also rejects globals and string literals anywhere in the compilation
-unit, and accepts only the Flexscript frontend. Advanced GPU intrinsics now
+unit. Input can be Flexscript or an external frontend returning
+[FSX1 generated source](frontend-extensions.md#fsx1-source-producing-domain-frontends),
+such as the [Pup tensor frontend](../libs/ml/pup/README.md). Portable FIR frontend
+results are not GPU kernel IR. Advanced GPU intrinsics now
 expose floating-point operations, atomics, shared
 memory, barriers, warp operations, tensor fragments and texture fetches. The
 host adapter supports multidimensional launches; see [GPU features](gpu-features.md).

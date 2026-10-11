@@ -1,5 +1,8 @@
 # GPU features and host APIs
 
+[Compile-time program extensions](program-transforms.md) can generate ordinary
+GPU functions, including forward derivatives, through the same PTX/SASS paths.
+
 Flexscript now has experimental support in every category below. Each entry is
 an explicit operation or API; this is not a complete CUDA, OpenGL or Vulkan
 implementation, and graphics shaders do not pass through our SASS compiler.

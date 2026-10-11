@@ -106,6 +106,15 @@ jobs:
       - name: Test frontend extensions across interpreter, JIT, native and WebAssembly
         run: build/tools/test-extensions build/stage2 --report build/extensions-tests.json
 
+      - name: Test compile-time program transformations and autodiff
+        run: build/tools/test-transforms --compiler build/stage2 --report build/transform-tests.json
+
+      - name: Test ML tensors, reverse-mode gradients and training
+        run: build/tools/test-ml --compiler build/stage2 --report build/ml-tests.json
+
+      - name: Test Pup graphs and source frontend kernel compilation
+        run: build/tools/test-pup --compiler build/stage2 --report build/pup-tests.json
+
       - name: Test portable binary64 arithmetic against preserved Rust bit patterns
         run: build/tools/test-f64 build/stage2 --report build/f64-tests.json
 
@@ -149,6 +158,9 @@ jobs:
             build/sass-float-tests.json
             build/gpu-features.json
             build/extensions-tests.json
+            build/transform-tests.json
+            build/ml-tests.json
+            build/pup-tests.json
             build/clean-room.json
             build/harness-tests.json
           if-no-files-found: error

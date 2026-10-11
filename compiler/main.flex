@@ -9,6 +9,7 @@ import "sass.flex";
 import "sass-float.flex";
 import "ir.flex";
 import "extensions.flex";
+import "transforms.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
@@ -521,6 +522,7 @@ fn prefix() {
         immediate(token_value);
         next();
     } else if token == 258 {
+        if tx_recording {store64(tx_literal_flags+(function_count-1)*8,128);}
         if ptx_target || sass_target {fail("GPU targets do not support string literals");}
         if vm_mode {immediate(vm_string_literal());next();return 0;}
         let start = token_start + 1;
@@ -664,6 +666,7 @@ fn block() {
         if token == 0 { fail("unterminated block"); }
         statement();
     }
+    if tx_recording {tx_block_end=token_start+token_size;}
     expect(125);
     local_count = before;
     depth = depth - 1;
@@ -700,6 +703,7 @@ fn global_definition() {
 }
 
 fn function_definition() {
+    let definition_start=token_start;
     if function_count >= 2048 { fail("too many functions"); }
     next();
     if token != 256 { fail("expected function name"); }
@@ -731,7 +735,7 @@ fn function_definition() {
     store64(entry + 24, count);
     if vm_mode {
         let frame=vm_emit(18,0);depth=0;block();immediate(0);epilogue();
-        store64(output+frame+8,slots);return 0;
+        store64(output+frame+8,slots);tx_function_site(function_count-1,definition_start);return 0;
     }
     emit(85); emit(72); emit(137); emit(229);
     emit(72); emit(129); emit(236);
@@ -899,6 +903,7 @@ fn ffi_finish(main_address) {
 }
 
 fn select_module(index) {
+    tx_module=index;
     let module = modules + index * 64;
     source_path = load64(module);
     source = load64(module + 8);
@@ -1156,7 +1161,8 @@ fn load_module(path) {
     if frontend_language {store64(module+40,2);return index;}
     next();
     import_depth = import_depth + 1;
-    while token == 256 && is("import") {
+    while token == 256 && (is("import") || is("extend")) {
+        if is("extend") {tx_declaration(index);}else {
         let site = token_start;
         next(); let child_path = import_path(); next();
         if token != 59 { fail("expected ';' after import"); }
@@ -1164,6 +1170,7 @@ fn load_module(path) {
         token_start = site;
         load_module(child_path);
         select_module(index); pos = resume; next();
+        }
     }
     import_depth = import_depth - 1;
     store64(module + 48, token_start);
@@ -1826,8 +1833,7 @@ fn main(argc, argv) {
     }
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
-    if ptx_target && frontend_language {fail("PTX target currently requires the Flexscript frontend");}
-    if sass_target && frontend_language {fail("SASS target currently requires the Flexscript frontend");}
+    if (ptx_target || sass_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=134217728;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
@@ -1836,6 +1842,7 @@ fn main(argc, argv) {
     compiler_initialize();
     if wasm_target || ptx_target || sass_target {wasm_initialize();}
     load_module(source_path);
+    tx_expand();
     initialize_output();
     if frontend_language {frontend_compile_modules();}else {compile_modules();}
     select_module(0);
@@ -1865,6 +1872,10 @@ fn main(argc, argv) {
         if load64(stat)==load64(frontend_inputs+i*16) && load64(stat+8)==load64(frontend_inputs+i*16+8) {fail("output refers to a frontend source file");}
         i=i+1;
     }
+    i=0;while i<tx_input_count {
+        if load64(stat)==load64(tx_inputs+i*16) && load64(stat+8)==load64(tx_inputs+i*16+8) {fail("output refers to a transformation source file");}
+        i=i+1;
+    }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
     let mode=493;if wasm_target || ptx_target || sass_target || frontend_ir_target {mode=420;}
@@ -1886,7 +1897,9 @@ fn compiler_initialize() {
     modules = alloc(256 * 64);
     module_urls = alloc(256 * 8);
     input_stat = alloc(144);
+    tx_sites=alloc(2048*24);tx_literal_flags=alloc(2048*8);tx_requests=alloc(16*48);tx_inputs=alloc(8192*16);
     if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0
-        || calls < 0 || modules < 0 || module_urls < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0 { fail("memory allocation failed"); }
+        || calls < 0 || modules < 0 || module_urls < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0
+        || tx_sites<0 || tx_literal_flags<0 || tx_requests<0 || tx_inputs<0 { fail("memory allocation failed"); }
     return 0;
 }

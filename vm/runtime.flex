@@ -423,7 +423,7 @@ fn vm_main(argc,argv) {
         if n<0 {return 70;}store8(vm_root_name+n,0);
     }
     source_path=load64(argv+first*8);frontend_auto(source_path);vm_mode=1;compiler_initialize();load_module(source_path);
-    initialize_output();if frontend_language {frontend_compile_modules();}else {compile_modules();}
+    tx_expand();initialize_output();if frontend_language {frontend_source_vm=1;frontend_compile_modules();}else {compile_modules();}
     select_module(0);token_start=source_size;resolve();
     let main_index=find(functions,function_count,"main",4);let count=load64(functions+main_index*32+24);
     if count==2 {

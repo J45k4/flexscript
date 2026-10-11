@@ -77,7 +77,7 @@ fn suite(compiler) {
     text=tg_case("store64(output+i*8,x/(i+1)+x%(i+1));return 0;");
     t_assert(h_has(text,"@%p trap;") && h_has(text,"0x8000000000000000") && h_has(text,"and.pred %p, %p, %q;"),"explicit division trap guards");
     let a=h_args(t_compiler,"--language","seta","--target","ptx",t_fixture);h_add(a,"-o");h_add(a,t_binary);
-    let p=h_run(a);h_check(p,1,0);t_assert(h_has(h_err(p),"requires the Flexscript frontend"),"unsupported frontend rejected");
+    let p=h_run(a);h_check(p,1,0);t_assert(h_has(h_err(p),"require Flexscript or an external source frontend"),"unsupported frontend rejected");
     return t_done();
 }
 fn main(argc,argv) {

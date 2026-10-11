@@ -7,6 +7,7 @@ global frontend_inputs=0;
 global frontend_blob=0;
 global frontend_blob_size=0;
 global frontend_ir_target=0;
+global frontend_source_vm=0;
 fn frontend_select(language) {
     if frontend_selected {fail("choose only one frontend");}frontend_selected=1;
     if up_text(language,"flex") {frontend_language=0;}
@@ -25,9 +26,9 @@ fn frontend_auto(path) {
 fn frontend_child(fd,text,size,path) {
     // fork gives the extension a separate compiler/VM instance. Guest code has
     // bounded memory, fuel and time, and no file, network or raw FFI grants.
-    source_path=frontend_path;module_count=0;arena_size=0;import_depth=0;source_deadline=0;
+    source_path=frontend_path;module_count=0;arena_size=0;import_depth=0;source_deadline=0;tx_inside=1;
     function_count=0;global_count=0;call_count=0;output_size=0;frontend_language=0;
-    vm_mode=1;vm_restricted=1;wasm_target=0;vm_heap_limit=268435456;vm_heap_used=16;
+    vm_mode=1;vm_restricted=1;wasm_target=0;ptx_target=0;sass_target=0;vm_heap_limit=268435456;vm_heap_used=16;
     vm_sp=0;vm_depth=0;vm_local_base=0;vm_local_top=0;vm_finished=0;vm_error=0;vm_steps=0;
     vm_fuel=1000000000;vm_timeout=60000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
     vm_jit_enabled=1;vm_jit_explicit=0;vm_jit_threshold=1;
@@ -68,7 +69,25 @@ fn frontend_run() {
     frontend_input_count=load64(received);
     if frontend_input_count<1 || frontend_input_count>256 || used<8+frontend_input_count*16 {ir_bad();}
     frontend_inputs=received+8;let prefix=8+frontend_input_count*16;
-    ir_accept(received+prefix,used-prefix);return 0;
+    let result=received+prefix;let bytes=used-prefix;
+    if bytes>=64 && load64(result)==0x31585346 {frontend_source_accept(result,bytes);}
+    else {
+        if ptx_target || sass_target {fail("GPU targets require a source frontend result; portable FIR is not GPU kernel IR");}
+        ir_accept(result,bytes);
+    }return 0;
+}
+// FSX1 is generated ordinary Flexscript, with no import/extension headers.
+// Reuse the ordinary parser, symbol checks, target restrictions and emitters.
+fn frontend_source_accept(blob,size) {
+    if size<64 || size>=16777280 || load64(blob+8)!=size || load64(blob+16)!=64
+        || load64(blob+24)!=size-64 || load64(blob+32) || load64(blob+40) || load64(blob+48) || load64(blob+56) {fail("invalid source frontend result (FSX1)");}
+    let i=64;while i<size {if !load8(blob+i) {fail("source frontend result contains a zero byte");}i=i+1;}
+    if frontend_ir_target {fail("--target ir requires portable FIR, not generated source");}
+    let text=alloc(size-63);if text<0 {fail("cannot allocate generated source");}net_copy(text,blob+64,size-64);
+    store64(modules+8,text);store64(modules+16,size-64);store64(modules+48,0);
+    frontend_language=0;function_count=0;global_count=0;call_count=0;output_size=0;
+    vm_mode=frontend_source_vm || wasm_target || ptx_target || sass_target;
+    initialize_output();compile_modules();return 0;
 }
 fn frontend_compile_modules() {
     select_module(0);

@@ -22,6 +22,10 @@ fn main(argc,argv) {
     h_add(names,"ray-run");
     h_add(names,"gpu-info");
     h_add(names,"test-extensions");
+    h_add(names,"test-transforms");
+    h_add(names,"test-ml");
+    h_add(names,"test-pup");
+    h_add(names,"mnist-infer");
     h_add(names,"test-f64");
     h_add(names,"test-f64-math");
     h_add(names,"test-tetris");

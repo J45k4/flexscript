@@ -281,6 +281,8 @@ fn te_large_source() {
     te_bad(path,"SetaScript source must be smaller than 64 MiB");return 0;
 }
 fn suite(compiler) {
+    // Let the frontend's 60-second guest deadline report its own failure.
+    h_timeout=120000;
     t_init(compiler);te_bun=h_executable("bun");te_frontend=0;t_fixture=h_join(t_work,"test.seta");
     te_routes("examples/seta/policy.seta",42);
     te_program("plugin test v1 {} fn f(a:i32,b:i32,c:i32)->i32{return a*100+b*10+c} fn main()->i32{return f(0,4,2)}",42);

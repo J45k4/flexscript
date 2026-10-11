@@ -1,16 +1,24 @@
 # Flexscript frontend extensions
 
+To extend ordinary Flexscript programs, use [compile-time program extensions](program-transforms.md).
+They provide source/function-IR hooks through `extend`, with composition and autodiff examples.
+
 An extension is a Flexscript program that parses another language and returns
-FIR1, the first version of Flexscript's portable word IR. The compiler validates
-the result before passing its instructions to the existing interpreter/JIT,
-the native x86-64 ELF emitter, or the WebAssembly emitter. Extensions do not
-generate Flexscript source or invoke a Rust or C compiler.
+portable FIR word IR or an FSX1 generated-source result. The compiler validates
+the result before passing it to the existing backends. FIR supports the
+interpreter/JIT, native x86-64 ELF and WebAssembly. FSX1 uses the ordinary
+Flexscript parser and also supports PTX and direct SM75 SASS. Neither route
+invokes a Rust or C compiler.
 
 ```text
 source -> Flexscript frontend -> validated FIR1
                                   | interpreter / JIT
                                   | native Linux x86-64 ELF
                                   | WebAssembly
+
+source -> Flexscript frontend -> validated FSX1 -> ordinary Flexscript compiler
+                                                  | interpreter / JIT / native / Wasm
+                                                  | PTX / SM75 cubin
 ```
 
 The compiler bundles the SetaScript frontend. `.seta` selects it automatically;
@@ -54,17 +62,58 @@ fn frontend_compile(text, size, version, path) {
 ```
 
 The arguments are source bytes, byte count, API version (currently 1), and a
-zero-terminated source path. The returned word points to a complete FIR1 blob
+zero-terminated source path. The returned word points to a complete FIR or FSX1 blob
 in guest memory. Import paths in the frontend use normal Flexscript module
 resolution. `examples/extensions/seta.flex` wraps the same parser that is bundled
 in the compiler; both routes produce byte-identical IR.
 
 On a Linux compiler host, an external frontend runs in a separate process's
-restricted Flexscript VM with a 64 MiB guest heap, 500 million instruction fuel,
-30-second execution deadline and 1 MiB diagnostic output budget. It receives the
+restricted Flexscript VM with a 256 MiB guest heap, one billion instruction fuel,
+60-second execution deadline and 1 MiB diagnostic output budget. It receives the
 source as memory and has no guest file, network or raw FFI grants. These bounds
 apply to frontend execution; source loading uses the normal compiler loader.
 The frontend can report a located error with `ir_error(message, byte_offset)`.
+
+## FSX1: source-producing domain frontends
+
+Import `compiler/source-sdk.flex` and return `frontend_source(text,size)` from
+the same `frontend_compile` entry point. The source must be self-contained:
+`global` and `fn` declarations, without `import` or `extend` headers. Frontend
+implementation imports still use the ordinary loader. Generated source is
+compiled with the same symbol, arity and target checks as handwritten source.
+GPU-reachable allocation, syscalls, FFI and recursion remain rejected.
+
+The [Pup tensor frontend](../libs/ml/pup/README.md) uses this route to lower a
+primitive graph and execution plan to ordinary Flexscript kernels. The compiler
+contains no Pup parser, tensor operations or model-specific code.
+
+All header fields are little-endian 64-bit words:
+
+| Byte offset | Value |
+| --- | --- |
+| 0 | Magic `0x31585346` (FSX1) |
+| 8 | Total bytes, exactly `64 + source_size` |
+| 16 | Source offset, exactly 64 |
+| 24 | Source size, less than 16 MiB |
+| 32, 40, 48, 56 | Reserved, zero |
+
+Source bytes follow the header without a terminator; embedded NUL bytes are
+rejected. Validation and compilation happen before replacing an existing
+artifact. Original input and frontend dependency file identities remain
+protected against output aliases. Parser errors in generated source use its
+line/column under the original input path; frontends should report their own
+domain errors against the original bytes before lowering.
+
+`--target ir` accepts FIR only. FIR is not GPU kernel IR and is rejected for
+GPU targets. FSX1 bare-metal output is not supported yet. FSX1 itself does not
+restrict generated code to portable word operations: application execution
+uses the normal target capabilities, including the usual restrictions of
+`flex run --restricted`. Native output has the ordinary native trust model.
+The frontend process always retains its restricted VM and budgets.
+
+`scripts/test-pup.flex` covers native, interpreter, JIT, Wasm and both GPU
+compilation routes, malformed headers, forbidden generated headers, frontend
+capabilities and output preservation.
 The loader copies its result and validates it; guest pointers never become
 native code addresses. Fork/pipe transport currently requires Linux, so external
 frontend loading is unavailable inside a Wasm-hosted compiler. The bundled Seta

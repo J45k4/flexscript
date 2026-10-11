@@ -1,0 +1,11 @@
+# F32 inputs. The host supplies MNIST pixels normalized to [0,1].
+# Explicit input shapes make this model independently compilable.
+images = input("images", [128, 784])
+w1 = input("w1", [784, 64])
+b1 = input("b1", [64])
+w2 = input("w2", [64, 10])
+b2 = input("b2", [10])
+
+hidden = max(dense(images, w1, b1), 0.0)
+logits = dense(hidden, w2, b2)
+output logits

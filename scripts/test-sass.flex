@@ -101,7 +101,7 @@ fn suite(compiler) {
     let source="fn kernel(i,a,b,n){";i=0;while i<120 {source=h_cat(source,h_cat3("let x",h_int(i),"=0;"));i=i+1;}
     ss_reject(h_cat(source,"return 0;}"),"physical register budget");
     let args=h_args(t_compiler,"--language","seta","--target","sass-sm75",t_fixture);h_add(args,"-o");h_add(args,t_binary);
-    let p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"requires the Flexscript frontend"),"unsupported SASS frontend rejected");
+    let p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"require Flexscript or an external source frontend"),"unsupported SASS frontend rejected");
     return t_done();
 }
 fn main(argc,argv) {
