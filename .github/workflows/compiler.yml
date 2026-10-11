@@ -131,6 +131,11 @@ jobs:
           build/stage2 scripts/test-baremetal.flex -o build/test-baremetal
           build/test-baremetal --compiler build/stage2 --report build/baremetal-tests.json
 
+      - name: Test KVM ABI and loaders, and hardware guests when available
+        run: |
+          build/stage2 scripts/test-kvm.flex -o build/test-kvm
+          build/test-kvm --compiler build/stage2
+
       - name: Check release tag and package the verified compiler
         env:
           REF_TYPE: ${{ github.ref_type }}
