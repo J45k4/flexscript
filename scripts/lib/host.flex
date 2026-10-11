@@ -130,7 +130,7 @@ fn h_bytes(a,b,n) {
     return 1;
 }
 fn h_starts(a,b) {
-    return h_len(a)>=h_len(b) && h_bytes(a,b,h_len(b));
+    let i=0;while load8(b+i) {if !load8(a+i) || load8(a+i)!=load8(b+i) {return 0;}i=i+1;}return 1;
 }
 fn h_find(s,needle) {
     let n=h_len(s);
@@ -311,7 +311,7 @@ fn h_append(b,p,n) {
     let cap=load64(b+16);
     h_assert(n>=0 && size<=134217727-n,"buffer limit");
     if size+n+1>cap {
-        let next=4096;
+        let next=64;
         while next<size+n+1 {
             next=next*2;
         }

@@ -37,6 +37,8 @@ fn cuda_device_name(device) {
 fn cuda_device_memory(device) {
     let value=alloc(8);if cuda_call("cuDeviceTotalMem_v2",value,device,0,0,0,0) {return -1;}return load64(value);
 }
+// Current-context free and total bytes, including allocations by other apps.
+fn cuda_memory_info() {let info=alloc(16);if cuda_call("cuMemGetInfo_v2",info,info+8,0,0,0,0) {return 0;}return info;}
 // Device-info record: name pointer, ordinal, SM count, warp width, maximum
 // threads/block, threads/SM, shared bytes/block, registers/block, VRAM bytes,
 // compute-capability major, minor. Integer fields occupy eight bytes each.
@@ -129,6 +131,17 @@ fn cuda_stream() {
 }
 fn cuda_stream_wait(stream) {return cuda_call("cuStreamSynchronize",stream,0,0,0,0,0);}
 fn cuda_stream_close(stream) {return cuda_call("cuStreamDestroy_v2",stream,0,0,0,0,0);}
+fn cuda_capture_begin(stream) {return cuda_call("cuStreamBeginCapture_v2",stream,0,0,0,0,0);}
+fn cuda_capture_end(stream) {
+    let graph=alloc(8);if cuda_call("cuStreamEndCapture",stream,graph,0,0,0,0) {return 0;}return load64(graph);
+}
+fn cuda_graph_instance(graph) {
+    let instance=alloc(8);if cuda_call("cuGraphInstantiateWithFlags",instance,graph,0,0,0,0) {return 0;}return load64(instance);
+}
+fn cuda_graph_launch(instance,stream) {return cuda_call("cuGraphLaunch",instance,stream,0,0,0,0);}
+fn cuda_graph_upload(instance,stream) {return cuda_call("cuGraphUpload",instance,stream,0,0,0,0);}
+fn cuda_graph_close(graph) {return cuda_call("cuGraphDestroy",graph,0,0,0,0,0);}
+fn cuda_graph_instance_close(instance) {return cuda_call("cuGraphExecDestroy",instance,0,0,0,0,0);}
 fn cuda_host_buffer(bytes) {
     let value=alloc(8);if cuda_call("cuMemHostAlloc",value,bytes,0,0,0,0) {return 0;}return load64(value);
 }
@@ -158,3 +171,14 @@ fn cuda_texture_close(texture) {return cuda_call("cuTexObjectDestroy",texture,0,
 fn cuda_free(pointer) {return cuda_call("cuMemFree_v2",pointer,0,0,0,0,0);}
 fn cuda_unload(module) {return cuda_call("cuModuleUnload",module,0,0,0,0,0);}
 fn cuda_close(context) {return cuda_call("cuCtxDestroy_v2",context,0,0,0,0,0);}
+
+// Optional by-value words for kernels that use gpu_launch_word. CUDA copies
+// these values at dispatch/capture, so the caller owns only the host descriptor.
+fn cuda_launch_words(module,input,output,count,config,words) {
+    if count<0 || count>2147483647 || !config {cuda_status=1;return 1;}
+    if count==0 {cuda_status=0;return 0;}if !words {cuda_status=1;return 1;}
+    let function=cuda_function(module,"flex_kernel");if cuda_status {return cuda_status;}
+    let values=alloc(24);store64(values,input);store64(values+8,output);store64(values+16,count);
+    let args=alloc(88);let i=0;while i<3 {store64(args+i*8,values+i*8);i=i+1;}
+    i=0;while i<8 {store64(args+24+i*8,words+i*8);i=i+1;}return cuda_dispatch(function,config,args);
+}

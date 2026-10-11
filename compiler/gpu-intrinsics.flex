@@ -49,14 +49,33 @@ fn gpu_intrinsic(index) {
     if equal(name,size,"gpu_mma_f16",11) {return 50;}
     if equal(name,size,"gpu_texture_fetch",17) {return 51;}
     if equal(name,size,"gpu_fence",9) {return 52;}
+    if equal(name,size,"gpu_load_u32",12) {return 53;}
+    if equal(name,size,"gpu_store_u32",13) {return 54;}
+    if equal(name,size,"gpu_load_bf16",13) {return 55;}
+    if equal(name,size,"gpu_f32_exp2_approx",19) {return 56;}
+    if equal(name,size,"gpu_f32_rcp_approx",18) {return 57;}
+    if equal(name,size,"gpu_f32_rsqrt_approx",20) {return 58;}
+    if equal(name,size,"gpu_load_u64",12) {return 59;}
+    if equal(name,size,"gpu_load_u16",12) {return 60;}
+    if equal(name,size,"gpu_load_stream_u64",19) {return 61;}
+    if equal(name,size,"gpu_f32_max",11) {return 62;}
+    if equal(name,size,"gpu_warp_sum_f32",16) {return 63;}
+    if equal(name,size,"gpu_launch_word",15) {return 64;}
+    if equal(name,size,"gpu_f32x2_to_f16x2",18) {return 65;}
+    if equal(name,size,"gpu_f16x2_to_f32x2",18) {return 69;}
+    if equal(name,size,"gpu_bf16x2_to_f16x2",19) {return 68;}
+    if equal(name,size,"gpu_mma_f16x4",13) {return 67;}
     return 0;
 }
 fn gpu_intrinsic_arity(kind) {
+    if kind==67 {return 5;}
+
+    if kind==54 {return 2;}
     if kind<=15 || kind==52 {return 0;}
     if kind==16 || kind==17 || kind==14 {return 1;}
     if kind==18 || (kind>=20 && kind<=26) {return 2;}
     if kind==27 || kind==28 {return 3;}
-    if kind==29 {return 2;}
+    if kind==29 || kind==62 {return 2;}
     if (kind>=30 && kind<=33) || (kind>=40 && kind<=43) {return 2;}
     if kind==35 || kind==45 {return 3;}
     if kind==50 {return 4;}
@@ -76,6 +95,48 @@ fn p_float_result(width) {
     else {p_text("mov.b64 ");p_reg(p_acc);p_text(", %d3;\n");}return 0;
 }
 fn p_intrinsic(kind,first) {
+
+    if kind==69 {
+        p_text("cvt.u32.u64 %r0,");p_reg(first);p_text(";\nmov.b32 {%h0,%h1},%r0;\ncvt.f32.f16 %f0,%h0;\ncvt.f32.f16 %f1,%h1;\nmov.b32 %r0,%f0;\nmov.b32 %r1,%f1;\nmov.b64 ");p_reg(p_acc);p_text(",{%r0,%r1};\n");return 0;
+    }
+    if kind==68 {
+        p_text("cvt.u32.u64 %r0,");p_reg(first);p_text(";\nshl.b32 %r1,%r0,16;\nand.b32 %r0,%r0,0xffff0000;\nmov.b32 %f0,%r1;\nmov.b32 %f1,%r0;\ncvt.rn.f16.f32 %h0,%f0;\ncvt.rn.f16.f32 %h1,%f1;\nmov.b32 %r0,{%h0,%h1};\ncvt.u64.u32 ");p_reg(p_acc);p_text(",%r0;\n");return 0;
+    }
+    if kind==67 {
+        p_text("mov.b64 {%r0,%r1},");p_reg(first);p_text(";\ncvt.u32.u64 %r2,");p_reg(first+1);
+        p_text(";\nmov.b64 {%r3,%r4},");p_reg(first+2);p_text(";\nmov.b64 {%r5,%r6},");p_reg(first+3);
+        p_text(";\nmov.b32 %f4,%r3;\nmov.b32 %f5,%r4;\nmov.b32 %f6,%r5;\nmov.b32 %f7,%r6;\nmma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%f0,%f1,%f2,%f3},{%r0,%r1},{%r2},{%f4,%f5,%f6,%f7};\nmov.u64 %t,flex_shared;\nadd.u64 %t,%t,");p_reg(first+4);
+        p_text(";\ncvt.u32.u64 %s,%t;\nst.shared.v2.f32 [%s],{%f2,%f3};\nmov.b32 %r3,%f0;\nmov.b32 %r4,%f1;\nmov.b64 ");p_reg(p_acc);p_text(",{%r3,%r4};\n");return 0;
+    }
+    if kind==65 {
+        p_text("mov.b64 {%r0,%r1}, ");p_reg(first);p_text(";\nmov.b32 %f0,%r0;\nmov.b32 %f1,%r1;\ncvt.rn.f16.f32 %h0,%f0;\ncvt.rn.f16.f32 %h1,%f1;\nmov.b32 %r0,{%h0,%h1};\ncvt.u64.u32 ");p_reg(p_acc);p_text(",%r0;\n");return 0;
+    }
+
+    if kind==64 {
+        p_text("and.b64 %t, ");p_reg(first);p_text(", 7;\nmov.b64 ");p_reg(p_acc);p_text(", %u0;\n");let i=1;
+        while i<8 {p_text("setp.eq.u64 %p, %t, ");p_num(i);p_text(";\n@%p mov.b64 ");p_reg(p_acc);p_text(", %u");p_num(i);p_text(";\n");i=i+1;}return 0;
+    }
+
+    if kind==63 {
+        p_float_load(first,1,32);p_text("mov.b32 %r0, %f0;\n");let distance=16;
+        while distance {p_text("shfl.sync.bfly.b32 %r1, %r0, ");p_num(distance);p_text(", 31, -1;\nmov.b32 %f0, %r0;\nmov.b32 %f1, %r1;\nadd.f32 %f3, %f0, %f1;\nmov.b32 %r0, %f3;\n");distance=distance>>1;}
+        p_float_result(32);return 0;
+    }
+    if kind==62 {p_float_load(first,2,32);p_text("max.f32 %f3, %f0, %f1;\n");p_float_result(32);return 0;}
+    if kind==61 {p_text("ld.global.cg.u64 ");p_reg(p_acc);p_text(", [");p_reg(first);p_text("];\n");return 0;}
+    if kind==60 {p_text("ld.global.u16 %s, [");p_reg(first);p_text("];\ncvt.u64.u32 ");p_reg(p_acc);p_text(", %s;\n");return 0;}
+    if kind==59 {p_text("ld.global.u64 ");p_reg(p_acc);p_text(", [");p_reg(first);p_text("];\n");return 0;}
+    if kind>=53 && kind<=55 {
+        if kind==54 {p_text("cvt.u32.u64 %s, ");p_reg(first+1);p_text(";\nst.global.u32 [");p_reg(first);p_text("], %s;\n");p_move(p_acc,first+1);}
+        else {
+            p_text("ld.global.u");if kind==55 {p_text("16");}else {p_text("32");}p_text(" %s, [");p_reg(first);p_text("];\n");
+            if kind==55 {p_text("shl.b32 %s, %s, 16;\n");}p_text("cvt.u64.u32 ");p_reg(p_acc);p_text(", %s;\n");
+        }return 0;
+    }
+    if kind>=56 && kind<=58 {
+        p_float_load(first,1,32);if kind==56 {p_text("ex2.approx.ftz.f32");}else if kind==57 {p_text("rcp.approx.ftz.f32");}else {p_text("rsqrt.approx.ftz.f32");}
+        p_text(" %f3, %f0;\n");p_float_result(32);return 0;
+    }
     if kind<=14 {
         p_text("mov.u32 %s, ");
         if kind==1 {p_text("%tid.x");}else if kind==2 {p_text("%tid.y");}else if kind==3 {p_text("%tid.z");}

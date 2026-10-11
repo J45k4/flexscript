@@ -15,16 +15,25 @@ implementation, and graphics shaders do not pass through our SASS compiler.
 | 64-bit atomic add/and/or/xor/exchange/min/max/CAS | Yes | Yes | `gpu_atomic_*64` |
 | Active mask, ballot, 64-bit shuffle, warp synchronization | Yes | Yes | `gpu_active_mask`, `gpu_ballot`, `gpu_shuffle`, `gpu_warp_sync` |
 | FP32/FP64 add, subtract, multiply, fused multiply-add | Yes | Yes | `gpu_f32_*`, `gpu_f64_*` |
+| FP32 numeric maximum and full-warp XOR-tree sum | Yes | Yes | `gpu_f32_max`, `gpu_warp_sum_f32` |
+| Eight optional by-value launch words, including helper calls | Yes | Yes | `gpu_launch_word`, `cuda_launch_words` |
 | FP32/FP64 conversions to/from signed i64 | Yes | Yes | `gpu_f*_from_i64`, `gpu_f*_to_i64` |
 | FP32/FP64 divide and square root | Yes, integer SASS routines | Yes | `gpu_f*_div`, `gpu_f*_sqrt` |
-| Tensor-core FP16 matrix multiply, FP32 accumulation | Yes | Yes | `gpu_mma_f16`, one warp fragment shape |
+| Packed U16/U32/U64 loads, U32 stores and BF16 loads expanded to FP32 | Yes | Yes | `gpu_load_u16`, `gpu_load_u32`, `gpu_load_u64`, `gpu_store_u32`, `gpu_load_bf16` |
+| Aligned U64 streaming loads that bypass L1 | Yes | Yes | `gpu_load_stream_u64`, PTX `ld.global.cg.u64` |
+| Approximate FP32 exponential, reciprocal and reciprocal square root | Yes, native SFU | Yes | `gpu_f32_exp2_approx`, `gpu_f32_rcp_approx`, `gpu_f32_rsqrt_approx` |
+| Tensor-core FP16 matrix multiply, FP32 accumulation | Yes | Yes | `gpu_mma_f16`, `gpu_mma_f16x4`, 16x8x8 warp fragments |
+| Packed FP32/BF16 to FP16 and FP16 to FP32 conversion | Yes | Yes | `gpu_f32x2_to_f16x2`, `gpu_bf16x2_to_f16x2`, `gpu_f16x2_to_f32x2` |
 | Bindless 1D float texture fetch | Yes | Yes | `cuda_texture_f32`, `gpu_texture_fetch` |
-| Streams, pinned transfers, events, occupancy and device queries | Same runtime | Same runtime | `lib/cuda.flex` |
+| Streams, pinned transfers, events, CUDA graphs, occupancy and device queries | Same runtime | Same runtime | `lib/cuda.flex` |
 | Textured raster graphics, GLSL programs, RGBA framebuffer readback | Separate graphics API | Separate graphics API | `lib/graphics.flex`, EGL/OpenGL 4.5 |
 | Hardware ray queries and triangle/instance acceleration structures | Separate ray API | Separate ray API | `lib/vulkan.flex`, Vulkan KHR extensions |
 
 Only SM75 has been verified for direct machine-code emission. Advanced GPU
 intrinsics select PTX 6.5 / SM75; plain integer PTX retains the SM50 baseline.
+The packed-memory and SFU operations also support the
+[Qwen3 inference library](llm-inference.md). SFU approximations flush subnormals
+and have GPU-only CPU stubs; they do not replace correctly rounded div/sqrt.
 Floating-point values are IEEE bit patterns stored in ordinary words. Integer
 operators keep their usual integer meaning: use `gpu_f32_add`, for example,
 rather than `+` for floating-point addition. FP32 results occupy the low 32 bits
@@ -42,6 +51,28 @@ or external assembler. Kernels using either operation reserve 16 additional
 scratch words (32 physical registers); this correctness-first implementation is
 slower than an optimized reciprocal/refinement sequence. Register-budget limits
 still apply. The other floating-point intrinsics use native float instructions.
+
+## By-value launch words
+
+A kernel using `gpu_launch_word(index)` receives eight extra U64 arguments;
+`index` wraps modulo eight. `cuda_launch_words(module,input,output,count,config,words)`
+passes them from a 64-byte host buffer. CUDA copies the words at dispatch or graph
+capture, so that buffer need not remain alive until device execution completes.
+The usual input/output/count fields retain their meanings. Kernels without this
+intrinsic retain the three-argument launch ABI and existing launch helpers.
+
+When dispatching directly, supply eleven parameter pointers: input, output,
+count, then the eight words. These are launch arguments, so pass host addresses
+of the values. They can hold device pointers, shapes or scalar bit patterns.
+Literal word indices become constant-bank loads in direct SASS; dynamic indices
+also work. PTX helper calls carry the same values through hidden parameters.
+
+`gpu_warp_sum_f32(value)` is a collective over all 32 lanes. It broadcasts a
+floating-point sum using the XOR offsets 16, 8, 4, 2 and 1, and clears the high
+word. Use it only where every lane participates. `gpu_f32_max(a,b)` returns the
+numeric argument when the other is NaN and chooses positive zero over negative
+zero. Both have matching native SASS and PTX lowerings; maximum also has a CPU
+reference implementation.
 
 ## Compile and discover the device
 
@@ -185,6 +216,25 @@ FP32 bit pattern with an integer texel index. Destroy the object with
 CUDA array textures, arbitrary formats and sampler controls are not exposed by
 this convenience API; the graphics path separately supports 2D RGBA textures.
 
+`gpu_mma_f16x4(a,b,c,d,upper_offset)` uses the same 16x8x8 lane layout,
+with register operands: `a` contains two packed FP16 pairs, `b` one packed
+FP16 pair, and `c` / `d` two packed FP32 accumulators each. It returns the
+first two FP32 results and stores the other two at the eight-byte-aligned
+shared offset `upper_offset`. Each lane must own a disjoint shared destination.
+All 32 lanes must participate with matching instruction order. Native lowering
+uses HMMA; PTX lowering uses `mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32`.
+The compiler preserves aligned accumulator quartets and can forward the
+lane-local shared round trip into registers when its operands remain unchanged.
+
+`gpu_f32x2_to_f16x2(word)` rounds two packed FP32 values to nearest-even FP16
+and returns their packed pair in the low 32 bits. `gpu_bf16x2_to_f16x2(word)`
+converts the low two BF16 values through their exact FP32 representations with
+the same rounding. `gpu_f16x2_to_f32x2(word)` expands the low two FP16 values
+into a packed FP32 pair. Unused high input bits are ignored; packing clears the
+high 32 result bits. Subnormals and signed zeros are supported; overflow rounds
+to infinity. NaN payloads and quieting are not portable. These three conversions
+have CPU reference implementations. Matrix collectives remain GPU-only.
+
 ## Streams and transfers
 
 `cuda_host_buffer(bytes)` allocates pinned host memory for
@@ -198,6 +248,15 @@ another synchronization confirms completion. Free pinned buffers with
 `cuda_event_elapsed_f32(start,end)` returns elapsed milliseconds as FP32 bits.
 `cuda_stream_close` destroys a stream; `cuda_synchronize` waits for the current
 context. Streams enable overlap but do not guarantee hardware overlap.
+
+`cuda_capture_begin(stream)` / `cuda_capture_end(stream)` capture a stream's
+operations into a graph. Instantiate it with `cuda_graph_instance(graph)`,
+optionally upload the executable with `cuda_graph_upload(instance,stream)`,
+and replay with `cuda_graph_launch(instance,stream)`. Synchronize the stream
+before changing host transfer buffers or releasing referenced resources.
+Destroy the executable and source graph with `cuda_graph_instance_close` and
+`cuda_graph_close`. The [LLM runtime](llm-inference.md) captures separate graphs
+for prompt positions without logits and for full decode executions.
 
 ## Graphics and hardware ray queries
 

@@ -1,0 +1,19 @@
+# Single-sequence Qwen3 inference. Weights are HF [output,input] BF16 tensors.
+# Static layer expansion lowers these tensor expressions to reusable SASS kernels.
+tokens = input("tokens")
+epsilon = config("rms_norm_eps")
+x = embedding(weight("model.embed_tokens.weight"), tokens)
+for layer in range(config("num_hidden_layers")):
+    h = rms_norm(x, weight(f"model.layers.{layer}.input_layernorm.weight"), epsilon)
+    q = linear(h, weight(f"model.layers.{layer}.self_attn.q_proj.weight"))
+    k = linear(h, weight(f"model.layers.{layer}.self_attn.k_proj.weight"))
+    v = linear(h, weight(f"model.layers.{layer}.self_attn.v_proj.weight"))
+    q = rope(rms_norm(q, weight(f"model.layers.{layer}.self_attn.q_norm.weight"), epsilon))
+    k = rope(rms_norm(k, weight(f"model.layers.{layer}.self_attn.k_norm.weight"), epsilon))
+    attended = attention(q, k, v)
+    x = x + linear(attended, weight(f"model.layers.{layer}.self_attn.o_proj.weight"))
+    h = rms_norm(x, weight(f"model.layers.{layer}.post_attention_layernorm.weight"), epsilon)
+    gate = silu(linear(h, weight(f"model.layers.{layer}.mlp.gate_proj.weight")))
+    up = linear(h, weight(f"model.layers.{layer}.mlp.up_proj.weight"))
+    x = x + linear(gate * up, weight(f"model.layers.{layer}.mlp.down_proj.weight"))
+output linear(rms_norm(x, weight("model.norm.weight"), epsilon), weight("lm_head.weight"))

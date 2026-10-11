@@ -16,10 +16,72 @@ global sass_math_base=0;
 fn sass_special(to,code) {sass_instruction(0x7919|(to<<16),code<<8,1);sass_immediate32(to+1,0);return 0;}
 fn sass_constant_word(to,offset) {sass_constant(to,offset);sass_immediate32(to+1,0);return 0;}
 fn sass_intrinsic_supported(kind) {
-    return kind<=18 || (kind>=20 && kind<=29) || kind==50 || kind==51 || kind==52
+    return kind<=18 || (kind>=20 && kind<=29) || (kind>=50 && kind<=70)
         || (kind>=30 && kind<=37) || (kind>=40 && kind<=47);
 }
+fn sass_load_offset(kind,first,offset) {
+    let high=0x001ee900;if kind==59 {high=0x001eeb00;}else if kind==61 {high=0x001f4b00;}else if kind==55 || kind==60 {high=0x001ee500;}
+    sass_instruction(0x7381|(sass_acc<<16)|(first<<24)|(offset<<40),high,1);
+    if kind==55 {sass_instruction(0x7819|(sass_acc<<16)|(sass_acc<<24)|(16<<32),0x6ff,0);}
+    if kind!=59 && kind!=61 {sass_immediate32(sass_acc+1,0);}return 0;
+}
 fn sass_intrinsic(kind,first) {
+
+
+    if kind==69 {
+        sass_instruction(0xa00000ff00007230|(sass_acc<<16)|(first<<24),0x4800,0);
+        sass_instruction(0xa00000ff00007230|((sass_acc+1)<<16)|(first<<24),0x4c00,0);return 0;
+    }
+    if kind==68 {
+        sass_instruction(0x7819|(10<<16)|(first<<24)|(16<<32),0x6ff,0);
+        sass_instruction(0x7812|(12<<16)|(first<<24)|(4294901760<<32),0x078ec0ff,0);
+        sass_instruction(0x7304|(10<<16)|(10<<32),0x200800,1);
+        sass_instruction(0x7304|(12<<16)|(12<<32),0x200800,1);
+        sass_instruction(0x7816|(sass_acc<<16)|(10<<24)|(0x5410<<32),12,0);sass_immediate32(sass_acc+1,0);return 0;
+    }
+    if kind==67 {
+        sass_immediate32(12,4294967295);sass_instruction(0x7348|(12<<32),0x03800000,0);
+        sass_move(10,first);sass_move32(12,first+2);sass_move(4,first+4);sass_move(6,first+6);
+        sass_instruction(0x723c|(4<<16)|(10<<24)|(12<<32),0x1004,1);
+        sass_instruction(0x7388|((first+8)<<24)|(6<<32),0xa00,2);sass_move(sass_acc,4);return 0;
+    }
+    if kind==65 {
+        sass_instruction(0x7304|(10<<16)|(first<<32),0x200800,1);
+        sass_instruction(0x7304|(12<<16)|((first+1)<<32),0x200800,1);
+        sass_instruction(0x7816|(sass_acc<<16)|(10<<24)|(0x5410<<32),12,0);sass_immediate32(sass_acc+1,0);return 0;
+    }
+
+    if kind==64 {
+        sass_instruction(0x7812|(10<<16)|(first<<24)|(7<<32),0x078ec0ff,0);
+        sass_instruction(0x7819|(10<<16)|(10<<24)|(3<<32),0x6ff,0);
+        sass_instruction(0x7b82|(sass_acc<<16)|(10<<24)|(376<<38),0xa00,1);return 0;
+    }
+
+    if kind==63 {
+        sass_immediate32(12,4294967295);sass_instruction(0x7348|(12<<32),0x03800000,0);
+        sass_instruction(0x7202|(sass_acc<<16)|(first<<32),0xf00,0);let distance=16;
+        while distance {sass_instruction((3<<58)|(31<<40)|(distance<<53)|0x7f89|(10<<16)|(sass_acc<<24),0xe0000,1);
+            sass_instruction(0x7221|(sass_acc<<16)|(sass_acc<<24)|(10<<32),0,0);distance=distance>>1;}
+        sass_immediate32(sass_acc+1,0);return 0;
+    }
+    if kind==62 {sass_instruction(0x7209|(sass_acc<<16)|(first<<24)|((first+2)<<32),0x07800000,0);sass_immediate32(sass_acc+1,0);return 0;}
+    if kind==61 {sass_load_offset(kind,first,0);return 0;}
+    if kind==60 {sass_instruction(0x7381|(sass_acc<<16)|(first<<24),0x001ee500,1);sass_immediate32(sass_acc+1,0);return 0;}
+    if kind==59 {sass_instruction(0x7381|(sass_acc<<16)|(first<<24),0x001eeb00,1);return 0;}
+    if kind>=53 && kind<=55 {
+        if kind==54 {
+            sass_instruction(0x7386|(first<<24)|((first+2)<<32),0x0010e900,2);sass_move(sass_acc,first+2);
+        }else {
+            let high=0x001ee900;if kind==55 {high=0x001ee500;}
+            sass_instruction(0x7381|(sass_acc<<16)|(first<<24),high,1);
+            if kind==55 {sass_instruction(0x7819|(sass_acc<<16)|(sass_acc<<24)|(16<<32),0x6ff,0);}
+            sass_immediate32(sass_acc+1,0);
+        }return 0;
+    }
+    if kind>=56 && kind<=58 {
+        let mode=2;if kind==57 {mode=4;}else if kind==58 {mode=5;}
+        sass_instruction(0x7308|(sass_acc<<16)|(first<<32),mode<<10,1);sass_immediate32(sass_acc+1,0);return 0;
+    }
     if kind==33 || kind==34 || kind==43 || kind==44 {return sass_float_exact(kind,first);}
     if kind<=13 {
         if kind<=3 {sass_special(sass_acc,32+kind);}
@@ -115,17 +177,58 @@ fn sass_shift(left,right) {
     }
     sass_move(sass_acc,6);return 0;
 }
+fn sass_shift_constant(left,n,right) {
+    n=n&63;if !n {sass_move(sass_acc,left);return 0;}
+    if right {
+        if n<32 {sass_instruction(0x7819|(sass_acc<<16)|(left<<24)|(n<<32),0x1000|left+1,0);}
+        else {if n==32 {sass_move32(sass_acc,left+1);}else {sass_instruction(0x7819|(sass_acc<<16)|(255<<24)|((n-32)<<32),0x11400|left+1,0);}}
+        let high_n=n;if n>=32 {high_n=31;}
+        sass_instruction(0x7819|((sass_acc+1)<<16)|(255<<24)|(high_n<<32),0x11400|left+1,0);
+    }else {
+        if n<32 {
+            sass_instruction(0x7819|((sass_acc+1)<<16)|(left<<24)|(n<<32),0x10200|left+1,0);
+            sass_instruction(0x7819|(sass_acc<<16)|(left<<24)|(n<<32),0x6ff,0);
+        }else {if n==32 {sass_move32(sass_acc+1,left);}else {sass_instruction(0x7819|((sass_acc+1)<<16)|(left<<24)|((n-32)<<32),0x6ff,0);}sass_immediate32(sass_acc,0);}
+    }return 0;
+}
 
 fn sass_reg(slot) {return 16+slot*2;}
+fn sass_add_constant(left,value) {
+    sass_instruction(0x7810|(sass_acc<<16)|(left<<24)|((value&4294967295)<<32),0x07f1e0ff,0);
+    sass_instruction(0x7810|((sass_acc+1)<<16)|((left+1)<<24)|(((value>>32)&4294967295)<<32),0x007fe4ff,0);return 0;
+}
+fn sass_logic_constant(left,value,op) {
+    let lut=0xc0;if op==124 {lut=0xfc;}else if op==94 {lut=0x3c;}
+    sass_instruction(0x7812|(sass_acc<<16)|(left<<24)|((value&4294967295)<<32),0x078e00ff|(lut<<8),0);
+    sass_instruction(0x7812|((sass_acc+1)<<16)|((left+1)<<24)|(((value>>32)&4294967295)<<32),0x078e00ff|(lut<<8),0);return 0;
+}
+fn sass_constant_binary(left,value,op) {
+    if op==43 || op==45 {if op==45 {value=-value;}return sass_add_constant(left,value);}
+    if op==38 || op==124 || op==94 {return sass_logic_constant(left,value,op);}
+    let n=0;while (1<<n)!=value {n=n+1;}return sass_shift_constant(left,n,0);
+}
+fn sass_stall(low) {
+    let op=low&4095;
+    // Tested SM75 dependent chains: FMA four cycles, other FP32 math five,
+    // integer/move six. A branch drains scoreboards and flushes fixed results.
+    // Predicates and unclassified operations retain the original delay.
+    if op==0x23c {return 14;}
+    if op==0x947 || op==0xa02 {return 6;}if op==0x223 {return 4;}
+    if op==0x220 || op==0x221 || op==0x209 {return 5;}if op==0x230 {return 8;}
+    if op==0x202 || op==0x802 || op==0x210 || op==0x810 || op==0x212 || op==0x812 || op==0x219 || op==0x819
+        || op==0x224 || op==0x225 || op==0x220 || op==0x221 || op==0x223 || op==0x209 {return 6;}
+    return 15;
+}
 fn sass_instruction(low,high,dependency) {
     if output_size>=1048576 {fail("SASS code exceeds 1 MiB");}
-    // Serialize all dependencies, stall 15 cycles, yield enabled, no register reuse.
-    // Variable-latency operations additionally set scoreboard 0. Every following
-    // instruction waits on all scoreboards, so fixed stalls never stand in for
-    // completion of a load, special-register read, or store source consumption.
+    // Emit conservative dependencies first. Later passes remove redundant
+    // instructions and schedule the known operations using explicit hazards.
+    // Unknown instructions retain serialization; fixed stalls never substitute
+    // for completion of a variable-latency operation.
     let control=0x03ffde0000000000;
     if dependency==1 {control=0x03fe1e0000000000;} // write barrier 0
     else if dependency==2 {control=0x03f1de0000000000;} // read barrier 0
+    control=(control&~(15<<41))|(sass_stall(low)<<41);
     emit64(low);emit64(high|control);return 0;
 }
 fn sass_exit(predicate) {
@@ -260,11 +363,56 @@ fn sass_function(index,base,result) {
     let slots=load64(sass_frames+index*24);let maximum=load64(sass_frames+index*24+8);
     let acc=sass_reg(base+slots);let depth=0;let child=base+slots+maximum+1;
     let labels=alloc((end-start+16)/2);let jumps=alloc((end-start+16));let count=0;
+    let targets=alloc((end-start+16)/2);let scan=start;
+    while scan<end {let op=load64(p_code+scan);if op>=9 && op<=12 {let target=load64(p_code+scan+8);if op==9 {target=end;}if target>=start && target<=end {store64(targets+(target-start)/2,1);}}scan=scan+16;}
     let i=load64(functions+index*32+24);while i<slots {sass_immediate(sass_reg(base+i),0);i=i+1;}
     let pc=start;while pc<end {
         store64(labels+(pc-start)/2,output_size);sass_acc=acc;
         let op=load64(p_code+pc);let arg=load64(p_code+pc+8);
-        if op==1 {sass_immediate(acc,arg);}
+        let load_kind=0;
+        if op==1 && arg>=0 && arg<=4095 && pc+48<end && load64(p_code+pc+16)==7 && load64(p_code+pc+24)==43 && load64(p_code+pc+32)==2 && load64(p_code+pc+48)==8
+            && !load64(targets+(pc+16-start)/2) && !load64(targets+(pc+32-start)/2) && !load64(targets+(pc+48-start)/2) {
+            let kind=gpu_intrinsic(load64(p_code+pc+56));if kind==53 || kind==55 || kind==59 || kind==60 || kind==61 {load_kind=kind;}
+        }
+        let launch_load=0;
+        if op==1 && pc+32<end && load64(p_code+pc+16)==2 && load64(p_code+pc+32)==8
+            && !load64(targets+(pc+16-start)/2) && !load64(targets+(pc+32-start)/2) {
+            launch_load=gpu_intrinsic(load64(p_code+pc+40))==64;
+        }
+        if launch_load {
+            let word=arg&7;pc=pc+32;let next=0;if pc+16<end {next=load64(p_code+pc+16);}
+            if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
+                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}pc=pc+16;
+            }
+            sass_constant(sass_acc,376+word*8);sass_constant(sass_acc+1,380+word*8);
+        }else if load_kind {
+            // The global load's native immediate replaces pointer addition and
+            // its transient address pair, preserving the original stack effect.
+            depth=depth-1;let left=sass_reg(base+slots+1+depth);let value=arg;pc=pc+48;
+            let next=0;if pc+16<end {next=load64(p_code+pc+16);}
+            if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
+                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                pc=pc+16;
+            }
+            sass_load_offset(load_kind,left,value);
+        }
+        else if op==1 && pc+16<end && load64(p_code+pc+16)==7 && !load64(targets+(pc+16-start)/2)
+            && (load64(p_code+pc+24)==43 || load64(p_code+pc+24)==45 || load64(p_code+pc+24)==38
+                || load64(p_code+pc+24)==124 || load64(p_code+pc+24)==94
+                || (load64(p_code+pc+24)==42 && arg>0 && !(arg&(arg-1)))) {
+            let value=arg;let operation=load64(p_code+pc+24);
+            depth=depth-1;let left=sass_reg(base+slots+1+depth);pc=pc+16;
+            let next=0;if pc+16<end {next=load64(p_code+pc+16);}
+            if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
+                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                sass_constant_binary(left,value,operation);pc=pc+16;
+            }else {sass_constant_binary(left,value,operation);}
+        }
+        else if op==1 && pc+16<end && load64(p_code+pc+16)==7 && !load64(targets+(pc+16-start)/2)
+            && (load64(p_code+pc+24)==265 || load64(p_code+pc+24)==266) {
+            depth=depth-1;sass_shift_constant(sass_reg(base+slots+1+depth),arg,load64(p_code+pc+24)==266);pc=pc+16;
+        }
+        else if op==1 {sass_immediate(acc,arg);}
         else if op==2 {sass_move(sass_reg(base+slots+1+depth),acc);depth=depth+1;}
         else if op==3 {sass_move(acc,sass_reg(base+arg));}
         else if op==4 {sass_move(sass_reg(base+arg),acc);}
@@ -275,7 +423,14 @@ fn sass_function(index,base,result) {
         else if op==8 || op==17 {
             let arity=p_arity(op,arg);depth=depth-arity;let first=sass_reg(base+slots+1+depth);
             if op==17 {sass_memory(arg,first);}
-            else if gpu_intrinsic(arg) {sass_intrinsic(gpu_intrinsic(arg),first);}
+            else if gpu_intrinsic(arg) {
+                let kind=gpu_intrinsic(arg);let next=0;if pc+16<end {next=load64(p_code+pc+16);}
+                let direct=(kind>=53 && kind<=64 && kind!=54) || (kind>=30 && kind<=32) || kind==35;
+                if direct && (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
+                    if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                    sass_intrinsic(kind,first);pc=pc+16;
+                }else {sass_intrinsic(kind,first);}
+            }
             else {
                 i=0;while i<arity {sass_move(sass_reg(child+i),first+i*2);i=i+1;}
                 sass_function(arg,child,acc);
@@ -294,7 +449,7 @@ fn sass_function(index,base,result) {
     if result>=0 {sass_move(result,acc);}return 0;
 }
 fn sass_lower(kernel,code,size) {
-    p_code=code;p_size=size;p_seen=alloc(function_count*8);p_visit(kernel,0);
+    p_launch_words=0;p_code=code;p_size=size;p_seen=alloc(function_count*8);p_visit(kernel,0);
     sass_frames=alloc(function_count*24);sass_math=0;
     let frame=sass_frame(kernel);sass_math_base=sass_reg(frame);
     sass_registers=18+2*(frame+sass_math*16);
@@ -303,6 +458,15 @@ fn sass_lower(kernel,code,size) {
     if sass_exits<0 {fail("cannot allocate SASS exits");}
     output=alloc(output_limit);output_size=0;if output<0 {fail("cannot allocate SASS instructions");}
     sass_constant(1,0x28);
+    // A one-dimensional launch needs only block_x * block_dim_x + thread_x.
+    // CUDA dimensions are positive, so OR == 1 proves every other extent is 1.
+    sass_constant(10,4);sass_constant(11,8);sass_logic32(10,10,11,0xfc);
+    sass_constant(11,16);sass_logic32(10,10,11,0xfc);sass_constant(11,20);sass_logic32(10,10,11,0xfc);
+    sass_immediate32(12,1);sass_instruction(0x720c|(10<<24)|(12<<32),0x03f22070,0);
+    let multidimensional=sass_branch(9);
+    sass_special(2,37);sass_constant_word(10,0);sass_multiply(2,2,10);
+    sass_special(10,33);sass_add(2,2,10,0);let indexed=sass_branch(7);
+    sass_patch(multidimensional,output_size);
     // Linear block number, then linear thread number; x is fastest in both.
     sass_special(2,39);sass_constant_word(10,16);sass_multiply(2,2,10);
     sass_special(10,38);sass_add(2,2,10,0);
@@ -314,13 +478,14 @@ fn sass_lower(kernel,code,size) {
     sass_special(12,34);sass_add(10,10,12,0);
     sass_constant_word(12,0);sass_multiply(10,10,12);
     sass_special(12,33);sass_add(10,10,12,0);sass_add(2,2,10,0);
+    sass_patch(indexed,output_size);
     sass_instruction(0x00005c0002007a0c,0x03f06070,0); // unsigned low comparison
     sass_instruction(0x00005d0003007a0c,0x03f06100,0); // unsigned high comparison with low predicate
     sass_exit(0); // index >= count
     sass_immediate(8,0);sass_move(sass_reg(0),2);
     let i=1;while i<4 {sass_constant(sass_reg(i),0x160+(i-1)*8);sass_constant(sass_reg(i)+1,0x164+(i-1)*8);i=i+1;}
     sass_function(kernel,0,-1);sass_exit(7);
-    while output_size%128 {sass_instruction(0x7918,0,0);}return 0;
+    sass_optimize();so_shared_forward();so_shared_dead_stores();so_warp_syncs();sass_optimize();sass_allocate_registers();sass_schedule();return 0;
 }
 fn sass_align(alignment) {while output_size%alignment {emit(0);}return 0;}
 fn sass_string(text) {let at=output_size;p_text(text);emit(0);return at;}
@@ -353,14 +518,15 @@ fn sass_cubin() {
     let kernel_info=output_size;
     emit32(0x00043604);emit32(1); // software workaround convention
     emit32(0x00043704);emit32(129); // CUDA ELF API version
-    emit32(0x00080a04);emit32(2);emit32(0x00180160); // constant bank symbol, offset, size
-    emit32(0x00181903); // parameter bank size 24
-    i=2;while i>=0 {emit32(0x000c1704);emit32(0);emit32(i|(i*8<<16));emit32(0x0021f000);i=i-1;}
+    let parameters=3;if p_launch_words {parameters=11;}let bank_bytes=parameters*8;
+    emit32(0x00080a04);emit32(2);emit32((bank_bytes<<16)|0x160); // constant bank symbol, offset, size
+    emit32((bank_bytes<<16)|0x1903); // parameter bank size 24
+    i=parameters-1;while i>=0 {emit32(0x000c1704);emit32(0);emit32(i|(i*8<<16));emit32(0x0021f000);i=i-1;}
     emit32(0x00ff1b03); // maximum register count
     emit(4);emit(0x1c);emit(sass_exit_count*4);emit((sass_exit_count*4)>>8);
     i=0;while i<sass_exit_count {emit32(load64(sass_exits+i*8));i=i+1;}
     let kernel_info_size=output_size-kernel_info;sass_align(4);let constant=output_size;
-    i=0;while i<376 {emit(0);i=i+1;}sass_align(128);let text=output_size;
+    i=0;while i<352+bank_bytes {emit(0);i=i+1;}sass_align(128);let text=output_size;
     i=0;while i<size {emit(load8(code+i));i=i+1;}
     let shoff=output_size;sass_sections=output+shoff;i=0;while i<9*64 {emit(0);i=i+1;}
     sass_section(1,load64(names+8),3,0,strings,strings_size,0,0,1,0);
@@ -368,7 +534,7 @@ fn sass_cubin() {
     sass_section(3,load64(names+24),2,0,symbols,96,2,3,8,24);
     sass_section(4,load64(names+32),0x70000000,0,info,36,3,0,4,0);
     sass_section(5,load64(names+40),0x70000000,64,kernel_info,kernel_info_size,3,7,4,0);
-    sass_section(6,load64(names+48),1,66,constant,376,0,7,4,0);
+    sass_section(6,load64(names+48),1,66,constant,352+bank_bytes,0,7,4,0);
     sass_section(7,load64(names+56),1,6|(sass_barriers<<20),text,size,3,(sass_registers<<24)|3,128,0);
     sass_section(8,load64(names+64),8,67,shoff,0,0,7,16,0);
     let phoff=output_size;sass_program(6,phoff,168);sass_program(1,constant,text+size-constant);sass_program(1,phoff,168);

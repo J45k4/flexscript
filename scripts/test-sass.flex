@@ -64,6 +64,19 @@ fn suite(compiler) {
     while i<h_count(ops) {ss_case(h_cat3("store64(output+i*8,x ",h_at(ops,i)," load64(input+((i+1)*8)));return 0;"));i=i+1;}
     ops=h_args("<<",">>","==","!=","<",">");h_add(ops,"<=");h_add(ops,">=");
     i=0;while i<h_count(ops) {ss_case(h_cat3("store64(output+i*8,x ",h_at(ops,i)," (i+65));return 0;"));i=i+1;}
+    // Constant folding crosses both word halves, carries and the modulo-64
+    // shift boundary. Independent word inputs include negative high halves.
+    let shifts=h_args("0","1","16","31","32","33");h_add(shifts,"48");h_add(shifts,"63");h_add(shifts,"64");h_add(shifts,"65");h_add(shifts,"-1");
+    i=0;while i<h_count(shifts) {let n=h_at(shifts,i);ss_case(h_cat3("store64(output+i*8,(x<<",n,h_cat3(")^(x>>",n,"));return 0;")));i=i+1;}
+    ss_case("let a=x;let b=~x;let c=x+7;let k=0;while k<7 {let t=a;a=b;b=c;c=t;if a&1 {b=b^0xffffffff00000000;}k=k+1;}store64(output+i*8,a+b+c);return 0;");
+    ss_case("let a=x*2;let b=x*256;let c=x*0x100000000;store64(output+i*8,(a&0xffff0000)^(b|0xdeadbeef00000000)^(c^0x8000000000000000));return 0;");
+    // Packed loads preserve complete words and nested expression stack values.
+    // Boundary offsets exercise native immediates and the arithmetic fallback.
+    let packed=h_cat3("import \"",h_real("lib/gpu.flex"),"\";fn kernel(i,input,output,count){let p=input+i*8;");
+    t_program(h_cat(packed,"store64(output+i*8,gpu_load_u64(p+8)^gpu_load_u32(p+4)^gpu_load_u16(p+2)^gpu_load_bf16(p+6)^gpu_load_stream_u64(p+16));return 0;}"));ss_compile();
+    t_program(h_cat(packed,"let base=p-4095;store64(output+i*8,gpu_load_u64(base+4095));return 0;}"));ss_compile();
+    t_program(h_cat(packed,"let base=p-4096;store64(output+i*8,gpu_load_u64(base+4096));return 0;}"));ss_compile();
+    t_program(h_cat(packed,"let base=p+8;gpu_load_u64(p+8);store64(output+i*8,gpu_load_u64(base-8));return 0;}"));ss_compile();
     ss_case("store64(output+i*8,(!x)^(x||1)^(x&&7));return 0;");
     ss_case("store64(output+i*8,x/3+x%3);return 0;");
     ss_case("store64(output+i*8,x/(i+1)+x%(i+1));return 0;");
@@ -90,6 +103,7 @@ fn suite(compiler) {
     ss_case("i=i*8;let a=x+1;let b=a*17;a=b-3;store64(output+i,a);return 0;");
     h_save(h_join(t_work,"body.flex"),"fn kernel(i,a,b,n){store64(b+i*8,load64(a+i*8)+7);return 0;}");
     t_program("import \"body.flex\";fn unused(){return alloc(8)+unused();}");ss_compile();
+    t_program("fn write(x,p){if x&1 {store64(p,x+17);return x;}store64(p,x*3);return x+1;store64(p,999);return 0;}fn kernel(i,input,output,count){write(load64(input+i*8),output+i*8);return 0;}");ss_compile();
     ss_reject("fn main(){return 0;}","requires kernel");
     ss_reject("fn kernel(x){return x;}","must take four parameters");
     ss_reject("fn kernel(i,a,b,n){return alloc(8);}","cannot allocate");

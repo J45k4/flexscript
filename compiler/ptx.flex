@@ -7,6 +7,7 @@ global p_seen=0;
 global p_acc=0;
 global p_depth=0;
 global p_advanced=0;
+global p_launch_words=0;
 
 fn p_text(text) {let i=0;while load8(text+i) {emit(load8(text+i));i=i+1;}return 0;}
 fn p_num(n) {
@@ -28,7 +29,7 @@ fn p_arity(op,arg) {
 fn p_visit(index,level) {
     let intrinsic=gpu_intrinsic(index);if intrinsic {
         if load64(functions+index*32+24)!=gpu_intrinsic_arity(intrinsic) {fail("wrong GPU intrinsic arity");}
-        p_advanced=1;return 0;
+        p_advanced=1;if intrinsic==64 {p_launch_words=1;}return 0;
     }
     if level>128 {fail("PTX helper call depth exceeds 128");}
     let state=load64(p_seen+index*8);
@@ -51,6 +52,7 @@ fn p_signature(index) {
     p_text(".func (.param .b64 result) flex_fn");p_num(index);p_text("(");
     let i=0;let arity=load64(functions+index*32+24);
     while i<arity {if i {p_text(", ");}p_text(".param .b64 a");p_num(i);i=i+1;}
+    if p_launch_words {i=0;while i<8 {if arity || i {p_text(", ");}p_text(".param .b64 u");p_num(i);i=i+1;}}
     p_text(")");return 0;
 }
 fn p_bool(condition) {
@@ -113,7 +115,8 @@ fn p_function(index) {
     }
     if p_depth {fail("unbalanced PTX expression stack");}
     p_acc=slots;p_signature(index);p_text(" {\n.reg .b64 %v<");p_num(slots+maximum+1);
-    p_text(">;\n.reg .b64 %t;\n.reg .u32 %s, %b;\n.reg .b32 %r<16>;\n.reg .f32 %f<8>;\n.reg .f64 %d<4>;\n.reg .pred %p, %q;\n.param .b64 cr;\n");
+    p_text(">;\n.reg .b64 %t;\n.reg .u32 %s, %b;\n.reg .b32 %r<16>;\n.reg .f32 %f<8>;\n.reg .b16 %h<2>;\n.reg .f64 %d<4>;\n.reg .pred %p, %q;\n.param .b64 cr;\n");
+    if p_launch_words {p_text(".reg .b64 %u<8>;\n");let j=0;while j<8 {p_text(".param .b64 cu");p_num(j);p_text(";\nld.param.u64 %u");p_num(j);p_text(", [u");p_num(j);p_text("];\n");j=j+1;}}
     let i=0;while i<call_max {p_text(".param .b64 c");p_num(i);p_text(";\n");i=i+1;}
     i=0;while i<slots {
         if i<arity {p_text("ld.param.u64 ");p_reg(i);p_text(", [a");p_num(i);p_text("];\n");}
@@ -132,8 +135,11 @@ fn p_function(index) {
         }else if op==8 {
             let n=p_arity(op,arg);p_depth=p_depth-n;i=0;
             while i<n {p_text("st.param.b64 [c");p_num(i);p_text("], ");p_reg(slots+1+p_depth+i);p_text(";\n");i=i+1;}
+            // Call argument storage is scratch; refresh hidden words each time.
+            if p_launch_words {i=0;while i<8 {p_text("st.param.b64 [cu");p_num(i);p_text("], %u");p_num(i);p_text(";\n");i=i+1;}}
             p_text("call.uni (cr), flex_fn");p_num(arg);p_text(", (");
             i=0;while i<n {if i {p_text(", ");}p_text("c");p_num(i);i=i+1;}
+            if p_launch_words {i=0;while i<8 {if n || i {p_text(", ");}p_text("cu");p_num(i);i=i+1;}}
             p_text(");\nld.param.u64 ");p_reg(p_acc);p_text(", [cr];\n");
         }else if op==17 {p_depth=p_depth-p_arity(op,arg);p_memory(arg,slots+1+p_depth);}
         else if op==9 {p_text("st.param.b64 [result], ");p_reg(p_acc);p_text(";\nret;\n");}
@@ -155,7 +161,7 @@ fn ptx_finish() {
     let kernel=find(functions,function_count,"kernel",6);
     if kernel<0 {fail("PTX target requires kernel(index,input,output,count)");}
     if load64(functions+kernel*32+24)!=4 {fail("PTX kernel must take four parameters: index,input,output,count");}
-    p_code=output;p_size=output_size;p_seen=alloc(function_count*8);
+    p_launch_words=0;p_code=output;p_size=output_size;p_seen=alloc(function_count*8);
     if p_seen<0 {fail("cannot allocate PTX call graph");}p_visit(kernel,0);
     output=alloc(output_limit);output_size=0;if output<0 {fail("cannot allocate PTX output");}
     p_text("// Flexscript experimental PTX backend\n");
@@ -164,7 +170,9 @@ fn ptx_finish() {
     if p_advanced {p_text(".extern .shared .align 8 .b8 flex_shared[];\n");}
     let i=0;while i<function_count {if load64(p_seen+i*8) {p_signature(i);p_text(";\n");}i=i+1;}
     i=0;while i<function_count {if load64(p_seen+i*8) {p_function(i);}i=i+1;}
-    p_text(".visible .entry flex_kernel(.param .u64 input, .param .u64 output, .param .u64 count) {\n");
+    p_text(".visible .entry flex_kernel(.param .u64 input, .param .u64 output, .param .u64 count");
+    if p_launch_words {i=0;while i<8 {p_text(", .param .b64 launch");p_num(i);i=i+1;}}p_text(") {\n");
+    if p_launch_words {p_text(".reg .b64 %uw;\n");i=0;while i<8 {p_text(".param .b64 cu");p_num(i);p_text(";\nld.param.u64 %uw, [launch");p_num(i);p_text("];\nst.param.b64 [cu");p_num(i);p_text("], %uw;\n");i=i+1;}}
     p_text(".reg .u32 %block, %width, %thread, %tmp;\n.reg .u64 %index, %offset, %linear, %volume, %in, %out, %count;\n.reg .pred %outside;\n");
     p_text(".param .b64 a0, a1, a2, a3, result;\nmov.u32 %block, %ctaid.x;\nmov.u32 %width, %ntid.x;\nmov.u32 %thread, %tid.x;\n");
     p_text("mov.u32 %tmp, %ctaid.z;\ncvt.u64.u32 %linear, %tmp;\nmov.u32 %tmp, %nctaid.y;\ncvt.u64.u32 %offset, %tmp;\nmul.lo.u64 %linear, %linear, %offset;\nmov.u32 %tmp, %ctaid.y;\ncvt.u64.u32 %offset, %tmp;\nadd.u64 %linear, %linear, %offset;\nmov.u32 %tmp, %nctaid.x;\ncvt.u64.u32 %offset, %tmp;\nmul.lo.u64 %linear, %linear, %offset;\ncvt.u64.u32 %offset, %block;\nadd.u64 %linear, %linear, %offset;\n");
@@ -172,5 +180,5 @@ fn ptx_finish() {
     p_text("mov.u32 %tmp, %tid.z;\ncvt.u64.u32 %index, %tmp;\nmov.u32 %tmp, %ntid.y;\ncvt.u64.u32 %offset, %tmp;\nmul.lo.u64 %index, %index, %offset;\nmov.u32 %tmp, %tid.y;\ncvt.u64.u32 %offset, %tmp;\nadd.u64 %index, %index, %offset;\ncvt.u64.u32 %offset, %width;\nmul.lo.u64 %index, %index, %offset;\ncvt.u64.u32 %offset, %thread;\nadd.u64 %index, %index, %offset;\nadd.u64 %index, %index, %linear;\n");
     p_text("ld.param.u64 %count, [count];\nsetp.ge.u64 %outside, %index, %count;\n@%outside ret;\n");
     p_text("ld.param.u64 %in, [input];\nld.param.u64 %out, [output];\nst.param.b64 [a0], %index;\nst.param.b64 [a1], %in;\nst.param.b64 [a2], %out;\nst.param.b64 [a3], %count;\n");
-    p_text("call.uni (result), flex_fn");p_num(kernel);p_text(", (a0, a1, a2, a3);\nret;\n}\n");return 0;
+    p_text("call.uni (result), flex_fn");p_num(kernel);p_text(", (a0, a1, a2, a3");if p_launch_words {i=0;while i<8 {p_text(", cu");p_num(i);i=i+1;}}p_text(");\nret;\n}\n");return 0;
 }

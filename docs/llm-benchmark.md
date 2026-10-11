@@ -1,0 +1,350 @@
+# Qwen3-1.7B speed baseline, 2026-10-11
+
+Measured on the same NVIDIA GeForce RTX 2070, driver 610.57.04, with an
+Intel Core i7-8700K host. GPU workloads ran sequentially; ordinary desktop
+applications remained running and clocks were not locked.
+
+| Model execution | Flexscript direct SASS | llama.cpp CUDA | llama.cpp / Flexscript |
+| --- | ---: | ---: | ---: |
+| Prefill, 23 tokens | 14.94 tokens/s | 1,591.65 tokens/s | 106.53x |
+| Decode, 64 steps after 23 tokens | 11.12 tokens/s | 100.92 tokens/s | 9.07x |
+
+These rates divide token counts by the mean elapsed time across three timed
+repetitions, after one full warmup. Mean prefill times were 1,539.33 ms and
+14.45 ms; mean decode times were 5,754.00 ms and 634.14 ms. Prefill differs
+deliberately: Flexscript currently processes one token at a time, while
+llama.cpp processes the prompt as a batch.
+
+Both runners used one sequence, a 256-token context capacity, FP32 K/V caches,
+identical input token IDs and identical replayed decode token IDs. They timed
+model execution and synchronization, excluding loading, compilation,
+tokenization, sampling and printing. No tokens were sampled during the timed
+decode loop and EOS did not terminate it. Flexscript omitted explicit logits
+downloads; llama.cpp may transfer logits internally. This compares actual
+runtime execution rather than isolated device kernels.
+
+The checkpoint was the cached Qwen/Qwen3-1.7B revision
+`70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`. Flexscript loaded its BF16 weights
+directly and used FP32 activations. The official llama.cpp converter produced
+an F16 GGUF locally from that same checkpoint, with FP32 normalization vectors.
+There was no integer quantization. This is a comparable 16-bit-weight baseline,
+not a claim of bit-identical arithmetic across the two implementations.
+
+llama.cpp was the unmodified official CUDA 12.8 release **b11429**, commit
+`d81235049384534c167caea52b85a694f6103d14`. Both downloaded archive SHA256s
+matched the release API's digests. A small local benchmark harness called those
+libraries with all layers on GPU, one host thread, FP32 caches and flash
+attention disabled. It supplied the exact token IDs used by the native
+Flexscript benchmark. The release's `llama-bench` argument parser rejects
+`-ctk f32`, although its library and completion tool support FP32 caches, so
+the matched-cache measurement uses the library harness.
+
+For an additional check, the unmodified `llama-bench` executable with default
+FP16 caches measured 102.80 decode tokens/s over three repetitions at depth
+23. Its serial, batch-size-one prefill measured 104.58 tokens/s. These runs use
+the benchmark's random token IDs and are secondary to the matched-token result.
+
+Real greedy chat generation with the same 23-token prompt and FP32 caches
+produced identical answer text in both runners. The exact prompt IDs were
+checked, including the trailing double newline. llama.cpp's completion timing
+was 99.89 tokens/s across 59 subsequent model evaluations; the native
+Flexscript chat report measured approximately 10.99 tokens/s across the same
+59 evaluations, including its sampling and output overhead.
+
+## Local artifacts and reproduction
+
+The native benchmark is `scripts/bench-llm.flex`; build and invocation are
+documented in [LLM inference](llm-inference.md#speed-measurements). The measured
+run used `build/llm/final-chat.json` as its token fixture.
+
+Local artifacts under `build/llm/` contain:
+
+- `speed-comparison.json`: combined rates, samples and comparison metadata.
+- `flex-benchmark.json` and `llama-matched-benchmark.json`: raw matched samples.
+- `llama-matched-bench.cpp` and `llama-matched-tokens.h`: reference harness and
+  exact embedded token IDs.
+- `llama-benchmark-commands.json`: commands for the stock benchmark runs.
+- `llama-completion-command.json`, `.log` and `.txt`: real-prompt command,
+  timing and output; the latter two files use the prefix `llama-completion`.
+- `gguf-conversion.log` and `qwen3-1.7b-f16.gguf`: local official conversion.
+
+The downloaded binaries and matching source are under `build/llamacpp/`.
+They and the reports are local build artifacts, not distributed with the
+source tree. The harness can be compiled against those official libraries:
+
+```sh
+c++ -O2 -std=c++17 build/llm/llama-matched-bench.cpp \
+  -Ibuild/llamacpp/source/ggml-org-llama.cpp-d812350/include \
+  -Ibuild/llamacpp/source/ggml-org-llama.cpp-d812350/ggml/include \
+  -Lbuild/llamacpp/llama-b11429 -lllama -lggml -lggml-base \
+  -o build/llm/llama-matched-bench
+LD_LIBRARY_PATH=build/llamacpp/llama-b11429:build/llamacpp/cudart-llama-b11429-bin-ubuntu-cuda-12.8-x64 \
+  build/llm/llama-matched-bench build/llm/qwen3-1.7b-f16.gguf \
+  build/llamacpp/llama-b11429
+```
+
+This baseline identifies a large performance gap, not its full attribution.
+Batched matrix multiplication for prefill, faster matrix-vector kernels for
+decode, and fewer launches are the main implementation areas to investigate.
+Kernel profiling is needed before assigning percentages to those costs.
+
+## Optimized direct SASS, 2026-10-11
+
+The same Pup definition and checkpoint now run with packed GEMV loads,
+block-wide RMSNorm, four-warp attention, register-copy propagation, dead-code
+removal, dependency scheduling and CUDA graph replay. No model-definition edits,
+integer quantization, PTX compilation or cuBLAS execution were introduced.
+
+The matched protocol above, including the exact token fixture, context capacity
+and FP32 caches, produced:
+
+| Model execution | Original Flexscript | Optimized Flexscript | Refreshed llama.cpp |
+| --- | ---: | ---: | ---: |
+| Prefill, 23 tokens | 14.94 tokens/s | 96.50 tokens/s | 1,549.38 tokens/s |
+| Decode, 64 steps after 23 tokens | 11.12 tokens/s | 79.67 tokens/s | 100.45 tokens/s |
+
+Optimized native decode samples were 799, 800 and 811 ms. The refreshed
+llama.cpp samples were 635.939, 632.747 and 642.790 ms. Native decode improved
+7.16x; llama.cpp remains 1.26x faster. Prefill remains serial in Flexscript and
+batched in llama.cpp. The performance target has not yet been reached.
+
+Validation on the RTX 2070 passed 21,591 LLM planning/numerical checks, 425 SASS
+checks, 11,441 GPU feature checks and 184,337 floating-point checks. The compiler
+rebuilt itself byte-for-byte. The full 60-token greedy answer and input IDs
+matched the original run exactly. An independent CPU oracle checked all 151,936
+logits at four retained-cache predictions: maximum error was below 0.000073,
+and all greedy choices and top-five lists matched. Reduction order changes mean
+the optimized implementation does not promise bitwise-identical logits.
+
+Additional local artifacts are `speed-comparison-optimized.json`,
+`benchmark-load-issue.json`, `llama-matched-optimized-comparison.json`,
+`optimized-chat.json`, `optimized-cache.json`, `optimized-reference.json` and
+`profile-optimized.json`, all under `build/llm/`. The standalone native profiler
+can be reproduced with:
+
+```sh
+build/flex-llm scripts/profile-llm.flex -o build/profile-llm
+build/profile-llm --checkpoint "$QWEN_CHECKPOINT" \
+  --compiler build/flex-llm --tokens build/llm/chat.json \
+  --iterations 3 --report build/llm/profile.json
+```
+
+It inserts CUDA events around individual kernel launches rather than timing
+graph replay. Its measurements include that instrumentation and should guide
+optimization, not replace the resident-model benchmark. Matrix-vector kernels
+remain the largest measured cost.
+
+## Fused lowering and register allocation, 2026-10-11
+
+Further native compiler and library changes narrow the decode gap with the
+same checkpoint, unchanged Pup definition and matched protocol above:
+
+| Model execution | Previous Flexscript | Current Flexscript | Refreshed llama.cpp |
+| --- | ---: | ---: | ---: |
+| Prefill, 23 tokens | 96.50 tokens/s | 121.48 tokens/s | 1,575.31 tokens/s |
+| Decode, 64 steps after 23 tokens | 79.67 tokens/s | 97.07 tokens/s | 101.16 tokens/s |
+
+Native decode samples were 659, 660 and 659 ms; llama.cpp samples were
+632.576238, 632.388386 and 633.023938 ms. Native decode improved another 21.84%
+and is now 4.05% below llama.cpp's throughput. The speed target has not yet been
+reached. Prefill remains sequential in Flexscript and batched in llama.cpp, so
+its larger gap remains. Resident-model timing excludes sampling and logits
+download; the CLI still performs those operations on the CPU.
+
+The compiler now propagates zero values, folds small constant offsets into
+global loads, compacts register pairs and separates address-read completion
+from load-result completion. Dependency scheduling retains the two-cycle
+scoreboard activation interval. One-dimensional launches take a shorter index
+path while multidimensional launches retain their full semantics. Streamed
+weight loads bypass L1 so reused activation vectors can stay cached.
+
+Library lowering adds packed normalization, normalization/rotary fusion,
+paired MLP projections with SiLU/multiplication, and residual/normalization
+fusion. All original intermediate outputs remain available to other consumers.
+The schedule drops from 563 to 367 kernels per token. Packed matrix-vector
+kernels use 256-thread blocks; fused head normalization/rotary uses 32 threads
+per block. These choices require no Pup or checkpoint edits and retain BF16
+weights with FP32 activations and caches. No integer quantization, PTX
+compilation or external ML runtime was added to inference.
+
+Final validation passed 510 SASS checks across 53 cubins and 111 device runs,
+11,982 GPU feature checks across 46 programs/device runs, 184,337 floating-point
+checks and 50,591 LLM planning/numerical checks. Native SASS instructions also
+passed independent disassembly, and the compiler rebuilt itself byte-for-byte.
+All 60 greedy answer tokens and the prompt IDs matched both previous native
+runs. An independent CPU oracle checked 151,936 logits at each of four
+retained-cache predictions: every argmax and top-five list matched, with
+maximum absolute error below 0.000073.
+
+Local reports under `build/llm/` are `speed-comparison-gap.json`,
+`benchmark-gap-final.json`, `llama-matched-gap-final.json`, `gap-chat.json`,
+`gap-cache.json`, `gap-reference.json` and `profile-gap-final.json`. The native
+benchmark's `--fusion` option permits comparisons of individual schedule
+rewrites without changing the model. Wider matrix-vector rows, independent
+accumulation chains and read-only weight caching did not improve the final
+implementation and were discarded.
+
+References: [official release](https://github.com/ggml-org/llama.cpp/releases/tag/b11429),
+[benchmark implementation at the measured commit](https://github.com/ggml-org/llama.cpp/blob/d81235049384534c167caea52b85a694f6103d14/tools/llama-bench/llama-bench.cpp),
+[official converter at the measured commit](https://github.com/ggml-org/llama.cpp/blob/d81235049384534c167caea52b85a694f6103d14/convert_hf_to_gguf.py).
+
+## Native decode ahead of llama.cpp, 2026-10-11
+
+The final implementation beats the same official llama.cpp b11429 build on
+resident-model Qwen3-1.7B decode in three balanced comparison pairs:
+
+| Measurement | Flexscript direct SASS | llama.cpp F16 GGUF |
+| --- | ---: | ---: |
+| Decode, pooled nine timed samples | 98.44 tokens/s | 90.82 tokens/s |
+| Mean elapsed time for 64 decode steps | 650.111 ms | 704.686 ms |
+| Prefill, pooled nine timed samples | 118.97 tokens/s | 1427.89 tokens/s |
+
+The measured decode throughput advantage is **8.39%**. Each process has one
+warmup and three timed repetitions; the middle pair reverses runner order.
+Every pair favors Flexscript:
+
+| Pair | Flexscript decode tokens/s | llama.cpp decode tokens/s | Advantage |
+| --- | ---: | ---: | ---: |
+| 1 | 96.82 | 91.20 | 6.16% |
+| 2 | 99.48 | 88.21 | 12.78% |
+| 3 | 99.07 | 93.19 | 6.31% |
+
+Both runners use the exact same 23 input IDs and 64 replayed decode IDs, a
+256-token context, FP32 KV caches, and synchronous per-token model execution.
+llama.cpp keeps flash attention disabled as in the preceding matched baseline.
+The native model still uses the original BF16 checkpoint and FP32 arithmetic;
+llama.cpp uses its official F16 conversion and default internal math policy.
+This is a comparable 16-bit workload, not bit-identical arithmetic. No integer
+quantization or change to the Pup definition was introduced.
+
+Desktop applications remained active and clocks were not locked. One-second
+GPU clock/utilization/power/memory samples were recorded for the entire paired
+comparison. This is a result for this RTX 2070 and this short-context decode
+protocol, not a claim about every model, device or context. Older absolute
+throughput numbers came from different desktop conditions. Prefill remains
+sequential in Flexscript and batched in llama.cpp, and still trails substantially.
+Both timings exclude caller-side sampling, tokenization, loading and
+compilation. Native timing also excludes logits downloads; any internal
+llama.cpp output transfer remains included in its decode/synchronize calls.
+The native chat CLI still performs CPU sampling and has lower end-to-end throughput.
+
+The main changes are sixteen warps per attention head, native FP32 maximum and
+warp-sum instructions, adjacent Q/K/V projection fusion, by-value launch words,
+cheaper BF16 expansion and bounded matrix-loop counters, and native compiler
+removal of unreachable helper epilogues and empty branches. The schedule now
+has 311 launches per token, compared with 367 before this change and 563 in the
+initial implementation. Q/K/V fusion retains every original projection output.
+Attention uses 512-thread blocks and 16640 shared bytes; packed projections use
+256-thread blocks. The native tracked device buffers total 3,506,130,448 bytes
+at context 256, excluding driver/module/graph allocations.
+
+The SM75 scheduling changes retain conservative predicate and unknown-operation
+delays while using tested six-cycle integer/move, four-cycle FMA and five-cycle
+other FP32 delays. The FMA latency agrees with the
+[NVIDIA Turing tuning guide](https://docs.nvidia.com/cuda/turing-tuning-guide/#instruction-scheduling).
+The CUDA stack register remains reserved and initialized. Kernel launch words
+have native constant-bank and PTX lowerings; repeated and zero-argument helper
+calls are explicitly tested.
+
+Validation passed **253,503 checks**: 519 SASS checks across 54 cubins and 113
+physical-device runs, 13,553 GPU feature checks across 52 programs/device runs,
+184,342 floating-point checks, and 55,089 LLM planning/numerical checks. The LLM
+suite covers unequal Q/K/V heights, partial blocks, all retained outputs and
+cache positions crossing 16- and 32-row boundaries on native SASS and PTX. The
+compiler rebuilds itself byte-for-byte. All 60 greedy answer IDs and prompt IDs
+match the original run. An independent CPU oracle checks every one of 151,936
+logits at four retained-cache predictions: all argmax/top-five lists agree and
+maximum absolute error is below 0.000073.
+
+Local evidence: `build/llm/speed-comparison-faster-paired.json`,
+`paired-{0,1,2}-{flexscript,llama.cpp}.json`, `paired-gpu.csv`,
+`faster-chat-final.json`, `faster-cache-final.json`,
+`faster-reference-final.json`, `profile-faster-final.json` and
+`{sass,gpu,float}-faster-final-tests.json`. The local comparison runner is
+`build/llm/paired-faster.py`; inference itself remains native Flexscript and
+direct SASS. Default `build/flex-llm`, `build/llm-infer`, `build/bench-llm`,
+`build/profile-llm` and `build/test-llm` binaries are updated to this version.
+
+## Batched prefill ahead of llama.cpp, 2026-10-11
+
+The final native tensor-core path beats the same official llama.cpp b11429
+build (commit `d81235049384534c167caea52b85a694f6103d14`) on the matched
+23-token Qwen3-1.7B prompt. These are pooled results from nine timed samples
+per configuration on the RTX 2070 and Core i7-8700K, with driver 610.57.04:
+
+| Configuration | Prefill ms | Prefill tokens/s | 64 decode steps ms | Decode tokens/s |
+| --- | ---: | ---: | ---: | ---: |
+| Flexscript, default `--weights f16` | 23.046 | 998.01 | 618.322 | 103.51 |
+| Flexscript, `--weights f16-tiled` | 14.437 | 1593.12 | 676.999 | 94.53 |
+| llama.cpp, F16 GGUF | 15.130 | 1520.20 | 653.263 | 97.97 |
+
+Tiled storage delivers **4.80% higher prefill throughput** than llama.cpp.
+Default row-major storage delivers **5.65% higher decode throughput**.
+These wins require different configurations: tiled decode is 3.51% below
+llama.cpp, and default row-major prefill remains slower. Tiled storage remains
+an explicit option; the default favors decode. This comparison supersedes the
+older measurements above for the current implementation and desktop conditions.
+
+Three groups rotate runner order so each configuration occupies each position
+once. Each process performs one warmup and three timed samples. Tiled prefill
+wins in every group:
+
+| Group | Flexscript tiled prefill ms | llama.cpp prefill ms | Throughput advantage |
+| --- | ---: | ---: | ---: |
+| 1 | 14.848 | 15.445 | 4.02% |
+| 2 | 14.225 | 14.959 | 5.16% |
+| 3 | 14.239 | 14.985 | 5.24% |
+
+Both runners receive the same 23 prompt IDs and 64 replayed decode IDs, use a
+256-token context and FP32 KV caches, and synchronize model execution.
+llama.cpp flash attention remains disabled. Native prefill uses FP16 products
+and FP32 accumulation; native decode uses FP32 arithmetic with FP16 stored
+weights. This compares 16-bit workloads with different internal math policies.
+No integer quantization was added. Desktop applications stayed active and
+clocks were not locked; one-second GPU telemetry covers the comparison.
+This measures this short prompt on this GPU, rather than long-context scaling.
+
+Timings exclude checkpoint loading, kernel compilation, tokenization, sampling,
+printing and graph preparation. Native timings also exclude logits downloads;
+llama.cpp's internal output transfer remains inside its execution/synchronize
+calls. Chat CLI latency includes additional work outside this benchmark.
+
+The implementation batches prompt projections into native SM75 tensor-core
+matrix products, tiles projection weights and staged activations, selects K
+partitions by matrix shape, and replays a CUDA graph. Scratch-buffer reuse,
+fused normalization/staging and reduction/MLP epilogues reduce memory traffic
+and launches. The compiler emits FP16 conversions and HMMA instructions,
+allocates aligned register quartets and forwards redundant shared-memory
+round trips. Production kernels compile directly to SASS; no PTX compilation
+or external ML runtime is involved. The Pup definition and `readme.md` are
+unchanged.
+
+Validation passed **2,630,337 checks**: 519 SASS checks across 54 cubins and
+113 physical-device runs, 13,577 GPU feature checks, 184,342 floating-point
+checks, 55,089 LLM checks and 2,376,810 batch/conversion/fusion checks.
+Coverage includes all 65,536 half encodings, native and PTX reference paths,
+partial tiles, multiple blocks, split reductions and causal attention.
+The compiler rebuilds itself byte-for-byte. All 60 greedy chat tokens match
+the original run. An independent CPU oracle checks all 151,936 logits at each
+of four retained-cache predictions in both weight layouts: every argmax and
+top-five list agrees. Maximum absolute error is 0.007731. The verifier explicitly
+uses a 0.02 limit for FP16 prompt products, retaining 0.002 for serial FP32
+math; the earlier FP32 error bound does not apply to this batched path.
+
+Reproduce the native tiled configuration from the repository root after
+building the tools described in [inference instructions](llm-inference.md):
+
+```sh
+build/bench-llm --compiler build/flex-llm --checkpoint "$QWEN_CHECKPOINT" \
+  --weights f16-tiled --tokens build/llm/final-chat.json \
+  --decode 64 --context 256 --repeats 3 \
+  --report build/llm/benchmark-tiled.json
+```
+
+Use `--weights f16` for the default row-major comparison. Local evidence is
+`build/llm/speed-comparison-prefill-final-paired.json`, the nine
+`paired-prefill-final-{0,1,2}-{row-major,tiled,llama.cpp}.json` reports,
+`paired-prefill-final-gpu.csv`, `batch-tiled-chat.json`,
+`batch-{f16,tiled}-cache-reference.json`, `{sass,gpu,float}-prefill-tests.json`
+and `test-llm-prefill-final.log`. The comparison orchestrator is
+`build/llm/paired-prefill-final.py`; inference itself remains native Flexscript.

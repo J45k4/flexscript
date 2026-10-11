@@ -13,7 +13,11 @@ fn gf_assert(ok,message) {
 fn gpu_check(status) {
     if status {h_print(2,h_cat3("CUDA: ",cuda_error(),"\n"));if cuda_log {h_print(2,cuda_log);}syscall(231,1,0,0,0,0,0);}return 0;
 }
-fn gf_source(body) {return h_cat3(h_cat3("import \"",h_real("lib/gpu.flex"),"\";\nfn kernel(i,input,output,count){"),body,"return 0;}");}
+fn gf_source(body) {return h_cat3(h_cat3("import \"",h_real("lib/gpu.flex"),"\";\nfn kernel(i,input,output,count){"),body,"return 0;}\nfn launch_nested(i){return gpu_launch_word(i); }\nfn launch_zero(){return gpu_launch_word(3); }");}
+fn gf_max_bits(index) {
+    let values=h_vec();h_add(values,0);h_add(values,2147483648);h_add(values,1065353216);h_add(values,3212836864);h_add(values,2139095040);h_add(values,4286578688);
+    h_add(values,2143289345);h_add(values,4290772994);h_add(values,1);h_add(values,2147483649);h_add(values,0x7f7fffff);h_add(values,0xff7fffff);h_add(values,0x00800000);h_add(values,0x80800000);h_add(values,0x3fc00000);h_add(values,0xbfc00000);return h_at(values,index&15);
+}
 fn gf_execute(path,kind,direct) {
     let context=cuda_context();gpu_check(cuda_status);gf_assert(context,"GPU context");
     let module=cuda_module(h_read(path));gpu_check(cuda_status);
@@ -22,6 +26,8 @@ fn gf_execute(path,kind,direct) {
     let i=0;while i<bytes {store8(input+i,0);store8(output+i,0);i=i+1;}
     i=0;while i<256 {
         store64(input+i*8,0x4000400040004000);
+        if kind==16 {store64(input+i*8,gf_max_bits(i&15)|(gf_max_bits(i>>4)<<32));}
+        if kind==15 {store64(input+i*8,((i-128)*0x123456789abcd)^(i<<47));}
         cuda_u32(input+2048+i*4,0x42004200);
         if kind==5 {let j=0;while j<4 {cuda_u32(input+3072+i*16+j*4,gpu_f32_from_i64(i*4+j));j=j+1;}}
         i=i+1;
@@ -38,6 +44,7 @@ fn gf_execute(path,kind,direct) {
         texture=cuda_texture_f32(a,256*4);gpu_check(cuda_status);argument=texture;
     }
     if kind==14 {gpu_check(cuda_stream_wait(stream));gpu_check(cuda_launch_threads(module,argument,b,256,33));}
+    else if kind==18 {let words=alloc(64);let j=0;while j<8 {store64(words+j*8,((j-4)*0x123456789abcdef)^0xfeedbeef00000000);j=j+1;}gpu_check(cuda_launch_words(module,argument,b,256,config,words));}
     else {gpu_check(cuda_launch_config(module,argument,b,256,config));}
     gpu_check(cuda_event_record(event,stream));gpu_check(cuda_stream_wait_event(stream,event));
     gpu_check(cuda_download_async(output,b,bytes,stream));gpu_check(cuda_stream_wait(stream));gpu_check(cuda_event_wait(event));
@@ -53,6 +60,10 @@ fn gf_execute(path,kind,direct) {
         else if kind==8 || kind==14 {expected=i-128;}else if kind==10 {expected=0x401c000000000000;}
         else if kind==11 {expected=0x40e00000;}
         else if kind==12 {expected=1;}else if kind==13 {expected=((((i/32)*32+32)<<32)|(((i/32)*32+31)*7))^0xaaaaaaaa;}
+        if kind==15 {expected=((i-128)*0x123456789abcd)^(i<<47);}
+        if kind==18 {expected=(((i%8)-4)*0x123456789abcdef)^0xfeedbeef00000000;}
+        if kind==17 {let sum=0;let lane=0;while lane<32 {let item=(i/32)*32+lane-128;if lane&1 {item=item*3+7;}else {item=item-3;}sum=sum+item;lane=lane+1;}expected=gpu_f32_from_i64(sum);}
+        if kind==16 {expected=gpu_f32_max(gf_max_bits(i&15),gf_max_bits(i>>4));if (expected&2147483647)>2139095040 {gf_assert((value&2147483647)>2139095040 && !(value>>32),"maximum NaN output");expected=value;}}
         if kind!=9 {gf_assert(value==expected,h_cat3("GPU feature mismatch ",h_int(kind),h_cat3(h_cat(" at ",h_int(i)),h_cat(" actual ",h_int(value)),h_cat(" expected ",h_int(expected)))));}
         i=i+1;
     }
@@ -118,6 +129,10 @@ fn suite(compiler) {
         h_print(1,h_cat3("GPU: ",cuda_device_name(device),"\n"));gpu_check(cuda_status);
     }
     gf_case("store64(output+i*8,gpu_thread_x()+gpu_thread_y()*100+gpu_thread_z()*10000+gpu_block_x()*1000000+gpu_block_y()*100000000+gpu_block_z()*10000000000);",1,1);
+    gf_case("store64(output+i*8,gpu_load_stream_u64(input+i*8));",15,1);
+    gf_case("store64(output+i*8,launch_nested(i)^launch_zero()^gpu_launch_word(11)^gpu_launch_word(-5)^gpu_launch_word(3));",18,1);
+    gf_case("let pair=load64(input+i*8);store64(output+i*8,gpu_f32_max(pair,pair>>32));",16,1);
+    gf_case("let v=i-128;if i&1 {v=v*3+7;}else {v=v-3;}store64(output+i*8,gpu_warp_sum_f32(gpu_f32_from_i64(v)|(0xdeadbeef<<32)));",17,1);
     gf_case("let t=gpu_thread_x();gpu_shared_store64(t*8,i);gpu_barrier();store64(output+i*8,gpu_shared_load64(((t+1)%gpu_block_dim_x())*8));",2,1);
     gf_case("let mask=gpu_active_mask();let value=gpu_shuffle(((i+1)<<32)|i,31,mask);let bits=gpu_ballot(i&1,mask);gpu_warp_sync(mask);store64(output+i*8,value^bits);",3,1);
     gf_case("let v=i;if i&1 {v=i*7;}else {let j=0;while j<i%5 {v=v+1;j=j+1;}}let value=gpu_shuffle(((i+1)<<32)|v,31,0xffffffff);let bits=gpu_ballot(i&1,0xffffffff);store64(output+i*8,value^bits);",13,1);
