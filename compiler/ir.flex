@@ -88,6 +88,7 @@ fn ir_native() {
     if entries<0 || map<0 || branches<0 {fail("cannot allocate native IR lowering");}
     while i<function_count {store64(entries+i*8,load64(functions+i*32+16));i=i+1;}
     output=alloc(output_limit);if output<0 {fail("cannot allocate native output");}output_size=0;vm_mode=0;initialize_output();
+    word_io_native();
     let state_at=output_size;let k=16;while k<vm_heap_used {emit(load8(vm_heap+k));k=k+1;}
     i=0;while i<function_count {
         let f=functions+i*32;let start=load64(entries+i*8);let end=size;
@@ -128,6 +129,13 @@ fn ir_native() {
     resolve();return 0;
 }
 fn ir_native_word_io(reading) {
+    if word_io_buffered {
+        if !reading {word_io_call(word_io_write);return 0;}
+        word_io_call(word_io_flush);test_rax();let failed=jump(133);
+        // Emit the original complete-word input loop; skip it on flush failure.
+        word_io_buffered=0;ir_native_word_io(1);word_io_buffered=1;
+        patch_jump(failed);return 0;
+    }
     // A word is framed as eight little-endian bytes. Preserve pending expression
     // operands on the stack; syscall clobbers rcx/r11, not r8/r9.
     emit(80);if reading {emit(72);emit(199);emit(4);emit(36);emit32(0);}

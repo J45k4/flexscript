@@ -9,6 +9,7 @@ fn main(argc,argv) {
     h_add(names,"test-url-imports");
     h_add(names,"test-signature");
     h_add(names,"test-ffi");
+    h_add(names,"test-gui");
     h_add(names,"test-tui");
     h_add(names,"test-network");
     h_add(names,"test-vm");

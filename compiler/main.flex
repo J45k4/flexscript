@@ -11,6 +11,7 @@ import "sass-registers.flex";
 import "sass-schedule.flex";
 import "sass-float.flex";
 import "ir.flex";
+import "word-io.flex";
 import "extensions.flex";
 import "transforms.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
@@ -777,6 +778,7 @@ fn initialize_output() {
     emit(72); emit(141); emit(68); emit(36); emit(16); emit(80);
     emit(232); emit32(0);
     emit(72); emit(131); emit(196); emit(16);
+    word_io_exit();
     emit(72); emit(137); emit(199);
     emit(184); emit32(60); emit(15); emit(5);
     return 0;
@@ -1808,7 +1810,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--target wasm32|ptx|sass-sm75|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|ptx|sass-sm75|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1826,6 +1828,11 @@ fn main(argc, argv) {
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}
         else if up_text(arg,"--frontend") {frontend_external(value);}
+        else if up_text(arg,"--word-io") {
+            if up_text(value,"buffered") {word_io_buffered=1;}
+            else if up_text(value,"unbuffered") {word_io_buffered=0;}
+            else {print(2,"expected buffered or unbuffered word I/O\n");return 1;}
+        }
         else {print(2,"unknown compiler option\n");return 1;}
         first=first+2;
     }
@@ -1836,6 +1843,7 @@ fn main(argc, argv) {
     }
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
+    if word_io_buffered && (wasm_target || ptx_target || sass_target || baremetal_target || frontend_ir_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
     if (ptx_target || sass_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=134217728;}
     let destination = load64(argv + (first+2)*8);

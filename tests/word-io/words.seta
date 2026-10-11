@@ -1,0 +1,14 @@
+plugin native.words v1 {}
+fn main() -> i32 {
+    let sent = write_word(123456789)
+    if sent != 123456789 { return 11 }
+    let n = read_word()
+    if n < 0 { return 12 }
+    for i in 0..30000 {
+        if i < n {
+        let value = write_word(i * 31 - 11000)
+        if value != i * 31 - 11000 { return 13 }
+        }
+    }
+    return 7
+}
