@@ -7,7 +7,7 @@ global lc_compiler=0;
 global lc_backend=0;
 global lc_weights=0;
 global lc_device=0;
-global lc_capacity=4096;
+global lc_capacity=40960;
 global lc_capacity_auto=1;
 global lc_context_limit=0;
 global lc_context_used=-1;
@@ -101,7 +101,7 @@ fn lc_request() {
     lc_context_used=-1;lc_context_prompt=-1;
     let request=j_object();j_set(request,"op",j_string("generate"));let turns=j_array();let i=0;
     while i<j_count(lc_messages)-1 {let m=j_at(lc_messages,i);let role=j_s(m,"role");if h_equal(role,"user") || h_equal(role,"assistant") {j_push(turns,m);}i=i+1;}
-    let start=j_count(turns)-1;let bytes=h_len(j_s(j_at(turns,start),"content"));while start>=2 && bytes<65536 {let extra=h_len(j_s(j_at(turns,start-1),"content"))+h_len(j_s(j_at(turns,start-2),"content"));if bytes+extra>65536 {bytes=65536;}else {start=start-2;bytes=bytes+extra;}}
+    let start=j_count(turns)-1;let bytes=h_len(j_s(j_at(turns,start),"content"));while start>=2 && bytes<524288 {let extra=h_len(j_s(j_at(turns,start-1),"content"))+h_len(j_s(j_at(turns,start-2),"content"));if bytes+extra>524288 {bytes=524288;}else {start=start-2;bytes=bytes+extra;}}
     let selected=j_array();i=start;while i<j_count(turns) {j_push(selected,j_at(turns,i));i=i+1;}
     j_set(request,"turns",selected);j_set(request,"history_offset",j_int(start/2));j_set(request,"thinking",j_int(lc_thinking));j_set(request,"temperature",j_int(lc_temperature));j_set(request,"max_tokens",j_int(lc_maximum));lc_queue(h_cat(j_dump(request),"\n"));lc_stage("Generating...",0,0);return 0;
 }
@@ -145,7 +145,7 @@ fn lc_command(text) {
     lc_panel_text=0;lc_panel_top=0;lc_panel_preview=0;
     let split=h_find(text," ");let name=text;let arg="";if split>=0 {name=h_slice(text,split);arg=h_trim(text+split+1);}
     if h_equal(name,"/quit") || h_equal(name,"/exit") {lc_running=0;}
-    else if h_equal(name,"/help") {lc_menu("Help","/models /model qwen3-1.7b /download\n/backend sass|cuda /device N /weights bf16|f16|f16-tiled\n/thinking on|off /temperature 0..2 /tokens auto|N\n/new /clear /sessions /resume latest|ID /history /logs /quit\n\nEnter sends; Ctrl+J or Alt+Enter inserts a newline. Tab completes commands.\nArrows edit; Up/Down recall prompts; Shift+arrows select.\nClick Thinking to expand/collapse; Ctrl+T toggles the latest block.\nCtrl+A selects all; Ctrl+E moves to end; Ctrl+U clears.\nCtrl+C copies selection or quits; Ctrl+X cuts; Ctrl+V pastes.\nDrag to select and copy on release; right-click pastes in the composer.\nEsc cancels generation. Mouse wheel / PageUp / PageDown scroll.\nConversation history is sent to the model; oldest pairs leave context when full.\nFile tools and other model architectures are not supported by this runner.");}
+    else if h_equal(name,"/help") {lc_menu("Help","/models /model qwen3-1.7b /download\n/backend sass|cuda|hip|rdna /device N /weights bf16|f16|f16-tiled\n/thinking on|off /temperature 0..2 /tokens auto|N\n/new /clear /sessions /resume latest|ID /history /logs /quit\n\nEnter sends; Ctrl+J or Alt+Enter inserts a newline. Tab completes commands.\nArrows edit; Up/Down recall prompts; Shift+arrows select.\nClick Thinking to expand/collapse; Ctrl+T toggles the latest block.\nCtrl+A selects all; Ctrl+E moves to end; Ctrl+U clears.\nCtrl+C copies selection or quits; Ctrl+X cuts; Ctrl+V pastes.\nDrag to select and copy on release; right-click pastes in the composer.\nEsc cancels generation. Mouse wheel / PageUp / PageDown scroll.\nConversation history is sent to the model; oldest pairs leave context when full.\nFile tools and other model architectures are not supported by this runner.");}
     else if h_equal(name,"/models") || h_equal(name,"/model") {if h_len(arg) && !h_equal(arg,"qwen3-1.7b") {lc_status="Supported model: qwen3-1.7b";}else {lc_menu("Models",lc_models_text());}}
     else if h_equal(name,"/download") {if lc_busy {lc_status="Stop generation before downloading.";}else if lc_checkpoint_ready() {lc_status="Checkpoint is already downloaded.";}else {lc_stop();lc_worker=h_spawn(h_args(lc_binary,"--download-worker","1","--checkpoint",lc_checkpoint,0),0,0);lc_downloading=1;lc_stage("Downloading pinned Qwen3 checkpoint...",0,0);}}
     else if h_equal(name,"/new") {if lc_busy {lc_stop();lc_finish("cancelled");}lc_new();lc_status="New conversation.";}
@@ -156,9 +156,9 @@ fn lc_command(text) {
     else if h_equal(name,"/logs") {lc_show_log=!lc_show_log;}
     else if h_equal(name,"/thinking") {if h_equal(arg,"on") || h_equal(arg,"off") {lc_thinking=h_equal(arg,"on");lc_status=h_cat("Thinking ",arg);lc_save();}else {lc_status="Use /thinking on or /thinking off.";}}
     else if h_equal(name,"/temperature") {let value=lc_temp(arg);if value<0 {lc_status="Temperature must be 0..2.";}else {lc_temperature=value;lc_status=h_cat("Temperature: ",arg);}}
-    else if h_equal(name,"/tokens") {let value=lc_number(arg,4095);if h_equal(arg,"auto") {value=0;}if value<0 || (value==0 && !h_equal(arg,"auto")) {lc_status="Use /tokens auto or a positive count up to 4095.";}else {lc_maximum=value;lc_status=h_cat("Reply token limit: ",arg);}}
+    else if h_equal(name,"/tokens") {let value=lc_number(arg,ll_context_max()-1);if h_equal(arg,"auto") {value=0;}if value<0 || (value==0 && !h_equal(arg,"auto")) {lc_status="Use /tokens auto or a positive count up to 40959.";}else {lc_maximum=value;lc_status=h_cat("Reply token limit: ",arg);}}
     else if h_equal(name,"/backend") || h_equal(name,"/weights") || h_equal(name,"/device") {
-        let valid=0;if h_equal(name,"/backend") {valid=h_equal(arg,"sass") || h_equal(arg,"cuda");}else if h_equal(name,"/weights") {valid=h_equal(arg,"bf16") || h_equal(arg,"f16") || h_equal(arg,"f16-tiled");}else {valid=lc_number(arg,15)>=0;}
+        let valid=0;if h_equal(name,"/backend") {valid=h_equal(arg,"sass") || h_equal(arg,"cuda") || h_equal(arg,"hip") || h_equal(arg,"rdna");}else if h_equal(name,"/weights") {valid=h_equal(arg,"bf16") || h_equal(arg,"f16") || h_equal(arg,"f16-tiled");}else {valid=lc_number(arg,15)>=0;}
         if !valid {lc_status="Invalid setting. See /help.";}else if lc_busy {lc_status="Stop generation before changing hardware settings.";}else {if h_equal(name,"/backend") {lc_backend=arg;}else if h_equal(name,"/weights") {lc_weights=arg;}else {lc_device=arg;}lc_stop();lc_start();}
     }
     else {lc_status="Unknown command. Type /help.";}lc_dirty=1;return 0;
@@ -168,7 +168,7 @@ fn lc_submit() {
     if load8(text)==47 {text=te_submit();lc_command(text);return 0;}
     if lc_busy || lc_downloading {lc_status="An operation is running. Esc stops it.";lc_dirty=1;return 0;}
     if j_count(lc_messages)>=1000 {lc_status="This saved chat is full. Use /new to start another.";return 0;}
-    if h_len(text)>32768 {lc_status="Prompt exceeds 32 KiB.";return 0;}
+    if h_len(text)>262144 {lc_status="Prompt exceeds 256 KiB.";return 0;}
     if !lc_worker {lc_start();}if !lc_worker {return 0;}
     text=te_submit();let message=j_object();j_set(message,"role",j_string("user"));j_set(message,"content",j_string(text));j_push(lc_messages,message);
     lc_reply=j_object();lc_reply_buffer=h_buffer();j_set(lc_reply,"role",j_string("assistant"));j_set(lc_reply,"content",j_string(""));j_set(lc_reply,"status",j_string("pending"));j_push(lc_messages,lc_reply);lc_busy=1;lc_scroll=0;lc_select_scope=0;lc_stats="";lc_save();if lc_ready {lc_request();}lc_dirty=1;return 0;
@@ -273,9 +273,9 @@ fn lc_download(argc,argv) {
 fn lc_main(argc,argv) {
     h_environment(argc,argv);h_timeout=3600000;lc_status="Ready";lc_stats="";lc_binary=h_real(load64(argv));
     if b_option(argc,argv,"--capacity-plan",0) {return cap_plan(argc,argv);}if b_option(argc,argv,"--worker",0) {return ct_worker(argc,argv);}if b_option(argc,argv,"--download-worker",0) {return lc_download(argc,argv);}let read=b_option(argc,argv,"--read-session",0);if read {return lc_read_session(read);}
-    let i=1;while i<argc {if h_equal(load64(argv+i*8),"--help") {h_print(1,"Usage: llm [--checkpoint DIRECTORY] [--backend sass|cuda] [--device N]\n           [--weights bf16|f16|f16-tiled] [--context auto|32..4096]\n           [--max-tokens auto|N] [--history-dir DIRECTORY] [--resume latest|ID]\n           [--no-warmup 1] [--demo 1]\nCompile: build/flex-llm llm.flex -o build/llm-chat\n");return 0;}i=i+1;}
-    lc_compiler=b_option(argc,argv,"--compiler","build/flex-llm");lc_backend=b_option(argc,argv,"--backend","sass");lm_select_backend(lc_backend);lc_weights=b_option(argc,argv,"--weights","f16");h_assert(h_equal(lc_weights,"bf16") || h_equal(lc_weights,"f16") || h_equal(lc_weights,"f16-tiled"),"invalid weight format");
-    lc_device=b_option(argc,argv,"--device","0");h_assert(lc_number(lc_device,15)>=0,"device must be 0..15");let context=b_option(argc,argv,"--context","auto");lc_capacity_auto=h_equal(context,"auto");if !lc_capacity_auto {lc_capacity=lw_int(context);}h_assert(lc_capacity>=32 && lc_capacity<=4096,"context must be auto or 32..4096");let maximum=b_option(argc,argv,"--max-tokens","auto");lc_maximum=0;if !h_equal(maximum,"auto") {lc_maximum=lw_int(maximum);h_assert(lc_maximum>0 && lc_maximum<=4095,"max tokens must be auto or 1..4095");}
+    let i=1;while i<argc {if h_equal(load64(argv+i*8),"--help") {h_print(1,"Usage: llm [--checkpoint DIRECTORY] [--backend sass|cuda|hip|rdna] [--device N]\n           [--weights bf16|f16|f16-tiled] [--context auto|32..40960]\n           [--max-tokens auto|N] [--history-dir DIRECTORY] [--resume latest|ID]\n           [--no-warmup 1] [--demo 1]\nCompile: build/flex-llm llm.flex -o build/llm-chat\n");return 0;}i=i+1;}
+    lc_compiler=b_option(argc,argv,"--compiler",lm_default_compiler());lc_backend=b_option(argc,argv,"--backend",lm_default_backend());lm_select_backend(lc_backend);lc_weights=b_option(argc,argv,"--weights","f16");h_assert(h_equal(lc_weights,"bf16") || h_equal(lc_weights,"f16") || h_equal(lc_weights,"f16-tiled"),"invalid weight format");
+    lc_device=b_option(argc,argv,"--device","0");h_assert(lc_number(lc_device,15)>=0,"device must be 0..15");let context=b_option(argc,argv,"--context","auto");lc_capacity_auto=h_equal(context,"auto");if !lc_capacity_auto {lc_capacity=lw_int(context);}h_assert(lc_capacity>=32 && lc_capacity<=ll_context_max(),"context must be auto or 32..40960");let maximum=b_option(argc,argv,"--max-tokens","auto");lc_maximum=0;if !h_equal(maximum,"auto") {lc_maximum=lw_int(maximum);h_assert(lc_maximum>0 && lc_maximum<ll_context_max(),"max tokens must be auto or 1..40959");}
     let demo=h_getenv("FLEX_LLM_DEMO");if !demo {demo="0";}lc_demo=lw_int(b_option(argc,argv,"--demo",demo));h_assert(lc_demo<=1,"demo must be 0 or 1");
     let checkpoint=h_getenv("QWEN_CHECKPOINT");if !checkpoint {let home=h_getenv("HOME");if home {checkpoint=h_join(home,".cache/puppygrad/models/qwen3-1.7b/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e");}if !checkpoint || !h_exists(checkpoint) {checkpoint="build/llm/models/qwen3-1.7b";}}
     lc_checkpoint=b_option(argc,argv,"--checkpoint",checkpoint);let history=h_getenv("FLEX_LLM_HISTORY");if !history {history="build/llm/sessions";}lc_history=b_option(argc,argv,"--history-dir",history);h_mkdir(lc_history);lc_messages=j_array();lc_log=h_buffer();h_data(lc_log);lc_new();te_init();ti_init();lc_scratch=h_take(8208);

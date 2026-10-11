@@ -348,3 +348,77 @@ Use `--weights f16` for the default row-major comparison. Local evidence is
 `batch-{f16,tiled}-cache-reference.json`, `{sass,gpu,float}-prefill-tests.json`
 and `test-llm-prefill-final.log`. The comparison orchestrator is
 `build/llm/paired-prefill-final.py`; inference itself remains native Flexscript.
+
+## RDNA4 and HIP, 2026-10-11
+
+The AMD backend runs Qwen3-1.7B on an RX 9070 XT (gfx1201, 16 GiB), Ryzen 9
+5900X and ROCm 7.2.4. Native `.hsaco` modules use HIP graphs for decode and
+RDNA4 WMMA for batched prefill. FP16 weights and FP32 KV caches stay resident.
+The model definition and pinned checkpoint revision are unchanged; there is
+no integer quantization. See [implementation and setup](rdna.md).
+
+The official llama.cpp source at commit
+`5c8854fd88319125125dc4b836c98b1b215b0f23` was built separately with HIP
+(gfx1201) and Vulkan. Its official converter produced an F16 GGUF from the
+same safetensors checkpoint. These matched library-harness measurements use
+the same 15 input token IDs, 64 replayed decode IDs, 256-token context, FP32
+K/V caches, one host thread and synchronous model execution. llama.cpp flash
+attention is disabled in this matched-cache comparison. Each runner has one
+warmup and three timed samples:
+
+| Runner | 15-token prefill ms | Prefill tokens/s | Decode tokens/s |
+| --- | ---: | ---: | ---: |
+| Flexscript RDNA, FP16 weights | 13.060 | 1,148.52 | 127.11 |
+| llama.cpp HIP, F16 GGUF | 15.776 | 950.81 | 95.09 |
+| llama.cpp Vulkan, F16 GGUF | 33.778 | 444.07 | 82.65 |
+
+These rates divide counts by mean elapsed time. Native decode samples are
+504.668, 502.073 and 503.802 ms. Timings exclude loading, compilation,
+tokenization, caller-side sampling and printing. Flexscript also excludes
+logits downloads; any internal llama.cpp output transfer remains inside its
+execution calls. Both llama.cpp backends selected first greedy token 9707,
+matching Flexscript. This does not establish bit-identical logits.
+
+Stock `llama-bench` was also run with flash attention enabled and its default
+FP16 caches, which improves llama.cpp's decode result:
+
+| Stock configuration | Prefill tokens/s | Decode tokens/s |
+| --- | ---: | ---: |
+| llama.cpp HIP | 1,002.00 | 103.57 |
+| llama.cpp Vulkan | 551.78 | 127.72 |
+
+Stock rates are the benchmark's reported mean throughput over three samples.
+Those runs use random token IDs, prompt length 15 and decode length 64 after
+depth 15, so they are a second comparison with different settings. Native
+decode is approximately level with the faster Vulkan result, whose sample
+standard deviation is 4.90 tokens/s. The measured short-prompt prefill is
+faster than both stock runs. These results do not establish long-context,
+large-batch or quantized-model performance. Desktop workloads remained active;
+GPU jobs ran sequentially and clocks were not locked.
+
+Greedy application sampling now runs on the GPU and downloads eight bytes per
+token. The real CLI prompt “Say hello.” produced “Hello! How can I assist you
+today? 😊”: 14 ms prefill and 87 ms for 11 subsequent decode calls, about
+125 tokens/s including sampling and text output. The native chat
+UI also generated real replies with the default RDNA backend and after a
+reload to HIP source. Nonzero-temperature chat still uses CPU top-40 sampling.
+
+Local evidence is `build/llm/rdna-speed-comparison.json`,
+`rdna-final-benchmark.json`, `llama-matched-{hip,vulkan}-final.json`,
+`llama-{hip,vulkan}-stock.json` and `rdna-gpu-sample-chat.json`.
+The matched harness sources and token header are under `build/llm/`;
+llama.cpp builds, the converter and project-local HIP BLAS dependencies are
+under `build/llamacpp/`. Flexscript inference itself requires no BLAS library.
+
+```sh
+build/llm-infer --backend rdna --checkpoint "$QWEN_CHECKPOINT" \
+  --context 256 --max-tokens 8 --prompt 'Say hello.' \
+  --report build/llm/rdna-tokens.json
+build/bench-llm --backend rdna --compiler build/flex \
+  --checkpoint "$QWEN_CHECKPOINT" --tokens build/llm/rdna-tokens.json \
+  --decode 64 --context 256 --repeats 3 \
+  --report build/llm/rdna-benchmark.json
+# Stock llama.cpp, after building the chosen GPU backend:
+llama-bench -m build/llm/qwen3-1.7b-f16.gguf \
+  -p 15 -n 64 -d 15 -r 3 -t 1 -fa on -o json
+```

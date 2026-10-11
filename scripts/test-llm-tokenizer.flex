@@ -8,5 +8,11 @@ fn main(argc,argv) {
     while i<j_count(cases) {let item=j_at(cases,i);let actual=qt_encode(j_s(item,"text"));let expected=j_need(item,"ids");h_assert(h_count(actual)==j_count(expected),"tokenizer length differs from official oracle");
         let decoded=h_buffer();let j=0;while j<h_count(actual) {h_assert(h_at(actual,j)==j_value(j_at(expected,j)),"tokenizer ID differs from official oracle");let piece=qt_decode(h_at(actual,j));h_append(decoded,h_data(piece),h_size(piece));checks=checks+1;j=j+1;}
         h_assert(h_equal(h_data(decoded),j_s(item,"decoded")),"decoded bytes differ from official oracle");checks=checks+1;i=i+1;}
+    // Special tokens exercise the boundary without expensive text fixtures.
+    let long=h_buffer();let n=0;while n<8192 {h_text(long,"<|im_end|>");n=n+1;}
+    qt_limit=8192;let actual=qt_encode_bounded(h_data(long));h_assert(!qt_overflow && h_count(actual)==8192,"tokenizer retains a 4095-token limit");checks=checks+1;
+    qt_limit=8191;actual=qt_encode_bounded(h_data(long));h_assert(qt_overflow && h_count(actual)==8191,"tokenizer overflow boundary changed");checks=checks+1;
+    let array=j_array();n=0;while n<h_count(actual) {j_push(array,j_int(h_at(actual,n)));n=n+1;}
+    let parsed=j_parse(j_dump(array));h_assert(j_count(parsed)==8191 && j_value(j_at(parsed,8190))==151645,"large token report JSON lost IDs during growth or parsing");checks=checks+1;
     h_print(1,h_cat3("Tokenizer checks: ",h_int(checks),"\n"));return 0;
 }

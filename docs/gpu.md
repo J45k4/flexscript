@@ -1,4 +1,4 @@
-# Experimental GPU compilation
+# GPU compilation
 
 Flexscript emits NVIDIA PTX directly from its existing word IR:
 
@@ -86,7 +86,8 @@ register allocation and binary packaging. There is also an experimental
 [direct Turing SASS backend](sass-sm75.md), selected with `--target sass-sm75`,
 which emits instruction bytes and the cubin container itself. It supports a
 smaller subset of the language. The Vulkan ray-query runtime accepts SPIR-V shaders compiled externally;
-Flexscript-to-SPIR-V and AMD code generation remain future work.
+Flexscript-to-SPIR-V remains future work. AMD targets emit HIP source or native
+gfx1201 HSA code objects; see [RDNA and HIP](rdna.md).
 
 References: [NVIDIA PTX ISA](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html),
 [CUDA module loading](https://docs.nvidia.com/cuda/cuda-driver-api/cuda_driver_api/group__CUDA__MODULE.html).

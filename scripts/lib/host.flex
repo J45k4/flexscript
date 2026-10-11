@@ -263,6 +263,16 @@ fn h_repeat(s,n) {
 fn h_vec() {
     return h_zero(h_take(32776),32776);
 }
+// Sized vectors retain the count/items layout. Their private prefix stores a
+// capacity, so large token arrays need not enlarge every ordinary tool vector.
+fn h_vec_sized(capacity) {
+    h_assert(capacity>=1 && capacity<=1048576,"invalid vector capacity");
+    let p=h_take((capacity+2)*8);store64(p,capacity);store64(p+8,0);return p+8;
+}
+fn h_add_sized(v,item) {
+    let n=h_count(v);h_assert(n<load64(v-8),"vector capacity");
+    store64(v+8+n*8,item);store64(v,n+1);return v;
+}
 fn h_count(v) {
     return load64(v);
 }

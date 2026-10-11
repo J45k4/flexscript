@@ -5,6 +5,7 @@ import "baremetal.flex";
 import "wasm.flex";
 import "gpu-intrinsics.flex";
 import "ptx.flex";
+import "hip.flex";
 import "sass.flex";
 import "sass-opt.flex";
 import "sass-registers.flex";
@@ -527,7 +528,7 @@ fn prefix() {
         next();
     } else if token == 258 {
         if tx_recording {store64(tx_literal_flags+(function_count-1)*8,128);}
-        if ptx_target || sass_target {fail("GPU targets do not support string literals");}
+        if ptx_target || sass_target || hip_target {fail("GPU targets do not support string literals");}
         if vm_mode {immediate(vm_string_literal());next();return 0;}
         let start = token_start + 1;
         let end = token_start + token_size - 1;
@@ -785,7 +786,7 @@ fn initialize_output() {
 }
 
 fn resolve() {
-    if ptx_target || sass_target {vm_resolve();return 0;}
+    if ptx_target || sass_target || hip_target {vm_resolve();return 0;}
     let main_index = find(functions, function_count, "main", 4);
     if main_index < 0 { fail("missing main function"); }
     let entry = functions + main_index * 32;
@@ -1810,7 +1811,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|ptx|sass-sm75|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|ptx|sass-sm75|hip|rdna-gfx1201|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1824,6 +1825,8 @@ fn main(argc, argv) {
             else if up_text(value,"wasm32") {wasm_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"ptx") {ptx_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"sass-sm75") {sass_target=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"hip") {hip_target=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"rdna-gfx1201") {hip_target=1;hp_machine=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"ir") {frontend_ir_target=1;}
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}
@@ -1843,15 +1846,15 @@ fn main(argc, argv) {
     }
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
-    if word_io_buffered && (wasm_target || ptx_target || sass_target || baremetal_target || frontend_ir_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
-    if (ptx_target || sass_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
+    if word_io_buffered && (wasm_target || ptx_target || sass_target || hip_target || baremetal_target || frontend_ir_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
+    if (ptx_target || sass_target || hip_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=134217728;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
     }
     compiler_initialize();
-    if wasm_target || ptx_target || sass_target {wasm_initialize();}
+    if wasm_target || ptx_target || sass_target || hip_target {wasm_initialize();}
     load_module(source_path);
     tx_expand();
     initialize_output();
@@ -1863,6 +1866,7 @@ fn main(argc, argv) {
     else if wasm_target {wasm_finish();}
     else if ptx_target {ptx_finish();}
     else if sass_target {sass_finish();}
+    else if hip_target {hip_finish();}
     else if frontend_language {ir_native();}
     let stat = input_stat;
     // O_NOFOLLOW prevents writing through output symlinks. No output is opened
@@ -1889,7 +1893,7 @@ fn main(argc, argv) {
     }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
-    let mode=493;if wasm_target || ptx_target || sass_target || frontend_ir_target {mode=420;}
+    let mode=493;if wasm_target || ptx_target || sass_target || hip_target || frontend_ir_target {mode=420;}
     if syscall(91, fd, mode, 0, 0, 0, 0) < 0 { fail("cannot set output permissions"); }
     if syscall(3, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot close output"); }
     return 0;

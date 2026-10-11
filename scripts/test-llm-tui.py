@@ -99,7 +99,7 @@ def pty_tests(binary):
             t.pump(.1)
             assert b'\x1b[s' in t.output and b'\x1b[u' in t.output, 'activity did not animate while worker was silent'
             t.wait('Model ready')
-            assert b'Context 4096 | reply auto' in t.output, 'automatic reply/context defaults missing'
+            assert b'Context 40960 | reply auto' in t.output, 'automatic reply/context defaults missing'
             frame = t.output[t.output.rfind(b'\x1b[1;1H'):]
             assert b'% (' not in frame, 'loading bar remained after ready'
             t.send('/models')

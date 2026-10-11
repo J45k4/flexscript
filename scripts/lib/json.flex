@@ -23,7 +23,7 @@ fn j_string(s) {
     return j_node(2,s);
 }
 fn j_array() {
-    return j_node(3,h_vec());
+    return j_node(3,h_vec_sized(16));
 }
 fn j_object() {
     return j_node(4,h_vec());
@@ -33,7 +33,12 @@ fn j_bool(n) {
 }
 fn j_push(a,value) {
     h_assert(j_kind(a)==3,"JSON array expected");
-    h_add(j_value(a),value);
+    let v=j_value(a);let n=h_count(v);let capacity=load64(v-8);
+    if n==capacity {
+        h_assert(capacity<65536,"JSON array capacity");let next=h_vec_sized(capacity*2);
+        h_copy(next,v,(n+1)*8);store64(a+8,next);v=next;
+    }
+    h_add_sized(v,value);
     return a;
 }
 fn j_set(o,key,value) {

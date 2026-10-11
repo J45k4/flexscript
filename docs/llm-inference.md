@@ -1,12 +1,16 @@
-# Qwen3 inference through direct SASS or CUDA PTX
+# Qwen3 inference on NVIDIA and AMD
 
 `libs/ml/examples/qwen3-inference.pup` runs Qwen3-1.7B with a native Flexscript
 host, a native ByteLevel BPE tokenizer, resident 16-bit checkpoint weights, FP32
-activations and a retained FP32 KV cache. The inference path needs the NVIDIA
-driver / `libcuda.so.1` and GLib's Unicode/regex functions. Select direct SASS
-with `--backend sass` (default), or driver-compiled PTX with `--backend cuda`.
-Neither mode invokes external ptxas, CUDA C++, cuBLAS, Python, Rust or an
-external ML runtime.
+activations and a retained FP32 KV cache. NVIDIA uses direct SASS (`--backend
+sass`) or driver-compiled PTX (`--backend cuda`). AMD uses native gfx1201 code
+objects (`--backend rdna`) or runtime-compiled HIP source (`--backend hip`).
+The default detects a HIP device and selects RDNA, otherwise SASS.
+GLib supplies Unicode/regex functions. NVIDIA needs `libcuda.so.1`; AMD needs
+ROCm's HIP runtime, HIPRTC and headers under `/opt/rocm/include`.
+See [RDNA setup and implementation](rdna.md) for the tested Radeon configuration.
+Inference uses Flexscript kernels and its own planner, without cuBLAS,
+hipBLAS, Python or an external ML runtime.
 
 The three layers are explicit:
 
@@ -24,18 +28,19 @@ The three layers are explicit:
    addition with normalization.
    Each fusion preserves intermediate tensor outputs for other graph consumers.
    Weights and per-attention KV allocations stay resident between tokens.
-3. The ordinary Flexscript GPU compiler emits SM75 cubins or PTX from the same
-   `libs/ml/llm/kernels/*.flex`; `lib/cuda.flex` loads and launches them. In CUDA
+3. The ordinary Flexscript GPU compiler emits SM75 cubins, PTX, HIP source or
+   gfx1201 code objects from `libs/ml/llm/kernels/*.flex`; `lib/device.flex`
+   selects the CUDA or HIP loading and launch adapter. In CUDA
    mode the NVIDIA driver compiles PTX into machine code for the device.
    Direct-SASS compiler passes propagate copies and zero values, remove dead instructions, fold
    constant load offsets, eliminate unreachable helper epilogues and empty branches,
    allocate register pairs and schedule dependencies.
    Address-read and result-write scoreboards allow independent memory operations
-   to overlap. Descriptors travel as eight by-value launch words. CUDA graphs replay the
+   to overlap. Descriptors travel as eight by-value launch words. Device graphs replay the
    complete schedule for each token. Batched prefill expands the original
    schedule before decode fusion, tiles matrix products across output rows and
    prompt positions, splits K deterministically, and constructs causal KV rows.
-   Scratch allocations are reused after their last consumer. A separate CUDA
+   Scratch allocations are reused after their last consumer. A separate device
    graph captures each prepared prompt shape, with pinned token uploads.
 
 These execution choices do not require edits to the `.pup` model definition.
@@ -60,6 +65,8 @@ build/flex-llm llm.flex -o build/llm-chat
 build/llm-chat --checkpoint "$QWEN_CHECKPOINT" --backend sass
 # Or select driver-compiled PTX:
 build/llm-chat --checkpoint "$QWEN_CHECKPOINT" --backend cuda
+# AMD Radeon RX 9070 XT:
+build/llm-chat --checkpoint "$QWEN_CHECKPOINT" --backend rdna
 ```
 
 It streams replies, warms and retains the model/tokenizer/kernels, supports
@@ -74,22 +81,27 @@ The default context and reply length are both `auto`. The worker plans the
 actual Pup schedule, queries free GPU memory, and chooses a context that fits
 weights, KV cache, rotary tables and worst-case prefill scratch. It leaves
 10% of GPU memory, or at least 512 MiB, for driver overhead and other apps.
-The current engine ceiling is 4096 tokens, including prompt, reasoning and
+The current engine ceiling is the checkpoint limit, up to 40,960 tokens, including prompt, reasoning and
 answer. Replies continue until EOS or the remaining context is used.
-Use `--context auto|32..4096`, `--max-tokens auto|N`, `--weights` and `--device`
-(CUDA ordinal) at startup. Explicit contexts are checked against the memory
+Use `--context auto|32..40960`, `--max-tokens auto|N`, `--weights` and `--device`
+(GPU ordinal) at startup. Explicit contexts are checked against the memory
 budget too. Free memory is checked again before each prefill; if other apps
 consume the reserved working space, the prompt fails with a recoverable message.
+Automatic sizing includes working space for a full-context batched prompt,
+so a 16 GiB GPU can select less than 40,960 tokens. Explicit contexts above
+the checkpoint limit or available memory are rejected. Prompts may contain
+up to 256 KiB of text; conversation requests retain up to 512 KiB before
+the worker trims turns by token count.
 `--no-warmup 1` defers model loading until the first prompt. Without an explicit
 checkpoint, it checks `QWEN_CHECKPOINT`, then the existing pinned Puppygrad cache,
 then `build/llm/models/qwen3-1.7b`. `/download` downloads the pinned manifest's
 assets there using resumable curl transfers; downloads are initiated explicitly.
 `/models` reports the currently supported Qwen3-1.7B recipe and asset readiness.
-No new model architectures, CPU/HIP backends or model file tools are introduced.
+The current model recipe is Qwen3-1.7B; CPU inference is not implemented.
 
 | Commands | Purpose |
 | --- | --- |
-| `/backend sass|cuda`, `/device N`, `/weights FORMAT` | Reload with selected execution settings |
+| `/backend sass|cuda|hip|rdna`, `/device N`, `/weights FORMAT` | Reload with selected execution settings |
 | `/thinking on|off` | Select Qwen3 thinking prompt format |
 | `/temperature 0..2` | Greedy at zero (default); top-40 temperature sampling otherwise |
 | `/tokens auto|N` | Use available context or set an output cap |
@@ -131,7 +143,9 @@ temporary file and atomic rename. `--history-dir` selects another directory;
 saved. The transcript is limited to 1000 messages; `/new` starts another file.
 Worker errors appear in the UI and `/logs`, leaving the terminal usable.
 Displayed timing includes tokenization, prompt preparation, sampling and
-logit downloads, unlike the resident benchmark below.
+output, unlike the resident benchmark below. Greedy sampling runs in the GPU
+graph and downloads eight bytes per token. Nonzero-temperature sampling still
+downloads the logits for the CPU top-40 sampler.
 
 `build/llm-chat --demo 1` exercises the UI with a clearly marked synthetic
 worker, without GPU access or checkpoint loading. Integration checks are:
@@ -143,7 +157,7 @@ build/test-llm-capacity
 python scripts/test-llm-tui.py --gpu --checkpoint "$QWEN_CHECKPOINT"
 ```
 
-The GPU checks exercise both backends, baseline token IDs, multi-turn input,
+These GPU integration checks exercise the NVIDIA backends, baseline token IDs, multi-turn input,
 oversized prompt rejection, cancellation/recovery and prompt-memory cleanup.
 The checked-in `libs/ml/llm/tests/chat.json` supplies the token regression
 fixture; no local benchmark report is required.
@@ -176,9 +190,13 @@ Choose the backend independently from the model and weight layout:
 build/llm-infer --backend sass --checkpoint "$QWEN_CHECKPOINT"
 # PTX compiled by the NVIDIA driver for the installed GPU.
 build/llm-infer --backend cuda --checkpoint "$QWEN_CHECKPOINT"
+# gfx1201 machine code loaded through HIP.
+build/llm-infer --backend rdna --checkpoint "$QWEN_CHECKPOINT"
+# HIP source compiled through HIPRTC when modules are loaded.
+build/llm-infer --backend hip --checkpoint "$QWEN_CHECKPOINT"
 ```
 
-Both modes use CUDA for allocation, transfers, launches and graph replay.
+The two NVIDIA modes use CUDA for allocation, transfers, launches and graph replay.
 CUDA mode needs no CUDA toolkit or `nvcc`; it emits `.ptx` modules instead of
 `.cubin` files and loads them through the same Driver API. The current kernel
 instruction set requires compute capability 7.5 or newer. Direct SASS requires
@@ -186,8 +204,9 @@ SM75 and reports an error suggesting `--backend cuda` on other architectures.
 The CUDA path is intended to support newer NVIDIA GPUs through PTX compilation;
 physical validation so far is on RTX 2070, with the same 60 greedy chat IDs as
 the original SASS run. Other architectures still need device validation and
-performance tuning. Reports record `backend` (`sass` or `cuda`) and `target`
-(`sass-sm75` or `ptx`), including plan-only reports.
+performance tuning. AMD modes use HIP graphs and RDNA4 WMMA prompt kernels.
+AMD device validation is on gfx1201, with wave32 kernels. Reports record all
+four backend names and their compiler targets, including plan-only reports.
 
 Backend integration checks cover CUDA inference in both FP16 layouts, default
 SASS inference, GPU-free CUDA planning, invalid backend rejection, and CUDA
@@ -237,7 +256,7 @@ build/llm-infer --checkpoint "$QWEN_CHECKPOINT" --plan-only 1 \
   --context 256 --report build/llm/plan.json
 ```
 
-This reads checkpoint metadata, validates the Pup graph, emits cubins or PTX
+This reads checkpoint metadata, validates the Pup graph, emits kernels for the selected backend
 and reports planned memory and launch geometry. It does not execute inference.
 The JSON schedule is an inspection report; the runner rebuilds its schedule
 when executing a model.
@@ -262,7 +281,7 @@ nonuniform GEMV at full model widths, partial final blocks, RMSNorm, nonzero
 rotary positions, multiple GQA heads, nine cache lengths and cache writes against
 independent references. Fused kernels also check every retained intermediate
 output, including exact F32 residual additions. PTX is an optional test oracle;
-production generation uses SASS.
+production generation uses the selected backend.
 Tokenizer goldens cover multilingual text, emoji, NFC normalization, special
 tokens, contractions, whitespace, digits and ASCII controls. They were produced
 with Hugging Face `tokenizers` 0.23.3 against the pinned tokenizer.
@@ -295,7 +314,7 @@ These bounds are not an equivalence proof for arbitrary prompts or models.
 every generation prediction. Reports record input/output IDs, output text,
 resident allocation bytes, kernel launches, prefill and decode wall times.
 Decode throughput counts subsequent model executions; the first generated
-token comes from prefill. Allocation totals are our resident CUDA buffers, not
+token comes from prefill. Allocation totals are our resident device buffers, not
 sampled process/driver peak VRAM.
 
 On the RTX 2070, the initial implementation passed 6,219 planning/GPU checks and
@@ -326,8 +345,8 @@ wall times, including host launches and GPU synchronization. Loading and
 kernel compilation occur before timing.
 Add `--backend cuda` to select driver-compiled PTX; it also works with
 `--weights f16-tiled`. Kernel loading and driver JIT occur before timed samples.
-The existing llama.cpp comparison measurements use the direct-SASS backend;
-they do not establish the performance of the selectable CUDA backend.
+The [benchmark report](llm-benchmark.md) records separate NVIDIA and RDNA4
+measurements; results for one backend do not establish another backend's performance.
 
 The benchmark accepts `--fusion MASK` for lowering comparisons with the same
 Pup graph: bit 1 enables normalization/rotary and adjacent Q/K/V projection fusion,
@@ -406,7 +425,7 @@ the CPU oracle remains an independent validation tool.
 
 Profile either schedule with `scripts/profile-llm.flex --mode prefill` or
 `--mode decode`, adding `--weights f16-tiled` for tiled storage or
-`--backend cuda` for driver-compiled PTX. Per-stage CUDA
+`--backend cuda` for driver-compiled PTX or `--backend rdna` for AMD. Per-stage device
 events add instrumentation overhead; use the resident benchmark for speed
 comparisons. Its samples now include microsecond wall times alongside integer
 millisecond fields.

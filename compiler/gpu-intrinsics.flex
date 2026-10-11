@@ -65,9 +65,11 @@ fn gpu_intrinsic(index) {
     if equal(name,size,"gpu_f16x2_to_f32x2",18) {return 69;}
     if equal(name,size,"gpu_bf16x2_to_f16x2",19) {return 68;}
     if equal(name,size,"gpu_mma_f16x4",13) {return 67;}
+    if equal(name,size,"gpu_rdna_wmma_f16x8",19) {return 70;}
     return 0;
 }
 fn gpu_intrinsic_arity(kind) {
+    if kind==70 {return 9;}
     if kind==67 {return 5;}
 
     if kind==54 {return 2;}

@@ -24,6 +24,7 @@ fn lw_field(name) {
 fn lw_config_number(name) {return lw_number(lw_field(name));}
 fn lw_config_bool(name) {let value=lw_field(name);h_assert(h_starts(value,"true") || h_starts(value,"false"),"invalid boolean config");return h_starts(value,"true");}
 fn lw_config_int(name) {return f64_to_i64_trunc(lw_config_number(name));}
+fn lw_context_max() {let n=lw_config_int("max_position_embeddings");h_assert(n>=32,"invalid checkpoint context limit");if n>ll_context_max() {n=ll_context_max();}return n;}
 fn lw_map(path) {
     let fd=syscall(2,path,0x80000,0,0,0,0);h_assert(fd>=0,h_cat("cannot open checkpoint: ",path));
     let size=syscall(8,fd,0,2,0,0,0);h_assert(size>=10 && size<=8589934592,"invalid checkpoint size");
@@ -32,6 +33,7 @@ fn lw_map(path) {
 }
 fn lw_load(directory) {
     lw_config=h_read(h_join(directory,"config.json"));
+    h_assert(lm_capacity<=lw_context_max(),"context exceeds checkpoint max_position_embeddings");
     h_assert(h_has(lw_config,"Qwen3ForCausalLM") && lw_config_int("head_dim")==128,"requires Qwen3 text model with 128-wide heads");
     h_assert(!lw_config_bool("attention_bias") && !lw_config_bool("use_sliding_window") && h_starts(lw_field("rope_scaling"),"null"),"initial Qwen3 recipe requires bias-free full attention and unscaled rotary");
     let tied=lw_config_bool("tie_word_embeddings");
@@ -44,11 +46,18 @@ fn lw_load(directory) {
         let name=h_at(files,i);h_print(2,h_cat3("Loading ",name,"...\n"));let map=lw_map(h_join(directory,name));let p=load64(map);let size=load64(map+8);let n=load64(p);
         h_assert(n>=2 && n<=1048576 && n<=size-8,"invalid safetensors header");let header=j_parse(h_slice(p+8,n));let tensors=j_value(header);
         let data=lm_alloc(size-8-n);if !lm_dry_run {
-            if lm_progress_json {let bytes=size-8-n;let sent=0;let label=h_cat("Loading weights: ",name);lm_progress(label,0,bytes);
-                while sent<bytes {let chunk=bytes-sent;if chunk>67108864 {chunk=67108864;}lm_check(cuda_upload(data+sent,p+8+n+sent,chunk));sent=sent+chunk;lm_progress(label,sent,bytes);}}
-            else {lm_check(cuda_upload(data,p+8+n,size-8-n));}
+            if lm_progress_json || lm_backend>=2 {let bytes=size-8-n;let sent=0;let label=h_cat("Loading weights: ",name);lm_progress(label,0,bytes);
+                // Bound host pinning on AMD: copying from a multi-GB file mmap
+                // directly can thrash under host-memory pressure during SDMA.
+                let staging=0;let copy=0;let staging_bytes=67108864;if bytes<staging_bytes {staging_bytes=bytes;}
+                if lm_backend>=2 {staging=device_host_buffer(staging_bytes);lm_check(device_status);copy=ffi_symbol(ffi_open("libc.so.6"),"memcpy");h_assert(copy,"memcpy unavailable");}
+                while sent<bytes {let chunk=bytes-sent;if chunk>67108864 {chunk=67108864;}let source=p+8+n+sent;
+                    if staging {ffi_call(copy,staging,source,chunk,0,0,0);source=staging;}
+                    lm_check(device_upload(data+sent,source,chunk));sent=sent+chunk;lm_progress(label,sent,bytes);}
+                if staging {lm_check(device_host_free(staging));}}
+            else {lm_check(device_upload(data,p+8+n,size-8-n));}
             if lm_weight_format {h_assert((size-8-n)%4==0,"FP16 staging requires packed checkpoint words");let words=h_take(64);store64(words,data);store64(words+8,(size-8-n)/4);
-                lm_check(cuda_launch_words(load64(lm_modules+17*8),0,0,(size-8-n)/4,cuda_config(((size-8-n)/4+127)/128,1,1,128,1,1,0,0),words));}}let j=0;
+                lm_check(device_launch_words(load64(lm_modules+17*8),0,0,(size-8-n)/4,device_config(((size-8-n)/4+127)/128,1,1,128,1,1,0,0),words));}}let j=0;
         lm_progress("Preparing weights",0,h_count(tensors));
         while j<h_count(tensors) {let pair=h_at(tensors,j);let tensor_name=load64(pair);let spec=load64(pair+8);
             if !h_equal(tensor_name,"__metadata__") {
@@ -59,9 +68,9 @@ fn lw_load(directory) {
                 h_assert(begin>=0 && begin%2==0 && end>=begin && end-begin==rows*width*2 && end<=size-8-n,"tensor exceeds checkpoint bounds");
                 if lm_weight_format==2 && rank==2 && !h_equal(tensor_name,"model.embed_tokens.weight") && !h_equal(tensor_name,"lm_head.weight") {
                     h_assert(rows%16==0 && width%8==0,"tiled matrix dimensions must be multiples of 16 by 8");
-                    if !lm_dry_run {let scratch=cuda_buffer(end-begin);lm_check(cuda_status);let desc=h_take(64);store64(desc,data+begin);store64(desc+8,scratch);store64(desc+16,width);
-                        lm_check(cuda_launch_words(load64(lm_modules+22*8),0,0,rows*width/4,cuda_config((width/4+127)/128,rows,1,128,1,1,0,0),desc));
-                        lm_check(cuda_call("cuMemcpyDtoD_v2",data+begin,scratch,end-begin,0,0,0));lm_check(cuda_free(scratch));}
+                    if !lm_dry_run {let scratch=device_buffer(end-begin);lm_check(device_status);let desc=h_take(64);store64(desc,data+begin);store64(desc+8,scratch);store64(desc+16,width);
+                        lm_check(device_launch_words(load64(lm_modules+22*8),0,0,rows*width/4,device_config((width/4+127)/128,rows,1,128,1,1,0,0),desc));
+                        lm_check(device_copy(data+begin,scratch,end-begin));lm_check(device_free(scratch));}
                     j_set(lm_tiled_weights,h_int(data+begin),j_int(1));}
                 let v=lm_value(1,data+begin,rows*width,width);store64(v+32,rows);h_assert(!j_get(lw_tensors,tensor_name),"duplicate checkpoint tensor");j_set(lw_tensors,tensor_name,v);
             }j=j+1;if j%16==0 || j==h_count(tensors) {lm_progress("Preparing weights",j,h_count(tensors));}
@@ -82,5 +91,5 @@ fn lw_rotary() {
         while p<lm_capacity {let angle=f64_mul(f64_from_i64(p),frequency);let out=table+(p*64+d)*8;
             gpu_store_u32(out,gpu_f32_pack(f64_cos(angle)));gpu_store_u32(out+4,gpu_f32_pack(f64_sin(angle)));p=p+1;}d=d+1;if d%8==0 {lm_progress("Building rotary table",d,64);}
     }
-    lm_table=lm_alloc(lm_capacity*512);return lm_check(cuda_upload(lm_table,table,lm_capacity*512));
+    lm_table=lm_alloc(lm_capacity*512);return lm_check(device_upload(lm_table,table,lm_capacity*512));
 }

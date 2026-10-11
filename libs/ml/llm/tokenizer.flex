@@ -2,6 +2,7 @@
 // vocab lookup, ranked merges, added tokens and byte decoding stay here.
 import "../../../scripts/lib/json.flex";
 import "../../../lib/ffi.flex";
+import "limits.flex";
 global qt_vocab=0;
 global qt_merges=0;
 global qt_tokens=0;
@@ -16,7 +17,8 @@ global qt_next=0;
 global qt_free=0;
 global qt_match_free=0;
 global qt_overflow=0;
-fn qt_token_add(result,id) {if h_count(result)<4095 {h_add(result,id);}else {qt_overflow=1;}return 0;}
+global qt_limit=40959;
+fn qt_token_add(result,id) {if h_count(result)<qt_limit {h_add_sized(result,id);}else {qt_overflow=1;}return 0;}
 fn qt_hash(s) {let h=2166136261;let i=0;while load8(s+i) {h=((h^load8(s+i))*16777619)&4294967295;i=i+1;}return h&524287;}
 fn qt_lookup(s,insert,id) {
     let at=qt_hash(s);let tries=0;
@@ -102,14 +104,14 @@ fn qt_plain(text,n,result) {
     h_assert(end==h_len(normalized),"tokenizer did not consume prompt");ffi_call(qt_match_free,load64(info),0,0,0,0,0);ffi_call(qt_free,normalized,0,0,0,0,0);return 0;
 }
 fn qt_encode_bounded(text) {
-    qt_overflow=0;let result=h_vec();let n=h_len(text);let start=0;let i=0;
+    qt_overflow=0;let result=h_vec_sized(qt_limit);let n=h_len(text);let start=0;let i=0;
     while i<n {let found=0;let j=0;
         if load8(text+i)==60 {while j<j_count(qt_added) && !found {let token=j_at(qt_added,j);let content=j_s(token,"content");let length=h_len(content);
             if length<=n-i && h_bytes(text+i,content,length) {qt_plain(text+start,i-start,result);qt_token_add(result,j_n(token,"id"));i=i+length;start=i;found=1;}j=j+1;}}
         if !found {i=i+1;}
     }qt_plain(text+start,n-start,result);return result;
 }
-fn qt_encode(text) {let result=qt_encode_bounded(text);h_assert(!qt_overflow,"prompt exceeds 4095 tokenizer tokens");return result;}
+fn qt_encode(text) {let result=qt_encode_bounded(text);h_assert(!qt_overflow,h_cat3("prompt exceeds ",h_int(qt_limit)," tokenizer tokens"));return result;}
 fn qt_decode(id) {
     h_assert(id>=0 && id<200000 && load64(qt_tokens+id*8),"unknown output token");let s=load64(qt_tokens+id*8);let result=h_buffer();let i=0;
     while load8(s+i) {let c=load8(s+i);i=i+1;if c>=192 {c=((c&31)<<6)|(load8(s+i)&63);i=i+1;}

@@ -148,3 +148,8 @@ fn gpu_f16_to_f32_bits(bits) {
 }
 // Expand the low two FP16 values to two packed FP32 values.
 fn gpu_f16x2_to_f32x2(value){return gpu_f16_to_f32_bits(value&65535)|(gpu_f16_to_f32_bits((value>>16)&65535)<<32);}
+
+// RDNA4 wave32 16x16x16 WMMA. A/B contain eight FP16 values per lane;
+// C contains eight FP32 values. Return the first pair and write the other three
+// pairs at the caller's lane-private shared offset. All 32 lanes participate.
+fn gpu_rdna_wmma_f16x8(a0,a1,b0,b1,c0,c1,c2,c3,offset){return gpu_host_only();}

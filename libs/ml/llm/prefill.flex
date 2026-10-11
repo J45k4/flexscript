@@ -22,8 +22,8 @@ global lm_prompt_partial_bytes=0;
 global lm_prompt_half_bytes=0;
 fn lm_prompt_clear() {
     if !lm_prompt_graph {return 0;}
-    lm_check(cuda_stream_wait(lm_stream));lm_check(cuda_graph_instance_close(lm_prompt_graph));lm_check(cuda_host_free(lm_prompt_host));
-    let at=lm_prompt_buffer_base;while at<lm_prompt_buffer_end {lm_check(cuda_free(h_at(lm_buffers,at)));at=at+1;}
+    lm_check(device_stream_wait(lm_stream));lm_check(device_graph_instance_close(lm_prompt_graph));lm_check(device_host_free(lm_prompt_host));
+    let at=lm_prompt_buffer_base;while at<lm_prompt_buffer_end {lm_check(device_free(h_at(lm_buffers,at)));at=at+1;}
     let count=h_count(lm_buffers);at=lm_prompt_buffer_end;while at<count {store64(lm_buffers+8+(at-lm_prompt_buffer_end+lm_prompt_buffer_base)*8,h_at(lm_buffers,at));at=at+1;}
     store64(lm_buffers,count-lm_prompt_buffer_end+lm_prompt_buffer_base);lm_bytes=lm_bytes-lm_prompt_bytes;
     lm_prompt_graph=0;lm_prompt_host=0;lm_prompt_count=0;lm_prompt_steps=0;lm_prompt_tensors=0;return 0;
@@ -68,7 +68,7 @@ fn lm_prompt_emit(kind,a,b,y,n,e1,e2,e3,e4,threads) {
 fn lm_prompt_prepare(n) {
     h_assert(n>0 && n<=lm_capacity,"invalid prompt length");h_assert(!lm_prompt_graph,"prompt shape is already prepared");
     lm_prompt_buffer_base=h_count(lm_buffers);let bytes_before=lm_bytes;
-    lm_prompt_count=n;lm_prompt_tensors=j_object();lm_prompt_lifetimes();lm_prompt_steps=h_vec();lm_prompt_tokens=lm_alloc(n*8);if lm_dry_run {lm_prompt_host=h_take(n*8);}else {lm_prompt_host=cuda_host_buffer(n*8);lm_check(cuda_status);}
+    lm_prompt_count=n;lm_prompt_tensors=j_object();lm_prompt_lifetimes();lm_prompt_steps=h_vec();lm_prompt_tokens=lm_alloc(n*8);if lm_dry_run {lm_prompt_host=h_take(n*8);}else {lm_prompt_host=device_host_buffer(n*8);lm_check(device_status);}
     let partial_bytes=0;let maxwidth=0;let i=0;while i+1<h_count(lm_prompt_source) {let s=h_at(lm_prompt_source,i);if load64(s)==0 || load64(s)==5 {let rows=load64(s+8)/32;let bytes=rows*n*(1<<lm_prompt_shift(rows,load64(s+40),n))*4;if bytes>partial_bytes {partial_bytes=bytes;}if load64(s+40)>maxwidth {maxwidth=load64(s+40);}}i=i+1;}
     lm_prompt_partial=lm_alloc(partial_bytes);lm_prompt_half=lm_alloc(maxwidth*((n+23)/24)*24*2);let packed=0;let packed_kind=0;let skipped=-1;i=0;while i<h_count(lm_prompt_source) {
         let s=h_at(lm_prompt_source,i);let kind=load64(s);let a=load64(s+16);let b=load64(s+24);let y=load64(s+32);let width=load64(s+40);let e1=load64(s+48);let e2=load64(s+56);let threads=load64(s+8);
@@ -78,6 +78,7 @@ fn lm_prompt_prepare(n) {
             else {let shift=lm_prompt_shift(rows,width,n);let partitions=1<<shift;
                 h_assert(width%(partitions*8)==0,"tensor-core prefill width must be divisible by eight times the K partition count");
                 let out=lm_prompt_tensor(y,rows);let matrix_kind=11;let pack_kind=16;if j_get(lm_tiled_weights,h_int(a)) {matrix_kind=21;pack_kind=23;}if packed!=b || packed_kind!=pack_kind {lm_prompt_emit(pack_kind,x,lm_prompt_half,width*n/2,width,n,0,0,0,width*n/2);packed=b;packed_kind=pack_kind;}lm_prompt_emit(matrix_kind,a,lm_prompt_half,lm_prompt_partial,width,rows,n,shift,0,0);
+                if lm_backend>=2 {store64(h_at(lm_prompt_steps,h_count(lm_prompt_steps)-1)+72,matrix_kind==21);}
                 if matrix_kind==21 && rows%2==0 {let op=0;let extra=0;let other=0;let half=0;
                     let next=h_at(lm_prompt_source,i+1);if load64(next)==3 && (load64(next+40)==3 || load64(next+40)==2) && (load64(next+16)==y || load64(next+24)==y) {
                         op=load64(next+40);extra=lm_prompt_tensor(load64(next+32),rows);skipped=i+1;
@@ -108,7 +109,7 @@ fn lm_prompt_prepare(n) {
     i=0;while i<h_count(lm_prompt_steps) {
         let s=h_at(lm_prompt_steps,i);let values=h_take(24);store64(values+16,load64(s+8));let args=h_take(88);store64(args,values);store64(args+8,values+8);store64(args+16,values+16);
         let word=0;while word<8 {store64(args+24+word*8,s+16+word*8);word=word+1;}
-        let shared=0;if load64(s)==1 || load64(s)==6 || load64(s)==24 {shared=32;}else if (load64(s)==11 || load64(s)==21) {shared=lm_prompt_block*8;}let block=lm_block(load64(s));
+        let shared=0;if load64(s)==1 || load64(s)==6 || load64(s)==24 {shared=32;}else if (load64(s)==11 || load64(s)==21) {shared=lm_prompt_block*8;if lm_backend>=2 {shared=lm_prompt_block*24;}}let block=lm_block(load64(s));
         let gx=(load64(s+8)+block-1)/block;let gy=1;let gz=1;
         if (load64(s)==11 || load64(s)==21) {gx=(load64(s+48)+lm_prompt_tile_rows*(block/32)-1)/(lm_prompt_tile_rows*(block/32));gy=(n+23)/24;gz=1<<load64(s+64);}
         else if load64(s)==25 {gx=((load64(s+32)&4294967295)/2+127)/128;gy=n;if load64(s+72) {gy=(n+23)/24*24;}}
@@ -116,15 +117,16 @@ fn lm_prompt_prepare(n) {
         else if load64(s)==12 {gx=(load64(s+56)+127)/128;gy=n;}
         else if load64(s)==13 {gx=(load64(s+40)/2+127)/128;gy=n;}
         else if load64(s)==14 {gx=(load64(s+48)/128+3)/4;gy=n;}
-        store64(values+16,gx*gy*gz*block);store64(s+80,args);store64(s+88,cuda_config(gx,gy,gz,block,1,1,shared,lm_stream));lm_check(cuda_status);i=i+1;
+        store64(values+16,gx*gy*gz*block);store64(s+80,args);store64(s+88,device_config(gx,gy,gz,block,1,1,shared,lm_stream));lm_check(device_status);i=i+1;
     }
-    lm_check(cuda_capture_begin(lm_stream));lm_check(cuda_upload_async(lm_prompt_tokens,lm_prompt_host,n*8,lm_stream));i=0;
-    while i<h_count(lm_prompt_steps) {let s=h_at(lm_prompt_steps,i);lm_check(cuda_dispatch(load64(lm_functions+load64(s)*8),load64(s+88),load64(s+80)));i=i+1;}
-    let graph=cuda_capture_end(lm_stream);lm_check(cuda_status);lm_prompt_graph=cuda_graph_instance(graph);lm_check(cuda_status);lm_check(cuda_graph_close(graph));
+    lm_check(device_capture_begin(lm_stream));lm_check(device_upload_async(lm_prompt_tokens,lm_prompt_host,n*8,lm_stream));i=0;
+    while i<h_count(lm_prompt_steps) {let s=h_at(lm_prompt_steps,i);lm_check(device_dispatch(load64(lm_functions+load64(s)*8),load64(s+88),load64(s+80)));i=i+1;}
+    if lm_sampling_enabled {lm_sampling_dispatch();}
+    let graph=device_capture_end(lm_stream);lm_check(device_status);lm_prompt_graph=device_graph_instance(graph);lm_check(device_status);lm_check(device_graph_close(graph));
     lm_prompt_buffer_end=h_count(lm_buffers);lm_prompt_bytes=lm_bytes-bytes_before;
-    lm_check(cuda_graph_upload(lm_prompt_graph,lm_stream));return lm_check(cuda_stream_wait(lm_stream));
+    lm_check(device_graph_upload(lm_prompt_graph,lm_stream));return lm_check(device_stream_wait(lm_stream));
 }
 fn lm_prefill(tokens) {
     let n=h_count(tokens);if !lm_prompt_graph {lm_prompt_prepare(n);}h_assert(n==lm_prompt_count,"prepared prompt length differs");
-    let i=0;while i<n {store64(lm_prompt_host+i*8,h_at(tokens,i));i=i+1;}lm_check(cuda_graph_launch(lm_prompt_graph,lm_stream));return lm_check(cuda_stream_wait(lm_stream));
+    let i=0;while i<n {store64(lm_prompt_host+i*8,h_at(tokens,i));i=i+1;}lm_check(device_graph_launch(lm_prompt_graph,lm_stream));return lm_check(device_stream_wait(lm_stream));
 }
