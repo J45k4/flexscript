@@ -208,6 +208,95 @@ def pty_tests(binary):
     print('PTY: Unicode editing, clipboard adapters, bracketed paste, streaming, cancellation, sessions, backend switching, resize and signal cleanup passed.', flush=True)
 
 
+def context_tests(compiler):
+    with tempfile.TemporaryDirectory(prefix='flex-context-') as temp:
+        directory = Path(temp)
+        source = directory / 'context.flex'
+        source.write_text('import ' + json.dumps(str(ROOT / 'libs/ml/llm/tui.flex')) + ';\n' + '''
+fn main(argc,argv) {
+    h_environment(argc,argv);if !b_option(argc,argv,"--worker",0) {return lc_main(argc,argv);}
+    let ready=ct_event("ready");j_set(ready,"context_capacity",j_int(32));j_set(ready,"resident_bytes",j_int(0));ct_send(ready);
+    while 1 {let line=ct_line();if !line {return 0;}let request=j_parse(line);let op=j_s(request,"op");if h_equal(op,"shutdown") {return 0;}
+        if h_equal(op,"generate") {let usage=ct_event("context");j_set(usage,"prompt_tokens",j_int(30));j_set(usage,"trimmed_turns",j_int(0));ct_send(usage);h_sleep(150);
+            let token=ct_event("token");j_set(token,"id",j_int(1));j_set(token,"text",j_string("<think>hidden</think>"));ct_send(token);h_sleep(150);
+            j_set(token,"id",j_int(2));j_set(token,"text",j_string("Answer"));ct_send(token);
+            let done=ct_event("done");j_set(done,"tokens",j_int(2));j_set(done,"elapsed_us",j_int(300000));j_set(done,"first_token_us",j_int(150000));j_set(done,"reason",j_string("context"));ct_send(done);}}
+    return 0;
+}
+''')
+        binary = directory / 'context'
+        subprocess.run([compiler, str(source), '-o', str(binary)], cwd=ROOT, check=True)
+        t = Terminal(binary, directory / 'sessions', ['--demo', '1'])
+        try:
+            t.wait('Context 0/32')
+            t.send('hello\r')
+            t.wait('Context 30/32')
+            t.wait('Context 31/32')
+            t.wait('Finished: context')
+            frame = t.output[t.output.rfind(b'\x1b[1;1H'):]
+            assert b'Context 32/32' in frame and b'2 tokens |' in frame, 'context disappeared after completion or replaced speed statistics'
+            t.send('/models\r')
+            t.wait('qwen3-1.7b | downloaded')
+            assert b'Context 32/32' in t.output[t.last_send_offset:], 'menu obscured context'
+            t.send('\x1b/new\r')
+            t.wait('Context 0/32')
+            t.close()
+        finally:
+            if t.process.poll() is None:
+                t.process.kill()
+                t.process.wait()
+    print('Context header: capacity, prompt and hidden-token usage, completion, menus and new-chat reset passed.', flush=True)
+
+
+def error_tests(compiler):
+    error = 'Not enough free GPU memory for this prompt. Close another GPU app, shorten the prompt or reload the model.'
+    with tempfile.TemporaryDirectory(prefix='flex-errors-') as temp:
+        directory = Path(temp)
+        source = directory / 'errors.flex'
+        source.write_text('import ' + json.dumps(str(ROOT / 'libs/ml/llm/tui.flex')) + ';\n' + '''
+fn main(argc,argv) {
+    h_environment(argc,argv);if !b_option(argc,argv,"--worker",0) {return lc_main(argc,argv);}
+    let ready=ct_event("ready");j_set(ready,"context_capacity",j_int(4096));j_set(ready,"resident_bytes",j_int(0));ct_send(ready);let count=0;
+    while 1 {let line=ct_line();if !line {return 0;}let request=j_parse(line);let op=j_s(request,"op");if h_equal(op,"shutdown") {return 0;}
+        if h_equal(op,"generate") {h_assert(!h_has(ct_prompt(j_need(request,"turns"),0,0),"Not enough free GPU"),"diagnostic leaked into model input");
+            if count {let token=ct_event("token");j_set(token,"text",j_string("Partial reply"));ct_send(token);}count=count+1;
+            let error=ct_event("error");j_set(error,"text",j_string(''' + json.dumps(error) + '''));ct_send(error);}}
+    return 0;
+}
+''')
+        binary = directory / 'errors'
+        subprocess.run([compiler, str(source), '-o', str(binary)], cwd=ROOT, check=True)
+        history = directory / 'sessions'
+        t = Terminal(binary, history, ['--demo', '1'])
+        try:
+            t.wait('Model ready')
+            for prompt in ['hello', 'try again']:
+                t.send(prompt + '\r')
+                t.wait('Reply failed')
+                frame = t.output[t.output.rfind(b'\x1b[1;1H'):]
+                yellow = re.findall(rb'\x1b\[(\d+);1H\x1b\[2K\x1b\[33m([^\x1b]*)', frame)
+                assert any(int(row) >= 8 and text.startswith(b'Not enough free GPU') for row, text in yellow), 'error missing beneath Assistant in yellow'
+                assert b'reload the model.' in b''.join(text for row, text in yellow if int(row) > 3), 'wrapped error lost its yellow color'
+                assert not any(int(row) == 2 and b'Not enough' in text for row, text in yellow), 'prompt error remained in header'
+                saved = sessions(history)[0]['messages'][-1]
+                assert saved['status'] == 'error' and saved['error'] == error
+                assert saved['content'] == ('' if prompt == 'hello' else 'Partial reply')
+            t.send('/resume latest\r')
+            t.wait('Resumed saved conversation')
+            assert b'\x1b[33mNot enough free GPU' in t.output[t.last_send_offset:], 'resumed error lost its color'
+            invalid = sessions(history)[0]
+            invalid['messages'][-1]['error'] = 42
+            (history / 'invalid.json').write_text(json.dumps(invalid))
+            t.send('/resume invalid\r')
+            t.wait('invalid or unsupported')
+            t.close()
+        finally:
+            if t.process.poll() is None:
+                t.process.kill()
+                t.process.wait()
+    print('Prompt errors: yellow inline placement, wrapping, partial replies, retry and session resume passed.', flush=True)
+
+
 def editor_test(binary):
     with tempfile.TemporaryDirectory(prefix='flex-editor-') as temp:
         t = Terminal(binary, Path(temp))
@@ -405,6 +494,8 @@ def main():
     subprocess.run([args.compiler, 'llm.flex', '-o', str(binary)], cwd=ROOT, check=True)
     pty_tests(binary)
     thinking_tests(binary)
+    context_tests(args.compiler)
+    error_tests(args.compiler)
     editor = binary.with_name('tui-editor')
     subprocess.run([args.compiler, 'examples/tui/editor.flex', '-o', str(editor)], cwd=ROOT, check=True)
     editor_test(editor)

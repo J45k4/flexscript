@@ -9,6 +9,9 @@ global lc_weights=0;
 global lc_device=0;
 global lc_capacity=4096;
 global lc_capacity_auto=1;
+global lc_context_limit=0;
+global lc_context_used=-1;
+global lc_context_prompt=-1;
 global lc_maximum=0;
 global lc_temperature=0;
 global lc_thinking=0;
@@ -70,7 +73,7 @@ fn lc_save() {
     if fd<0 {lc_status="Could not save this session.";return 0;}let written=h_write(fd,text,h_len(text));let synced=syscall(74,fd,0,0,0,0,0);h_close(fd);
     if written<0 || synced<0 || syscall(82,temporary,file,0,0,0,0)!=0 {syscall(87,temporary,0,0,0,0,0);lc_status="Could not save this session.";}return 0;
 }
-fn lc_new() {lc_session=h_cat3(h_int(syscall(201,0,0,0,0,0,0)),"-",h_cat3(h_int(syscall(39,0,0,0,0,0,0)),"-",h_int(net_now())));lc_messages=j_array();lc_clear_at=0;lc_scroll=0;lc_select_scope=0;lc_reply=0;lc_stats="";lc_dirty=1;return 0;}
+fn lc_new() {lc_session=h_cat3(h_int(syscall(201,0,0,0,0,0,0)),"-",h_cat3(h_int(syscall(39,0,0,0,0,0,0)),"-",h_int(net_now())));lc_messages=j_array();lc_context_used=0;lc_context_prompt=-1;lc_clear_at=0;lc_scroll=0;lc_select_scope=0;lc_reply=0;lc_stats="";lc_dirty=1;return 0;}
 fn lc_valid_id(id) {let i=0;while load8(id+i) {let c=load8(id+i);if !(c>=48 && c<=57) && !(c>=97 && c<=122) && c!=45 {return 0;}i=i+1;}return i>0 && i<=80;}
 fn lc_session_list() {
     let files=h_entries(lc_history);let ids=h_vec();let i=0;while i<h_count(files) {let name=h_at(files,i);let n=h_len(name);if n>5 && h_equal(name+n-5,".json") {let id=h_slice(name,n-5);if lc_valid_id(id) {h_add(ids,id);}}i=i+1;}
@@ -78,23 +81,24 @@ fn lc_session_list() {
 }
 fn lc_read_session(path) {
     let data=j_parse(h_read(path));h_assert(j_n(data,"version")==1 && h_equal(j_s(data,"model"),"qwen3-1.7b"),"unsupported session version or model");let messages=j_need(data,"messages");h_assert(j_count(messages)<=1024,"too many saved messages");let i=0;let expected=0;
-    while i<j_count(messages) {let m=j_at(messages,i);let role=j_s(m,"role");h_assert(h_equal(role,"user") || h_equal(role,"assistant") || h_equal(role,"notice"),"invalid saved role");h_assert(h_len(j_s(m,"content"))<=131072,"saved message too long");if h_equal(role,"user") {h_assert(!expected,"invalid saved turn order");expected=1;}else if h_equal(role,"assistant") {h_assert(expected,"invalid saved turn order");expected=0;}i=i+1;}h_assert(!expected,"incomplete saved turn pair");
+    while i<j_count(messages) {let m=j_at(messages,i);let role=j_s(m,"role");h_assert(h_equal(role,"user") || h_equal(role,"assistant") || h_equal(role,"notice"),"invalid saved role");h_assert(h_len(j_s(m,"content"))<=131072,"saved message too long");let error=j_get(m,"error");if error {h_assert(j_kind(error)==2,"invalid saved error");h_assert(h_len(j_value(error))<=131072,"saved error too long");}if h_equal(role,"user") {h_assert(!expected,"invalid saved turn order");expected=1;}else if h_equal(role,"assistant") {h_assert(expected,"invalid saved turn order");expected=0;}i=i+1;}h_assert(!expected,"incomplete saved turn pair");
     h_print(1,j_dump(data));return 0;
 }
 fn lc_resume(id) {
     if lc_busy {lc_status="Stop generation before resuming a chat.";return 0;}if h_equal(id,"latest") {let ids=lc_session_list();if !h_count(ids) {lc_status="No saved chats yet.";return 0;}id=h_at(ids,0);}
     if !lc_valid_id(id) {lc_status="Invalid session ID.";return 0;}let file=h_join(lc_history,h_cat(id,".json"));if !h_exists(file) {lc_status="Session not found.";return 0;}
     let p=h_run(h_args(lc_binary,"--read-session",file,0,0,0));if h_status(p) {lc_status="Cannot resume this session: invalid or unsupported file.";return 0;}
-    let data=j_parse(h_out(p));lc_session=id;lc_messages=j_need(data,"messages");lc_thinking=j_n(data,"thinking");lc_clear_at=0;lc_scroll=0;lc_select_scope=0;lc_status="Resumed saved conversation.";lc_stats="";lc_dirty=1;return 0;
+    let data=j_parse(h_out(p));lc_session=id;lc_messages=j_need(data,"messages");lc_context_used=-1;lc_context_prompt=-1;lc_thinking=j_n(data,"thinking");lc_clear_at=0;lc_scroll=0;lc_select_scope=0;lc_status="Resumed saved conversation.";lc_stats="";lc_dirty=1;return 0;
 }
 fn lc_checkpoint_ready() {return h_exists(h_join(lc_checkpoint,"config.json")) && h_exists(h_join(lc_checkpoint,"tokenizer.json")) && h_exists(h_join(lc_checkpoint,"model.safetensors.index.json")) && h_exists(h_join(lc_checkpoint,"model-00001-of-00002.safetensors"));}
 fn lc_stop() {if lc_worker {h_stop(lc_worker);lc_worker=0;}lc_ready=0;lc_downloading=0;lc_send_buffer=0;lc_sent=0;return 0;}
 fn lc_start() {
     if lc_worker {return 0;}if !lc_demo && !lc_checkpoint_ready() {lc_status="Model not downloaded. Use /download or --checkpoint DIRECTORY.";return 0;}
     let args=h_args(lc_binary,"--worker","1","--checkpoint",lc_checkpoint,"--compiler");h_add(args,lc_compiler);h_add(args,"--backend");h_add(args,lc_backend);h_add(args,"--weights");h_add(args,lc_weights);h_add(args,"--device");h_add(args,lc_device);h_add(args,"--context");let context="auto";if !lc_capacity_auto {context=h_int(lc_capacity);}h_add(args,context);h_add(args,"--demo");h_add(args,h_int(lc_demo));
-    lc_worker=h_spawn(args,0,0);lc_ready=0;lc_worker_error=0;lc_stage("Loading model...",0,0);return 0;
+    lc_context_limit=0;lc_context_used=-1;lc_context_prompt=-1;lc_worker=h_spawn(args,0,0);lc_ready=0;lc_worker_error=0;lc_stage("Loading model...",0,0);return 0;
 }
 fn lc_request() {
+    lc_context_used=-1;lc_context_prompt=-1;
     let request=j_object();j_set(request,"op",j_string("generate"));let turns=j_array();let i=0;
     while i<j_count(lc_messages)-1 {let m=j_at(lc_messages,i);let role=j_s(m,"role");if h_equal(role,"user") || h_equal(role,"assistant") {j_push(turns,m);}i=i+1;}
     let start=j_count(turns)-1;let bytes=h_len(j_s(j_at(turns,start),"content"));while start>=2 && bytes<65536 {let extra=h_len(j_s(j_at(turns,start-1),"content"))+h_len(j_s(j_at(turns,start-2),"content"));if bytes+extra>65536 {bytes=65536;}else {start=start-2;bytes=bytes+extra;}}
@@ -103,6 +107,9 @@ fn lc_request() {
 }
 fn lc_finish(reason) {
     lc_busy=0;if lc_reply {j_set(lc_reply,"content",j_string(h_data(lc_reply_buffer)));j_set(lc_reply,"status",j_string(reason));}lc_save();lc_dirty=1;return 0;
+}
+fn lc_fail(text) {
+    lc_status=text;if lc_busy && lc_reply {j_set(lc_reply,"error",j_string(text));lc_status="Reply failed";lc_scroll=0;lc_finish("error");}lc_dirty=1;return 0;
 }
 fn lc_cancel() {
     if lc_busy && lc_ready && lc_worker {let e=j_object();j_set(e,"op",j_string("cancel"));lc_queue(h_cat(j_dump(e),"\n"));lc_status="Stopping...";}
@@ -113,11 +120,11 @@ fn lc_event(e) {
     let kind=j_s(e,"event");
     if h_equal(kind,"status") {lc_stage(j_s(e,"text"),0,0);}
     else if h_equal(kind,"progress") {lc_stage(j_s(e,"text"),j_n(e,"completed"),j_n(e,"total"));}
-    else if h_equal(kind,"ready") {lc_ready=1;lc_capacity=j_n(e,"context_capacity");lc_status="Model ready";let reply="auto";if lc_maximum {reply=h_int(lc_maximum);}lc_stats=h_cat3("Context ",h_int(lc_capacity),h_cat3(" | reply ",reply,h_cat3(" | Resident GPU memory: ",h_int(j_n(e,"resident_bytes")/1048576)," MiB")));if lc_busy {lc_request();}}
-    else if h_equal(kind,"token") {if lc_busy {h_text(lc_reply_buffer,j_s(e,"text"));j_set(lc_reply,"content",j_string(h_data(lc_reply_buffer)));lc_stage("Generating...",0,0);}}
-    else if h_equal(kind,"context") {lc_stats=h_cat3("Context ",h_int(j_n(e,"prompt_tokens")),h_cat3(" / ",h_int(lc_capacity),h_cat3(" | archived turns: ",h_int(j_n(e,"trimmed_turns")),"")));}
-    else if h_equal(kind,"done") {let elapsed=j_n(e,"elapsed_us");let tokens=j_n(e,"tokens");lc_status=h_cat3("Finished: ",j_s(e,"reason"),"");lc_stats=h_cat3(h_int(tokens)," tokens | ",h_cat3(h_int(elapsed/1000)," ms | ",h_cat3(h_int(tokens*1000000/(elapsed+1))," tok/s | first token ",h_cat(h_int(j_n(e,"first_token_us")/1000)," ms"))));lc_finish(j_s(e,"reason"));}
-    else if h_equal(kind,"error") {lc_worker_error=1;lc_status=j_s(e,"text");lc_finish("error");}
+    else if h_equal(kind,"ready") {lc_ready=1;lc_capacity=j_n(e,"context_capacity");lc_context_limit=lc_capacity;lc_context_used=0;lc_context_prompt=-1;lc_status="Model ready";let reply="auto";if lc_maximum {reply=h_int(lc_maximum);}lc_stats=h_cat3("Context ",h_int(lc_capacity),h_cat3(" | reply ",reply,h_cat3(" | Resident GPU memory: ",h_int(j_n(e,"resident_bytes")/1048576)," MiB")));if lc_busy {lc_request();}}
+    else if h_equal(kind,"token") {if lc_busy {if lc_context_prompt>=0 && j_get(e,"id") {lc_context_used=lc_context_used+1;}h_text(lc_reply_buffer,j_s(e,"text"));j_set(lc_reply,"content",j_string(h_data(lc_reply_buffer)));lc_stage("Generating...",0,0);}}
+    else if h_equal(kind,"context") {lc_context_prompt=j_n(e,"prompt_tokens");lc_context_used=lc_context_prompt;lc_stats=h_cat3("Context ",h_int(j_n(e,"prompt_tokens")),h_cat3(" / ",h_int(lc_capacity),h_cat3(" | archived turns: ",h_int(j_n(e,"trimmed_turns")),"")));}
+    else if h_equal(kind,"done") {let elapsed=j_n(e,"elapsed_us");let tokens=j_n(e,"tokens");if lc_context_prompt>=0 {lc_context_used=lc_context_prompt+tokens;}lc_status=h_cat3("Finished: ",j_s(e,"reason"),"");lc_stats=h_cat3(h_int(tokens)," tokens | ",h_cat3(h_int(elapsed/1000)," ms | ",h_cat3(h_int(tokens*1000000/(elapsed+1))," tok/s | first token ",h_cat(h_int(j_n(e,"first_token_us")/1000)," ms"))));lc_finish(j_s(e,"reason"));}
+    else if h_equal(kind,"error") {lc_worker_error=1;lc_fail(j_s(e,"text"));}
     else if h_equal(kind,"downloaded") {lc_stop();lc_status="Download complete.";lc_start();}
     lc_dirty=1;return 0;
 }
@@ -130,7 +137,7 @@ fn lc_pump() {
     let buffer=load64(p+16);let s=h_data(buffer);let at=0;let start=0;while at<h_size(buffer) {if load8(s+at)==10 {lc_event(j_parse(h_slice(s+start,at-start)));if lc_worker!=p {return 0;}start=at+1;}at=at+1;}
     if start {h_copy(s,s+start,h_size(buffer)-start);store64(buffer+8,h_size(buffer)-start);store8(s+h_size(buffer),0);}
     let error=load64(p+24);if h_size(error) {h_text(lc_log,h_data(error));if h_size(lc_log)>65536 {let last=h_slice(h_data(lc_log)+h_size(lc_log)-32768,32768);lc_log=h_buffer();h_text(lc_log,last);}store64(error+8,0);store8(h_data(error),0);}
-    if h_status(p)!=-999 && load64(p+40)<0 {lc_worker=0;lc_ready=0;lc_downloading=0;if !lc_worker_error {lc_status="Worker stopped. /logs shows details; send a prompt to retry.";}if lc_busy {lc_finish("error");}h_stop(p);lc_dirty=1;}return 0;
+    if h_status(p)!=-999 && load64(p+40)<0 {lc_worker=0;lc_ready=0;lc_downloading=0;if !lc_worker_error {lc_fail("Worker stopped. /logs shows details; send a prompt to retry.");}h_stop(p);lc_dirty=1;}return 0;
 }
 fn lc_number(text,limit) {let n=0;let i=0;while load8(text+i) {let c=load8(text+i);if c<48 || c>57 || i>=6 {return -1;}n=n*10+c-48;i=i+1;}if !i || n>limit {return -1;}return n;}
 fn lc_temp(text) {let n=0;let scale=1000;let dot=0;let i=0;while load8(text+i) {let c=load8(text+i);if c==46 && !dot {dot=1;}else if c>=48 && c<=57 {if !dot {n=n*10+(c-48)*1000;}else {scale=scale/10;n=n+(c-48)*scale;}}else {return -1;}if i>6 || n>2000 {return -1;}i=i+1;}if !i {return -1;}return n;}
@@ -166,7 +173,7 @@ fn lc_submit() {
     text=te_submit();let message=j_object();j_set(message,"role",j_string("user"));j_set(message,"content",j_string(text));j_push(lc_messages,message);
     lc_reply=j_object();lc_reply_buffer=h_buffer();j_set(lc_reply,"role",j_string("assistant"));j_set(lc_reply,"content",j_string(""));j_set(lc_reply,"status",j_string("pending"));j_push(lc_messages,lc_reply);lc_busy=1;lc_scroll=0;lc_select_scope=0;lc_stats="";lc_save();if lc_ready {lc_request();}lc_dirty=1;return 0;
 }
-fn lc_document_hits(hits) {
+fn lc_document_build(hits,errors) {
     let out=h_buffer();let i=lc_clear_at;if i==j_count(lc_messages) {h_text(out,"Welcome to Flexscript. /help lists commands; /models shows model readiness.\n\nChats are saved automatically. /new starts a conversation; /resume restores one.\n");}
     while i<j_count(lc_messages) {let message=j_at(lc_messages,i);let role=j_s(message,"role");let title="Info";if h_equal(role,"user") {title="You";}else if h_equal(role,"assistant") {title="Assistant";}
         h_text(out,h_cat(title,"\n"));let content=tu_clean(j_s(message,"content"));let begin=-1;if h_equal(role,"assistant") {begin=h_find(content,"<think>");}
@@ -174,10 +181,19 @@ fn lc_document_hits(hits) {
             let lo=h_size(out);let marker="[+] Thinking";if open {marker="[-] Thinking";}let state="";if end<0 {state=" | unfinished";if lc_busy && lc_reply==message {state=" | in progress";}}h_text(out,h_cat3(marker,state," | click to toggle\n"));
             if hits {let hit=h_take(24);store64(hit,lo);store64(hit+8,h_size(out));store64(hit+16,i);h_add(hits,hit);}
             if open {h_append(out,thought,length);h_text(out,"\n");}if end>=0 {let answer=thought+end+8;while load8(answer)==10 {answer=answer+1;}h_text(out,answer);}}
-        else {h_text(out,content);}h_text(out,"\n\n");i=i+1;}
+        else {h_text(out,content);}
+        let error=j_get(message,"error");if error {if h_len(content) {h_text(out,"\n\n");}let lo=h_size(out);h_text(out,tu_clean(j_value(error)));if errors {let range=h_take(16);store64(range,lo);store64(range+8,h_size(out));h_add(errors,range);}}
+        h_text(out,"\n\n");i=i+1;}
     if lc_show_log {h_text(out,"Activity log\n");h_text(out,tu_clean(h_data(lc_log)));}return h_data(out);
 }
-fn lc_document() {return lc_document_hits(0);}
+fn lc_document_hits(hits) {return lc_document_build(hits,0);}
+fn lc_document() {return lc_document_build(0,0);}
+fn lc_draw_messages(out,doc,errors,height,lo,hi) {
+    let rows=ts_wrap(doc,tu_cols);let top=h_count(rows)-height-lc_scroll;if top<0 {top=0;}let i=0;
+    while i<height {if top+i<h_count(rows) {let row=h_at(rows,top+i);let color=0;let j=0;
+            while j<h_count(errors) {let error=h_at(errors,j);if load64(row)<load64(error+8) && load64(row+8)>load64(error) {color="33";}j=j+1;}
+            ts_draw(out,doc,row,4+i,lo,hi,color);}else {tu_line(out,4+i,"",0);}i=i+1;}return 0;
+}
 fn lc_toggle_thinking(message) {let before=h_count(ts_wrap(lc_document(),tu_cols));let value=j_get(message,"thinking_expanded");let open=value && j_value(value);j_set(message,"thinking_expanded",j_int(!open));lc_scroll=lc_scroll+h_count(ts_wrap(lc_document(),tu_cols))-before;if lc_scroll<0 {lc_scroll=0;}lc_select_scope=0;lc_select_start=0;lc_select_end=0;te_anchor=-1;lc_dirty=1;return 0;}
 fn lc_toggle_latest() {let i=j_count(lc_messages);while i {i=i-1;let m=j_at(lc_messages,i);if h_equal(j_s(m,"role"),"assistant") && h_has(j_s(m,"content"),"<think>") {return lc_toggle_thinking(m);}}return 0;}
 fn lc_draw() {
@@ -185,12 +201,14 @@ fn lc_draw() {
     h_data(te_text);h_data(lc_log);
     let mark=tu_mark();tu_size();let out=h_buffer();h_text(out,tu_ansi("@[?25l"));
     let title=h_cat3("Flexscript | Qwen3-1.7B | ",lc_backend,h_cat3(" | GPU ",lc_device,h_cat3(" | ",lc_weights,"")));if lc_demo {title=h_cat(title," | DEMO");}
+    let context="auto";if lc_context_limit {context=h_int(lc_context_limit);if lc_context_used>=0 {context=h_cat3(h_int(lc_context_used),"/",context);}}else if !lc_capacity_auto {context=h_int(lc_capacity);}
+    title=h_cat3(h_cat("Context ",context)," | ",title);
     tu_line(out,1,title,"1;36");lc_activity_tick=net_now();lc_activity(out,lc_activity_tick);
     let editor=h_data(te_text);let erows=ts_wrap(editor,tu_cols);let eh=h_count(erows);if eh>5 {eh=5;}let ch=tu_rows-eh-6;
     if ch<1 {tu_line(out,3,"Resize the terminal to at least 20 x 8.",0);h_print(1,h_data(out));tu_reset(mark);return 0;}
-    let doc=lc_document();
+    let errors=h_vec();let doc=lc_document_build(0,errors);
     let lo=-1;let hi=-1;if lc_select_scope==1 {lo=lc_select_start;hi=lc_select_end;if lo>hi {let t=lo;lo=hi;hi=t;}}
-    tw_text(out,doc,4,ch,lc_scroll,lo,hi,0);let i=0;
+    lc_draw_messages(out,doc,errors,ch,lo,hi);let i=0;
     tu_line(out,tu_rows-eh-2,lc_stats,"90");let label="Message";if lc_thinking {label="Message | thinking on";}if lc_scroll {label=h_cat(label," | chat scrolled");}tu_line(out,tu_rows-eh-1,label,"1;32");
     let help="Enter send | Ctrl+J newline | Esc stop | /help | Ctrl+C quit";if load8(editor)==47 {let hints=h_buffer();i=0;while i<h_count(lc_commands) {let command=h_at(lc_commands,i);if h_starts(command,editor) {h_text(hints,h_cat(command,"  "));}i=i+1;}if h_size(hints) {help=h_cat("Tab: ",h_data(hints));}}
     lc_panel_top=0;if lc_panel_text {let bottom=tu_rows-eh-2;lc_panel_top=tw_panel(out,lc_panel_title,lc_panel_text,bottom,bottom-3,lc_panel_scroll);}
