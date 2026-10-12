@@ -1,0 +1,13 @@
+plugin types v1 {}
+shader fragment {
+input front: bool builtin(front_facing)
+input position: vec4f builtin(position)
+input label: vec2u location(1)
+output pixel: vec4f location(0)
+output depth: f32 builtin(frag_depth)
+fn main() -> void {
+let x = (1 | 2) ^ (3 & ~1)
+if front and not (label.x == 0u) { pixel = vec4f(f32(x), position.xy, 1.0) }
+depth = clamp(position.z, 0.0, 1.0)
+}
+}

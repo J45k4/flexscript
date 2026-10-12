@@ -1,5 +1,9 @@
 # GPU compilation
 
+For typed SetaScript vertex, fragment and compute modules targeting desktop
+OpenGL, WebGL2 or WebGPU, see [GLSL and WGSL shader targets](shaders.md). The targets
+below compile Flexscript compute kernels from the existing word IR.
+
 Flexscript emits NVIDIA PTX directly from its existing word IR:
 
 ```sh

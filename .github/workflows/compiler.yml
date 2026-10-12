@@ -29,7 +29,7 @@ jobs:
       - name: Install verification dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -111,6 +111,18 @@ jobs:
       - name: Test frontend extensions across interpreter, JIT, native and WebAssembly
         run: build/tools/test-extensions build/stage2 --report build/extensions-tests.json
 
+      - name: Test SetaScript shader targets, OpenGL and WebGPU execution
+        run: |
+          build/tools/test-shaders build/stage2 --report build/shader-tests.json
+          mkdir -p build/shaders
+          for source in examples/seta/shaders/*.seta tests/shaders/*.seta; do
+            name=$(basename "$source" .seta)
+            build/stage2 --target glsl "$source" -o "build/shaders/$name.glsl"
+            build/stage2 --target wgsl "$source" -o "build/shaders/$name.wgsl"
+          done
+          build/tools/shader-gpu-run --dir build/shaders
+          bun scripts/shader-webgpu-test.js --dir build/shaders --browser google-chrome
+
       - name: Test compile-time program transformations and autodiff
         run: build/tools/test-transforms --compiler build/stage2 --report build/transform-tests.json
 
@@ -168,6 +180,7 @@ jobs:
             build/sass-float-tests.json
             build/gpu-features.json
             build/extensions-tests.json
+            build/shader-tests.json
             build/transform-tests.json
             build/ml-tests.json
             build/pup-tests.json

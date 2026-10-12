@@ -1,0 +1,12 @@
+plugin shader.textured_fragment v1 {}
+
+shader fragment {
+    input uv: vec2f location(0)
+    output pixel: vec4f location(0)
+    texture image binding(0)
+    uniform tint: vec4f binding(2)
+
+    fn main() -> void {
+        pixel = sample(image, uv) * tint
+    }
+}

@@ -1,4 +1,5 @@
 import "frontends/seta.flex";
+import "frontends/shader.flex";
 global frontend_language=0;
 global frontend_selected=0;
 global frontend_path=0;

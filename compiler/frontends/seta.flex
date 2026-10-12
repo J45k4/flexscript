@@ -6,6 +6,9 @@ global s_token=0;
 global s_start=0;
 global s_size=0;
 global s_value=0;
+// Shader targets share tokens, but retain their own typed representation.
+// Ordinary SetaScript integer/FIR semantics remain unchanged.
+global s_shader_mode=0;
 global s_functions=0;
 // Match the shared IR function bound, including the call-graph row stride.
 global s_function_capacity=2048;
@@ -37,11 +40,24 @@ fn s_next() {
     let c=load8(ir_source+s_pos);s_pos=s_pos+1;
     if s_letter(c) {s_token=256;while s_pos<ir_source_size && (s_letter(load8(ir_source+s_pos)) || s_digit(load8(ir_source+s_pos))) {s_pos=s_pos+1;}}
     else if s_digit(c) {
-        s_token=257;s_value=c-48;
+        s_token=257;s_value=c-48;let overflow=0;
         while s_pos<ir_source_size && s_digit(load8(ir_source+s_pos)) {
-            let d=load8(ir_source+s_pos)-48;if s_value>(9223372036854775807-d)/10 {s_fail("integer literal out of range");}
-            s_value=s_value*10+d;s_pos=s_pos+1;
+            let d=load8(ir_source+s_pos)-48;if s_value>(9223372036854775807-d)/10 {overflow=1;if !s_shader_mode {s_fail("integer literal out of range");}}
+            if !overflow {s_value=s_value*10+d;}s_pos=s_pos+1;
         }
+        if s_shader_mode && s_pos<ir_source_size && load8(ir_source+s_pos)==46 && s_pos+1<ir_source_size && load8(ir_source+s_pos+1)!=46 {
+            s_token=258;s_pos=s_pos+1;
+            if !s_digit(load8(ir_source+s_pos)) {s_fail("expected digits after shader decimal point");}
+            while s_pos<ir_source_size && s_digit(load8(ir_source+s_pos)) {s_pos=s_pos+1;}
+        }
+        if s_shader_mode && s_pos<ir_source_size && (load8(ir_source+s_pos)==101 || load8(ir_source+s_pos)==69) {
+            s_token=258;s_pos=s_pos+1;
+            if s_pos<ir_source_size && (load8(ir_source+s_pos)==43 || load8(ir_source+s_pos)==45) {s_pos=s_pos+1;}
+            if s_pos==ir_source_size || !s_digit(load8(ir_source+s_pos)) {s_fail("expected shader exponent digits");}
+            let exponent=0;while s_pos<ir_source_size && s_digit(load8(ir_source+s_pos)) {exponent=exponent*10+load8(ir_source+s_pos)-48;if exponent>38 {s_fail("shader exponent exceeds f32 range");}s_pos=s_pos+1;}
+        }
+        if s_shader_mode && s_token==257 && s_pos<ir_source_size && load8(ir_source+s_pos)==117 {s_token=276;s_pos=s_pos+1;}
+        if overflow && s_token!=258 {s_fail("integer literal out of range");}
         if s_pos<ir_source_size && (s_letter(load8(ir_source+s_pos)) || (load8(ir_source+s_pos)==46 && (s_pos+1==ir_source_size || load8(ir_source+s_pos+1)!=46))) {
             s_fail("floating point, units and suffixed literals are not supported yet");
         }
@@ -279,7 +295,7 @@ fn s_no_recursion() {
     }if removed!=s_count {s_fail("SetaScript recursion is not allowed");}return 0;
 }
 fn seta_frontend(text,size,version,path) {
-    ir_init(text,size,path,version);s_pos=0;s_count=0;s_nesting=0;s_state_count=0;
+    ir_init(text,size,path,version);s_shader_mode=0;s_pos=0;s_count=0;s_nesting=0;s_state_count=0;
     s_functions=alloc(s_function_capacity*64);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);s_edges=alloc(s_function_capacity*s_function_capacity);
     s_state_fields=alloc(2048*40);
     if s_functions<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_edges<0 || s_state_fields<0 {s_fail("frontend allocation failed");}

@@ -1,0 +1,17 @@
+plugin shader.vector_compute v1 {}
+
+shader compute(64, 1, 1) {
+    input thread: vec3u builtin(global_id)
+    buffer values: f32 binding(0) read
+    buffer results: f32 binding(1) read_write
+
+    fn transform(value: f32) -> f32 {
+        return value * 3.0 + 7.0
+    }
+
+    fn main() -> void {
+        if thread.x < array_length(values) and thread.x < array_length(results) {
+            results[thread.x] = transform(values[thread.x])
+        }
+    }
+}

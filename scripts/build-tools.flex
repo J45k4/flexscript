@@ -24,6 +24,8 @@ fn main(argc,argv) {
     h_add(names,"ray-run");
     h_add(names,"gpu-info");
     h_add(names,"test-extensions");
+    h_add(names,"test-shaders");
+    h_add(names,"shader-gpu-run");
     h_add(names,"test-transforms");
     h_add(names,"test-ml");
     h_add(names,"test-pup");

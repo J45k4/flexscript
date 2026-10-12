@@ -1,0 +1,15 @@
+plugin limits v1 {}
+
+shader fragment {
+    output pixel: vec4f location(0)
+
+    fn main() -> void {
+        let minimum = -2147483648
+        let maximum = 4294967295u
+        let large = 340282346638528859811704183484516925440.0
+        let tiny = 1e-38
+        let decimal = 00042
+        let decimal_unsigned = 00042u
+        pixel = vec4f(f32(minimum + decimal), f32(maximum - decimal_unsigned), large, tiny)
+    }
+}

@@ -1,0 +1,15 @@
+plugin shader.triangle_vertex v1 {}
+
+shader vertex {
+    input index: u32 builtin(vertex_index)
+    output position: vec4f builtin(position)
+    output color: vec3f location(0)
+
+    fn main() -> void {
+        let p = vec2f(-1.0, -1.0)
+        if index == 1u { p = vec2f(3.0, -1.0) }
+        if index == 2u { p = vec2f(-1.0, 3.0) }
+        position = vec4f(p, 0.0, 1.0)
+        color = vec3f(0.25, 0.5, 0.75)
+    }
+}

@@ -25,6 +25,12 @@ The compiler bundles the SetaScript frontend. `.seta` selects it automatically;
 `--language seta` selects it explicitly. The compiler and this frontend are
 both written in Flexscript, including the Wasm build of the compiler.
 
+SetaScript also has a separate [typed shader frontend](shaders.md):
+`--target glsl` emits desktop GLSL 450, `--target glsl-es` emits WebGL2 GLSL ES 300
+(vertex/fragment), and `--target wgsl` emits WGSL for vertex,
+fragment and compute stages. These targets use shader types rather than FIR
+word arithmetic; the ordinary CPU frontend's semantics are unchanged.
+
 ```sh
 build/flex-extensions run examples/seta/policy.seta
 build/flex-extensions run --jit --stats examples/seta/policy.seta

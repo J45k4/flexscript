@@ -1,0 +1,23 @@
+plugin types.compute v1 {}
+
+shader compute(4, 2, 1) {
+    input group: vec3u builtin(workgroup_id)
+    input lane: vec3u builtin(local_id)
+    buffer values: i32 binding(0) read
+    buffer results: u32 binding(1) read_write
+    texture image binding(2)
+    uniform amount: vec2f binding(4)
+
+    fn main() -> void {
+        let signed = vec4i(1, 2, 3, 4)
+        let small = signed.xy
+        let medium = signed.xyz
+        let unsigned = vec4u(1u, 2u, 3u, 4u)
+        let pair = unsigned.xy
+        let triple = unsigned.xyz
+        let color = sample_level(image, amount, 0.0)
+        if lane.x == 0u and group.x < array_length(results) and array_length(values) > 0u {
+            results[group.x] = u32(abs(values[0])) + u32(small.x + medium.y) + pair.x + triple.y + u32(color.x)
+        }
+    }
+}

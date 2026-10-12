@@ -1,0 +1,16 @@
+plugin shader.triangle_fragment v1 {}
+
+shader fragment {
+    input color: vec3f location(0)
+    output pixel: vec4f location(0)
+
+    fn shade(value: vec3f) -> vec3f {
+        let result = vec3f(0.0)
+        for step in 0..2 { result += value * 0.5 }
+        return clamp(result, vec3f(0.0), vec3f(1.0))
+    }
+
+    fn main() -> void {
+        pixel = vec4f(shade(color), 1.0)
+    }
+}

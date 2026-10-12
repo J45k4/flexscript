@@ -1,0 +1,23 @@
+plugin types v1 {}
+shader vertex {
+input index: u32 builtin(vertex_index)
+input instance: u32 builtin(instance_index)
+output position: vec4f builtin(position)
+output label: vec2u location(1)
+uniform transform: mat4f binding(3)
+fn main() -> void {
+let a = vec3f(1.0, 2.0, 3.0)
+let b = cross(a, vec3f(0.0, 1.0, 0.0))
+let n = normalize(b)
+let d = length(n) + dot(a, b)
+let v = mix(a, b, 0.5)
+let r = sin(d) + cos(d) + sqrt(abs(d)) + floor(d) + ceil(d) + fract(d) + pow(2.0, 3.0)
+let unit = mat4f(vec4f(1.0,0.0,0.0,0.0),vec4f(0.0,1.0,0.0,0.0),vec4f(0.0,0.0,1.0,0.0),vec4f(0.0,0.0,0.0,1.0))
+position = transform * unit * vec4f(v.xy, r, 1.0)
+label = vec2u(choose(index), u32(i32(instance)))
+}
+fn choose(value: u32) -> u32 {
+value = min(value, 2u)
+if value == 0u { return 1u } else { return max(value, 1u) }
+}
+}

@@ -1,0 +1,11 @@
+plugin shader.bindings_fragment v1 {}
+shader fragment {
+    input world: vec3f location(0)
+    input clip: vec4f location(1)
+    output pixel: vec4f location(0)
+    texture first binding(0)
+    texture second binding(2)
+    fn main() -> void {
+        pixel = mix(sample(first, world.xz), sample(second, clip.xy), 0.5)
+    }
+}

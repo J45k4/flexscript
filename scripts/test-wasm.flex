@@ -120,6 +120,22 @@ fn suite(compiler) {
     result=tw_run(request);tw_success(result);t_assert(h_equal(j_s(result,"result"),"0"),"WASM compiler self-build exits successfully");
     t_assert(h_equal(h_sha(wasm_compiler),h_sha(rebuilt)),"WASM compiler rebuild is byte-identical");
     h_save_bytes(t_binary,h_read(rebuilt),h_file_size,420);
+    // The same typed shader frontend and emitters run inside the self-hosted
+    // Wasm compiler. Compare complete outputs against the native compiler.
+    let shader_names=h_args("triangle-vertex","triangle-fragment","textured-vertex","textured-fragment","vector-compute",0);
+    let shader_targets=h_args("glsl","wgsl","glsl-es",0,0,0);let si=0;
+    while si<h_count(shader_names) {
+        let sj=0;let shader_count=3;if si==4 {shader_count=2;}while sj<shader_count {
+            let mark=h_mark();let shader_source=h_cat3("examples/seta/shaders/",h_at(shader_names,si),".seta");let shader_target=h_at(shader_targets,sj);
+            request=j_object();files=j_object();j_set(files,"shader.seta",j_string(h_read(shader_source)));j_set(request,"files",files);
+            argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("--target"));j_push(argv,j_string(shader_target));j_push(argv,j_string("shader.seta"));j_push(argv,j_string("-o"));j_push(argv,j_string("shader.txt"));j_set(request,"argv",argv);
+            let from_wasm=h_join(t_work,"shader-wasm.txt");let from_native=h_join(t_work,"shader-native.txt");
+            j_set(request,"output",j_string("shader.txt"));j_set(request,"save",j_string(from_wasm));
+            result=tw_run(request);tw_success(result);t_assert(h_equal(j_s(result,"result"),"0"),"Wasm compiler emits shader target");
+            h_ok(h_args(t_compiler,"--target",shader_target,shader_source,"-o",from_native));
+            t_assert(h_equal(h_sha(from_native),h_sha(from_wasm)),"native/Wasm shader output is byte-identical");h_reset(mark);sj=sj+1;
+        }si=si+1;
+    }
     request=j_object();files=j_object();j_set(files,"app.flex",j_string("fn main(){return 42;}"));j_set(request,"files",files);
     argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("--target"));j_push(argv,j_string("wasm32"));j_push(argv,j_string("app.flex"));j_push(argv,j_string("-o"));j_push(argv,j_string("app.wasm"));j_set(request,"argv",argv);
     j_set(request,"output",j_string("app.wasm"));let child=h_join(t_work,"child.wasm");j_set(request,"save",j_string(child));
