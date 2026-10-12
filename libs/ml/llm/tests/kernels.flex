@@ -18,6 +18,7 @@ fn lt_rms_width(width,name) {
     return 0;
 }
 fn lt_more() {
+    lt_rope_cache();
     lt_three(4);lt_three(132);lt_three(2048);
     lt_mlp_pair(4);lt_mlp_pair(132);lt_mlp_pair(2048);
     lt_rms_width(193,"rms");lt_rms_width(2048,"rms");lt_rms_width(128,"rms-wide");lt_rms_width(132,"rms-wide");lt_rms_width(2048,"rms-wide");lt_rms_width(132,"rms-add");lt_rms_width(2048,"rms-add");
@@ -84,6 +85,42 @@ fn lt_more() {
     store64(lm_host_state,2);lm_check(device_upload(lm_state,lm_host_state,16));store64(d,x);store64(d+8,0);store64(d+16,cb);store64(d+24,5);store64(d+32,lm_state);store64(d+40,128);
     lt_launch("element",d,128);lm_check(device_download(actual,cb,512*4));i=0;while i<512 {let expected=0x42f60000;if i>=256 && i<384 {expected=gpu_load_u32(values+(i-256)*4);}lt_near(gpu_load_u32(actual+i*4),expected);i=i+1;}
     return 0;
+}
+// Compare the fused kernel with separately verified RMS/rotary operations.
+// Unequal head counts/scales, multiple positions, retained normalization outputs,
+// and every untouched cache row are checked, including the final cache slot.
+fn lt_rope_cache() {
+    let qn=2048;let kn=1024;let rows=33;let qhost=alloc(qn*4);let khost=alloc(kn*4);let vhost=alloc(kn*4);let scales=alloc(512);let table=alloc(rows*512);let cache=alloc(rows*kn*4);let i=0;
+    while i<qn {gpu_store_u32(qhost+i*4,lt_fraction(i%17-8,8));i=i+1;}
+    i=0;while i<kn {gpu_store_u32(khost+i*4,lt_fraction(i%13-6,8));gpu_store_u32(vhost+i*4,lt_fraction(i%23-11,8));i=i+1;}
+    i=0;while i<256 {let value=lt_fraction(i%7+1,4);let bits=value>>16;if lm_weight_format {bits=gpu_f32x2_to_f16x2(value);}store8(scales+i*2,bits);store8(scales+i*2+1,bits>>8);i=i+1;}
+    i=0;while i<rows*64 {let angle=f64_div(f64_from_i64(i%79+1),f64_from_i64(32));gpu_store_u32(table+i*8,gpu_f32_pack(f64_cos(angle)));gpu_store_u32(table+i*8+4,gpu_f32_pack(f64_sin(angle)));i=i+1;}
+    i=0;while i<rows*kn {gpu_store_u32(cache+i*4,0x42f60000);i=i+1;}
+    let metadata=alloc(224);let q=alloc(64);let k=alloc(64);let trig=lt_buffer(table,rows*512);let weights=lt_buffer(scales,512);
+    store64(q,lt_buffer(qhost,qn*4));store64(q+8,weights);store64(q+16,lm_alloc(qn*4));store64(q+24,0x358637bd);store64(q+32,trig);store64(q+40,lm_state);store64(q+48,lm_alloc(qn*4));
+    store64(k,lt_buffer(khost,kn*4));store64(k+8,weights+256);store64(k+16,lm_alloc(kn*4));store64(k+24,0x360637bd);store64(k+32,trig);store64(k+40,lm_state);store64(k+48,lm_alloc(kn*4));
+    i=0;while i<8 {store64(metadata+i*8,load64(q+i*8));store64(metadata+64+i*8,load64(k+i*8));i=i+1;}
+    store64(metadata+16,lm_alloc(qn*4));store64(metadata+48,lm_alloc(qn*4));store64(metadata+80,lm_alloc(kn*4));store64(metadata+112,lm_alloc(kn*4));
+    store64(metadata+128,lt_buffer(cache,rows*kn*4));store64(metadata+136,lt_buffer(vhost,kn*4));store64(metadata+144,lt_buffer(cache,rows*kn*4));store64(metadata+152,kn);
+    let positions=h_vec();h_add(positions,0);h_add(positions,1);h_add(positions,13);h_add(positions,14);h_add(positions,16);h_add(positions,32);let actual=alloc(rows*kn*4);let reference=alloc(qn*4);let expectedk=alloc(rows*kn*4);let expectedv=alloc(rows*kn*4);
+    i=0;while i<rows*kn {gpu_store_u32(expectedk+i*4,0x42f60000);gpu_store_u32(expectedv+i*4,0x42f60000);i=i+1;}
+    let att=alloc(64);store64(att,load64(q+16));store64(att+8,load64(metadata+128));store64(att+16,load64(metadata+144));store64(att+24,lm_alloc(qn*4));store64(att+32,lm_state);store64(att+40,kn);store64(att+48,1);
+    i=0;while i<8 {store64(metadata+160+i*8,load64(att+i*8));i=i+1;}let attended=lm_alloc(qn*4);store64(metadata+184,attended);let fused=alloc(64);store64(fused,lt_buffer(metadata,224));
+    let sample=0;while sample<h_count(positions) {let position=h_at(positions,sample);store64(lm_host_state,position);lm_check(device_upload(lm_state,lm_host_state,16));
+        lt_launch("rms-rope",q,qn/4);lt_launch("rms-rope",k,kn/4);
+        lm_check(device_download(expectedk+position*kn*4,load64(k+16),kn*4));i=0;while i<kn {gpu_store_u32(expectedv+(position*kn+i)*4,gpu_load_u32(vhost+i*4));i=i+1;}
+        lm_check(device_upload(load64(metadata+128),expectedk,rows*kn*4));lm_check(device_upload(load64(metadata+144),expectedv,rows*kn*4));
+        lt_launch("attention",att,qn*4);
+        // Poison the current row before the fused launch: grouped query blocks
+        // must use their local K/V, never race another block's cache writes.
+        let poison=alloc(kn*4);i=0;while i<kn {gpu_store_u32(poison+i*4,0x42f60000);i=i+1;}
+        lm_check(device_upload(load64(metadata+128)+position*kn*4,poison,kn*4));lm_check(device_upload(load64(metadata+144)+position*kn*4,poison,kn*4));
+        lt_launch("attention-rdna",fused,qn*4);lm_check(device_download(reference,load64(att+24),qn*4));lm_check(device_download(actual,attended,qn*4));i=0;
+        while i<qn {lt_near(gpu_load_u32(actual+i*4),gpu_load_u32(reference+i*4));i=i+1;}
+        i=0;while i<4 {let size=qn*4;let p=load64(q+16);let fused=load64(metadata+16);if i&1 {p=load64(q+48);fused=load64(metadata+48);}if i>=2 {size=kn*4;p=load64(k+16);fused=load64(metadata+80);if i&1 {p=load64(k+48);fused=load64(metadata+112);}}
+            lm_check(device_download(reference,p,size));lm_check(device_download(actual,fused,size));let j=0;while j<size {h_assert(gpu_load_u32(actual+j)==gpu_load_u32(reference+j),"fused cache update changed a retained RMS/rotary output");lt_checks=lt_checks+1;j=j+4;}i=i+1;}
+        let phase=0;while phase<2 {let p=load64(metadata+128);let expected=expectedk;if phase {p=load64(metadata+144);expected=expectedv;}lm_check(device_download(actual,p,rows*kn*4));i=0;while i<rows*kn {h_assert(gpu_load_u32(actual+i*4)==gpu_load_u32(expected+i*4),"fused attention changed retained cache rows");lt_checks=lt_checks+1;i=i+1;}phase=phase+1;}sample=sample+1;
+    }return 0;
 }
 fn lt_mlp_pair(width) {
     let rows=33;let gate=alloc(rows*width*2);let up=alloc(rows*width*2);let values=alloc(width*4);let i=0;

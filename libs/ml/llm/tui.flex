@@ -1,8 +1,11 @@
 // Chat application built on libs/tui; inference lives in a reusable child worker.
 import "chat.flex";
+import "models.flex";
 import "../../tui/tui.flex";
 global lc_binary=0;
 global lc_checkpoint=0;
+global lc_model=0;
+global lc_checkpoints=0;
 global lc_compiler=0;
 global lc_backend=0;
 global lc_weights=0;
@@ -32,6 +35,7 @@ global lc_clear_at=0;
 global lc_select_scope=0;
 global lc_select_start=0;
 global lc_select_end=0;
+global lc_selecting=0;
 global lc_dirty=1;
 global lc_running=1;
 global lc_log=0;
@@ -45,6 +49,13 @@ global lc_panel_text=0;
 global lc_panel_scroll=0;
 global lc_panel_top=0;
 global lc_panel_preview=0;
+global lc_models_cursor=0;
+global lc_models_navigation=0;
+global lc_models_pressed=0;
+global lc_models_first0=0;
+global lc_models_last0=0;
+global lc_models_first1=0;
+global lc_models_last1=0;
 global lc_progress_done=0;
 global lc_progress_total=0;
 global lc_stage_started=0;
@@ -60,15 +71,47 @@ fn lc_activity(out,tick) {
 fn lc_animate(tick) {let mark=tu_mark();let out=h_buffer();h_text(out,tu_ansi("@[s@[?25l"));lc_activity(out,tick);h_text(out,tu_ansi("@[u@[?25h"));h_print(1,h_data(out));tu_reset(mark);lc_activity_tick=tick;return 0;}
 fn lc_queue(text) {if !lc_send_buffer {lc_send_buffer=h_buffer();}h_text(lc_send_buffer,text);return 0;}
 fn lc_menu(title,text) {lc_panel_title=title;lc_panel_text=tu_clean(text);lc_panel_scroll=0;lc_panel_preview=0;lc_select_scope=0;lc_dirty=1;return 0;}
-fn lc_models_text() {let state="missing; /download to install";if lc_checkpoint_ready() || lc_demo {state="downloaded";}return h_cat3("qwen3-1.7b | ",state,h_cat3("\nCheckpoint: ",lc_checkpoint,"\nQwen3 text recipe; 16-bit weights, FP32 KV cache."));}
+fn lc_model_id(index) {if index {return "qwen3-4b";}return "qwen3-1.7b";}
+fn lc_model_directory(id) {let saved=j_get(lc_checkpoints,id);if saved {return j_value(saved);}return qm_directory(id);}
+fn lc_models_panel() {return lc_panel_text && h_equal(lc_panel_title,"Models");}
+fn lc_models_text() {
+    let out=h_buffer();let i=0;while i<2 {let id=lc_model_id(i);let state="missing; /download to install";if lc_demo || qm_ready(lc_model_directory(id)) {state="downloaded";}
+        let prefix="  ";if i==lc_models_cursor {prefix="> ";}h_text(out,h_cat3(prefix,id,h_cat(" | ",state)));if h_equal(id,lc_model) {h_text(out," [active]");}h_text(out,"\n");i=i+1;}
+    h_text(out,h_cat3("\nCheckpoint: ",lc_model_directory(lc_model_id(lc_models_cursor)),"\nBoth support /thinking on|off.\n16-bit weights, FP32 KV cache."));return h_data(out);
+}
+fn lc_models_open() {lc_models_cursor=h_equal(lc_model,"qwen3-4b");lc_models_navigation=0;lc_models_pressed=0;return lc_menu("Models",lc_models_text());}
+fn lc_models_move(delta) {
+    lc_models_cursor=lc_models_cursor+delta;if lc_models_cursor<0 {lc_models_cursor=0;}if lc_models_cursor>1 {lc_models_cursor=1;}lc_models_navigation=1;lc_panel_text=tu_clean(lc_models_text());lc_panel_scroll=0;
+    let mark=tu_mark();let eh=h_count(ts_wrap(h_data(te_text),tu_cols));if eh>5 {eh=5;}let body=tu_rows-eh-7;let start=0;if lc_models_cursor {start=h_find(lc_panel_text,"\n")+1;}
+    let rows=ts_wrap(lc_panel_text,tu_cols);let i=0;while i<h_count(rows) && load64(h_at(rows,i))<start {i=i+1;}if body>0 && i>=body {lc_panel_scroll=i-body+1;}tu_reset(mark);lc_dirty=1;return 0;
+}
+fn lc_models_draw(out,bottom,max_height) {
+    lc_models_first0=0;lc_models_last0=0;lc_models_first1=0;lc_models_last1=0;
+    let top=tw_panel(out,lc_panel_title,lc_panel_text,bottom,max_height,lc_panel_scroll);if !top {return 0;}
+    let rows=ts_wrap(lc_panel_text,tu_cols);let body=bottom-top-1;let last=h_count(rows)-body;if last<0 {last=0;}let first=lc_panel_scroll;if first>last {first=last;}if first<0 {first=0;}
+    let end0=h_find(lc_panel_text,"\n");let end1=end0+1+h_find(lc_panel_text+end0+1,"\n");let i=0;
+    while i<body {let row=h_at(rows,first+i);let at=load64(row);let choice=-1;if at<end0 {choice=0;}else if at> end0 && at<end1 {choice=1;}
+        if choice>=0 {let screen=top+i+1;if !choice {if !lc_models_first0 {lc_models_first0=screen;}lc_models_last0=screen;}else {if !lc_models_first1 {lc_models_first1=screen;}lc_models_last1=screen;}
+            if choice==lc_models_cursor {ts_draw(out,lc_panel_text,row,screen,-1,-1,"1;7");}}i=i+1;}
+    tu_line(out,bottom,"Click model | Up/Down choose | Enter select | Esc close","90");return top;
+}
+fn lc_models_activate() {
+    if lc_busy || lc_downloading {lc_status="Stop the operation before changing models.";lc_dirty=1;return 0;}
+    let id=lc_model_id(lc_models_cursor);if lc_panel_preview {te_submit();}lc_panel_text=0;lc_panel_top=0;lc_panel_preview=0;lc_models_pressed=0;
+    if !h_equal(id,lc_model) {lc_save();lc_use_model(id);lc_new();lc_start();}else {lc_status=h_cat("Selected ",qm_title(id));}lc_dirty=1;return 0;
+}
+fn lc_use_model(id) {
+    lc_stop();lc_model=id;let saved=j_get(lc_checkpoints,id);lc_checkpoint=qm_directory(id);if saved {lc_checkpoint=j_value(saved);}
+    lc_context_limit=0;lc_context_used=-1;lc_context_prompt=-1;return 0;
+}
 fn lc_preview_update() {
-    let text=h_trim(h_data(te_text));if h_equal(text,"/models") || h_equal(text,"/model") || h_starts(text,"/model ") {if !lc_panel_preview {lc_menu("Models",lc_models_text());lc_panel_preview=1;}}
+    let text=h_trim(h_data(te_text));if h_equal(text,"/models") || h_equal(text,"/model") || h_starts(text,"/model ") {if !lc_panel_preview {lc_models_open();lc_panel_preview=1;}}
     else if lc_panel_preview {lc_panel_text=0;lc_panel_top=0;lc_panel_preview=0;}return 0;
 }
 fn lc_menu_scroll(delta) {let mark=tu_mark();let eh=h_count(ts_wrap(h_data(te_text),tu_cols));if eh>5 {eh=5;}let body=tu_rows-eh-7;let last=h_count(ts_wrap(lc_panel_text,tu_cols))-body;if last<0 {last=0;}
     lc_panel_scroll=lc_panel_scroll+delta;if lc_panel_scroll>last {lc_panel_scroll=last;}if lc_panel_scroll<0 {lc_panel_scroll=0;}tu_reset(mark);lc_dirty=1;return 0;}
 fn lc_save() {
-    let data=j_object();j_set(data,"version",j_int(1));j_set(data,"id",j_string(lc_session));j_set(data,"model",j_string("qwen3-1.7b"));j_set(data,"thinking",j_int(lc_thinking));j_set(data,"messages",lc_messages);
+    let data=j_object();j_set(data,"version",j_int(1));j_set(data,"id",j_string(lc_session));j_set(data,"model",j_string(lc_model));j_set(data,"thinking",j_int(lc_thinking));j_set(data,"messages",lc_messages);
     let file=h_join(lc_history,h_cat(lc_session,".json"));let temporary=h_cat(file,".tmp");let text=j_dump(data);let fd=syscall(2,temporary,0x80241,384,0,0,0);
     if fd<0 {lc_status="Could not save this session.";return 0;}let written=h_write(fd,text,h_len(text));let synced=syscall(74,fd,0,0,0,0,0);h_close(fd);
     if written<0 || synced<0 || syscall(82,temporary,file,0,0,0,0)!=0 {syscall(87,temporary,0,0,0,0,0);lc_status="Could not save this session.";}return 0;
@@ -80,17 +123,17 @@ fn lc_session_list() {
     i=1;while i<h_count(ids) {let value=h_at(ids,i);let j=i;while j>0 && b_compare(h_at(ids,j-1),value)<0 {store64(ids+8+j*8,h_at(ids,j-1));j=j-1;}store64(ids+8+j*8,value);i=i+1;}return ids;
 }
 fn lc_read_session(path) {
-    let data=j_parse(h_read(path));h_assert(j_n(data,"version")==1 && h_equal(j_s(data,"model"),"qwen3-1.7b"),"unsupported session version or model");let messages=j_need(data,"messages");h_assert(j_count(messages)<=1024,"too many saved messages");let i=0;let expected=0;
+    let data=j_parse(h_read(path));h_assert(j_n(data,"version")==1 && qm_valid(j_s(data,"model")),"unsupported session version or model");let messages=j_need(data,"messages");h_assert(j_count(messages)<=1024,"too many saved messages");let i=0;let expected=0;
     while i<j_count(messages) {let m=j_at(messages,i);let role=j_s(m,"role");h_assert(h_equal(role,"user") || h_equal(role,"assistant") || h_equal(role,"notice"),"invalid saved role");h_assert(h_len(j_s(m,"content"))<=131072,"saved message too long");let error=j_get(m,"error");if error {h_assert(j_kind(error)==2,"invalid saved error");h_assert(h_len(j_value(error))<=131072,"saved error too long");}if h_equal(role,"user") {h_assert(!expected,"invalid saved turn order");expected=1;}else if h_equal(role,"assistant") {h_assert(expected,"invalid saved turn order");expected=0;}i=i+1;}h_assert(!expected,"incomplete saved turn pair");
     h_print(1,j_dump(data));return 0;
 }
 fn lc_resume(id) {
-    if lc_busy {lc_status="Stop generation before resuming a chat.";return 0;}if h_equal(id,"latest") {let ids=lc_session_list();if !h_count(ids) {lc_status="No saved chats yet.";return 0;}id=h_at(ids,0);}
+    if lc_busy || lc_downloading {lc_status="Stop the operation before resuming a chat.";return 0;}if h_equal(id,"latest") {let ids=lc_session_list();if !h_count(ids) {lc_status="No saved chats yet.";return 0;}id=h_at(ids,0);}
     if !lc_valid_id(id) {lc_status="Invalid session ID.";return 0;}let file=h_join(lc_history,h_cat(id,".json"));if !h_exists(file) {lc_status="Session not found.";return 0;}
     let p=h_run(h_args(lc_binary,"--read-session",file,0,0,0));if h_status(p) {lc_status="Cannot resume this session: invalid or unsupported file.";return 0;}
-    let data=j_parse(h_out(p));lc_session=id;lc_messages=j_need(data,"messages");lc_context_used=-1;lc_context_prompt=-1;lc_thinking=j_n(data,"thinking");lc_clear_at=0;lc_scroll=0;lc_select_scope=0;lc_status="Resumed saved conversation.";lc_stats="";lc_dirty=1;return 0;
+    let data=j_parse(h_out(p));if !h_equal(lc_model,j_s(data,"model")) {lc_use_model(j_s(data,"model"));}lc_session=id;lc_messages=j_need(data,"messages");lc_context_used=-1;lc_context_prompt=-1;lc_thinking=j_n(data,"thinking");if lc_thinking && !lc_temperature {lc_temperature=600;}lc_clear_at=0;lc_scroll=0;lc_select_scope=0;lc_status="Resumed saved conversation.";lc_stats="";lc_dirty=1;return 0;
 }
-fn lc_checkpoint_ready() {return h_exists(h_join(lc_checkpoint,"config.json")) && h_exists(h_join(lc_checkpoint,"tokenizer.json")) && h_exists(h_join(lc_checkpoint,"model.safetensors.index.json")) && h_exists(h_join(lc_checkpoint,"model-00001-of-00002.safetensors"));}
+fn lc_checkpoint_ready() {return qm_ready(lc_checkpoint);}
 fn lc_stop() {if lc_worker {h_stop(lc_worker);lc_worker=0;}lc_ready=0;lc_downloading=0;lc_send_buffer=0;lc_sent=0;return 0;}
 fn lc_start() {
     if lc_worker {return 0;}if !lc_demo && !lc_checkpoint_ready() {lc_status="Model not downloaded. Use /download or --checkpoint DIRECTORY.";return 0;}
@@ -145,20 +188,25 @@ fn lc_command(text) {
     lc_panel_text=0;lc_panel_top=0;lc_panel_preview=0;
     let split=h_find(text," ");let name=text;let arg="";if split>=0 {name=h_slice(text,split);arg=h_trim(text+split+1);}
     if h_equal(name,"/quit") || h_equal(name,"/exit") {lc_running=0;}
-    else if h_equal(name,"/help") {lc_menu("Help","/models /model qwen3-1.7b /download\n/backend sass|cuda|hip|rdna /device N /weights bf16|f16|f16-tiled\n/thinking on|off /temperature 0..2 /tokens auto|N\n/new /clear /sessions /resume latest|ID /history /logs /quit\n\nEnter sends; Ctrl+J or Alt+Enter inserts a newline. Tab completes commands.\nArrows edit; Up/Down recall prompts; Shift+arrows select.\nClick Thinking to expand/collapse; Ctrl+T toggles the latest block.\nCtrl+A selects all; Ctrl+E moves to end; Ctrl+U clears.\nCtrl+C copies selection or quits; Ctrl+X cuts; Ctrl+V pastes.\nDrag to select and copy on release; right-click pastes in the composer.\nEsc cancels generation. Mouse wheel / PageUp / PageDown scroll.\nConversation history is sent to the model; oldest pairs leave context when full.\nFile tools and other model architectures are not supported by this runner.");}
-    else if h_equal(name,"/models") || h_equal(name,"/model") {if h_len(arg) && !h_equal(arg,"qwen3-1.7b") {lc_status="Supported model: qwen3-1.7b";}else {lc_menu("Models",lc_models_text());}}
-    else if h_equal(name,"/download") {if lc_busy {lc_status="Stop generation before downloading.";}else if lc_checkpoint_ready() {lc_status="Checkpoint is already downloaded.";}else {lc_stop();lc_worker=h_spawn(h_args(lc_binary,"--download-worker","1","--checkpoint",lc_checkpoint,0),0,0);lc_downloading=1;lc_stage("Downloading pinned Qwen3 checkpoint...",0,0);}}
+    else if h_equal(name,"/help") {lc_menu("Help","/models /model qwen3-1.7b|qwen3-4b /download\n/backend sass|cuda|hip|rdna|rdna-direct /device N /weights bf16|f16|f16-tiled\n/thinking on|off /temperature 0..2 /tokens auto|N\n/new /clear /sessions /resume latest|ID /history /logs /quit\n\nEnter sends; Ctrl+J or Alt+Enter inserts a newline. Tab completes commands.\nArrows edit; Up/Down recall prompts; Shift+arrows select.\nClick Thinking to expand/collapse; Ctrl+T toggles the latest block.\nCtrl+A selects all; Ctrl+E moves to end; Ctrl+U clears.\nCtrl+C copies selection or quits; Ctrl+X cuts; Ctrl+V pastes.\nDrag to select and copy on release; right-click pastes in the composer.\nEsc cancels generation. Mouse wheel / PageUp / PageDown scroll.\nConversation history is sent to the model; oldest pairs leave context when full.\nFile tools and other model architectures are not supported by this runner.");}
+    else if h_equal(name,"/models") || h_equal(name,"/model") {
+        if !h_len(arg) {lc_models_open();}else if !qm_valid(arg) {lc_status="Supported models: qwen3-1.7b, qwen3-4b";}
+        else if lc_busy || lc_downloading {lc_status="Stop the operation before changing models.";}
+        else if h_equal(arg,lc_model) {lc_models_open();}
+        else {lc_save();lc_use_model(arg);lc_new();lc_status=h_cat("Selected ",qm_title(lc_model));lc_start();}
+    }
+    else if h_equal(name,"/download") {if lc_busy || lc_downloading {lc_status="Stop the operation before downloading.";}else if lc_checkpoint_ready() {lc_status="Checkpoint is already downloaded.";}else {lc_stop();let args=h_args(lc_binary,"--download-worker","1","--checkpoint",lc_checkpoint,"--model");h_add(args,lc_model);lc_worker=h_spawn(args,0,0);lc_downloading=1;lc_stage("Downloading pinned Qwen3 checkpoint...",0,0);}}
     else if h_equal(name,"/new") {if lc_busy {lc_stop();lc_finish("cancelled");}lc_new();lc_status="New conversation.";}
     else if h_equal(name,"/clear") {lc_clear_at=j_count(lc_messages);lc_scroll=0;lc_status="Display cleared; conversation retained.";}
     else if h_equal(name,"/sessions") || (h_equal(name,"/resume") && !h_len(arg)) {let ids=lc_session_list();let out=h_buffer();h_text(out,"Saved conversations (newest first):\n");let i=0;while i<h_count(ids) && i<30 {h_text(out,h_cat(h_at(ids,i),"\n"));i=i+1;}if !i {h_text(out,"No saved chats yet.");}h_text(out,"\nUse /resume ID or /resume latest.");lc_menu("Sessions",h_data(out));}
     else if h_equal(name,"/resume") {lc_resume(arg);}
     else if h_equal(name,"/history") {lc_menu("History",h_cat3("Session: ",lc_session,h_cat3("\nSaved chats: ",lc_history,"")));}
     else if h_equal(name,"/logs") {lc_show_log=!lc_show_log;}
-    else if h_equal(name,"/thinking") {if h_equal(arg,"on") || h_equal(arg,"off") {lc_thinking=h_equal(arg,"on");lc_status=h_cat("Thinking ",arg);lc_save();}else {lc_status="Use /thinking on or /thinking off.";}}
+    else if h_equal(name,"/thinking") {if h_equal(arg,"on") || h_equal(arg,"off") {lc_thinking=h_equal(arg,"on");if lc_thinking && !lc_temperature {lc_temperature=600;}lc_status=h_cat("Thinking ",arg);lc_save();}else {lc_status="Use /thinking on or /thinking off.";}}
     else if h_equal(name,"/temperature") {let value=lc_temp(arg);if value<0 {lc_status="Temperature must be 0..2.";}else {lc_temperature=value;lc_status=h_cat("Temperature: ",arg);}}
     else if h_equal(name,"/tokens") {let value=lc_number(arg,ll_context_max()-1);if h_equal(arg,"auto") {value=0;}if value<0 || (value==0 && !h_equal(arg,"auto")) {lc_status="Use /tokens auto or a positive count up to 40959.";}else {lc_maximum=value;lc_status=h_cat("Reply token limit: ",arg);}}
     else if h_equal(name,"/backend") || h_equal(name,"/weights") || h_equal(name,"/device") {
-        let valid=0;if h_equal(name,"/backend") {valid=h_equal(arg,"sass") || h_equal(arg,"cuda") || h_equal(arg,"hip") || h_equal(arg,"rdna");}else if h_equal(name,"/weights") {valid=h_equal(arg,"bf16") || h_equal(arg,"f16") || h_equal(arg,"f16-tiled");}else {valid=lc_number(arg,15)>=0;}
+        let valid=0;if h_equal(name,"/backend") {valid=h_equal(arg,"sass") || h_equal(arg,"cuda") || h_equal(arg,"hip") || h_equal(arg,"rdna") || h_equal(arg,"rdna-direct");}else if h_equal(name,"/weights") {valid=h_equal(arg,"bf16") || h_equal(arg,"f16") || h_equal(arg,"f16-tiled");}else {valid=lc_number(arg,15)>=0;}
         if !valid {lc_status="Invalid setting. See /help.";}else if lc_busy {lc_status="Stop generation before changing hardware settings.";}else {if h_equal(name,"/backend") {lc_backend=arg;}else if h_equal(name,"/weights") {lc_weights=arg;}else {lc_device=arg;}lc_stop();lc_start();}
     }
     else {lc_status="Unknown command. Type /help.";}lc_dirty=1;return 0;
@@ -200,7 +248,7 @@ fn lc_draw() {
     // Lazy buffer storage must outlive the temporary rendering arena.
     h_data(te_text);h_data(lc_log);
     let mark=tu_mark();tu_size();let out=h_buffer();h_text(out,tu_ansi("@[?25l"));
-    let title=h_cat3("Flexscript | Qwen3-1.7B | ",lc_backend,h_cat3(" | GPU ",lc_device,h_cat3(" | ",lc_weights,"")));if lc_demo {title=h_cat(title," | DEMO");}
+    let title=h_cat3("Flexscript | ",qm_title(lc_model),h_cat3(" | ",lc_backend,h_cat3(" | GPU ",lc_device,h_cat3(" | ",lc_weights,""))));if lc_demo {title=h_cat(title," | DEMO");}
     let context="auto";if lc_context_limit {context=h_int(lc_context_limit);if lc_context_used>=0 {context=h_cat3(h_int(lc_context_used),"/",context);}}else if !lc_capacity_auto {context=h_int(lc_capacity);}
     title=h_cat3(h_cat("Context ",context)," | ",title);
     tu_line(out,1,title,"1;36");lc_activity_tick=net_now();lc_activity(out,lc_activity_tick);
@@ -211,7 +259,7 @@ fn lc_draw() {
     lc_draw_messages(out,doc,errors,ch,lo,hi);let i=0;
     tu_line(out,tu_rows-eh-2,lc_stats,"90");let label="Message";if lc_thinking {label="Message | thinking on";}if lc_scroll {label=h_cat(label," | chat scrolled");}tu_line(out,tu_rows-eh-1,label,"1;32");
     let help="Enter send | Ctrl+J newline | Esc stop | /help | Ctrl+C quit";if load8(editor)==47 {let hints=h_buffer();i=0;while i<h_count(lc_commands) {let command=h_at(lc_commands,i);if h_starts(command,editor) {h_text(hints,h_cat(command,"  "));}i=i+1;}if h_size(hints) {help=h_cat("Tab: ",h_data(hints));}}
-    lc_panel_top=0;if lc_panel_text {let bottom=tu_rows-eh-2;lc_panel_top=tw_panel(out,lc_panel_title,lc_panel_text,bottom,bottom-3,lc_panel_scroll);}
+    lc_panel_top=0;if lc_panel_text {let bottom=tu_rows-eh-2;if lc_models_panel() {lc_panel_top=lc_models_draw(out,bottom,bottom-3);}else {lc_panel_top=tw_panel(out,lc_panel_title,lc_panel_text,bottom,bottom-3,lc_panel_scroll);}}
     tu_line(out,tu_rows,help,"90");tw_editor(out,tu_rows-eh,eh);h_print(1,h_data(out));tu_reset(mark);lc_dirty=0;return 0;
 }
 fn lc_copy() {
@@ -219,26 +267,40 @@ fn lc_copy() {
     else if lc_select_scope==1 {let doc=lc_document();let lo=lc_select_start;let hi=lc_select_end;if lo>hi {let t=lo;lo=hi;hi=t;}if hi>h_len(doc) {hi=h_len(doc);}if hi>lo {text=h_slice(doc+lo,hi-lo);}}
     if !text {return 0;}if tc_copy(text) {lc_status="Copied selection.";}else {lc_status=tc_error;}lc_dirty=1;return 1;
 }
+fn lc_clear_selection() {lc_select_scope=0;lc_select_start=0;lc_select_end=0;lc_selecting=0;te_anchor=-1;lc_dirty=1;return 0;}
 fn lc_mouse() {
     let editor=h_data(te_text);let erows=ts_wrap(editor,tu_cols);let eh=h_count(erows);if eh>5 {eh=5;}let ch=tu_rows-eh-6;
     if lc_panel_text && ti_button&64 {let delta=-3;if ti_button&1 {delta=3;}return lc_menu_scroll(delta);}
-    if (ti_button&3)==0 && !(ti_button&32) && !ti_release {lc_select_scope=0;lc_select_start=0;lc_select_end=0;te_anchor=-1;lc_dirty=1;}
-    if lc_panel_text && lc_panel_top && ti_y>=lc_panel_top && ti_y<=tu_rows-eh-2 {return 0;}
     if ti_button&64 {if ti_button&1 {if lc_scroll>2 {lc_scroll=lc_scroll-3;}else {lc_scroll=0;}}else {lc_scroll=lc_scroll+3;}lc_dirty=1;return 0;}
-    if (ti_button&3)==2 && ti_y>=tu_rows-eh && !ti_release {let paste=tc_paste();if paste {te_replace(paste);}else {lc_status=tc_error;}lc_dirty=1;return 0;}
+    if lc_models_panel() && lc_panel_top && ti_y>=lc_panel_top && ti_y<=tu_rows-eh-2 {
+        if (ti_button&3)==0 {let choice=-1;if lc_models_first0 && ti_y>=lc_models_first0 && ti_y<=lc_models_last0 {choice=0;}else if lc_models_first1 && ti_y>=lc_models_first1 && ti_y<=lc_models_last1 {choice=1;}
+            // Keep the panel geometry stable between press and release: the
+            // next model's checkpoint path may wrap to a different height.
+            if ti_button&32 {lc_models_pressed=-1;}else if choice>=0 {if ti_release {if !lc_models_pressed || lc_models_pressed==choice+1 {lc_models_cursor=choice;lc_clear_selection();return lc_models_activate();}}else {lc_models_pressed=choice+1;}}
+            if ti_release {lc_models_pressed=0;}}return lc_clear_selection();
+    }
+    if (ti_button&3)==2 && ti_y>=tu_rows-eh && !ti_release {let paste=tc_paste();if paste {te_replace(paste);}else {lc_status=tc_error;}return lc_clear_selection();}
+    if !(ti_button&32) && !ti_release {lc_clear_selection();}
     if (ti_button&3)!=0 {return 0;}
+    // A completed drag leaves a visible selection, not an active gesture.
+    // Some clicks arrive as release-only events; they must dismiss that range
+    // rather than extending it from the previous drag's anchor.
+    if ti_release && !lc_selecting {return lc_clear_selection();}
+    if lc_panel_text && lc_panel_top && ti_y>=lc_panel_top && ti_y<=tu_rows-eh-2 {if ti_release {lc_selecting=0;}return 0;}
     let dragging=ti_button&32;
+    if dragging && !lc_selecting {return 0;}
     if ti_y>=4 && ti_y<4+ch {let hits=h_vec();let doc=lc_document_hits(hits);let rows=ts_wrap(doc,tu_cols);let top=h_count(rows)-ch-lc_scroll;if top<0 {top=0;}let offset=ts_offset(doc,rows,top+ti_y-4,ti_x-1);
-        if !dragging && !ti_release {lc_select_scope=1;lc_select_start=offset;te_anchor=-1;}if lc_select_scope==1 {lc_select_end=offset;}
-        if ti_release && lc_select_scope==1 && lc_select_start==lc_select_end {let i=0;while i<h_count(hits) {let hit=h_at(hits,i);if offset>=load64(hit) && offset<load64(hit+8) {return lc_toggle_thinking(j_at(lc_messages,load64(hit+16)));}i=i+1;}}}
+        if !dragging && !ti_release {lc_selecting=1;lc_select_scope=1;lc_select_start=offset;te_anchor=-1;}if lc_select_scope==1 {lc_select_end=offset;}
+        if ti_release && lc_select_scope==1 && lc_select_start==lc_select_end {let i=0;while i<h_count(hits) {let hit=h_at(hits,i);if offset>=load64(hit) && offset<load64(hit+8) {lc_selecting=0;return lc_toggle_thinking(j_at(lc_messages,load64(hit+16)));}i=i+1;}}}
     else if ti_y>=tu_rows-eh && ti_y<tu_rows {let crow=0;let i=0;while i<h_count(erows) {if te_cursor>=load64(h_at(erows,i)) {crow=i;}i=i+1;}let top=crow-eh+1;if top<0 {top=0;}let offset=ts_offset(editor,erows,top+ti_y-(tu_rows-eh),ti_x-1);
-        if !dragging && !ti_release {lc_select_scope=2;te_anchor=offset;}if lc_select_scope==2 {te_cursor=offset;}}
-    if ti_release {if lc_select_scope==1 && lc_select_start==lc_select_end {lc_select_scope=0;}if lc_select_scope==2 && !te_selected() {lc_select_scope=0;te_anchor=-1;}lc_copy();}lc_dirty=1;return 0;
+        if !dragging && !ti_release {lc_selecting=1;lc_select_scope=2;te_anchor=offset;}if lc_select_scope==2 {te_cursor=offset;}}
+    if ti_release {lc_selecting=0;if lc_select_scope==1 && lc_select_start==lc_select_end {lc_select_scope=0;}if lc_select_scope==2 && !te_selected() {lc_select_scope=0;te_anchor=-1;}lc_copy();}lc_dirty=1;return 0;
 }
 fn lc_key() {
     if ti_kind==3 {lc_mouse();return 0;}if ti_kind==1 || ti_kind==4 {if !lc_panel_preview {lc_panel_text=0;lc_panel_top=0;}te_replace(ti_text);lc_preview_update();lc_select_scope=0;lc_dirty=1;return 0;}
     let key=ti_key;let shift=ti_mod&1;let ctrl=ti_mod&4;
     if lc_panel_text {if key==27 {lc_panel_text=0;lc_panel_top=0;lc_panel_preview=0;lc_dirty=1;return 0;}
+        if lc_models_panel() {if key==1001 {return lc_models_move(-1);}if key==1002 {return lc_models_move(1);}if key==13 && !shift && (!lc_panel_preview || lc_models_navigation) {return lc_models_activate();}}
         if key==1001 || key==1008 {let delta=-1;if key==1008 {delta=-10;}return lc_menu_scroll(delta);}
         if key==1002 || key==1009 {let delta=1;if key==1009 {delta=10;}return lc_menu_scroll(delta);}}
     if key==13 && !shift {lc_submit();}else if key==10 || (key==13 && shift) {te_replace("\n");}
@@ -263,7 +325,7 @@ fn lc_key() {
     lc_preview_update();lc_dirty=1;return 0;
 }
 fn lc_download(argc,argv) {
-    let directory=b_option(argc,argv,"--checkpoint",0);h_assert(directory,"provide checkpoint destination");h_mkdir(directory);let manifest=j_parse(h_read("libs/ml/examples/qwen3-1.7b.model.json"));let spec=j_need(manifest,"checkpoint");let files=j_need(spec,"files");let i=0;
+    let directory=b_option(argc,argv,"--checkpoint",0);h_assert(directory,"provide checkpoint destination");h_mkdir(directory);let manifest=qm_manifest(b_option(argc,argv,"--model","qwen3-1.7b"));let spec=j_need(manifest,"checkpoint");let files=j_need(spec,"files");let i=0;
     ct_progress("Downloading model files",0,j_count(files));
     while i<j_count(files) {let name=j_value(j_at(files,i));h_assert(!h_has(name,"/") && !h_has(name,".."),"invalid asset name");let path=h_join(directory,name);
         if !h_exists(path) {ct_progress(h_cat("Downloading ",name),i,j_count(files));let partial=h_cat(path,".part");let url=h_cat3("https://huggingface.co/",j_s(spec,"repo"),h_cat3("/resolve/",j_s(spec,"revision"),h_cat("/",name)));
@@ -271,14 +333,18 @@ fn lc_download(argc,argv) {
     return ct_send(ct_event("downloaded"));
 }
 fn lc_main(argc,argv) {
-    h_environment(argc,argv);h_timeout=3600000;lc_status="Ready";lc_stats="";lc_binary=h_real(load64(argv));
+    h_environment(argc,argv);h_timeout=3600000;lc_status="Ready";lc_stats="";lc_binary=h_real(load64(argv));lc_model="qwen3-1.7b";
     if b_option(argc,argv,"--capacity-plan",0) {return cap_plan(argc,argv);}if b_option(argc,argv,"--worker",0) {return ct_worker(argc,argv);}if b_option(argc,argv,"--download-worker",0) {return lc_download(argc,argv);}let read=b_option(argc,argv,"--read-session",0);if read {return lc_read_session(read);}
-    let i=1;while i<argc {if h_equal(load64(argv+i*8),"--help") {h_print(1,"Usage: llm [--checkpoint DIRECTORY] [--backend sass|cuda|hip|rdna] [--device N]\n           [--weights bf16|f16|f16-tiled] [--context auto|32..40960]\n           [--max-tokens auto|N] [--history-dir DIRECTORY] [--resume latest|ID]\n           [--no-warmup 1] [--demo 1]\nCompile: build/flex-llm llm.flex -o build/llm-chat\n");return 0;}i=i+1;}
+    let i=1;while i<argc {if h_equal(load64(argv+i*8),"--help") {h_print(1,"Usage: llm [--model qwen3-1.7b|qwen3-4b] [--checkpoint DIRECTORY] [--backend sass|cuda|hip|rdna|rdna-direct] [--device N]\n           [--weights bf16|f16|f16-tiled] [--context auto|32..40960]\n           [--max-tokens auto|N] [--history-dir DIRECTORY] [--resume latest|ID]\n           [--thinking on|off] [--temperature 0..2] [--no-warmup 1] [--demo 1]\nRun: build/flex ./llm.flex [options]\nCompile: build/flex-llm llm.flex -o build/llm-chat\n");return 0;}i=i+1;}
     lc_compiler=b_option(argc,argv,"--compiler",lm_default_compiler());lc_backend=b_option(argc,argv,"--backend",lm_default_backend());lm_select_backend(lc_backend);lc_weights=b_option(argc,argv,"--weights","f16");h_assert(h_equal(lc_weights,"bf16") || h_equal(lc_weights,"f16") || h_equal(lc_weights,"f16-tiled"),"invalid weight format");
     lc_device=b_option(argc,argv,"--device","0");h_assert(lc_number(lc_device,15)>=0,"device must be 0..15");let context=b_option(argc,argv,"--context","auto");lc_capacity_auto=h_equal(context,"auto");if !lc_capacity_auto {lc_capacity=lw_int(context);}h_assert(lc_capacity>=32 && lc_capacity<=ll_context_max(),"context must be auto or 32..40960");let maximum=b_option(argc,argv,"--max-tokens","auto");lc_maximum=0;if !h_equal(maximum,"auto") {lc_maximum=lw_int(maximum);h_assert(lc_maximum>0 && lc_maximum<ll_context_max(),"max tokens must be auto or 1..40959");}
     let demo=h_getenv("FLEX_LLM_DEMO");if !demo {demo="0";}lc_demo=lw_int(b_option(argc,argv,"--demo",demo));h_assert(lc_demo<=1,"demo must be 0 or 1");
-    let checkpoint=h_getenv("QWEN_CHECKPOINT");if !checkpoint {let home=h_getenv("HOME");if home {checkpoint=h_join(home,".cache/puppygrad/models/qwen3-1.7b/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e");}if !checkpoint || !h_exists(checkpoint) {checkpoint="build/llm/models/qwen3-1.7b";}}
-    lc_checkpoint=b_option(argc,argv,"--checkpoint",checkpoint);let history=h_getenv("FLEX_LLM_HISTORY");if !history {history="build/llm/sessions";}lc_history=b_option(argc,argv,"--history-dir",history);h_mkdir(lc_history);lc_messages=j_array();lc_log=h_buffer();h_data(lc_log);lc_new();te_init();ti_init();lc_scratch=h_take(8208);
+    let selected=b_option(argc,argv,"--model",0);if selected {h_assert(qm_valid(selected),"supported models: qwen3-1.7b, qwen3-4b");lc_model=selected;}
+    let checkpoint=b_option(argc,argv,"--checkpoint",0);if !checkpoint {checkpoint=h_getenv("QWEN_CHECKPOINT");if checkpoint && selected {let detected=qm_detect(checkpoint);if !detected || !h_equal(selected,detected) {checkpoint=0;}}}
+    if checkpoint {let detected=qm_detect(checkpoint);if h_exists(h_join(checkpoint,"config.json")) {h_assert(detected,"checkpoint is not a supported original Qwen3-1.7B or Qwen3-4B model");}if detected {if selected {h_assert(h_equal(selected,detected),"--model does not match --checkpoint");}lc_model=detected;}}else {checkpoint=qm_directory(lc_model);}
+    lc_checkpoints=j_object();j_set(lc_checkpoints,lc_model,j_string(checkpoint));lc_checkpoint=checkpoint;
+    let thinking=b_option(argc,argv,"--thinking","off");h_assert(h_equal(thinking,"on") || h_equal(thinking,"off"),"thinking must be on or off");lc_thinking=h_equal(thinking,"on");let temperature="0";if lc_thinking {temperature="0.6";}lc_temperature=lc_temp(b_option(argc,argv,"--temperature",temperature));h_assert(lc_temperature>=0,"temperature must be 0..2");
+    let history=h_getenv("FLEX_LLM_HISTORY");if !history {history="build/llm/sessions";}lc_history=b_option(argc,argv,"--history-dir",history);h_mkdir(lc_history);lc_messages=j_array();lc_log=h_buffer();h_data(lc_log);lc_new();te_init();ti_init();lc_scratch=h_take(8208);
     lc_commands=h_args("/help","/models","/model","/download","/backend","/device");h_add(lc_commands,"/weights");h_add(lc_commands,"/thinking");h_add(lc_commands,"/temperature");h_add(lc_commands,"/tokens");h_add(lc_commands,"/new");h_add(lc_commands,"/sessions");h_add(lc_commands,"/resume");h_add(lc_commands,"/history");h_add(lc_commands,"/logs");h_add(lc_commands,"/clear");h_add(lc_commands,"/quit");
     let resume=b_option(argc,argv,"--resume",0);if resume {lc_resume(resume);}h_assert(tu_open(),"interactive terminal required; use --help for CLI options");
     if !lw_int(b_option(argc,argv,"--no-warmup","0")) {lc_start();}

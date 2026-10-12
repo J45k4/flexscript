@@ -20,7 +20,7 @@ fn kernel(index,input,output,count) {
         best=am_choose(best,value);at=at+128;
     }
     let delta=16;while delta {best=am_choose(best,gpu_shuffle(best,(lane&31)^delta,4294967295));delta=delta>>1;}
-    if !(lane&31) {gpu_shared_store64((lane>>5)*8,best);}gpu_barrier();
+    if !(lane&31) {gpu_shared_store64((lane>>5)*8,best);}gpu_shared_barrier();
     if lane<32 {
         best=gpu_shared_load64((lane&3)*8);delta=2;
         while delta {best=am_choose(best,gpu_shuffle(best,lane^delta,4294967295));delta=delta>>1;}

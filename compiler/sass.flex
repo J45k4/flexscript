@@ -16,7 +16,7 @@ global sass_math_base=0;
 fn sass_special(to,code) {sass_instruction(0x7919|(to<<16),code<<8,1);sass_immediate32(to+1,0);return 0;}
 fn sass_constant_word(to,offset) {sass_constant(to,offset);sass_immediate32(to+1,0);return 0;}
 fn sass_intrinsic_supported(kind) {
-    return kind<=18 || (kind>=20 && kind<=29) || (kind>=50 && kind<=70)
+    return kind<=18 || (kind>=20 && kind<=29) || (kind>=50 && kind<=71)
         || (kind>=30 && kind<=37) || (kind>=40 && kind<=47);
 }
 fn sass_load_offset(kind,first,offset) {
@@ -91,7 +91,7 @@ fn sass_intrinsic(kind,first) {
         else {sass_special(sass_acc,0);}return 0;
     }
     if kind==14 {sass_instruction(0x7806|(sass_acc<<16),0x038e0100,0);sass_immediate32(sass_acc+1,0);return 0;}
-    if kind==15 {sass_instruction(0x7b1d,0,0);sass_immediate(sass_acc,0);return 0;}
+    if kind==15 || kind==71 {sass_instruction(0x7b1d,0,0);sass_immediate(sass_acc,0);return 0;}
     if kind==16 {sass_instruction(0x7348|(first<<32),0x03800000,0);sass_immediate(sass_acc,0);return 0;}
     if kind==17 {sass_instruction(0x7984|(sass_acc<<16)|(first<<24),0x1a00,1);return 0;}
     if kind==18 {sass_instruction(0x7388|(first<<24)|((first+2)<<32),0xa00,2);sass_move(sass_acc,first+2);return 0;}
@@ -347,7 +347,7 @@ fn sass_frame(index) {
                 let kind=gpu_intrinsic(arg);
                 if kind {
                     if !sass_intrinsic_supported(kind) {fail("unsupported GPU intrinsic in SASS kernel");}
-                    if kind==15 {sass_barriers=1;}
+                    if kind==15 || kind==71 {sass_barriers=1;}
                     if kind==33 || kind==34 || kind==43 || kind==44 {sass_math=1;}
                 }else {let n=sass_frame(arg);if n>child {child=n;}}
             }

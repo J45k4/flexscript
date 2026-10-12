@@ -422,3 +422,152 @@ build/bench-llm --backend rdna --compiler build/flex \
 llama-bench -m build/llm/qwen3-1.7b-f16.gguf \
   -p 15 -n 64 -d 15 -r 3 -t 1 -fa on -o json
 ```
+
+## Wider AMD kernels and fused attention, 2026-10-11
+
+The AMD implementation now loads eight adjacent weights per lane, uses
+independent accumulation chains, emits explicit global-memory accesses,
+reduces wave sums with native DPP/permutation instructions and uses shared-only
+barriers where global ordering is unnecessary. Q/K normalization, rotary,
+cache append and attention fuse into one kernel per layer. The decode schedule
+falls from **311 to 199 launches** without changing the model or quantizing it.
+Original intermediate tensors and KV cache rows remain available.
+
+The faster reference configurations below use the same official llama.cpp
+commit and F16 GGUF as the preceding AMD measurements, now with **FP16 KV
+caches and flash attention enabled**. Flexscript retains FP32 KV caches.
+All runners receive the same 15 prompt IDs and a 64-token decode replay that
+cycles the 12 IDs in the real “Say hello.” reply, including EOS. The benchmark
+replays EOS as an ordinary input and does not stop early. Context capacity is
+256, with one host thread and synchronous model execution.
+
+| Runner | Prefill tokens/s | Decode tokens/s | Timed samples |
+| --- | ---: | ---: | ---: |
+| Previous Flexscript, `a2322d0` | 1,146.86 | 127.31 | 9 |
+| Current Flexscript, default row-major F16 | 1,148.27 | 135.05 | 9 |
+| llama.cpp Vulkan, F16 KV, flash attention | 567.69 | 140.05 | 9 |
+| llama.cpp HIP, F16 KV, flash attention | 1,000.42 | 103.53 | 3 |
+
+Rates divide token counts by the mean elapsed time across every timed sample.
+The original baseline comes from three earlier rotated comparison groups.
+The final Flexscript/Vulkan comparison uses three alternating groups, each
+with one warmup and three timed samples per process. Flexscript's group decode
+rates are 137.78, 130.08 and 137.58 tokens/s; Vulkan's are 139.68, 140.09 and
+140.38. One 552.486 ms Flexscript sample is included. Ordinary desktop workloads
+remained active and clocks were not locked; GPU jobs ran sequentially.
+
+Pooled decode is **6.08% above the previous Flexscript baseline**, and normal
+groups run around 138 tokens/s. The strongest measured Vulkan configuration
+remains **3.70% faster in throughput**. Flexscript's short-prompt prefill is
+faster than both reference backends. These results do not establish a lead
+over vLLM, SGLang, ATOM or MLC, nor predict long-context, batching or quantized
+performance. Timings exclude loading, compilation, tokenization, sampling,
+printing and caller-side logits downloads; llama.cpp's internal output transfer
+remains inside its execution calls. The HIP harness uses ordinary file loading
+instead of mmap to avoid a local host-memory-pressure loading stall.
+
+Final validation passes 84,637 LLM checks, 1,188,405 prefill/conversion checks,
+10,760 HIP ABI/arithmetic/collective checks, 2,048 long-cache attention checks
+and 265 capacity checks. A cancellation regression verifies the reduction
+broadcasts an identical finite result to every lane; shared barriers are checked
+between waves. The compiler rebuilds itself byte-for-byte, and all 28 LLM
+kernels also compile to PTX and direct SASS. Physical execution was on AMD.
+
+Real greedy generation preserves all 12 reply tokens. All 151,936 logits at
+each of 12 predictions are finite, every top-five list matches the original,
+and maximum absolute difference is 0.017417, below the existing 0.02 FP16-prompt
+tolerance. These are comparisons with the original GPU execution, rather than
+an independent full-model CPU oracle. Reduction order changes, so logits are
+not bit-identical. Automatic context sizing and a real 8,213-token prompt are
+also checked through the rebuilt chat worker.
+
+Local evidence under `build/llm/` includes `opt-broadcast-speed-comparison.json`,
+`opt-broadcast-paired-{0,1,2}-{optimized,llama-vulkan}.json`,
+`opt-speed-comparison.json` (original baseline), `opt-hip-fast.json`,
+`opt-quality-comparison.json`, `opt-final-quality.json` and
+`opt-large-context-validation.json`. Use the preceding native benchmark
+command with `--max-tokens 12` when generating its token fixture to reproduce
+the longer decode cycle.
+
+For isolated kernel experiments after preparing the model's native images:
+
+```sh
+build/flex scripts/bench-llm-kernel.flex -o build/bench-llm-kernel
+build/bench-llm-kernel --image build/llm/mlp-pair.hsaco \
+  --kernel mlp-pair --rows 8192 --width 2048 --block 256
+```
+
+This uses synthetic nonzero 16-bit weights and reports per-kernel nanoseconds
+from five GPU-event samples, each covering 100 graph-captured calls. Use
+`bench-llm` for model throughput; isolated kernel gains alone do not establish
+an application speedup.
+
+
+## Initial hybrid direct RDNA linear emission (2026-10-12)
+
+The experimental `rdna-direct` inference mode now emits F16 GEMV, paired MLP
+and packed Q/K/V instructions and AMDHSA code objects directly from Flexscript.
+The remaining kernels use ROCm LLVM. GEMV uses sixteen weights per lane for
+widths divisible by 512, with an eight-weight fallback; MLP and Q/K/V keep the
+eight-weight loop. Wider MLP and 32-weight GEMV experiments did not improve
+model throughput and were not adopted.
+
+On the same RX 9070 XT, F16 Qwen3-1.7B, 15 prompt IDs, 64-token replay and
+256-token context protocol above, the selected production configuration measured
+**145.27 decode tokens/s** and **1,151.58 prefill tokens/s** across five timed
+samples after one warmup. Decode samples were 444.242, 439.447, 441.032,
+440.162 and 437.853 ms; every timed sample is included. Desktop workloads remained
+active and clocks were unlocked. This is a separate run from the preceding
+llama.cpp comparison, not a new alternating comparison or evidence of a lead
+on every runtime. The 150 tokens/s target has not been reached.
+
+```sh
+build/bench-llm --backend rdna-direct --compiler build/flex   --checkpoint build/llm/models/qwen3-1.7b   --tokens build/llm/rdna-gpu-sample-chat.json --decode 64   --context 256 --repeats 5 --report build/llm/direct-final-speed.json
+```
+
+The direct kernels pass CPU comparisons at widths 256, 768, 2048 and 6144,
+three block sizes, unequal Q/K/V row counts, partial blocks and output guards.
+The installed inference CLI retains all 12 greedy reply IDs and all top-five
+lists against the original GPU reference; all 1,823,232 logits are finite,
+with maximum absolute difference 0.01741612 below the 0.02 tolerance.
+The compiler self-build is byte-identical and 84 core checks pass. A fused
+attention metadata lifetime bug was also fixed by using an independent mapping
+for the buffer that gets unmapped after upload.
+
+Local evidence: `direct-final-speed.json`, `direct-final-quality.json` and
+`direct-final-quality-comparison.json` under `build/llm/`.
+
+
+## Complete direct RDNA emission (2026-10-12)
+
+`rdna-direct` now emits every Qwen kernel directly, including WMMA prefill,
+fused attention and greedy sampling. Four compact fast paths cover F16 linear
+operations and 2048-wide residual RMSNorm; no kernel falls back to LLVM.
+The AMD default selects this mode. HIP still loads and dispatches the code.
+
+The new encoder passes the numerical, launch and cache-boundary checks listed
+in [RDNA verification](rdna.md#verification). Actual multi-turn generation also
+works with HIPRTC deliberately blocked. A gfx12 F16 e32 register-class bug found
+in fused attention was fixed using e64 conversions outside the restricted range;
+e64 packed F16 destinations also explicitly clear their preserved upper halves.
+
+On the RX 9070 XT with F16 Qwen3-1.7B, 15 prompt tokens, 64 decode tokens,
+256-token capacity, one warmup and five timed samples per runner:
+
+| Compiler route | Decode tokens/s | Prefill tokens/s |
+| --- | ---: | ---: |
+| Complete direct RDNA | 140.97 | 654.39 |
+| Existing ROCm LLVM | 136.44 | 1,110.04 |
+
+Rates divide token counts by mean elapsed time. Direct decode samples were
+457.163, 454.442, 453.061, 452.969 and 452.389 ms; LLVM samples were
+473.301, 468.303, 468.147, 467.677 and 467.977 ms. Both runners were executed
+sequentially with the same compiler, checkpoint, token replay and settings.
+Desktop activity and unlocked clocks remain sources of variance. This run
+shows about 3.3% faster decode than the LLVM route, with slower native prefill;
+it is not a fresh comparison against other runtimes. The 150 tokens/s target
+remains unmet. Earlier hybrid measurements above use a separate run.
+
+Evidence: `build/llm/benchmark-direct-all-native-final.json`,
+`build/llm/benchmark-llvm-all-native-final.json` and
+`build/llm/direct-native-fixed-chat.json`.

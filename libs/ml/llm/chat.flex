@@ -17,7 +17,12 @@ fn ct_cancelled() {
 }
 fn ct_prompt(turns,start,thinking) {
     let out=h_buffer();let i=start;while i<j_count(turns) {let turn=j_at(turns,i);let role=j_s(turn,"role");h_assert(h_equal(role,"user") || h_equal(role,"assistant"),"invalid chat role");
-        h_text(out,h_cat3("<|im_start|>",role,"\n"));h_text(out,j_s(turn,"content"));h_text(out,"<|im_end|>\n");i=i+1;}
+        h_text(out,h_cat3("<|im_start|>",role,"\n"));let content=j_s(turn,"content");
+        // Keep the seeded empty prefix: it avoids the reproduced greeting-only
+        // greedy response. This replay policy differs from Qwen's Jinja template,
+        // which strips older thinking blocks when rebuilding conversation history.
+        if h_equal(role,"assistant") && !h_starts(content,"<think>") {h_text(out,"<think>\n\n</think>\n\n");}
+        h_text(out,content);h_text(out,"<|im_end|>\n");i=i+1;}
     h_text(out,"<|im_start|>assistant\n");if !thinking {h_text(out,"<think>\n\n</think>\n\n");}return h_data(out);
 }
 fn ct_order(bits) {if bits&2147483648 {return (~bits)&4294967295;}return bits^2147483648;}

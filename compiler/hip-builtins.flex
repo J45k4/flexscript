@@ -3,7 +3,7 @@ fn hp_builtins() {
     p_text("// Flexscript word operations for AMD wave32 kernels.\n");
     p_text("#include <hip/hip_runtime.h>\n");
     p_text("#include <hip/hip_fp16.h>\n");
-    p_text("using W=unsigned long long;\n");
+    p_text("using W=unsigned long long;\nusing G16=unsigned short __attribute__((address_space(1)));\nusing G32=unsigned int __attribute__((address_space(1)));\nusing G64=W __attribute__((address_space(1)));\n");
     p_text("struct FWords {W v[8];};\n");
     p_text("extern __shared__ __align__(8) unsigned char flex_shared[];\n");
     p_text("#define FD __device__ __forceinline__\n");
@@ -14,11 +14,11 @@ fn hp_builtins() {
     p_text("FD W hp_div(W a,W b,int rem){if(!b || (a==0x8000000000000000ULL && b==~0ULL))__builtin_trap();return rem?(long long)a%(long long)b:(long long)a/(long long)b;}\n");
     p_text("FD W hp_unaligned_load(W p){W v;__builtin_memcpy(&v,(void*)p,8);return v;}\n");
     p_text("FD W hp_unaligned_store(W p,W v){__builtin_memcpy((void*)p,&v,8);return v;}\n");
-    p_text("FD W hp_load16(W p){return *(unsigned short*)p;}\n");
-    p_text("FD W hp_load32(W p){return *(unsigned int*)p;}\n");
-    p_text("FD W hp_load64(W p){return *(W*)p;}\nFD W hp_stream64(W p){return __builtin_nontemporal_load((W*)p);}\n");
-    p_text("FD W hp_store32(W p,W v){*(unsigned int*)p=(unsigned int)v;return v;}\n");
-    p_text("FD W hp_bf16(W p){return W(*(unsigned short*)p)<<16;}\n");
+    p_text("FD W hp_load16(W p){return *(G16*)p;}\n");
+    p_text("FD W hp_load32(W p){return *(G32*)p;}\n");
+    p_text("FD W hp_load64(W p){return *(G64*)p;}\nFD W hp_stream64(W p){return __builtin_nontemporal_load((G64*)p);}\n");
+    p_text("FD W hp_store32(W p,W v){*(G32*)p=(unsigned int)v;return v;}\n");
+    p_text("FD W hp_bf16(W p){return W(*(G16*)p)<<16;}\n");
     p_text("FD W hp_shared_load(W p){return *(W*)(flex_shared+p);}\n");
     p_text("FD W hp_shared_store(W p,W v){*(W*)(flex_shared+p)=v;return v;}\n");
     p_text("FD W hp_warp_sync(W mask){__syncwarp(mask);return 0;}\n");
@@ -44,7 +44,9 @@ fn hp_builtins() {
     p_text("FD W hp_rcp(W a){return hp_bits(__builtin_amdgcn_rcpf(hp_float(a)));}\n");
     p_text("FD W hp_rsqrt(W a){return hp_bits(__builtin_amdgcn_rsqf(hp_float(a)));}\n");
     p_text("FD W hp_max(W a,W b){return hp_bits(fmaxf(hp_float(a),hp_float(b)));}\n");
-    p_text("FD W hp_sum(W a){float x=hp_float(a);for(int d=16;d;d>>=1)x+=__shfl_xor(x,d,32);return hp_bits(x);}\n");
+    // Pair equal four-lane sums using mirrors; row rotations can give lanes
+    // different addition trees under cancellation and violate broadcast.
+    p_text("FD W hp_sum(W a){float x=hp_float(a);x+=hp_float(__builtin_amdgcn_mov_dpp((int)hp_bits(x),0xb1,15,15,false));x+=hp_float(__builtin_amdgcn_mov_dpp((int)hp_bits(x),0x4e,15,15,false));x+=hp_float(__builtin_amdgcn_mov_dpp((int)hp_bits(x),0x141,15,15,false));x+=hp_float(__builtin_amdgcn_mov_dpp((int)hp_bits(x),0x140,15,15,false));x+=hp_float(__builtin_amdgcn_permlanex16((int)hp_bits(x),(int)hp_bits(x),0x76543210,0xfedcba98,false,false));return hp_bits(x);}\n");
     p_text("FD W hp_half_pack(W a){return W(__half_as_ushort(__float2half_rn(hp_float(a))))|(W(__half_as_ushort(__float2half_rn(hp_float(a>>32))))<<16);}\n");
     p_text("FD W hp_half_unpack(W a){return hp_bits(__half2float(__ushort_as_half(a)))|(hp_bits(__half2float(__ushort_as_half(a>>16)))<<32);}\n");
     p_text("FD W hp_bf16_half(W a){return hp_half_pack((W((unsigned int)a<<16))|(W((unsigned int)a&0xffff0000U)<<32));}\n");

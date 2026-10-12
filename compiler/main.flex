@@ -6,6 +6,7 @@ import "wasm.flex";
 import "gpu-intrinsics.flex";
 import "ptx.flex";
 import "hip.flex";
+import "rdna.flex";
 import "sass.flex";
 import "sass-opt.flex";
 import "sass-registers.flex";
@@ -1805,13 +1806,19 @@ fn main(argc, argv) {
     source_path = "flexscript";
     if argc>=2 && up_text(load64(argv+8),"run") {return vm_main(argc,argv);}
     if argc >= 2 && up_text(load64(argv + 8), "upgrade") { return up_main(argc, argv); }
+    if argc>=2 {
+        let script=load64(argv+8);let n=length(script);let direct=0;
+        if n>=5 && load8(script)!=45 {direct=up_text(script+n-5,".flex") || up_text(script+n-5,".seta");}
+        if argc>=3 && up_text(load64(argv+16),"-o") {direct=0;}
+        if direct {return vm_script_main(argc,argv);}
+    }
     if argc == 2 {
         let arg = load64(argv + 8);
         if equal(arg, length(arg), "--version", 9) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|ptx|sass-sm75|hip|rdna-gfx1201|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|ptx|sass-sm75|hip|rdna-gfx1201|rdna-direct-gfx1201|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n       flex <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1827,6 +1834,7 @@ fn main(argc, argv) {
             else if up_text(value,"sass-sm75") {sass_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"hip") {hip_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"rdna-gfx1201") {hip_target=1;hp_machine=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"rdna-direct-gfx1201") {hip_target=1;hp_machine=2;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"ir") {frontend_ir_target=1;}
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}

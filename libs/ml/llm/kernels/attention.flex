@@ -25,7 +25,7 @@ fn kernel(index,input,output,count) {
     }
     let shared=warp*1024+lane*8;
     gpu_shared_store64(shared,a0);gpu_shared_store64(shared+256,a1);gpu_shared_store64(shared+512,a2);gpu_shared_store64(shared+768,a3);
-    if !lane {gpu_shared_store64(16384+warp*16,maximum);gpu_shared_store64(16392+warp*16,denom);}gpu_barrier();
+    if !lane {gpu_shared_store64(16384+warp*16,maximum);gpu_shared_store64(16392+warp*16,denom);}gpu_shared_barrier();
     if (index&511)<128 {
     maximum=4286578688;
     maximum=ll_max(maximum,gpu_shared_load64(16384));

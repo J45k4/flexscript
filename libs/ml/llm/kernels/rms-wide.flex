@@ -13,7 +13,7 @@ fn kernel(index,input,output,count) {
     }
     sum=ll_sum(sum);
     if n!=128 {
-        if !(lane&31) {gpu_shared_store64((lane>>5)*8,sum);}gpu_barrier();
+        if !(lane&31) {gpu_shared_store64((lane>>5)*8,sum);}gpu_shared_barrier();
         sum=gpu_f32_add(gpu_f32_add(gpu_shared_load64(0),gpu_shared_load64(8)),gpu_f32_add(gpu_shared_load64(16),gpu_shared_load64(24)));
     }
     let scale=gpu_f32_rsqrt_approx(gpu_f32_add(gpu_f32_mul(sum,(gpu_launch_word(4)&4294967295)),(gpu_launch_word(5)&4294967295)));

@@ -26,8 +26,9 @@ class Terminal:
         self.original = termios.tcgetattr(self.slave)
         self.output = b''
         self.last_send_offset = 0
+        command = list(binary) if isinstance(binary, (list, tuple)) else [str(binary)]
         self.process = subprocess.Popen(
-            [str(binary), '--history-dir', str(directory), *extra], cwd=ROOT,
+            [*command, '--history-dir', str(directory), *extra], cwd=ROOT,
             stdin=self.slave, stdout=self.slave, stderr=self.slave,
             env=env, start_new_session=True,
         )
@@ -71,6 +72,156 @@ class Terminal:
 
 def sessions(directory):
     return [json.loads(p.read_text()) for p in directory.glob('*.json')]
+
+
+def prompt_tests(compiler):
+    with tempfile.TemporaryDirectory(prefix='chat-prompt-', dir=ROOT / 'build') as temp:
+        directory = Path(temp)
+        source = directory / 'prompt.flex'
+        source.write_text('import ' + json.dumps(str(ROOT / 'libs/ml/llm/chat.flex')) + ';\n' + '''
+fn main(argc,argv) {
+    h_environment(argc,argv);let turns=j_parse(h_read(load64(argv+8)));
+    h_print(1,ct_prompt(turns,lw_int(load64(argv+16)),lw_int(load64(argv+24))));return 0;
+}
+''')
+        binary = directory / 'prompt'
+        subprocess.run([compiler, source, '-o', binary], cwd=ROOT, check=True)
+        request = directory / 'turns.json'
+        prefix = '<think>\n\n</think>\n\n'
+        turns = [dict(role='user', content='Ping'),
+                 dict(role='assistant', content="Hello! I'm Ping."),
+                 dict(role='user', content='describe architecture of linux')]
+        def render(start=0, thinking=0):
+            request.write_text(json.dumps(turns))
+            return subprocess.check_output([binary, request, str(start), str(thinking)], cwd=ROOT).decode()
+        first = '<|im_start|>user\nPing<|im_end|>\n'
+        answer = '<|im_start|>assistant\n' + prefix + "Hello! I'm Ping.<|im_end|>\n"
+        latest = '<|im_start|>user\ndescribe architecture of linux<|im_end|>\n'
+        end = '<|im_start|>assistant\n'
+        assert render() == first + answer + latest + end + prefix
+        assert render(thinking=1) == first + answer + latest + end
+        assert render(start=2) == latest + end + prefix
+        turns[1]['content'] = prefix + "Hello! I'm Ping."
+        assert render() == first + answer + latest + end + prefix, 'duplicated existing thinking prefix'
+        turns[1]['content'] = '<think>Earlier reasoning</think>\n\nAnswer'
+        assert '<|im_start|>assistant\n<think>Earlier reasoning</think>\n\nAnswer<|im_end|>' in render()
+    print('Chat prompt: invisible prefixes survive history replay, trimming and thinking-mode changes.', flush=True)
+
+
+def script_launch_tests(compiler):
+    compiler = str((ROOT / compiler).resolve())
+    # Both public invocation forms must launch executable workers and keep an
+    # interactive session alive beyond the VM's default five-second deadline.
+    for prefix in ([compiler, './llm.flex'], [compiler, 'run', './llm.flex']):
+        with tempfile.TemporaryDirectory(prefix='llm-launch-', dir=ROOT / 'build') as temp:
+            env = dict(os.environ, FLEX_LLM_DEMO='1')
+            t = Terminal(prefix, Path(temp), ['--compiler', compiler, '--max-tokens', '4'], env)
+            try:
+                t.wait('Model ready')
+                assert b'Building native chat host...' in t.output
+                t.pump(6)
+                assert t.process.poll() is None, t.output[-2000:]
+                t.send('launcher regression\r')
+                t.wait('Finished: limit')
+                saved = sessions(Path(temp))
+                assert len(saved) == 1
+                assert saved[0]['messages'][0]['content'] == 'launcher regression'
+                assert 'demo chat worker' in saved[0]['messages'][1]['content']
+                assert b'execution deadline exceeded' not in t.output
+            finally:
+                t.close()
+    print('Script launcher: both forms survive the VM deadline and generate/save a reply.', flush=True)
+
+
+def clipboard_daemon_tests(binary, compiler):
+    """A background clipboard owner keeps stderr open, as real wl-copy does."""
+    with tempfile.TemporaryDirectory(prefix='flex-clipboard-') as temp:
+        directory = Path(temp)
+        clips = directory / 'bin'
+        clips.mkdir()
+        clipboard = directory / 'clipboard'
+        mode = directory / 'mode'
+        stopped = directory / 'stop'
+        owners = directory / 'owners'
+        mode.write_text('background')
+        copy = '''import os,sys,time
+from pathlib import Path
+root=Path(os.environ['TUI_CLIP_TEST'])
+if '-o' in sys.argv:
+    sys.stdout.buffer.write((root/'clipboard').read_bytes());sys.exit(0)
+mode=(root/'mode').read_text()
+if mode=='earlyfail': sys.exit(1)
+if mode=='stall': time.sleep(10)
+(root/'clipboard').write_bytes(sys.stdin.buffer.read())
+if mode=='background':
+    null=os.open(os.devnull,os.O_RDWR)
+    os.dup2(null,0);os.dup2(null,1);os.close(null)
+    pid=os.fork()
+    if pid:
+        with (root/'owners').open('a') as f: f.write(str(pid)+'\\n')
+        sys.exit(0)
+    until=time.monotonic()+20
+    while time.monotonic()<until and not (root/'stop').exists(): time.sleep(.02)
+    os._exit(0)
+'''
+        for name, body in [('wl-copy', copy), ('xclip', copy),
+                           ('wl-paste', "import os,sys\nfrom pathlib import Path\nsys.stdout.buffer.write((Path(os.environ['TUI_CLIP_TEST'])/'clipboard').read_bytes())\n")]:
+            script = clips / name
+            script.write_text('#!' + sys.executable + '\n' + body)
+            script.chmod(0o755)
+        env = dict(os.environ, PATH=str(clips) + ':' + os.environ['PATH'],
+                   WAYLAND_DISPLAY='tui-test', DISPLAY='', TUI_CLIP_TEST=str(directory))
+        t = Terminal(binary, directory / 'sessions', ['--demo', '1'], env)
+        try:
+            t.wait('Model ready')
+            t.send('hello\r')
+            t.send('\x1b[<0;1;5M\x1b[<32;6;5M\x1b[<0;6;5m')
+            assert clipboard.read_text() == 'hello', 'selection was not copied'
+            t.send('\x1b[<0;3;5M\x1b[<0;3;5m')
+            assert b'\x1b[1;1H' in t.output[t.last_send_offset:], 'clipboard daemon blocked redraw'
+            assert b'\x1b[7m' not in t.output[t.last_send_offset:], 'clipboard daemon blocked selection clearing'
+            t.wait('Finished: limit', timeout=2)
+            for owner in owners.read_text().splitlines():
+                os.kill(int(owner), 0)  # Success must leave clipboard ownership alive.
+            t.send('\x16')
+            t.wait('hello')
+            t.close()
+
+            source = directory / 'copy.flex'
+            source.write_text('import ' + json.dumps(str(ROOT / 'libs/tui/clipboard.flex')) + ';\n' + '''
+fn main(argc,argv) {
+    h_environment(argc,argv);let okay=tc_copy(h_read(load64(argv+8)));
+    if !okay {h_print(1,tc_error);return 1;}h_print(1,"copied");return 0;
+}
+''')
+            probe = directory / 'copy'
+            subprocess.run([compiler, str(source), '-o', str(probe)], cwd=ROOT, check=True)
+            payload = directory / 'payload'
+            payload.write_text('你好\n' * 32768)
+            for wayland, display in [('tui-test', ''), ('', 'tui-test')]:
+                result = subprocess.run([probe, payload], env=dict(env, WAYLAND_DISPLAY=wayland, DISPLAY=display),
+                                        capture_output=True, timeout=2)
+                assert result.returncode == 0, result.stderr.decode(errors='replace')
+                assert clipboard.read_bytes() == payload.read_bytes(), 'large Unicode selection truncated'
+            mode.write_text('earlyfail')
+            result = subprocess.run([probe, payload], env=env, capture_output=True, timeout=2)
+            assert result.returncode == 1 and result.stdout == b'Clipboard copy failed.', result
+            mode.write_text('stall')
+            result = subprocess.run([probe, payload], env=env, capture_output=True, timeout=3)
+            assert result.returncode == 1 and result.stdout == b'Clipboard copy timed out.', result
+        finally:
+            stopped.touch()
+            if t.process.poll() is None:
+                os.kill(t.process.pid, signal.SIGTERM)
+                t.pump(.2)
+                try:
+                    t.process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    t.process.kill()
+                    t.process.wait()
+                os.close(t.master)
+                os.close(t.slave)
+    print('Clipboard: background ownership, streaming/clicks, paste, large Unicode, early failure and timeout passed.', flush=True)
 
 
 def pty_tests(binary):
@@ -140,6 +291,14 @@ def pty_tests(binary):
             t.send('\x1b[<0;3;5M\x1b[<0;3;5m')
             assert b'\x1b[7m' not in t.output[t.last_send_offset:], 'plain text click did not clear selection'
             assert clipboard.read_text() == 'hello', 'clearing selection replaced clipboard'
+            t.send('\x1b[<0;1;5M\x1b[<32;6;5M\x1b[<0;6;5m')
+            t.send('\x1b[<0;3;5m')
+            assert b'\x1b[7m' not in t.output[t.last_send_offset:], 'release-only click extended old selection'
+            assert clipboard.read_text() == 'hello', 'release-only click replaced clipboard'
+            t.send('\x1b[<0;1;5M\x1b[<32;6;5M\x1b[<0;6;5m')
+            t.send('\x1b[<2;3;5M\x1b[<2;3;5m')
+            assert b'\x1b[7m' not in t.output[t.last_send_offset:], 'right click kept transcript selection'
+            assert clipboard.read_text() == 'hello', 'right click replaced clipboard'
             t.send('\x1b[<0;1;5M\x1b[<32;6;5M\x1b[<0;6;5m')
             t.send('\x1b[<0;1;22M\x1b[<0;1;22m')
             assert b'\x1b[7m' not in t.output[t.last_send_offset:], 'click outside messages did not clear selection'
@@ -423,7 +582,9 @@ class Worker:
                 continue
             line = self.p.stdout.readline()
             assert line, self.p.stderr.read().decode(errors='replace')
-            event = json.loads(line)
+            # Individual token pieces may split a UTF-8 character. Semantic
+            # checks use the complete, joined text from the done event.
+            event = json.loads(line.decode('utf-8', errors='replace'))
             result.append(event)
             if event['event'] == kind:
                 return result
@@ -459,6 +620,23 @@ def gpu_tests(binary, checkpoint):
             second = next(e for e in events if e['event'] == 'done')
             assert len(second['input_ids']) > len(done['input_ids'])
             evidence[backend].append(second)
+            # Replay the real repeated-greeting report, then require a reply
+            # that demonstrates both the latest prompt and prior turn survived.
+            turns = [dict(role='user', content='Ping')]
+            events = w.generate(turns, 24)
+            greeting = next(e for e in events if e['event'] == 'done')
+            turns += [dict(role='assistant', content=greeting['text']),
+                      dict(role='user', content='describe architecture of linux')]
+            events = w.generate(turns, 64)
+            linux = next(e for e in events if e['event'] == 'done')
+            assert linux['text'] != greeting['text'] and 'linux' in linux['text'].lower()
+            assert 'kernel' in linux['text'].lower(), 'latest question was lost during history replay'
+            turns += [dict(role='assistant', content=linux['text']),
+                      dict(role='user', content='What subject did I just ask you to describe? Answer in one sentence.')]
+            events = w.generate(turns, 32)
+            recall = next(e for e in events if e['event'] == 'done')
+            assert 'linux' in recall['text'].lower(), 'conversation history was lost'
+            evidence[backend].extend([greeting, linux, recall])
             events = w.generate([dict(role='user', content='GPU ' * 600)], 4)
             assert any(e['event'] == 'error' for e in events), 'oversized prompt was not rejected'
             w.send(dict(op='generate', turns=[prompt], max_tokens=200, temperature=0, thinking=0))
@@ -489,9 +667,16 @@ def main():
     parser.add_argument('--binary', default='build/llm-chat')
     parser.add_argument('--gpu', action='store_true')
     parser.add_argument('--checkpoint', default=os.environ.get('QWEN_CHECKPOINT'))
+    parser.add_argument('--clipboard-only', action='store_true')
     args = parser.parse_args()
     binary = (ROOT / args.binary).resolve()
+    if args.clipboard_only:
+        clipboard_daemon_tests(binary, args.compiler)
+        return
+    prompt_tests(args.compiler)
+    script_launch_tests(args.compiler)
     subprocess.run([args.compiler, 'llm.flex', '-o', str(binary)], cwd=ROOT, check=True)
+    clipboard_daemon_tests(binary, args.compiler)
     pty_tests(binary)
     thinking_tests(binary)
     context_tests(args.compiler)

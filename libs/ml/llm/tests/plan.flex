@@ -25,9 +25,10 @@ fn lt_plan_bad(which) {
 }
 fn lt_plan_test(executable) {
     lt_plan_fixture();lp_parse("libs/ml/examples/qwen3-inference.pup");h_assert(h_count(lm_steps)==43 && lm_output_size==64,"static layer graph expansion differs");
-    lm_prepare();h_assert(h_count(lm_steps)==25,"fused schedule expansion differs");let fused=0;let pairs=0;let at=0;
-    while at<h_count(lm_steps) {let step=h_at(lm_steps,at);if load64(step)==7 {h_assert(load64(step+64) && load64(step+32)!=load64(step+64),"fusion must retain both graph outputs");fused=fused+1;}else if load64(step)==8 {pairs=pairs+1;}at=at+1;}
-    h_assert(fused==4 && pairs==2,"expected graph fusions missing");lm_fuse();h_assert(h_count(lm_steps)==25,"schedule fusion must be idempotent");lt_checks=lt_checks+1;
+    let expected=25;if lm_backend>=2 {expected=17;}
+    lm_prepare();h_assert(h_count(lm_steps)==expected,"fused schedule expansion differs");let fused=0;let pairs=0;let caches=0;let at=0;
+    while at<h_count(lm_steps) {let step=h_at(lm_steps,at);if load64(step)==7 {h_assert(load64(step+64) && load64(step+32)!=load64(step+64),"fusion must retain both graph outputs");fused=fused+1;}else if load64(step)==8 {pairs=pairs+1;}else if load64(step)==27 {caches=caches+1;}at=at+1;}
+    h_assert(fused+caches*2==4 && pairs==2,"expected graph fusions missing");lm_fuse();h_assert(h_count(lm_steps)==expected,"schedule fusion must be idempotent");lt_checks=lt_checks+1;
     let names=h_args("weight","shape","element","operation","output","ratio");h_add(names,"loop");let messages=h_args("missing checkpoint tensor","linear weight shape mismatch","elementwise shape mismatch","unsupported model operation","output must be the final declaration","attention head ratio");h_add(messages,"invalid layer count");let i=0;
     while i<h_count(names) {let result=h_run(h_args(executable,"--reject-case",h_at(names,i),0,0,0));h_check(result,1,0);h_assert(h_has(h_err(result),h_at(messages,i)),h_err(result));lt_checks=lt_checks+1;i=i+1;}
     lm_dry_run=0;return 0;

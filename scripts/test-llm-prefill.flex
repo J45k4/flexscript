@@ -85,7 +85,7 @@ fn pf_attention(depth) {
 fn pf_bits_equal(actual,expected,half) {
     let mask=2139095040;let mantissa=8388607;if half {mask=31744;mantissa=1023;}
     if (expected&mask)==mask && (expected&mantissa) {if !((actual&mask)==mask && (actual&mantissa)) {h_print(2,h_cat3("Conversion NaN got ",h_int(actual),h_cat3(" expected ",h_int(expected),h_cat(" half ",h_int(half)))));}h_assert((actual&mask)==mask && (actual&mantissa),"NaN conversion classification");}
-    else {h_assert(actual==expected,"packed conversion bit mismatch");}pf_checks=pf_checks+1;return 0;
+    else {if actual!=expected {h_die(h_cat3("packed conversion mismatch actual ",h_int(actual),h_cat(" expected ",h_int(expected))));}}pf_checks=pf_checks+1;return 0;
 }
 fn pf_conversions(compiler) {
     let source=h_cat3("import \"",h_real("lib/gpu.flex"),"\";fn kernel(i,a,b,n){let v=gpu_load_u64(a+i*8);gpu_store_u32(b+i*16,gpu_f32x2_to_f16x2(v));gpu_store_u32(b+i*16+4,gpu_bf16x2_to_f16x2(v));let x=gpu_f16x2_to_f32x2(v);gpu_store_u32(b+i*16+8,x);gpu_store_u32(b+i*16+12,x>>32);return 0;}");

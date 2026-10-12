@@ -1,13 +1,15 @@
 # Qwen3 inference on NVIDIA and AMD
 
-`libs/ml/examples/qwen3-inference.pup` runs Qwen3-1.7B with a native Flexscript
+`libs/ml/examples/qwen3-inference.pup` runs original Qwen3-1.7B and Qwen3-4B with a native Flexscript
 host, a native ByteLevel BPE tokenizer, resident 16-bit checkpoint weights, FP32
 activations and a retained FP32 KV cache. NVIDIA uses direct SASS (`--backend
 sass`) or driver-compiled PTX (`--backend cuda`). AMD uses native gfx1201 code
-objects (`--backend rdna`) or runtime-compiled HIP source (`--backend hip`).
-The default detects a HIP device and selects RDNA, otherwise SASS.
+objects emitted directly (`--backend rdna-direct`), native objects compiled by
+ROCm LLVM (`--backend rdna`), or runtime-compiled HIP source (`--backend hip`).
+The default detects a HIP device and selects direct RDNA, otherwise SASS.
 GLib supplies Unicode/regex functions. NVIDIA needs `libcuda.so.1`; AMD needs
-ROCm's HIP runtime, HIPRTC and headers under `/opt/rocm/include`.
+ROCm's HIP runtime. Direct RDNA needs no HIPRTC compilation; the LLVM routes
+also require HIPRTC and headers under `/opt/rocm/include`.
 See [RDNA setup and implementation](rdna.md) for the tested Radeon configuration.
 Inference uses Flexscript kernels and its own planner, without cuBLAS,
 hipBLAS, Python or an external ML runtime.
@@ -60,6 +62,23 @@ packed-memory, launch-argument and floating-point intrinsics.
 The root `llm.flex` builds a terminal chat application using the reusable
 [native TUI library](tui.md):
 
+Run the script directly from the project directory:
+
+```sh
+build/flex ./llm.flex
+# Larger original Qwen3, with either generation mode:
+build/flex ./llm.flex --model qwen3-4b
+build/flex ./llm.flex --model qwen3-4b --thinking on
+# Explicit VM invocation also works:
+build/flex run ./llm.flex
+```
+
+The script builds `build/llm-chat` and replaces its process with that native
+host, forwarding arguments and environment. The interactive chat and its
+workers then run without the VM's five-second execution deadline. Use
+`--compiler PATH` to select a compiler for the launcher and GPU kernels.
+For an explicit build instead:
+
 ```sh
 build/flex-llm llm.flex -o build/llm-chat
 build/llm-chat --checkpoint "$QWEN_CHECKPOINT" --backend sass
@@ -94,13 +113,33 @@ up to 256 KiB of text; conversation requests retain up to 512 KiB before
 the worker trims turns by token count.
 `--no-warmup 1` defers model loading until the first prompt. Without an explicit
 checkpoint, it checks `QWEN_CHECKPOINT`, then the existing pinned Puppygrad cache,
-then `build/llm/models/qwen3-1.7b`. `/download` downloads the pinned manifest's
+then `build/llm/models/MODEL` and `../puppygrad/models/MODEL`. `/download` downloads the selected pinned manifest's
 assets there using resumable curl transfers; downloads are initiated explicitly.
-`/models` reports the currently supported Qwen3-1.7B recipe and asset readiness.
-The current model recipe is Qwen3-1.7B; CPU inference is not implemented.
+`/models` opens a model picker. Click a model, or use Up/Down and Enter, to
+select it. The focused row is highlighted and the active model is marked.
+This also works in the preview while typing `/models`; choosing a model clears
+the pending command. Escape closes the picker without changing the model.
+It lists both models and their checkpoint readiness; every shard
+referenced by the checkpoint index must exist. `/model qwen3-4b` or
+`/model qwen3-1.7b` releases the old worker and starts a fresh conversation.
+Saved chats retain their model, and resuming a chat selects that model again.
+An explicit `--checkpoint` identifies the model from its configuration; an
+explicit `--model` must agree with it. Model switching remembers a custom
+checkpoint directory for the duration of the application.
+An explicitly selected model overrides `QWEN_CHECKPOINT` when that environment
+default identifies a different model.
+
+The original 4B model is pinned in `libs/ml/examples/qwen3-4b.model.json` to
+`1cfa9a7208912126459214e8b04321603b3df60c`. It uses the same recipe, with
+36 layers, width 2560, intermediate width 9728 and 32 query / 8 KV heads.
+Its checkpoint weights occupy about 7.5 GiB before KV cache and working space.
+`--context auto` accounts for the larger model when choosing a context.
+The separate Instruct-2507 and Thinking-2507 checkpoints are not supported by
+this catalog. CPU inference is not implemented.
 
 | Commands | Purpose |
 | --- | --- |
+| `/models`, `/model qwen3-1.7b|qwen3-4b`, `/download` | Select a model and explicitly download missing assets |
 | `/backend sass|cuda|hip|rdna`, `/device N`, `/weights FORMAT` | Reload with selected execution settings |
 | `/thinking on|off` | Select Qwen3 thinking prompt format |
 | `/temperature 0..2` | Greedy at zero (default); top-40 temperature sampling otherwise |
@@ -122,12 +161,24 @@ visible below it. Click the `[+] Thinking` / `[-] Thinking` header to expand or
 collapse it; Ctrl+T toggles the latest block. This also works while reasoning
 is still streaming. Folding only changes the display; full text stays in saved
 conversations and model context. `/thinking on|off` controls model generation.
+Both original models support both modes. `--thinking on` enables reasoning at
+startup and defaults temperature to 0.6; `/thinking on` also changes a zero
+temperature to 0.6 to avoid greedy reasoning repetitions. `/temperature` or
+`--temperature` can override this. Reasoning consumes the output token limit,
+so short limits can stop before the final answer.
+
+Answers generated with thinking off replay the same invisible empty thinking
+block used to start their generation. It stays out of the visible transcript
+and is restored when preparing conversation history for subsequent prompts.
+This Flexscript replay policy avoids a reproduced greeting-only response with
+greedy decoding. Qwen3's official Jinja template instead removes older thinking
+blocks when rebuilding history; retaining this prefix is a local workaround.
 
 `/models`, `/sessions`, `/history` and `/help` open temporary panels just above
 the composer, growing upward as needed. Arrows, PageUp/PageDown and the mouse
 wheel scroll long panels. Escape closes a panel; typing closes it and edits
 the composer. Panel contents are not added to conversation history.
-Typing `/models` or `/model` previews the models panel before submission,
+Typing `/models` or `/model` previews the model picker before submission,
 including commands completed with Tab or pasted into the composer.
 
 Busy operations show a spinner, elapsed stage time and an activity bar. Kernel
@@ -152,6 +203,8 @@ worker, without GPU access or checkpoint loading. Integration checks are:
 
 ```sh
 python scripts/test-llm-tui.py
+python scripts/test-llm-models.py
+python scripts/test-llm-models.py --gpu  # original 4B on direct RDNA
 build/flex-llm scripts/test-llm-capacity.flex -o build/test-llm-capacity
 build/test-llm-capacity
 python scripts/test-llm-tui.py --gpu --checkpoint "$QWEN_CHECKPOINT"
@@ -190,7 +243,9 @@ Choose the backend independently from the model and weight layout:
 build/llm-infer --backend sass --checkpoint "$QWEN_CHECKPOINT"
 # PTX compiled by the NVIDIA driver for the installed GPU.
 build/llm-infer --backend cuda --checkpoint "$QWEN_CHECKPOINT"
-# gfx1201 machine code loaded through HIP.
+# Direct gfx1201 machine code, without LLVM/HIPRTC compilation.
+build/llm-infer --backend rdna-direct --checkpoint "$QWEN_CHECKPOINT"
+# gfx1201 machine code compiled by ROCm LLVM and loaded through HIP.
 build/llm-infer --backend rdna --checkpoint "$QWEN_CHECKPOINT"
 # HIP source compiled through HIPRTC when modules are loaded.
 build/llm-infer --backend hip --checkpoint "$QWEN_CHECKPOINT"
@@ -206,7 +261,7 @@ physical validation so far is on RTX 2070, with the same 60 greedy chat IDs as
 the original SASS run. Other architectures still need device validation and
 performance tuning. AMD modes use HIP graphs and RDNA4 WMMA prompt kernels.
 AMD device validation is on gfx1201, with wave32 kernels. Reports record all
-four backend names and their compiler targets, including plan-only reports.
+five backend names and their compiler targets, including plan-only reports.
 
 Backend integration checks cover CUDA inference in both FP16 layouts, default
 SASS inference, GPU-free CUDA planning, invalid backend rejection, and CUDA
@@ -241,11 +296,12 @@ validated for the pinned Qwen3-1.7B checkpoint. `--weights bf16 --prefill serial
 retains the original BF16/FP32 numerical path. All modes keep the KV cache in
 FP32 and leave the Pup model definition unchanged.
 
-The initial recipe requires Qwen3 text checkpoints with BF16 weights, 128-wide
+The recipe requires Qwen3 text checkpoints with BF16 weights, 128-wide
 heads, bias-free full attention, no rotary scaling and `rope_theta=1000000`.
-It supports one sequence, context capacities up to 4096, and power-of-two GQA
-head ratios. Physical testing used Qwen3-1.7B on an RTX 2070 (SM75). Other
-architectures, quantization formats and GPU targets have not been validated.
+It supports one sequence, checkpoint-bounded context capacities up to 40960,
+and power-of-two GQA head ratios. Physical testing covers Qwen3-1.7B on an RTX
+2070 (SM75) and Radeon RX 9070 XT, and original Qwen3-4B on the Radeon with
+direct RDNA. Quantized weights and other model architectures remain unsupported.
 When the configuration ties output and embedding weights, they share a device
 allocation. The pinned checkpoint's two copies were checked byte-for-byte.
 
@@ -374,8 +430,13 @@ The GPU library additionally exposes:
   eight-byte global words, respectively. The U16 load zero-extends its result.
 - `gpu_f32_max(a,b)`: native numeric maximum. A lone NaN yields the numeric
   argument; positive zero wins over negative zero. NaN payloads are not portable.
-- `gpu_warp_sum_f32(value)`: broadcasts the FP32 XOR-tree sum, with offsets
-  16, 8, 4, 2 and 1. All 32 lanes must participate; high input bits are ignored.
+- `gpu_warp_sum_f32(value)`: broadcasts an FP32 tree sum. NVIDIA uses XOR
+  offsets 16, 8, 4, 2 and 1; AMD uses DPP mirrors and a cross-row permutation.
+  Reduction order can differ. All 32 lanes must participate; high input bits
+  are ignored.
+- `gpu_shared_barrier()`: block rendezvous with shared-memory ordering. Every
+  block thread must participate. Use `gpu_barrier()` when cross-thread global
+  memory accesses also require ordering.
 - `gpu_launch_word(index)`: reads one of eight by-value kernel arguments, with
   the index wrapping modulo eight. These kernels use `cuda_launch_words` or
   eleven matching raw parameter pointers.
@@ -429,3 +490,9 @@ Profile either schedule with `scripts/profile-llm.flex --mode prefill` or
 events add instrumentation overhead; use the resident benchmark for speed
 comparisons. Its samples now include microsecond wall times alongside integer
 millisecond fields.
+
+The `--backend rdna-direct` mode encodes all Qwen kernels directly on gfx1201,
+including WMMA prefill and sampling. Compatible F16 GEMV, paired MLP, Q/K/V and
+residual RMSNorm use specialized fast paths; BF16, tiled matrices and other
+widths use the direct word-IR compiler. This mode needs no HIPRTC compilation.
+See [RDNA targets and limits](rdna.md) for the compiler target and launch ABI.

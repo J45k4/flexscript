@@ -94,7 +94,10 @@ Call `h_print(1,h_data(out))` before resetting frame scratch.
 shell interpolation. The application chooses copy shortcuts and whether a
 mouse selection copies automatically. Clipboard adapters are synchronous;
 applications requiring uninterrupted redraw during clipboard operations can
-run them in a worker.
+run them in a worker. Copy waits only for the helper's launcher to exit, not
+for output pipes inherited by its background clipboard owner. It keeps that
+owner alive for later paste requests. Copy failures are recoverable; a stalled
+launcher times out after two seconds.
 
 ## Checks
 
@@ -109,4 +112,6 @@ wrapped mouse offsets, large transcripts and rendering allocation lifetimes.
 The PTY suite checks the chat application's streaming, clipboard adapters,
 mouse copying/pasting, cancellation, persistence, resize and terminal restoration.
 Clipboard integration tests use isolated command fixtures; desktop clipboard
-availability depends on the user's session.
+availability depends on the user's session. The background-owner regression
+checks streaming, selection clearing, paste, large Unicode transfers and
+helper failures with `python scripts/test-llm-tui.py --clipboard-only`.

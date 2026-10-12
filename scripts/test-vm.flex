@@ -58,6 +58,7 @@ fn tv_host_tests() {
         h_check(tv_host(h_at(engines,env_engine),0,t_fixture,0),0,"");t_checks=t_checks+1;
         env_engine=env_engine+1;
     }
+    h_check(h_run(h_args(t_compiler,t_fixture,0,0,0,0)),0,"");t_checks=t_checks+1;
     // Restricted startup must retain the envp terminator without copying host
     // values; use direct word reads so this check needs no syscall capability.
     t_program("fn main(argc,argv){if load64(argv+argc*8)==0 && load64(argv+(argc+1)*8)==0 {return 0;}return 1;}");
@@ -270,6 +271,9 @@ fn suite(compiler) {
     t_program("fn main(argc,argv){let p=load64(argv+16);syscall(1,1,p,3,0,0,0);return argc;}");
     h_check(tv_run(0,0,t_fixture,h_args("first","two",0,0,0,0)),3,"two");
     t_checks=t_checks+1;
+    h_check(h_run(h_args(t_compiler,t_fixture,"first","two",0,0)),3,"two");t_checks=t_checks+1;
+    // An immediate -o retains the existing native compilation syntax.
+    t_compile();h_check(h_run(h_args(t_binary,"first","two",0,0,0)),3,"two");t_checks=t_checks+1;
     t_program("fn main(){let p=alloc(8);let n=syscall(0,0,p,8,0,0,0);syscall(1,1,p,n,0,0,0);return 0;}");
     h_check(h_wait(h_spawn(tv_args(0,h_args("--allow-stdin",0,0,0,0,0),t_fixture,0),"input",0)),0,"input");
     t_checks=t_checks+1;

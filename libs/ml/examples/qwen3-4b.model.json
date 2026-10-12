@@ -1,0 +1,19 @@
+{
+  "id": "qwen3-4b",
+  "program": "qwen3-inference.pup",
+  "checkpoint": {
+    "repo": "Qwen/Qwen3-4B",
+    "revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "files": [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "generation_config.json",
+      "model.safetensors.index.json",
+      "model-00001-of-00003.safetensors",
+      "model-00002-of-00003.safetensors",
+      "model-00003-of-00003.safetensors",
+      "LICENSE"
+    ]
+  }
+}

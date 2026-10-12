@@ -11,7 +11,7 @@ fn kernel(index,input,output,count) {
         sum=gpu_f32_fma(c,c,sum);sum=gpu_f32_fma(d,d,sum);p=p+2048;k=k+512;
     }
     while k<n {let a=gpu_load_u32(p);sum=gpu_f32_fma(a,a,sum);p=p+512;k=k+128;}
-    sum=ll_sum(sum);if !(lane&31) {gpu_shared_store64((lane>>5)*8,sum);}gpu_barrier();
+    sum=ll_sum(sum);if !(lane&31) {gpu_shared_store64((lane>>5)*8,sum);}gpu_shared_barrier();
     sum=gpu_f32_add(gpu_f32_add(gpu_shared_load64(0),gpu_shared_load64(8)),gpu_f32_add(gpu_shared_load64(16),gpu_shared_load64(24)));
     let scale=gpu_f32_rsqrt_approx(gpu_f32_add(gpu_f32_mul(sum,gpu_launch_word(4)),gpu_launch_word(5)));
     let w=gpu_launch_word(1)+lane*2;p=x+lane*4;y=y+lane*4;

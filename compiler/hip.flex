@@ -41,6 +41,7 @@ fn hp_intrinsic(kind,first) {
     if kind==13 {p_text("((threadIdx.z*blockDim.y+threadIdx.y)*blockDim.x+threadIdx.x)&31;\n");return 0;}
     if kind==14 {p_text("(unsigned int)__ballot(1);\n");return 0;}
     if kind==15 {p_text("(__syncthreads(),0);\n");return 0;}
+    if kind==71 {p_text("(__work_group_barrier(__CLK_LOCAL_MEM_FENCE),0);\n");return 0;}
     if kind==16 {name="hp_warp_sync";}else if kind==17 {name="hp_shared_load";}else if kind==18 {name="hp_shared_store";}
     else if kind>=20 && kind<=27 {
         p_text("(W)");if kind==20 {p_text("atomicAdd");}else if kind==21 {p_text("atomicAnd");}
@@ -108,6 +109,7 @@ fn hp_function(index) {
     p_text("}\n");return 0;
 }
 fn hip_finish() {
+    if hp_machine==2 {return rdna_finish();}
     if global_count || vm_heap_used>16 {fail("HIP target does not support globals or static data");}
     let kernel=find(functions,function_count,"kernel",6);
     if kernel<0 || load64(functions+kernel*32+24)!=4 {fail("HIP target requires kernel(index,input,output,count)");}

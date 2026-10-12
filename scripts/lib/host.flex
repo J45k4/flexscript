@@ -458,7 +458,8 @@ fn h_real(path) {
 fn h_temp() {
     let p=h_take(8);
     h_assert(syscall(318,p,8,0,0,0,0)==8,"getrandom failed");
-    let path=h_cat("/tmp/flexscript-tools-",h_hex(p,8));
+    let directory=h_getenv("TMPDIR");if !directory {directory="/tmp";}
+    let path=h_join(directory,h_cat("flexscript-tools-",h_hex(p,8)));
     h_assert(syscall(83,path,448,0,0,0,0)==0,"temporary directory failed");
     return path;
 }

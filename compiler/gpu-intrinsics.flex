@@ -17,6 +17,7 @@ fn gpu_intrinsic(index) {
     if equal(name,size,"gpu_lane",8) {return 13;}
     if equal(name,size,"gpu_active_mask",15) {return 14;}
     if equal(name,size,"gpu_barrier",11) {return 15;}
+    if equal(name,size,"gpu_shared_barrier",18) {return 71;}
     if equal(name,size,"gpu_warp_sync",13) {return 16;}
     if equal(name,size,"gpu_shared_load64",17) {return 17;}
     if equal(name,size,"gpu_shared_store64",18) {return 18;}
@@ -66,6 +67,10 @@ fn gpu_intrinsic(index) {
     if equal(name,size,"gpu_bf16x2_to_f16x2",19) {return 68;}
     if equal(name,size,"gpu_mma_f16x4",13) {return 67;}
     if equal(name,size,"gpu_rdna_wmma_f16x8",19) {return 70;}
+    if equal(name,size,"gpu_rdna_gemv_f16",17) {return 72;}
+    if equal(name,size,"gpu_rdna_mlp_f16",16) {return 73;}
+    if equal(name,size,"gpu_rdna_gemv_three_f16",23) {return 74;}
+    if equal(name,size,"gpu_rdna_rms_add_f16",20) {return 75;}
     return 0;
 }
 fn gpu_intrinsic_arity(kind) {
@@ -73,7 +78,7 @@ fn gpu_intrinsic_arity(kind) {
     if kind==67 {return 5;}
 
     if kind==54 {return 2;}
-    if kind<=15 || kind==52 {return 0;}
+    if kind<=15 || kind==52 || kind==71 || (kind>=72 && kind<=75) {return 0;}
     if kind==16 || kind==17 || kind==14 {return 1;}
     if kind==18 || (kind>=20 && kind<=26) {return 2;}
     if kind==27 || kind==28 {return 3;}
@@ -97,6 +102,7 @@ fn p_float_result(width) {
     else {p_text("mov.b64 ");p_reg(p_acc);p_text(", %d3;\n");}return 0;
 }
 fn p_intrinsic(kind,first) {
+    if kind>=72 && kind<=75 {fail("native RDNA intrinsics require rdna-direct-gfx1201");}
 
     if kind==69 {
         p_text("cvt.u32.u64 %r0,");p_reg(first);p_text(";\nmov.b32 {%h0,%h1},%r0;\ncvt.f32.f16 %f0,%h0;\ncvt.f32.f16 %f1,%h1;\nmov.b32 %r0,%f0;\nmov.b32 %r1,%f1;\nmov.b64 ");p_reg(p_acc);p_text(",{%r0,%r1};\n");return 0;
@@ -148,8 +154,8 @@ fn p_intrinsic(kind,first) {
         else if kind==13 {p_text("%laneid");}else {p_text("0;\nactivemask.b32 %s");}
         p_text(";\ncvt.u64.u32 ");p_reg(p_acc);p_text(", %s;\n");return 0;
     }
-    if kind==15 || kind==16 || kind==52 {
-        if kind==15 {p_text("bar.sync 0;\n");}
+    if kind==15 || kind==16 || kind==52 || kind==71 {
+        if kind==15 || kind==71 {p_text("bar.sync 0;\n");}
         else if kind==52 {p_text("membar.gl;\n");}
         else {p_text("cvt.u32.u64 %s, ");p_reg(first);p_text(";\nbar.warp.sync %s;\n");}
         p_text("mov.u64 ");p_reg(p_acc);p_text(", 0;\n");return 0;

@@ -448,6 +448,16 @@ fn vm_copy_arg(text) {
     let bytes=vm_address(address,n+1);
     let i=0;while i<=n {store8(bytes+i,load8(text+i));i=i+1;}return address;
 }
+// Bare source invocation is shorthand for run. Preserve the complete startup
+// layout so the guest receives the same arguments and environment on both paths.
+fn vm_script_main(argc,argv) {
+    let environment=argv+(argc+1)*8;let count=0;while load64(environment+count*8) {count=count+1;}
+    let args=alloc((argc+count+3)*8);if args<0 {print(2,"flex vm: cannot allocate startup arguments.\n");return 70;}
+    store64(args,load64(argv));store64(args+8,"run");let i=1;
+    while i<argc {store64(args+(i+1)*8,load64(argv+i*8));i=i+1;}store64(args+(argc+1)*8,0);
+    i=0;while i<count {store64(args+(argc+2+i)*8,load64(environment+i*8));i=i+1;}store64(args+(argc+2+count)*8,0);
+    return vm_main(argc+1,args);
+}
 fn vm_main(argc,argv) {
     let first=2;let root=0;let imports=-1;
     while first<argc && load8(load64(argv+first*8))==45 {

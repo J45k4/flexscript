@@ -112,7 +112,7 @@ fn suite(compiler) {
     h_check(h_run(h_args(t_compiler,t_fixture,"-o",h_join(t_work,"missing-dir/out"),0,0)),1,0);
     h_check(h_run(h_args(t_compiler,h_join(t_work,"absent.flex"),"-o",h_join(t_work,"absent"),0,0)),1,0);
     h_check(h_run(h_args(t_compiler,t_work,"-o",h_join(t_work,"directory"),0,0)),1,0);
-    h_check(h_run(h_args(t_compiler,t_fixture,"--bad",h_join(t_work,"bad"),0,0)),1,0);
+    h_check(h_run(h_args(t_compiler,"--bad",t_fixture,"-o",h_join(t_work,"bad"),0)),1,0);
     t_checks=t_checks+4;
     let existing=h_join(t_work,"existing");
     h_save(existing,"keep me");

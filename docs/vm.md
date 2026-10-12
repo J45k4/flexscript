@@ -85,6 +85,10 @@ flex run http://localhost:8080/app.flex
 flex run --jit --stats examples/vm-compute.flex
 ```
 
+`flex app.flex [args...]` and `flex app.seta [args...]` are shortcuts for
+`flex run` with default VM settings. `flex app.flex -o binary` still compiles
+a native executable. Use the explicit `run` form to set VM options.
+
 ## Restricted execution
 
 Use `flex run --restricted app.flex` to opt into guest memory isolation and

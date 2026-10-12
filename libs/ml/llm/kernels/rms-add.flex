@@ -13,7 +13,7 @@ fn kernel(index,input,output,count) {
         gpu_store_u32(residual,v0);gpu_store_u32(residual+4,v1);gpu_store_u32(residual+8,v2);gpu_store_u32(residual+12,v3);
         a=a+2048;b=b+2048;residual=residual+2048;k=k-1;
     }
-    sum=ll_sum(sum);if !(lane&31) {gpu_shared_store64((lane>>5)*8,sum);}gpu_barrier();
+    sum=ll_sum(sum);if !(lane&31) {gpu_shared_store64((lane>>5)*8,sum);}gpu_shared_barrier();
     sum=gpu_f32_add(gpu_f32_add(gpu_shared_load64(0),gpu_shared_load64(8)),gpu_f32_add(gpu_shared_load64(16),gpu_shared_load64(24)));
     let scale=gpu_f32_rsqrt_approx(gpu_f32_add(gpu_f32_mul(sum,(gpu_launch_word(4)&4294967295)),(gpu_launch_word(5)&4294967295)));
     let w=gpu_launch_word(6)+lane*8;let y=gpu_launch_word(2)+offset;residual=gpu_launch_word(7)+offset;k=((n>>2)+127-lane)>>7;

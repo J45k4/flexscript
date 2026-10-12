@@ -1,4 +1,4 @@
-// CUDA event measurements of each stage, without changing the Pup graph.
+// GPU event measurements of each stage, without changing the Pup graph.
 import "../libs/ml/llm/pup.flex";
 fn main(argc,argv) {
     h_environment(argc,argv);h_timeout=300000;
@@ -33,7 +33,7 @@ fn main(argc,argv) {
     let report=j_object();lm_report_backend(report);j_set(report,"mode",j_string(mode));j_set(report,"weight_storage",j_string(weight_mode));j_set(report,"wall_ms",j_int(lm_now()-start));j_set(report,"iterations",j_int(iterations));let kernels=j_array();
     i=0;while i<h_count(names) {let item=j_object();j_set(item,"kernel",j_string(h_at(names,i)));j_set(item,"nanoseconds",j_int(load64(total+i*8)));j_set(item,"calls",j_int(load64(calls+i*8)));
         j_set(item,"registers",j_int(device_function_attribute(load64(lm_functions+i*8),4)));lm_check(device_status);
-        let shared=0;if i==1 || i==6 || i==9 || i==24 {shared=32;}else if i==4 {shared=16640;}else if i==11 || i==21 {shared=lm_prompt_block*8;}
+        let shared=0;if i==1 || i==6 || i==9 || i==24 || i==31 {shared=32;}else if i==4 {shared=16640;}else if i==27 {shared=17664;}else if i==11 || i==21 {shared=lm_prompt_block*8;if lm_backend>=2 {shared=lm_prompt_block*24;}}
         j_set(item,"block_threads",j_int(lm_block(i)));j_set(item,"blocks_per_sm",j_int(device_occupancy(load64(lm_functions+i*8),lm_block(i),shared)));lm_check(device_status);j_push(kernels,item);i=i+1;}
     j_set(report,"kernels",kernels);j_save(b_option(argc,argv,"--report","build/llm/profile.json"),report);
     i=0;while i<h_count(steps) {lm_check(device_event_close(load64(starts+i*8)));lm_check(device_event_close(load64(ends+i*8)));i=i+1;}

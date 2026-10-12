@@ -17,6 +17,8 @@ fn gpu_grid_dim_z(){return gpu_host_only();}
 fn gpu_lane(){return gpu_host_only();}
 fn gpu_active_mask(){return gpu_host_only();}
 fn gpu_barrier(){return gpu_host_only();}
+// Block rendezvous with shared-memory ordering; global ordering is not required.
+fn gpu_shared_barrier(){return gpu_host_only();}
 fn gpu_warp_sync(mask){return gpu_host_only();}
 fn gpu_shared_load64(offset){return gpu_host_only();}
 fn gpu_shared_store64(offset,value){return gpu_host_only();}
@@ -115,7 +117,7 @@ fn gpu_f32_max(a,b) {
     if a>b {return a;}return b;
 }
 
-// Collective: all 32 lanes must participate. Broadcast the XOR-tree F32 sum.
+// Collective: all 32 lanes must participate. Broadcast a tree-reduced F32 sum.
 fn gpu_warp_sum_f32(x){return gpu_host_only();}
 
 // Optional eight by-value launch words. The index wraps modulo eight.

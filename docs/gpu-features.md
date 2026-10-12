@@ -11,11 +11,11 @@ implementation, and graphics shaders do not pass through our SASS compiler.
 | --- | --- | --- | --- |
 | All word integer operators, branches, loops, nonrecursive helpers | Yes | Yes | `kernel(index,input,output,count)` |
 | 1D/2D/3D launch geometry and thread/block coordinates | Yes | Yes | `cuda_config`, `cuda_launch_config` |
-| Dynamic shared memory and block barrier | Yes | Yes | `gpu_shared_*`, `gpu_barrier` |
+| Dynamic shared memory and block barriers | Yes | Yes | `gpu_shared_*`, `gpu_barrier`, `gpu_shared_barrier` |
 | 64-bit atomic add/and/or/xor/exchange/min/max/CAS | Yes | Yes | `gpu_atomic_*64` |
 | Active mask, ballot, 64-bit shuffle, warp synchronization | Yes | Yes | `gpu_active_mask`, `gpu_ballot`, `gpu_shuffle`, `gpu_warp_sync` |
 | FP32/FP64 add, subtract, multiply, fused multiply-add | Yes | Yes | `gpu_f32_*`, `gpu_f64_*` |
-| FP32 numeric maximum and full-warp XOR-tree sum | Yes | Yes | `gpu_f32_max`, `gpu_warp_sum_f32` |
+| FP32 numeric maximum and full-warp tree sum | Yes | Yes | `gpu_f32_max`, `gpu_warp_sum_f32` |
 | Eight optional by-value launch words, including helper calls | Yes | Yes | `gpu_launch_word`, `cuda_launch_words` |
 | FP32/FP64 conversions to/from signed i64 | Yes | Yes | `gpu_f*_from_i64`, `gpu_f*_to_i64` |
 | FP32/FP64 divide and square root | Yes, integer SASS routines | Yes | `gpu_f*_div`, `gpu_f*_sqrt` |
@@ -29,7 +29,10 @@ implementation, and graphics shaders do not pass through our SASS compiler.
 | Textured raster graphics, GLSL programs, RGBA framebuffer readback | Separate graphics API | Separate graphics API | `lib/graphics.flex`, EGL/OpenGL 4.5 |
 | Hardware ray queries and triangle/instance acceleration structures | Separate ray API | Separate ray API | `lib/vulkan.flex`, Vulkan KHR extensions |
 
-Only SM75 has been verified for direct machine-code emission. Advanced GPU
+General direct word-IR emission has been verified on SM75. The
+`rdna-direct-gfx1201` encoder emits the word-IR subset used by all Qwen GPU
+kernels, with four F16 whole-kernel fast paths; see
+[RDNA targets and limits](rdna.md) for supported operations and register limits. Advanced GPU
 intrinsics select PTX 6.5 / SM75; plain integer PTX retains the SM50 baseline.
 The packed-memory and SFU operations also support the
 [Qwen3 inference library](llm-inference.md). SFU approximations flush subnormals
@@ -68,11 +71,22 @@ Literal word indices become constant-bank loads in direct SASS; dynamic indices
 also work. PTX helper calls carry the same values through hidden parameters.
 
 `gpu_warp_sum_f32(value)` is a collective over all 32 lanes. It broadcasts a
-floating-point sum using the XOR offsets 16, 8, 4, 2 and 1, and clears the high
-word. Use it only where every lane participates. `gpu_f32_max(a,b)` returns the
+floating-point sum and clears the high word. NVIDIA uses the XOR offsets
+16, 8, 4, 2 and 1; AMD wave32 uses DPP row reductions and `permlanex16`.
+Reduction order and rounding can differ between backends. Use it only where
+every lane participates. `gpu_f32_max(a,b)` returns the
 numeric argument when the other is NaN and chooses positive zero over negative
 zero. Both have matching native SASS and PTX lowerings; maximum also has a CPU
 reference implementation.
+
+`gpu_shared_barrier()` synchronizes all threads in a block and orders shared
+memory accesses. Every block thread must reach it. Use `gpu_barrier()` when
+cross-thread communication also requires ordering global memory accesses.
+The AMD shared-only operation avoids a global-memory fence; PTX and direct
+SASS currently use the same block barrier for both operations. Shared-memory
+word load/store offsets must be eight-byte aligned. Packed `gpu_load_u16`,
+`gpu_load_u32`, `gpu_load_u64` and `gpu_store_u32` access global device memory;
+AMD lowers these accesses with an explicit global address space.
 
 ## Compile and discover the device
 
