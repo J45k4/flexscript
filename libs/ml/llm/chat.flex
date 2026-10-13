@@ -1,14 +1,23 @@
 // Resident chat worker. JSON-lines isolate inference failures from the terminal.
 import "capacity.flex";
 import "tokenizer.flex";
+import "../../os/gpu/runtime.flex";
 global ct_demo=0;
 global ct_rng=1;
 global ct_memory_plan=0;
 global ct_memory_reserve=0;
+global ct_runtime=0;
+global ct_gpu_os=0;
+fn ct_report_runtime(e) {
+    j_set(e,"runtime",j_string(ct_runtime));if !ct_demo && lm_backend>=2 {j_set(e,"wave_size",j_int(32));}if ct_gpu_os {j_set(e,"worker_target",j_string("hip-llvm-gfx1201"));j_set(e,"resident_workers",j_int(load64(ct_gpu_os+56)));j_set(e,"threads_per_worker",j_int(512));}return 0;
+}
 fn ct_event(kind) {let e=j_object();j_set(e,"event",j_string(kind));return e;}
 fn ct_send(e) {h_print(1,j_dump(e));h_print(1,"\n");return 0;}
 fn ct_status(text) {let e=ct_event("status");j_set(e,"text",j_string(text));return ct_send(e);}
 fn ct_progress(text,done,total) {let e=ct_event("progress");j_set(e,"text",j_string(text));j_set(e,"completed",j_int(done));j_set(e,"total",j_int(total));return ct_send(e);}
+fn ct_profile(after) {
+    let records=go_profile_records(ct_gpu_os,after);if !j_count(records) {return after;}let e=ct_event("gpu_profile");j_set(e,"source",j_string("gpu-worker"));j_set(e,"records",records);ct_send(e);return j_n(j_at(records,j_count(records)-1),"token");
+}
 fn ct_line() {
     let b=h_buffer();let byte=h_take(1);while 1 {let n=syscall(0,0,byte,1,0,0,0);if n==-4 {}else if n<=0 {return 0;}else if load8(byte)==10 {return h_data(b);}else {if h_size(b)>=4194304 {return 0;}h_append(b,byte,1);}}return 0;
 }
@@ -55,6 +64,21 @@ fn ct_generate(request) {
         let available=lm_capacity-h_count(tokens);if !maximum || maximum>=available {maximum=available;reason="context";}
         let archived=0;let offset=j_get(request,"history_offset");if offset {archived=j_value(offset);}let usage=ct_event("context");j_set(usage,"prompt_tokens",j_int(h_count(tokens)));j_set(usage,"trimmed_turns",j_int(start/2+archived));j_set(usage,"max_tokens",j_int(maximum));ct_send(usage);
         ct_status("Prefilling conversation");lm_prefill(tokens);let prefill=lm_now_us()-started;let logits=h_take(lm_output_size*4);let position=h_count(tokens);
+        if ct_gpu_os {
+            let setting=j_get(request,"profile");go_profile(ct_gpu_os,setting && j_value(setting));
+            go_sampling(ct_gpu_os,temperature,ct_rng);go_submit(ct_gpu_os,position,maximum,151645,151643);let polling=1;let profiled=0;let profile_tick=net_now();
+            while polling {
+                if !cancelled && ct_cancelled() {cancelled=1;go_cancel(ct_gpu_os);}
+                let produced=go_produced(ct_gpu_os);
+                while count<produced {let id=go_token(ct_gpu_os,count);j_push(generated,j_int(id));count=count+1;if !first {first=lm_now_us()-started;}
+                    if id!=151645 && id!=151643 {let piece=qt_decode(id);h_text(output,h_data(piece));let e=ct_event("token");j_set(e,"id",j_int(id));j_set(e,"text",j_string(h_data(piece)));ct_send(e);}}
+                if net_now()-profile_tick>=200 {profiled=ct_profile(profiled);profile_tick=net_now();}
+                if go_status(ct_gpu_os)>=2 {if go_produced(ct_gpu_os)==count {polling=0;}}if polling {h_sleep(1);}
+            }
+            let stopped=go_wait(ct_gpu_os);ct_rng=go_seed(ct_gpu_os);ct_profile(profiled);
+            if stopped==1 {reason="eos";}else if stopped==2 || cancelled {reason="cancelled";}else if stopped==3 {reason="context";}
+            else if stopped==4 {let error=ct_event("error");j_set(error,"text",j_string("GPU OS encountered nonfinite model logits."));ct_send(error);return 0;}
+        }else {
         let generating=1;while count<maximum && generating {
             if ct_cancelled() {cancelled=1;reason="cancelled";generating=0;}else {
             let id=0;if !temperature {id=lm_sample_greedy();}else {lm_check(device_download(logits,lm_output,lm_output_size*4));id=ct_sample(logits,lm_output_size,temperature);}j_push(generated,j_int(id));count=count+1;if !first {first=lm_now_us()-started;}
@@ -62,18 +86,30 @@ fn ct_generate(request) {
             else {let piece=qt_decode(id);h_text(output,h_data(piece));let e=ct_event("token");j_set(e,"id",j_int(id));j_set(e,"text",j_string(h_data(piece)));ct_send(e);
             if count<maximum {lm_execute(id,position,1);position=position+1;}}}
         }
-        let e=ct_event("done");lm_report_backend(e);j_set(e,"prefill_us",j_int(prefill));let input=j_array();let i=0;while i<h_count(tokens) {j_push(input,j_int(h_at(tokens,i)));i=i+1;}j_set(e,"input_ids",input);j_set(e,"generated_ids",generated);
+        }
+        let e=ct_event("done");lm_report_backend(e);ct_report_runtime(e);if ct_gpu_os {j_set(e,"decode_launches",j_int(1));}j_set(e,"prefill_us",j_int(prefill));let input=j_array();let i=0;while i<h_count(tokens) {j_push(input,j_int(h_at(tokens,i)));i=i+1;}j_set(e,"input_ids",input);j_set(e,"generated_ids",generated);
         j_set(e,"tokens",j_int(count));j_set(e,"elapsed_us",j_int(lm_now_us()-started));j_set(e,"first_token_us",j_int(first));j_set(e,"reason",j_string(reason));j_set(e,"text",j_string(h_data(output)));ct_send(e);return 0;
     }
     let e=ct_event("done");j_set(e,"tokens",j_int(count));j_set(e,"elapsed_us",j_int(lm_now_us()-started));j_set(e,"first_token_us",j_int(0));j_set(e,"reason",j_string(reason));j_set(e,"text",j_string(h_data(output)));ct_send(e);return 0;
 }
+// Automatic is a supported-runtime preference, not a startup benchmark.
+fn ct_choose_runtime(choice,backend,weight,device,demo) {
+    if !h_equal(choice,"auto") {return choice;}
+    if !demo && backend==4 && h_equal(weight,"f16") && go_supported(device) {return "gpu-os";}return "graph";
+}
 fn ct_worker(argc,argv) {
     lm_progress_json=1;
     ct_demo=lw_int(b_option(argc,argv,"--demo","0"));lm_select_backend(b_option(argc,argv,"--backend",lm_default_backend()));lm_device_ordinal=lw_int(b_option(argc,argv,"--device","0"));
+    let runtime=b_option(argc,argv,"--runtime","auto");h_assert(h_equal(runtime,"auto") || h_equal(runtime,"graph") || h_equal(runtime,"gpu-os"),"--runtime must be auto, graph or gpu-os");
+    let weight=b_option(argc,argv,"--weights","f16");ct_runtime=ct_choose_runtime(runtime,lm_backend,weight,lm_device_ordinal,ct_demo);
+    if h_equal(ct_runtime,"gpu-os") {h_assert(lm_backend==4,"GPU OS requires --backend rdna-direct");h_assert(h_equal(weight,"f16"),"GPU OS requires --weights f16");}
     ct_rng=net_now()^syscall(39,0,0,0,0,0,0);if !ct_rng {ct_rng=1;}
     let setting=b_option(argc,argv,"--context","auto");let automatic=h_equal(setting,"auto");let capacity=ll_context_max();if !automatic {capacity=lw_int(setting);}h_assert(capacity>=32 && capacity<=ll_context_max(),"context must be auto or 32..40960");
-    if !ct_demo {let weight=b_option(argc,argv,"--weights","f16");h_assert(h_equal(weight,"bf16") || h_equal(weight,"f16") || h_equal(weight,"f16-tiled"),"invalid weights");lm_weight_format=h_equal(weight,"f16");if h_equal(weight,"f16-tiled") {lm_weight_format=2;}
-        let directory=b_option(argc,argv,"--checkpoint",0);h_assert(directory,"provide checkpoint");ct_status("Planning GPU memory");let model=b_option(argc,argv,"--model","libs/ml/examples/qwen3-inference.pup");let args=h_args(h_real(load64(argv)),"--capacity-plan",directory,"--weights",weight,"--model");h_add(args,model);let p=h_run(args);h_assert(!h_status(p),h_err(p));ct_memory_plan=j_parse(h_out(p));
+    if !ct_demo {h_assert(h_equal(weight,"bf16") || h_equal(weight,"f16") || h_equal(weight,"f16-tiled"),"invalid weights");lm_weight_format=h_equal(weight,"f16");if h_equal(weight,"f16-tiled") {lm_weight_format=2;}
+        if h_equal(ct_runtime,"gpu-os") {ct_status("Building GPU OS worker");let built=h_run(h_args("python","libs/os/gpu/build.py","--compiler",b_option(argc,argv,"--compiler",lm_default_compiler()),0,0));
+            if h_status(built) {if !h_equal(runtime,"auto") {h_die(h_err(built));}h_print(2,h_err(built));ct_runtime="graph";ct_status("GPU OS build unavailable; using graph runtime");}}
+        if h_equal(ct_runtime,"gpu-os") {lm_fusion=0;}
+        let directory=b_option(argc,argv,"--checkpoint",0);h_assert(directory,"provide checkpoint");ct_status("Planning GPU memory");let model=b_option(argc,argv,"--model","libs/ml/examples/qwen3-inference.pup");let args=h_args(h_real(load64(argv)),"--capacity-plan",directory,"--weights",weight,"--model");h_add(args,model);h_add(args,"--runtime");h_add(args,ct_runtime);let p=h_run(args);h_assert(!h_status(p),h_err(p));ct_memory_plan=j_parse(h_out(p));
         ct_status("Compiling GPU kernels");lm_compile_kernels(b_option(argc,argv,"--compiler",lm_default_compiler()),"build/llm");
         ct_status("Loading tokenizer");qt_open(h_join(directory,"tokenizer.json"));ct_status("Initializing GPU");lm_start("build/llm",32);
         ct_status("Sizing context from free GPU memory");
@@ -85,13 +121,14 @@ fn ct_worker(argc,argv) {
         if !capacity {let e=ct_event("error");j_set(e,"text",j_string("Available GPU memory changed while loading; close another GPU app and retry."));ct_send(e);lm_close();return 0;}
         lm_capacity=capacity;lw_rotary();ct_status("Preparing execution graph");lp_parse(model);lm_sampling_enabled=1;lm_prepare();
         ct_status("Warming model");lm_execute(0,0,1);
+        if h_equal(ct_runtime,"gpu-os") {ct_status("Preparing GPU OS runtime");ct_gpu_os=go_open("build/gpu-os/resident.hsaco",lm_steps,lm_state,lm_output,lm_output_size,lm_capacity,lm_device_ordinal);lm_bytes=lm_bytes+go_device_bytes(ct_gpu_os,h_count(lm_steps));}
     }
     else {let i=0;while i<=4 {ct_progress("Loading demo model",i,4);h_sleep(100);i=i+1;}ct_status("Warming demo worker");h_sleep(150);}
-    if ct_demo {lm_capacity=capacity;}let ready=ct_event("ready");lm_report_backend(ready);j_set(ready,"resident_bytes",j_int(lm_bytes));j_set(ready,"context_capacity",j_int(lm_capacity));j_set(ready,"memory_reserve_bytes",j_int(ct_memory_reserve));ct_send(ready);
+    if ct_demo {lm_capacity=capacity;}let ready=ct_event("ready");lm_report_backend(ready);ct_report_runtime(ready);j_set(ready,"resident_bytes",j_int(lm_bytes));j_set(ready,"context_capacity",j_int(lm_capacity));j_set(ready,"memory_reserve_bytes",j_int(ct_memory_reserve));ct_send(ready);
     let running=1;while running {let mark=h_mark();let line=ct_line();if !line {running=0;}else {let request=j_parse(line);let op=j_s(request,"op");
         if h_equal(op,"generate") {ct_generate(request);if !ct_demo {lm_prompt_clear();}let idle=ct_event("idle");j_set(idle,"resident_bytes",j_int(lm_bytes));let buffers=0;if !ct_demo {buffers=h_count(lm_buffers);}j_set(idle,"buffer_count",j_int(buffers));ct_send(idle);}
         else if h_equal(op,"shutdown") {running=0;}}
         h_reset(mark);
     }
-    if !ct_demo {lm_close();}return 0;
+    if !ct_demo {if ct_gpu_os {go_close(ct_gpu_os);ct_gpu_os=0;}lm_close();}return 0;
 }

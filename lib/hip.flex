@@ -31,6 +31,12 @@ fn hip_device_attribute(device,attribute) {
     if hip_call("hipDeviceGetAttribute",p,a,device,0,0,0) {return -1;}let v=load64(p)&4294967295;syscall(11,p,8,0,0,0,0);return v;
 }
 fn hip_device_name(device) {let p=alloc(256);if hip_call("hipDeviceGetName",p,256,device,0,0,0) {return 0;}return p;}
+// Versioned ROCm 6 device-properties ABI on Linux x86-64: 1472 bytes,
+// gcnArchName[256] at 1160. Keep the versioned symbol rather than a moving ABI.
+fn hip_device_arch(device) {
+    let p=alloc(1472);if hip_call("hipGetDevicePropertiesR0600",p,device,0,0,0,0) {syscall(11,p,1472,0,0,0,0);return 0;}
+    let name=alloc(256);let i=0;while i<255 {store8(name+i,load8(p+1160+i));i=i+1;}store8(name+255,0);syscall(11,p,1472,0,0,0,0);return name;
+}
 fn hip_memory_info() {let p=alloc(16);if hip_call("hipMemGetInfo",p,p+8,0,0,0,0) {return 0;}return p;}
 fn hip_context_device(ordinal) {if hip_call("hipInit",0,0,0,0,0,0) {return 0;}let p=alloc(8);if hip_call("hipCtxCreate",p,0,ordinal,0,0,0) {return 0;}let v=load64(p);syscall(11,p,8,0,0,0,0);return v;}
 fn hip_close(context) {return hip_call("hipCtxDestroy",context,0,0,0,0,0);}

@@ -7,6 +7,8 @@ global tu_signal_fd=-1;
 global tu_old_mask=0;
 global tu_cols=80;
 global tu_rows=24;
+// Optional left viewport. Clear only its cells when another pane shares rows.
+global tu_clip=0;
 global tu_libc=0;
 global tu_width_fn=0;
 global tu_mark_fn=0;
@@ -63,8 +65,9 @@ fn tu_clean(text) {
     let out=h_buffer();let i=0;while load8(text+i) {let c=load8(text+i);if c>=32 && c!=127 {h_append(out,text+i,1);}else if c==10 || c==9 {h_append(out,text+i,1);}i=i+1;}return h_data(out);
 }
 fn tu_pos(out,row,col) {h_text(out,h_cat3(tu_escape,"[",h_cat3(h_int(row),";",h_cat(h_int(col),"H"))));return 0;}
+fn tu_clear_line(out) {if tu_clip {h_text(out,h_cat3(tu_escape,"[",h_cat(h_int(tu_cols),"X")));}else {h_text(out,h_cat(tu_escape,"[2K"));}return 0;}
 fn tu_line(out,row,text,color) {
-    tu_pos(out,row,1);h_text(out,h_cat(tu_escape,"[2K"));if color {h_text(out,h_cat3(tu_escape,"[",h_cat(color,"m")));}
+    tu_pos(out,row,1);tu_clear_line(out);if color {h_text(out,h_cat3(tu_escape,"[",h_cat(color,"m")));}
     let i=0;let col=0;let more=1;while more && load8(text+i) && load8(text+i)!=10 {let next=tu_next(text,i);let w=tu_width(tu_code(text,i));if col+w>tu_cols {more=0;}else {if w || load8(text+i)>=128 {h_append(out,text+i,next-i);}col=col+w;i=next;}}
     h_text(out,h_cat(tu_escape,"[0m"));return 0;
 }

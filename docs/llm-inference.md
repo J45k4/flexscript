@@ -88,6 +88,14 @@ build/llm-chat --checkpoint "$QWEN_CHECKPOINT" --backend cuda
 build/llm-chat --checkpoint "$QWEN_CHECKPOINT" --backend rdna
 ```
 
+Chat defaults to `--runtime auto`. With direct RDNA, F16 weights and a gfx1201
+device supporting cooperative launch, native host atomics and the worker clock,
+it prefers the resident GPU OS worker. Other combinations use graph execution;
+automatic selection also falls back to graph if building the worker fails.
+`--runtime graph|gpu-os` or `/runtime auto|graph|gpu-os` overrides the policy.
+The title and monitor show the runtime actually selected. This is a capability
+and compatibility policy, rather than a benchmark of every runtime at startup.
+
 It streams replies, warms and retains the model/tokenizer/kernels, supports
 multiline editing and prompt history, mouse selection/copy, clipboard paste,
 scrolling, cancellation, saved conversations and resume. Conversation history
@@ -129,6 +137,41 @@ checkpoint directory for the duration of the application.
 An explicitly selected model overrides `QWEN_CHECKPOINT` when that environment
 default identifies a different model.
 
+The GPU monitor is off by default, including GPU OS instrumentation. Enable it
+with `/monitor on` or `--monitor on` at startup. At 110 or more columns and
+20 or more rows, the enabled monitor appears on the right.
+It shows GPU busy percentage with a short history graph, memory-controller
+activity, VRAM use, temperature/hotspot, power and clocks. These are read-only,
+device-wide AMD driver readings, sampled twice a second; other GPU applications
+contribute to them. Missing sensors show `n/a`. The panel also shows the current
+reply's decode rate, first-token latency, context use and execution runtime.
+`/monitor on|off` toggles it. Narrow windows
+keep the full-width chat. Demo output rates are labeled characters per second.
+Drag the vertical divider with the left mouse button to resize the monitor.
+Chat text rewraps as it moves; the layout keeps at least 60 chat columns and 26
+monitor columns. The chosen width is retained when the monitor is hidden or
+the window is resized, and temporarily clamped when space is limited.
+
+With `--runtime gpu-os` and the monitor enabled, the resident worker also
+measures its own execution starting with the next reply.
+The panel shows aligned per-token history tracks for matrix operations,
+attention, grid waits, sampling, normalization, rotary embeddings, elementwise
+operations and scheduled worker work. A 150-column, 44-row terminal fits every
+track; shorter windows show the tracks that fit. Stage percentages describe
+worker zero; worker work gives the mean, minimum and maximum fractions across
+workers. Operation timings include their internal synchronization. The first
+token measures sampling of prefill logits, and prefill itself is outside these
+tracks. `/monitor off` skips instrumentation on the next reply. This uses the
+GPU worker's clock and shared-memory records, without a profiler SDK.
+
+The GPU OS runtime reports its worker count and waves per worker as launch
+configuration. Live wave occupancy is marked unavailable: GPU busy percentage
+does not measure occupied waves or active lanes. Measuring that needs hardware
+profiling counters, which this panel does not collect. Sensor units and meanings
+follow the [AMDGPU driver documentation](https://www.kernel.org/doc/html/latest/gpu/amdgpu/thermal.html);
+see [AMD's occupancy metrics](https://rocm.docs.amd.com/projects/rocprofiler-compute/en/docs-7.2.0/conceptual/pipeline-metrics.html)
+for profiling rather than launch estimates.
+
 The original 4B model is pinned in `libs/ml/examples/qwen3-4b.model.json` to
 `1cfa9a7208912126459214e8b04321603b3df60c`. It uses the same recipe, with
 36 layers, width 2560, intermediate width 9728 and 32 query / 8 KV heads.
@@ -140,7 +183,9 @@ this catalog. CPU inference is not implemented.
 | Commands | Purpose |
 | --- | --- |
 | `/models`, `/model qwen3-1.7b|qwen3-4b`, `/download` | Select a model and explicitly download missing assets |
-| `/backend sass|cuda|hip|rdna`, `/device N`, `/weights FORMAT` | Reload with selected execution settings |
+| `/backend sass|cuda|hip|rdna|rdna-direct`, `/device N`, `/weights FORMAT` | Reload with selected execution settings |
+| `/runtime auto|graph|gpu-os` | Use automatic selection, per-token graphs or the resident GPU worker; GPU OS requires direct RDNA and F16 |
+| `/monitor on|off` | Show or hide the right-hand GPU monitor |
 | `/thinking on|off` | Select Qwen3 thinking prompt format |
 | `/temperature 0..2` | Greedy at zero (default); top-40 temperature sampling otherwise |
 | `/tokens auto|N` | Use available context or set an output cap |

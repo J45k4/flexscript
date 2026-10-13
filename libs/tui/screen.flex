@@ -15,7 +15,7 @@ fn ts_offset(text,rows,row,column) {
     while at<load64(r+8) {let w=tu_width(tu_code(text,at));if col+w>column {return at;}col=col+w;at=tu_next(text,at);}return at;
 }
 fn ts_draw(out,text,range,screen_row,lo,hi,color) {
-    tu_pos(out,screen_row,1);h_text(out,h_cat(tu_escape,"[2K"));if color {h_text(out,h_cat3(tu_escape,"[",h_cat(color,"m")));}
+    tu_pos(out,screen_row,1);tu_clear_line(out);if color {h_text(out,h_cat3(tu_escape,"[",h_cat(color,"m")));}
     let at=load64(range);let end=load64(range+8);let selected=0;
     while at<end {let active=at>=lo && at<hi;if active!=selected {h_text(out,h_cat(tu_escape,"[7m"));if !active {h_text(out,h_cat(tu_escape,"[27m"));}selected=active;}
         let next=tu_next(text,at);let c=load8(text+at);if c==9 {h_text(out," ");}else if c>=32 && c!=127 {h_append(out,text+at,next-at);}at=next;}

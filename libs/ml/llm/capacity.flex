@@ -14,11 +14,15 @@ fn cap_pick(plan,budget,ceiling) {
 }
 fn cap_reserve(total) {let reserve=total/10;if reserve<536870912 {reserve=536870912;}return reserve;}
 fn cap_plan(argc,argv) {
+    let gpu_os=h_equal(b_option(argc,argv,"--runtime","graph"),"gpu-os");if gpu_os {lm_fusion=0;}
     let directory=b_option(argc,argv,"--capacity-plan",0);let n=lw_int(b_option(argc,argv,"--context","32"));h_assert(n>=32 && n<=ll_context_max(),"invalid planning context");
     let weight=b_option(argc,argv,"--weights","f16");lm_weight_format=h_equal(weight,"f16");if h_equal(weight,"f16-tiled") {lm_weight_format=2;}
     lm_dry_run=1;lm_start("",n);lw_load(directory);lw_rotary();lp_parse(b_option(argc,argv,"--model","libs/ml/examples/qwen3-inference.pup"));lm_prepare();
     // Chat retains the two-stage GPU sampler as well as the model schedule.
     let resident=lm_bytes+((lm_output_size+1023)/1024)*8+8;
+    // Reserve schedule/work memory plus room for up to 1024 resident workers;
+    // this remains a CPU-only capacity estimate and needs no live device query.
+    if gpu_os {resident=resident+h_count(lm_steps)*104+1024+24576;}
     let per=512;let projections=j_array();let seen=j_object();let i=0;
     while i<h_count(lm_prompt_source) {let s=h_at(lm_prompt_source,i);let kind=load64(s);if kind==4 {per=per+load64(s+56)*8;}
         if (kind==0 || kind==5) && i+1<h_count(lm_prompt_source) {let rows=load64(s+8)/32;let width=load64(s+40);let key=h_cat3(h_int(rows),":",h_int(width));if !j_get(seen,key) {let p=j_object();j_set(p,"rows",j_int(rows));j_set(p,"width",j_int(width));j_push(projections,p);j_set(seen,key,j_int(1));}}i=i+1;}
