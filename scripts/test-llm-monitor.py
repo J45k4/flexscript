@@ -34,7 +34,7 @@ def probe(compiler, directory, env):
     source = directory / "sensors.flex"
     source.write_text('import '+json.dumps(str(ROOT / 'libs/ml/llm/tui.flex'))+''';
 fn main(argc,argv) {
-    h_environment(argc,argv);lt_enabled=1;tu_cols=150;tu_rows=32;lt_init("0","rdna-direct");
+    h_environment(argc,argv);lt_enabled=1;tu_cols=150;tu_rows=32;lt_init("0","rdna");
     h_assert(lt_tick(1000,0),"first sensor tick");
     h_assert(lt_busy==87 && lt_mem_busy==42 && lt_vram_used==12884901888 && lt_vram_total==17179869184,"driver sensor units");
     h_assert(lt_temperature==61000 && lt_hotspot==75000 && lt_power==250000000 && lt_clock==2400000000,"hwmon units");
@@ -72,7 +72,7 @@ def resize(terminal, columns, rows=32):
 
 def terminal_test(binary, directory, env):
     terminal = tui.Terminal(binary, directory / "sessions", [
-        "--demo", "1", "--backend", "rdna-direct", "--runtime", "gpu-os"], env=env)
+        "--demo", "1", "--backend", "rdna", "--runtime", "gpu-os"], env=env)
     try:
         terminal.wait("Model ready")
         assert b"GPU MONITOR" not in terminal.output, "sidebar shown in narrow terminal"
@@ -135,7 +135,7 @@ def terminal_test(binary, directory, env):
 
 def gpu_test(binary, checkpoint, directory):
     terminal = tui.Terminal(binary, directory / "gpu-sessions", [
-        "--backend", "rdna-direct", "--checkpoint", checkpoint,
+        "--backend", "rdna", "--checkpoint", checkpoint,
         "--context", "256", "--max-tokens", "32", "--monitor", "on"])
     try:
         terminal.wait("Model ready", timeout=60)

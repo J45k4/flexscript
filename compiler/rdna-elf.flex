@@ -15,11 +15,14 @@ fn rd_mp_field(name,value) {rd_mp_string(name);rd_mp_int(value);return 0;}
 fn rd_metadata(registers) {
     emit(0x83);rd_mp_string("amdhsa.version");emit(0x92);emit(1);emit(2);
     rd_mp_string("amdhsa.target");rd_mp_string("amdgcn-amd-amdhsa--gfx1201");
-    rd_mp_string("amdhsa.kernels");emit(0x91);emit(0x8b);
+    rd_mp_string("amdhsa.kernels");emit(0x91);emit(0x8c);
     rd_mp_string(".name");rd_mp_string("flex_kernel");rd_mp_string(".symbol");rd_mp_string("flex_kernel.kd");
     rd_mp_field(".kernarg_segment_size",344);rd_mp_field(".kernarg_segment_align",8);
     rd_mp_field(".group_segment_fixed_size",0);rd_mp_field(".private_segment_fixed_size",0);
     rd_mp_field(".sgpr_count",rd_sgprs);rd_mp_field(".vgpr_count",registers);rd_mp_field(".wavefront_size",32);
+    // Match COMPUTE_PGM_RSRC1.WGP_MODE below. Occupancy queries otherwise
+    // assume CU mode and undercount the resident blocks on RDNA.
+    rd_mp_string(".workgroup_processor_mode");emit(0xc3);
     rd_mp_field(".max_flat_workgroup_size",1024);rd_mp_string(".args");emit(0xdc);emit(0);emit(17);
     let i=0;while i<17 {
         emit(0x83);let offset=i*8;let size=8;let kind="by_value";

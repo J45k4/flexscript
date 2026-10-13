@@ -9,7 +9,7 @@ global ct_memory_reserve=0;
 global ct_runtime=0;
 global ct_gpu_os=0;
 fn ct_report_runtime(e) {
-    j_set(e,"runtime",j_string(ct_runtime));if !ct_demo && lm_backend>=2 {j_set(e,"wave_size",j_int(32));}if ct_gpu_os {j_set(e,"worker_target",j_string("hip-llvm-gfx1201"));j_set(e,"resident_workers",j_int(load64(ct_gpu_os+56)));j_set(e,"threads_per_worker",j_int(512));}return 0;
+    j_set(e,"runtime",j_string(ct_runtime));if !ct_demo && lm_backend>=2 {j_set(e,"wave_size",j_int(32));}if ct_gpu_os {j_set(e,"worker_target",j_string(go_target(ct_gpu_os)));j_set(e,"resident_workers",j_int(load64(ct_gpu_os+56)));j_set(e,"threads_per_worker",j_int(512));}return 0;
 }
 fn ct_event(kind) {let e=j_object();j_set(e,"event",j_string(kind));return e;}
 fn ct_send(e) {h_print(1,j_dump(e));h_print(1,"\n");return 0;}
@@ -94,19 +94,24 @@ fn ct_generate(request) {
 }
 // Automatic is a supported-runtime preference, not a startup benchmark.
 fn ct_choose_runtime(choice,backend,weight,device,demo) {
+    go_driver=backend<2;
     if !h_equal(choice,"auto") {return choice;}
-    if !demo && backend==4 && h_equal(weight,"f16") && go_supported(device) {return "gpu-os";}return "graph";
+    if !demo && h_equal(weight,"f16") && go_supported(device) {return "gpu-os";}return "graph";
 }
 fn ct_worker(argc,argv) {
     lm_progress_json=1;
     ct_demo=lw_int(b_option(argc,argv,"--demo","0"));lm_select_backend(b_option(argc,argv,"--backend",lm_default_backend()));lm_device_ordinal=lw_int(b_option(argc,argv,"--device","0"));
     let runtime=b_option(argc,argv,"--runtime","auto");h_assert(h_equal(runtime,"auto") || h_equal(runtime,"graph") || h_equal(runtime,"gpu-os"),"--runtime must be auto, graph or gpu-os");
     let weight=b_option(argc,argv,"--weights","f16");ct_runtime=ct_choose_runtime(runtime,lm_backend,weight,lm_device_ordinal,ct_demo);
-    if h_equal(ct_runtime,"gpu-os") {h_assert(lm_backend==4,"GPU OS requires --backend rdna-direct");h_assert(h_equal(weight,"f16"),"GPU OS requires --weights f16");}
+    if h_equal(ct_runtime,"gpu-os") {h_assert(h_equal(weight,"f16"),"GPU OS requires --weights f16");}
+    let worker_target=b_option(argc,argv,"--gpu-os-target","auto");h_assert(h_equal(worker_target,"auto") || h_equal(worker_target,"hip") || h_equal(worker_target,"rdna") || h_equal(worker_target,"ptx"),"invalid --gpu-os-target");
+    let driver="hip";let resolved=worker_target;let suffix=".hsaco";if go_driver {driver="cuda";suffix=".ptx";if h_equal(worker_target,"sass") {suffix=".cubin";}}
+    if h_equal(resolved,"auto") {resolved="hip";if go_driver {resolved="ptx";}}
+    let worker_directory=h_cat("build/gpu-os/",resolved);let image=h_join(worker_directory,h_cat("resident",suffix));
     ct_rng=net_now()^syscall(39,0,0,0,0,0,0);if !ct_rng {ct_rng=1;}
     let setting=b_option(argc,argv,"--context","auto");let automatic=h_equal(setting,"auto");let capacity=ll_context_max();if !automatic {capacity=lw_int(setting);}h_assert(capacity>=32 && capacity<=ll_context_max(),"context must be auto or 32..40960");
     if !ct_demo {h_assert(h_equal(weight,"bf16") || h_equal(weight,"f16") || h_equal(weight,"f16-tiled"),"invalid weights");lm_weight_format=h_equal(weight,"f16");if h_equal(weight,"f16-tiled") {lm_weight_format=2;}
-        if h_equal(ct_runtime,"gpu-os") {ct_status("Building GPU OS worker");let built=h_run(h_args("python","libs/os/gpu/build.py","--compiler",b_option(argc,argv,"--compiler",lm_default_compiler()),0,0));
+        if h_equal(ct_runtime,"gpu-os") {ct_status("Building GPU OS worker");let compiler=b_option(argc,argv,"--compiler",lm_default_compiler());let args=h_args(compiler,"libs/os/gpu/build.flex","--compiler",compiler,"--target",worker_target);h_add(args,"--driver");h_add(args,driver);h_add(args,"--output");h_add(args,worker_directory);if h_equal(worker_target,"rdna") {h_add(args,"--fallback");h_add(args,"hip");}let built=h_run(args);
             if h_status(built) {if !h_equal(runtime,"auto") {h_die(h_err(built));}h_print(2,h_err(built));ct_runtime="graph";ct_status("GPU OS build unavailable; using graph runtime");}}
         if h_equal(ct_runtime,"gpu-os") {lm_fusion=0;}
         let directory=b_option(argc,argv,"--checkpoint",0);h_assert(directory,"provide checkpoint");ct_status("Planning GPU memory");let model=b_option(argc,argv,"--model","libs/ml/examples/qwen3-inference.pup");let args=h_args(h_real(load64(argv)),"--capacity-plan",directory,"--weights",weight,"--model");h_add(args,model);h_add(args,"--runtime");h_add(args,ct_runtime);let p=h_run(args);h_assert(!h_status(p),h_err(p));ct_memory_plan=j_parse(h_out(p));
@@ -121,7 +126,7 @@ fn ct_worker(argc,argv) {
         if !capacity {let e=ct_event("error");j_set(e,"text",j_string("Available GPU memory changed while loading; close another GPU app and retry."));ct_send(e);lm_close();return 0;}
         lm_capacity=capacity;lw_rotary();ct_status("Preparing execution graph");lp_parse(model);lm_sampling_enabled=1;lm_prepare();
         ct_status("Warming model");lm_execute(0,0,1);
-        if h_equal(ct_runtime,"gpu-os") {ct_status("Preparing GPU OS runtime");ct_gpu_os=go_open("build/gpu-os/resident.hsaco",lm_steps,lm_state,lm_output,lm_output_size,lm_capacity,lm_device_ordinal);lm_bytes=lm_bytes+go_device_bytes(ct_gpu_os,h_count(lm_steps));}
+        if h_equal(ct_runtime,"gpu-os") {ct_status("Preparing GPU OS runtime");ct_gpu_os=go_open(image,lm_steps,lm_state,lm_output,lm_output_size,lm_capacity,lm_device_ordinal);lm_bytes=lm_bytes+go_device_bytes(ct_gpu_os,h_count(lm_steps));}
     }
     else {let i=0;while i<=4 {ct_progress("Loading demo model",i,4);h_sleep(100);i=i+1;}ct_status("Warming demo worker");h_sleep(150);}
     if ct_demo {lm_capacity=capacity;}let ready=ct_event("ready");lm_report_backend(ready);ct_report_runtime(ready);j_set(ready,"resident_bytes",j_int(lm_bytes));j_set(ready,"context_capacity",j_int(lm_capacity));j_set(ready,"memory_reserve_bytes",j_int(ct_memory_reserve));ct_send(ready);

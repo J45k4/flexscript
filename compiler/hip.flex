@@ -30,6 +30,7 @@ fn hp_binary(op,left) {
     else {if signed {p_text("(long long)");}hp_reg(p_acc);}p_text(";\n");return 0;
 }
 fn hp_intrinsic(kind,first) {
+    if kind==87 || kind==91 || kind==92 || kind==93 || kind==94 || kind==95 || kind==96 || kind==97 || kind==98 {fail("native RDNA intrinsics require rdna-gfx1201");}
     hp_reg(p_acc);p_text("=");
     if kind>=1 && kind<=12 {
         if kind<=3 {p_text("threadIdx.");}else if kind<=6 {p_text("blockIdx.");}
@@ -37,7 +38,21 @@ fn hp_intrinsic(kind,first) {
         let axis=(kind-1)%3;if !axis {p_text("x");}else if axis==1 {p_text("y");}else {p_text("z");}
         p_text(";\n");return 0;
     }
+    if kind==82 {p_text("(cooperative_groups::this_grid().sync(),0);\n");return 0;}
+    if kind==86 || kind==89 || kind==90 {p_text("(__threadfence(),0);\n");return 0;}
+    if kind==88 {p_text("hp_device_relaxed(");hp_reg(first);p_text(");\n");return 0;}
     let name=0;
+    if kind==83 {name="hp_device_load";}else if kind==84 {name="hp_device_store";}else if kind==85 {name="hp_device_add";}
+    if name {p_text(name);p_text("(");hp_reg(first);if kind>=84 {p_text(",");hp_reg(first+1);}p_text(");\n");return 0;}
+
+    if kind==76 {p_text("(__threadfence_system(),0);\n");return 0;}
+    if kind==77 {p_text("wall_clock64();\n");return 0;}
+    if kind==78 {name="hp_system_load";}
+    else if kind==79 {name="hp_system_store";}
+    else if kind==80 {name="hp_system_exchange";}
+    else if kind==81 {name="hp_system_add";}
+    if name {p_text(name);p_text("(");hp_reg(first);if kind>=79 {p_text(",");hp_reg(first+1);}p_text(");\n");return 0;}
+
     if kind==13 {p_text("((threadIdx.z*blockDim.y+threadIdx.y)*blockDim.x+threadIdx.x)&31;\n");return 0;}
     if kind==14 {p_text("(unsigned int)__ballot(1);\n");return 0;}
     if kind==15 {p_text("(__syncthreads(),0);\n");return 0;}
@@ -124,10 +139,5 @@ fn hip_finish() {
     if p_launch_words {i=0;while i<8 {if i {p_text(",");}p_text("u");p_num(i);i=i+1;}}else {p_text("0");}p_text("};\n");
     p_text("W block=((W)blockIdx.z*gridDim.y+blockIdx.y)*gridDim.x+blockIdx.x;\nW volume=(W)blockDim.x*blockDim.y*blockDim.z;\nW index=block*volume+((W)threadIdx.z*blockDim.y+threadIdx.y)*blockDim.x+threadIdx.x;\nif(index>=count)return;\nflex_fn");
     p_num(kernel);p_text("(index,input,output,count,u);\n}\n");store8(output+output_size,0);
-    if hp_machine {
-        let code=hiprtc_compile(output,"--gpu-architecture=gfx1201");
-        if !code {if hiprtc_log {print(2,hiprtc_log);}fail("RDNA compilation failed (requires ROCm libhiprtc)");}
-        output=code;output_size=hiprtc_bytes;
-    }
     return 0;
 }

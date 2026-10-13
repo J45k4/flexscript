@@ -2,6 +2,7 @@ import "rdna-linear.flex";
 import "rdna-elf.flex";
 import "rdna-word.flex";
 import "rdna-norm.flex";
+import "rdna-resident.flex";
 // Specialized linear kernels retain their compact instruction fast paths.
 // Other kernels lower Word IR directly, without invoking HIPRTC or LLVM.
 fn rdna_finish() {

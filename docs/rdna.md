@@ -1,25 +1,21 @@
 # RDNA machine code and HIP
 
-Flexscript supports three AMD GPU targets:
+Flexscript supports two AMD GPU backends:
 
 | Compiler target | Output | Runtime |
 | --- | --- | --- |
-| `hip` | HIP C++ source | HIPRTC compiles it when loaded |
-| `rdna-gfx1201` | Native AMD HSA ELF code object (`.hsaco`) | HIP loads machine code directly |
-| `rdna-direct-gfx1201` | Directly encoded RDNA4 instructions in an HSA ELF code object | HIP loads machine code directly |
+| `hip` | HIP C++ source | HIPRTC / ROCm LLVM compiles it when loaded |
+| `rdna-gfx1201` | Directly encoded RDNA4 instructions in an AMDHSA ELF code object | HIP loads machine code directly |
 
-`hip` and `rdna-gfx1201` lower the existing word IR, use `kernel(index,input,output,count)` and
-support the GPU intrinsics in `lib/gpu.flex`. Helpers inline into the kernel.
+At inference level, `--backend rdna` selects the native encoder.
+`--backend hip` retains the LLVM-based fallback.
+
+Both backends lower word IR and use `kernel(index,input,output,count)`.
 Word arithmetic wraps at 64 bits; comparisons and division are signed.
 Ordinary word loads/stores retain unaligned little-endian behavior.
 Kernel-reachable allocation, syscalls, FFI, recursion and static data are rejected.
 
-The general native pipeline is **Flexscript → word IR → HIP source → HIPRTC/ROCm LLVM
-→ gfx1201 machine code**. ROCm performs native instruction selection, register
-allocation and binary packaging. This backend does not encode RDNA instruction
-bytes itself. Offline code-object compilation requires no GPU context.
-
-The direct pipeline is **Flexscript → word IR → RDNA4 instruction encoder →
+The native pipeline is **Flexscript → word IR → RDNA4 instruction encoder →
 AMDHSA ELF writer**. It invokes no LLVM, HIPRTC, assembler or linker and reads
 no binary template. It emits all 32 Qwen kernel variants, including normalization,
 rotary embedding, fused cache/attention, sampling, packing and WMMA prefill.
@@ -30,10 +26,54 @@ manages EXEC explicitly for branches, divergent returns and loops. It supports
 word integer operators, signed division/remainder, packed global memory, LDS,
 barriers, launch coordinates/words, shuffle, ballot, FP32 arithmetic and SFU
 approximations, F16 conversions and RDNA4 WMMA. Flattened launch indices must
-fit uint32; kernels must fit 256 VGPRs and 96 SGPRs. This is a supported subset,
-not complete parity with PTX/SASS: atomics, FP64, integer/float conversions,
+fit uint32; kernels must fit 256 VGPRs; execution masks use up to 96 SGPRs. This is a supported subset,
+not complete parity with PTX/SASS: general atomics, FP64, integer/float conversions,
 correctly rounded FP32 divide/sqrt, textures and NVIDIA MMA are not implemented.
 F16 encodings switch to e64 for registers outside the gfx12 e32 register class.
+The direct encoder also supports system/device acquire-release word loads and
+stores, system exchange, system/device fetch-add, cache-ordering fences and the
+GPU wall clock. These support the [shared Flexscript GPU OS](../libs/os/gpu/README.md)
+scheduler. Child function frames can reuse caller registers dead at a call;
+scratch registers live above each function's own frame. The resident worker
+uses 96 VGPRs for a 512-thread block. Native leaves reserve s96..s103;
+uniform stage bounds use s104..s105, bringing that worker to 106 SGPRs. F16 conversions use the long encoding above v127.
+HIP's cooperative grid barrier has a separate intrinsic; the native scheduler
+uses a bounded 32-bit phase/count barrier with a fully resident grid, while
+preserving the full 64-bit generation publication. Device
+relaxed loads and release/acquire fences are also available to shared schedulers.
+Independent global and LDS loads stay outstanding until an operand read, register
+overwrite or control-flow edge requires completion. Signed division/remainder
+by positive powers of two use a sign-correct bias and shift rather than the
+generic restoring-division loop.
+
+`gpu_rdna_gemv_stage_f16(index,step)` embeds a compact matrix-vector operation
+inside a larger resident program. A full active wave owns one output row;
+`step` is a wave-uniform schedule descriptor containing weights, input, output
+and width. The width is a positive multiple of 256 and row byte offsets fit
+uint32. It uses scalar pointers, packed 128-bit loads, F16/F32 mixed FMAs and
+eight or sixteen weights per lane without increasing the resident worker's
+scratch register budget. Inactive waves skip scalar loads explicitly. `gpu_rdna_gemv_grid_f16(index,step)` hoists that descriptor once and walks
+all assigned output rows using scalar loop state. `gpu_rdna_rms_stage_f16(row,step)`
+retains four inputs per thread for a 2048-wide RMSNorm row in a full 512-thread
+block. The GPU OS adapter retains ordinary Flexscript for other dimensions.
+`gpu_rdna_rms_head_f16(index,step)` normalizes a 128-element FP32 head with F16
+weights in one complete wave, retaining the portable FP32 reduction order.
+`gpu_rdna_attention_f32(index,step)` computes a complete 512-thread,
+128-dimensional attention head tile with sixteen online-softmax partials and
+an ordinal LDS merge. `gpu_rdna_element_f32(index,step)` handles FP32 adds,
+multiplies, SiLU, copies, F16 embedding gathers and KV row appends.
+`gpu_rdna_rope_f32(index,step)` computes split-half rotary pairs. Mutable token
+and position words use vector loads whose visibility is acquired by the grid
+barrier; scalar cached loads are reserved for immutable descriptors.
+`gpu_rdna_stage(step)` selects and walks these stages with scalar tile bounds
+for a complete active block. Matrix and RMS shape checks retain portable
+Flexscript fallbacks for other widths. The unprofiled shared scheduler hoists
+its immutable schedule pointer/count and avoids per-stage profiling branches.
+These adapters preserve the portable FP32 operation/reduction order.
+
+Independent attention K/V reads are issued before their FP32 consumers without
+changing accumulation order. Proven-zero upper words avoid redundant writes;
+facts are discarded at control-flow and EXEC boundaries.
 
 Four whole-kernel fast paths in `lib/rdna.flex` provide F16 GEMV, paired gate/up
 MLP, packed Q/K/V GEMV and 2048-wide residual RMSNorm. Linear kernels use one
@@ -44,10 +84,10 @@ Widths are positive multiples of 256 and row byte offsets fit uint32.
 Residual RMSNorm uses 128 threads per complete 2048-value row and 32 LDS bytes.
 The ABI includes eight launch words and hidden HSA v5 block counts and sizes.
 
-`--backend rdna-direct` compiles every inference kernel directly. Compatible
+`--backend rdna` compiles every inference kernel directly. Compatible
 row-major F16 operations use the compact fast paths; BF16, tiled storage and
 other widths use ordinary direct word-IR emission. The AMD inference default
-is now `rdna-direct`; `--backend rdna` explicitly selects the LLVM route.
+is `rdna`; `--backend hip` selects the LLVM route.
 HIP still provides memory allocation, loading, launches and graphs in both modes.
 
 ## Requirements and commands
@@ -55,28 +95,28 @@ HIP still provides memory allocation, loading, launches and graphs in both modes
 The tested machine is an AMD Radeon RX 9070 XT (RDNA4, gfx1201, wave32), Ryzen 9
 5900X and ROCm 7.2.4. The implementation currently targets gfx1201; other AMD
 architectures have not been validated. Direct mode loads `libamdhip64.so` for
-execution. The `hip` and `rdna` LLVM routes additionally need `libhiprtc.so`
+execution. The `hip` route additionally needs `libhiprtc.so`
 and `/opt/rocm/include` headers.
 No hipBLAS or rocBLAS is needed for Flexscript inference.
 
 ```sh
 build/flex --target hip examples/gpu/vector.flex -o build/vector.hip
 build/flex --target rdna-gfx1201 examples/gpu/vector.flex -o build/vector.hsaco
-build/flex --target rdna-direct-gfx1201 libs/ml/llm/kernels/gemv-direct-rdna.flex -o build/gemv-direct.hsaco
+build/flex --target rdna-gfx1201 libs/ml/llm/kernels/gemv-direct-rdna.flex -o build/gemv-direct.hsaco
 build/flex llm.flex -o build/llm-chat
-build/llm-chat --backend rdna-direct --checkpoint build/llm/models/qwen3-1.7b
+build/llm-chat --backend rdna --checkpoint build/llm/models/qwen3-1.7b
 ```
 
 For a single prompt:
 
 ```sh
 build/flex scripts/llm-infer.flex -o build/llm-infer
-build/llm-infer --backend rdna-direct --checkpoint build/llm/models/qwen3-1.7b \
+build/llm-infer --backend rdna --checkpoint build/llm/models/qwen3-1.7b \
   --context 256 --max-tokens 64 --prompt 'Say hello.'
 ```
 
 `--backend hip` uses the same kernels through runtime source compilation.
-Use `--backend rdna-direct --weights f16` for the native compiler and F16 fast paths.
+Use `--backend rdna --weights f16` for the native compiler and F16 fast paths.
 The checkpoint is the pinned Hugging Face Qwen3-1.7B recipe described in
 [inference instructions](llm-inference.md); Flexscript loads its safetensors
 directly. `build/llm-chat` finds the local checkpoint automatically.
@@ -140,11 +180,11 @@ build/test-hip build/flex
 build/flex scripts/test-llm-sample.flex -o build/test-llm-sample
 build/test-llm-sample build/flex
 build/flex scripts/test-llm.flex -o build/test-llm
-build/test-llm --backend rdna-direct --compiler build/flex --gpu
+build/test-llm --backend rdna --compiler build/flex --gpu
 build/flex scripts/test-llm-prefill.flex -o build/test-llm-prefill
-build/test-llm-prefill --backend rdna-direct --compiler build/flex --gpu
+build/test-llm-prefill --backend rdna --compiler build/flex --gpu
 build/flex scripts/test-llm-context.flex -o build/test-llm-context
-build/test-llm-context --backend rdna-direct
+build/test-llm-context --backend rdna
 ```
 
 Direct-backend checks pass 16,655 HIP launch/graph/arithmetic/collective
@@ -170,6 +210,10 @@ A resident worker generates Ping, a Linux follow-up and BANANA while a test
 independently assembled development references; the wider GEMV stream also
 matches its reference instructions. The residual RMSNorm fast path also passes 6,144 CPU comparisons, retained
 residual checks and output guards. Production compilation uses only Flexscript.
+The resident head RMS fast path also passes 33 CPU reference rows, incomplete
+blocks, repeated calls in both branch arms, output guards and 48 live caller
+values that push F16 operands above v127. Helper-copy and early-return fixtures
+exercise divergent lanes, and shared/global read fixtures check both wait counters.
 
 GPU execution requires access to `/dev/kfd` and the Radeon render device.
 An execution sandbox hiding these devices cannot run these checks.

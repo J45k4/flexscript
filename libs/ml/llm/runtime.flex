@@ -37,16 +37,16 @@ fn lm_kernel_names() {let names=h_args("gemv","rms","rope","element","attention"
 fn lm_block(kind) {if kind==11 || kind==21 {return lm_prompt_block;}if kind==4 || kind==27 {return 512;}if kind==5 || kind==8 || kind==10 || kind==18 || kind==19 || kind==20 || kind==28 || kind==29 || kind==30 {return 256;}if kind==7 {return 32;}return 128;}
 fn lm_check(status) {if status {h_die(h_cat3("GPU status ",h_int(status),h_cat(": ",device_error())));}return 0;}
 fn lm_select_backend(name) {
-    h_assert(h_equal(name,"sass") || h_equal(name,"cuda") || h_equal(name,"hip") || h_equal(name,"rdna") || h_equal(name,"rdna-direct"),"--backend must be sass, cuda, hip, rdna or rdna-direct");
-    lm_backend=0;if h_equal(name,"cuda") {lm_backend=1;}else if h_equal(name,"hip") {lm_backend=2;}else if h_equal(name,"rdna") {lm_backend=3;}else if h_equal(name,"rdna-direct") {lm_backend=4;}
+    h_assert(h_equal(name,"sass") || h_equal(name,"cuda") || h_equal(name,"hip") || h_equal(name,"rdna"),"--backend must be sass, cuda, hip or rdna");
+    lm_backend=0;if h_equal(name,"cuda") {lm_backend=1;}else if h_equal(name,"hip") {lm_backend=2;}else if h_equal(name,"rdna") {lm_backend=4;}
     device_select_hip(lm_backend>=2);return 0;
 }
-fn lm_default_backend() {if hip_device_count()>0 {return "rdna-direct";}return "sass";}
+fn lm_default_backend() {if hip_device_count()>0 {return "rdna";}return "sass";}
 fn lm_default_compiler() {if h_exists("build/flex") {return "build/flex";}return "build/flex-llm";}
-fn lm_backend_name() {if lm_backend==4 {return "rdna-direct";}if lm_backend==3 {return "rdna";}if lm_backend==2 {return "hip";}if lm_backend {return "cuda";}return "sass";}
-fn lm_target() {if lm_backend==4 {return "rdna-direct-gfx1201";}if lm_backend==3 {return "rdna-gfx1201";}if lm_backend==2 {return "hip";}if lm_backend {return "ptx";}return "sass-sm75";}
+fn lm_backend_name() {if lm_backend==4 {return "rdna";}if lm_backend==2 {return "hip";}if lm_backend {return "cuda";}return "sass";}
+fn lm_target() {if lm_backend==4 {return "rdna-gfx1201";}if lm_backend==2 {return "hip";}if lm_backend {return "ptx";}return "sass-sm75";}
 fn lm_kernel_suffix() {if lm_backend>=3 {return ".hsaco";}if lm_backend==2 {return ".hip";}if lm_backend {return ".ptx";}return ".cubin";}
-fn lm_report_backend(report) {j_set(report,"backend",j_string(lm_backend_name()));j_set(report,"target",j_string(lm_target()));if lm_backend==4 {j_set(report,"linear_target",j_string("rdna-direct-gfx1201"));}return 0;}
+fn lm_report_backend(report) {j_set(report,"backend",j_string(lm_backend_name()));j_set(report,"target",j_string(lm_target()));if lm_backend==4 {j_set(report,"linear_target",j_string("rdna-gfx1201"));}return 0;}
 fn lm_now_us() {if !lm_clock {lm_clock=alloc(16);}h_assert(syscall(228,1,lm_clock,0,0,0,0)==0,"clock unavailable");return load64(lm_clock)*1000000+load64(lm_clock+8)/1000;}
 fn lm_now() {return lm_now_us()/1000;}
 fn lm_alloc(bytes) {
@@ -130,7 +130,7 @@ fn lm_compile_kernels(compiler,directory) {
         if lm_backend>=2 && (i==5 || i==8 || i==10) {source=h_cat3("libs/ml/llm/kernels/",name,"-rdna.flex");}
         if lm_weight_format && i<28 {let text=h_read(source);text=h_replace(text,"import \"common.flex\";",h_cat3("import \"",h_real("libs/ml/llm/kernels/common-f16.flex"),"\";"));
             source=h_cat3(directory,"/sources/",h_cat(name,".flex"));h_save(source,text);}
-        let target=lm_target();if i>=28 {target="rdna-direct-gfx1201";}
+        let target=lm_target();if i>=28 {target="rdna-gfx1201";}
         h_ok(h_args(compiler,"--target",target,source,"-o",h_cat3(directory,"/",h_cat(name,lm_kernel_suffix()))));i=i+1;lm_progress("Compiling GPU kernels",i,h_count(names));}
     h_setenv("TMPDIR",previous_tmp);return 0;
 }

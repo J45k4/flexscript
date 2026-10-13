@@ -22,7 +22,7 @@ fn ts_run(function,stream,input,partial,result,host,n,mode,expected) {
 }
 fn suite(compiler) {
     t_init(compiler);let context=hip_context_device(0);ts_check(hip_status);
-    let targets=h_args("rdna-gfx1201","rdna-direct-gfx1201",0,0,0,0);let target=0;while target<h_count(targets) {
+    let targets=h_args("rdna-gfx1201",0,0,0,0,0);let target=0;while target<h_count(targets) {
     let image=h_join(t_work,"argmax.hsaco");h_ok(h_args(t_compiler,"--target",h_at(targets,target),"libs/ml/llm/kernels/argmax.flex","-o",image));
     let module=hip_module(h_read(image));ts_check(hip_status);let function=hip_function(module,"flex_kernel");ts_check(hip_status);
     let stream=hip_stream();ts_check(hip_status);let input=hip_buffer(151936*4);ts_check(hip_status);let partial=hip_buffer(149*8);ts_check(hip_status);let result=hip_buffer(8);ts_check(hip_status);let host=alloc(151936*4);

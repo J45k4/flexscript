@@ -4,15 +4,15 @@ import "../../ml/llm/pup.flex";
 import "../../ml/llm/tokenizer.flex";
 fn main(argc,argv) {
     h_environment(argc,argv);h_timeout=300000;
-    let argument=1;while argument<argc {if h_equal(load64(argv+argument*8),"--help") {h_print(1,"GPU OS Qwen: --checkpoint DIR --prompt TEXT --max-tokens 32 --context 256\nOptional: --compiler build/flex --rebuild 1 --verify 1 --profile 1 --workers N --device N --cancel-after N --report PATH\n");return 0;}argument=argument+1;}
+    let argument=1;while argument<argc {if h_equal(load64(argv+argument*8),"--help") {h_print(1,"GPU OS Qwen: --checkpoint DIR --prompt TEXT --max-tokens 32 --context 256\nOptional: --compiler build/flex --image PATH --rebuild 1 --verify 1 --profile 1 --workers N --device N --cancel-after N --report PATH\n");return 0;}argument=argument+1;}
     let directory=b_option(argc,argv,"--checkpoint","build/llm/models/qwen3-1.7b");let compiler=b_option(argc,argv,"--compiler",lm_default_compiler());
     let capacity=lw_int(b_option(argc,argv,"--context","256"));let maximum=lw_int(b_option(argc,argv,"--max-tokens","32"));
     h_assert(capacity>=32 && capacity<=ll_context_max() && maximum>0 && maximum<capacity,"invalid context or token limit");
     let verify=lw_int(b_option(argc,argv,"--verify","0"));h_assert(verify==0 || verify==1,"--verify must be 0 or 1");let cancel_after=lw_int(b_option(argc,argv,"--cancel-after","0"));h_assert(cancel_after>=0 && cancel_after<maximum,"invalid cancellation point");
-    lm_select_backend("rdna-direct");lm_device_ordinal=lw_int(b_option(argc,argv,"--device","0"));lm_weight_format=1;lm_fusion=0;
+    lm_select_backend("rdna");lm_device_ordinal=lw_int(b_option(argc,argv,"--device","0"));lm_weight_format=1;lm_fusion=0;
     go_workers=lw_int(b_option(argc,argv,"--workers","0"));
-    let image="build/gpu-os/resident.hsaco";
-    if !h_exists(image) || lw_int(b_option(argc,argv,"--rebuild","0")) {h_ok(h_args("python", "libs/os/gpu/build.py","--compiler",compiler,0,0));}
+    let image=b_option(argc,argv,"--image","build/gpu-os/resident.hsaco");
+    if !h_exists(image) || lw_int(b_option(argc,argv,"--rebuild","0")) {let args=h_args(compiler,"libs/os/gpu/build.flex","--compiler",compiler,"--output",h_dir(image));h_add(args,"--target");h_add(args,b_option(argc,argv,"--gpu-os-target","auto"));h_ok(args);}
     lm_compile_kernels(compiler,"build/llm");
     qt_open(h_join(directory,"tokenizer.json"));
     let prompt=b_option(argc,argv,"--prompt","Say hello in one short sentence.");
@@ -43,7 +43,7 @@ fn main(argc,argv) {
     }
     let reason=go_wait(handle);let elapsed=lm_now_us()-started;h_assert(go_status(handle)!=3,"nonfinite GPU OS logits");
     if verify && !cancel_after {h_assert(read==h_count(expected),"GPU OS/reference token count differs");let i=0;while i<read {h_assert(j_value(j_at(generated,i))==h_at(expected,i),h_cat("GPU OS/reference token differs at ",h_int(i)));i=i+1;}}
-    h_print(1,"\n");let report=j_object();j_set(report,"runtime",j_string("gpu-os-v1"));j_set(report,"worker_target",j_string("hip-llvm-gfx1201"));
+    h_print(1,"\n");let report=j_object();j_set(report,"runtime",j_string("gpu-os-v1"));j_set(report,"worker_target",j_string(go_target(handle)));
     j_set(report,"workers",j_int(load64(handle+56)));j_set(report,"generated_ids",generated);j_set(report,"text",j_string(h_data(output)));
     j_set(report,"tokens",j_int(read));j_set(report,"decode_us",j_int(elapsed));j_set(report,"prefill_us",j_int(prefill));j_set(report,"first_token_us",j_int(first));
     let calls=0;if read {calls=read-1;}j_set(report,"decode_calls",j_int(calls));j_set(report,"decode_tokens_per_second_x1000",j_int(calls*1000000000/(elapsed+1)));

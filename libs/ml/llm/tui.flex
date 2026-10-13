@@ -11,6 +11,7 @@ global lc_compiler=0;
 global lc_backend=0;
 global lc_runtime=0;
 global lc_runtime_choice=0;
+global lc_worker_target=0;
 global lc_weights=0;
 global lc_device=0;
 global lc_capacity=40960;
@@ -142,7 +143,7 @@ fn lc_stop() {if lc_worker {h_stop(lc_worker);lc_worker=0;}lt_profile_reset();lc
 fn lc_start() {
     if lc_worker {return 0;}if !lc_demo && !lc_checkpoint_ready() {lc_status="Model not downloaded. Use /download or --checkpoint DIRECTORY.";return 0;}
     lc_runtime=lc_runtime_choice;
-    let args=h_args(lc_binary,"--worker","1","--checkpoint",lc_checkpoint,"--compiler");h_add(args,lc_compiler);h_add(args,"--backend");h_add(args,lc_backend);h_add(args,"--runtime");h_add(args,lc_runtime_choice);h_add(args,"--weights");h_add(args,lc_weights);h_add(args,"--device");h_add(args,lc_device);h_add(args,"--context");let context="auto";if !lc_capacity_auto {context=h_int(lc_capacity);}h_add(args,context);h_add(args,"--demo");h_add(args,h_int(lc_demo));
+    let args=h_args(lc_binary,"--worker","1","--checkpoint",lc_checkpoint,"--compiler");h_add(args,lc_compiler);h_add(args,"--backend");h_add(args,lc_backend);h_add(args,"--runtime");h_add(args,lc_runtime_choice);h_add(args,"--gpu-os-target");h_add(args,lc_worker_target);h_add(args,"--weights");h_add(args,lc_weights);h_add(args,"--device");h_add(args,lc_device);h_add(args,"--context");let context="auto";if !lc_capacity_auto {context=h_int(lc_capacity);}h_add(args,context);h_add(args,"--demo");h_add(args,h_int(lc_demo));
     lc_context_limit=0;lc_context_used=-1;lc_context_prompt=-1;lc_worker=h_spawn(args,0,0);lc_ready=0;lc_worker_error=0;lc_stage("Loading model...",0,0);return 0;
 }
 fn lc_request() {
@@ -195,7 +196,7 @@ fn lc_command(text) {
     lc_panel_text=0;lc_panel_top=0;lc_panel_preview=0;
     let split=h_find(text," ");let name=text;let arg="";if split>=0 {name=h_slice(text,split);arg=h_trim(text+split+1);}
     if h_equal(name,"/quit") || h_equal(name,"/exit") {lc_running=0;}
-    else if h_equal(name,"/help") {lc_menu("Help","/models /model qwen3-1.7b|qwen3-4b /download\n/backend sass|cuda|hip|rdna|rdna-direct /device N /weights bf16|f16|f16-tiled\n/runtime auto|graph|gpu-os /monitor on|off\n/thinking on|off /temperature 0..2 /tokens auto|N\n/new /clear /sessions /resume latest|ID /history /logs /quit\n\nEnter sends; Ctrl+J or Alt+Enter inserts a newline. Tab completes commands.\nArrows edit; Up/Down recall prompts; Shift+arrows select.\nClick Thinking to expand/collapse; Ctrl+T toggles the latest block.\nCtrl+A selects all; Ctrl+E moves to end; Ctrl+U clears.\nCtrl+C copies selection or quits; Ctrl+X cuts; Ctrl+V pastes.\nDrag to select and copy on release; right-click pastes in the composer.\nDrag the monitor divider to resize the right column.\nEsc cancels generation. Mouse wheel / PageUp / PageDown scroll.\nConversation history is sent to the model; oldest pairs leave context when full.\nFile tools and other model architectures are not supported by this runner.");}
+    else if h_equal(name,"/help") {lc_menu("Help","/models /model qwen3-1.7b|qwen3-4b /download\n/backend sass|cuda|hip|rdna /device N /weights bf16|f16|f16-tiled\n/runtime auto|graph|gpu-os /monitor on|off\n/thinking on|off /temperature 0..2 /tokens auto|N\n/new /clear /sessions /resume latest|ID /history /logs /quit\n\nEnter sends; Ctrl+J or Alt+Enter inserts a newline. Tab completes commands.\nArrows edit; Up/Down recall prompts; Shift+arrows select.\nClick Thinking to expand/collapse; Ctrl+T toggles the latest block.\nCtrl+A selects all; Ctrl+E moves to end; Ctrl+U clears.\nCtrl+C copies selection or quits; Ctrl+X cuts; Ctrl+V pastes.\nDrag to select and copy on release; right-click pastes in the composer.\nDrag the monitor divider to resize the right column.\nEsc cancels generation. Mouse wheel / PageUp / PageDown scroll.\nConversation history is sent to the model; oldest pairs leave context when full.\nFile tools and other model architectures are not supported by this runner.");}
     else if h_equal(name,"/models") || h_equal(name,"/model") {
         if !h_len(arg) {lc_models_open();}else if !qm_valid(arg) {lc_status="Supported models: qwen3-1.7b, qwen3-4b";}
         else if lc_busy || lc_downloading {lc_status="Stop the operation before changing models.";}
@@ -215,14 +216,14 @@ fn lc_command(text) {
     else if h_equal(name,"/runtime") {
         if !h_equal(arg,"auto") && !h_equal(arg,"graph") && !h_equal(arg,"gpu-os") {lc_status="Use /runtime auto, graph or gpu-os.";}
         else if lc_busy || lc_downloading {lc_status="Stop the operation before changing runtimes.";}
-        else if h_equal(arg,"gpu-os") && (!h_equal(lc_backend,"rdna-direct") || !h_equal(lc_weights,"f16")) {lc_status="GPU OS requires /backend rdna-direct and /weights f16.";}
+        else if h_equal(arg,"gpu-os") && !h_equal(lc_weights,"f16") {lc_status="GPU OS requires /weights f16.";}
         else {lc_runtime_choice=arg;lc_runtime=arg;lc_stop();lc_start();}
     }
     else if h_equal(name,"/tokens") {let value=lc_number(arg,ll_context_max()-1);if h_equal(arg,"auto") {value=0;}if value<0 || (value==0 && !h_equal(arg,"auto")) {lc_status="Use /tokens auto or a positive count up to 40959.";}else {lc_maximum=value;lc_status=h_cat("Reply token limit: ",arg);}}
     else if h_equal(name,"/backend") || h_equal(name,"/weights") || h_equal(name,"/device") {
-        let valid=0;if h_equal(name,"/backend") {valid=h_equal(arg,"sass") || h_equal(arg,"cuda") || h_equal(arg,"hip") || h_equal(arg,"rdna") || h_equal(arg,"rdna-direct");}else if h_equal(name,"/weights") {valid=h_equal(arg,"bf16") || h_equal(arg,"f16") || h_equal(arg,"f16-tiled");}else {valid=lc_number(arg,15)>=0;}
+        let valid=0;if h_equal(name,"/backend") {valid=h_equal(arg,"sass") || h_equal(arg,"cuda") || h_equal(arg,"hip") || h_equal(arg,"rdna");}else if h_equal(name,"/weights") {valid=h_equal(arg,"bf16") || h_equal(arg,"f16") || h_equal(arg,"f16-tiled");}else {valid=lc_number(arg,15)>=0;}
         if !valid {lc_status="Invalid setting. See /help.";}else if lc_busy || lc_downloading {lc_status="Stop the operation before changing hardware settings.";}
-        else if h_equal(lc_runtime_choice,"gpu-os") && ((h_equal(name,"/backend") && !h_equal(arg,"rdna-direct")) || (h_equal(name,"/weights") && !h_equal(arg,"f16"))) {lc_status="Switch to /runtime graph before changing GPU OS backend or weights.";}
+        else if h_equal(lc_runtime_choice,"gpu-os") && (h_equal(name,"/weights") && !h_equal(arg,"f16")) {lc_status="Switch to /runtime graph before changing GPU OS backend or weights.";}
         else {if h_equal(name,"/backend") {lc_backend=arg;}else if h_equal(name,"/weights") {lc_weights=arg;}else {lc_device=arg;}lc_stop();lc_start();}
     }
     else {lc_status="Unknown command. Type /help.";}lc_dirty=1;return 0;
@@ -361,10 +362,11 @@ fn lc_download(argc,argv) {
 fn lc_main(argc,argv) {
     h_environment(argc,argv);h_timeout=3600000;lc_status="Ready";lc_stats="";lc_binary=h_real(load64(argv));lc_model="qwen3-1.7b";
     if b_option(argc,argv,"--capacity-plan",0) {return cap_plan(argc,argv);}if b_option(argc,argv,"--worker",0) {return ct_worker(argc,argv);}if b_option(argc,argv,"--download-worker",0) {return lc_download(argc,argv);}let read=b_option(argc,argv,"--read-session",0);if read {return lc_read_session(read);}
-    let i=1;while i<argc {if h_equal(load64(argv+i*8),"--help") {h_print(1,"Usage: llm [--model qwen3-1.7b|qwen3-4b] [--checkpoint DIRECTORY] [--backend sass|cuda|hip|rdna|rdna-direct] [--device N]\n           [--runtime auto|graph|gpu-os] [--monitor on|off] [--weights bf16|f16|f16-tiled] [--context auto|32..40960]\n           [--max-tokens auto|N] [--history-dir DIRECTORY] [--resume latest|ID]\n           [--thinking on|off] [--temperature 0..2] [--no-warmup 1] [--demo 1]\nRun: build/flex ./llm.flex [options]\nCompile: build/flex-llm llm.flex -o build/llm-chat\n");return 0;}i=i+1;}
-    lc_compiler=b_option(argc,argv,"--compiler",lm_default_compiler());lc_backend=b_option(argc,argv,"--backend",lm_default_backend());lm_select_backend(lc_backend);lc_weights=b_option(argc,argv,"--weights","f16");h_assert(h_equal(lc_weights,"bf16") || h_equal(lc_weights,"f16") || h_equal(lc_weights,"f16-tiled"),"invalid weight format");
+    let i=1;while i<argc {if h_equal(load64(argv+i*8),"--help") {h_print(1,"Usage: llm [--model qwen3-1.7b|qwen3-4b] [--checkpoint DIRECTORY] [--backend sass|cuda|hip|rdna] [--device N]\n           [--runtime auto|graph|gpu-os] [--gpu-os-target auto|hip|rdna|ptx] [--monitor on|off] [--weights bf16|f16|f16-tiled] [--context auto|32..40960]\n           [--max-tokens auto|N] [--history-dir DIRECTORY] [--resume latest|ID]\n           [--thinking on|off] [--temperature 0..2] [--no-warmup 1] [--demo 1]\nRun: build/flex ./llm.flex [options]\nCompile: build/flex-llm llm.flex -o build/llm-chat\n");return 0;}i=i+1;}
+    lc_compiler=b_option(argc,argv,"--compiler",lm_default_compiler());lc_backend=b_option(argc,argv,"--backend",lm_default_backend());lm_select_backend(lc_backend);lc_backend=lm_backend_name();lc_weights=b_option(argc,argv,"--weights","f16");h_assert(h_equal(lc_weights,"bf16") || h_equal(lc_weights,"f16") || h_equal(lc_weights,"f16-tiled"),"invalid weight format");
+    lc_worker_target=b_option(argc,argv,"--gpu-os-target","auto");h_assert(h_equal(lc_worker_target,"auto") || h_equal(lc_worker_target,"hip") || h_equal(lc_worker_target,"rdna") || h_equal(lc_worker_target,"ptx"),"invalid --gpu-os-target");
     lc_runtime_choice=b_option(argc,argv,"--runtime","auto");lc_runtime=lc_runtime_choice;h_assert(h_equal(lc_runtime,"auto") || h_equal(lc_runtime,"graph") || h_equal(lc_runtime,"gpu-os"),"--runtime must be auto, graph or gpu-os");
-    if h_equal(lc_runtime,"gpu-os") {h_assert(h_equal(lc_backend,"rdna-direct") && h_equal(lc_weights,"f16"),"GPU OS requires --backend rdna-direct --weights f16");}
+    if h_equal(lc_runtime,"gpu-os") {h_assert(h_equal(lc_weights,"f16"),"GPU OS requires --weights f16");}
     let monitor=b_option(argc,argv,"--monitor","off");h_assert(h_equal(monitor,"on") || h_equal(monitor,"off"),"--monitor must be on or off");lt_enabled=h_equal(monitor,"on");
     lc_device=b_option(argc,argv,"--device","0");h_assert(lc_number(lc_device,15)>=0,"device must be 0..15");let context=b_option(argc,argv,"--context","auto");lc_capacity_auto=h_equal(context,"auto");if !lc_capacity_auto {lc_capacity=lw_int(context);}h_assert(lc_capacity>=32 && lc_capacity<=ll_context_max(),"context must be auto or 32..40960");let maximum=b_option(argc,argv,"--max-tokens","auto");lc_maximum=0;if !h_equal(maximum,"auto") {lc_maximum=lw_int(maximum);h_assert(lc_maximum>0 && lc_maximum<ll_context_max(),"max tokens must be auto or 1..40959");}
     let demo=h_getenv("FLEX_LLM_DEMO");if !demo {demo="0";}lc_demo=lw_int(b_option(argc,argv,"--demo",demo));h_assert(lc_demo<=1,"demo must be 0 or 1");

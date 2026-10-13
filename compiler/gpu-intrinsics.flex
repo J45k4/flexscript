@@ -71,9 +71,36 @@ fn gpu_intrinsic(index) {
     if equal(name,size,"gpu_rdna_mlp_f16",16) {return 73;}
     if equal(name,size,"gpu_rdna_gemv_three_f16",23) {return 74;}
     if equal(name,size,"gpu_rdna_rms_add_f16",20) {return 75;}
+    if equal(name,size,"gpu_system_fence",16) {return 76;}
+    if equal(name,size,"gpu_clock",9) {return 77;}
+    if equal(name,size,"gpu_system_load_acquire64",25) {return 78;}
+    if equal(name,size,"gpu_system_store_release64",26) {return 79;}
+    if equal(name,size,"gpu_system_exchange64",21) {return 80;}
+    if equal(name,size,"gpu_system_add64",16) {return 81;}
+    if equal(name,size,"gpu_cooperative_barrier",23) {return 82;}
+    if equal(name,size,"gpu_device_load_acquire64",25) {return 83;}
+    if equal(name,size,"gpu_device_store_release64",26) {return 84;}
+    if equal(name,size,"gpu_device_add64",16) {return 85;}
+    if equal(name,size,"gpu_device_fence",16) {return 86;}
+    if equal(name,size,"gpu_rdna_gemv_stage_f16",23) {return 87;}
+    if equal(name,size,"gpu_device_load_relaxed64",25) {return 88;}
+    if equal(name,size,"gpu_device_release_fence",24) {return 89;}
+    if equal(name,size,"gpu_device_acquire_fence",24) {return 90;}
+    if equal(name,size,"gpu_rdna_grid_barrier",21) {return 91;}
+    if equal(name,size,"gpu_rdna_gemv_grid_f16",22) {return 92;}
+    if equal(name,size,"gpu_rdna_rms_stage_f16",22) {return 93;}
+    if equal(name,size,"gpu_rdna_rms_head_f16",21) {return 94;}
+    if equal(name,size,"gpu_rdna_rope_f32",17) {return 97;}
+    if equal(name,size,"gpu_rdna_element_f32",20) {return 96;}
+    if equal(name,size,"gpu_rdna_attention_f32",22) {return 95;}
+    if equal(name,size,"gpu_rdna_stage",14) {return 98;}
     return 0;
 }
 fn gpu_intrinsic_arity(kind) {
+    if kind==98 {return 1;}
+    if kind==87 || kind==92 || kind==93 || kind==94 || kind==95 || kind==96 || kind==97 {return 2;}
+    if kind==76 || kind==77 || kind==82 || kind==86 || kind==89 || kind==90 {return 0;}
+    if (kind>=79 && kind<=81) || kind==84 || kind==85 {return 2;}
     if kind==70 {return 9;}
     if kind==67 {return 5;}
 
@@ -102,7 +129,20 @@ fn p_float_result(width) {
     else {p_text("mov.b64 ");p_reg(p_acc);p_text(", %d3;\n");}return 0;
 }
 fn p_intrinsic(kind,first) {
-    if kind>=72 && kind<=75 {fail("native RDNA intrinsics require rdna-direct-gfx1201");}
+    if kind==89 || kind==90 {p_text("fence.acq_rel.gpu;\nmov.u64 ");p_reg(p_acc);p_text(",0;\n");return 0;}
+    if kind==88 {p_text("ld.relaxed.gpu.global.u64 ");p_reg(p_acc);p_text(",[");p_reg(first);p_text("];\n");return 0;}
+    if kind==86 {p_text("fence.sc.gpu;\nmov.u64 ");p_reg(p_acc);p_text(",0;\n");return 0;}
+    if kind==83 {p_text("ld.acquire.gpu.global.u64 ");p_reg(p_acc);p_text(",[");p_reg(first);p_text("];\n");return 0;}
+    if kind==84 {p_text("st.release.gpu.global.u64 [");p_reg(first);p_text("],");p_reg(first+1);p_text(";\n");p_move(p_acc,first+1);return 0;}
+    if kind==85 {p_text("atom.acq_rel.gpu.global.add.u64 ");p_reg(p_acc);p_text(",[");p_reg(first);p_text("],");p_reg(first+1);p_text(";\n");return 0;}
+    if kind==82 {fail("cooperative barrier requires a backend adapter; use the portable GPU OS barrier for PTX/SASS");}
+    if kind==76 {p_text("fence.sc.sys;\nmov.u64 ");p_reg(p_acc);p_text(",0;\n");return 0;}
+    if kind==77 {p_text("mov.u64 ");p_reg(p_acc);p_text(",%globaltimer;\n");return 0;}
+    if kind==78 {p_text("ld.acquire.sys.global.u64 ");p_reg(p_acc);p_text(",[");p_reg(first);p_text("];\n");return 0;}
+    if kind==79 {p_text("st.release.sys.global.u64 [");p_reg(first);p_text("],");p_reg(first+1);p_text(";\n");p_move(p_acc,first+1);return 0;}
+    if kind==80 || kind==81 {p_text("atom.acq_rel.sys.global.");if kind==80 {p_text("exch.b64 ");}else {p_text("add.u64 ");}p_reg(p_acc);p_text(",[");p_reg(first);p_text("],");p_reg(first+1);p_text(";\n");return 0;}
+
+    if (kind>=72 && kind<=75) || kind==87 || kind==91 || kind==92 || kind==93 || kind==94 || kind==95 || kind==96 || kind==97 || kind==98 {fail("native RDNA intrinsics require rdna-gfx1201");}
 
     if kind==69 {
         p_text("cvt.u32.u64 %r0,");p_reg(first);p_text(";\nmov.b32 {%h0,%h1},%r0;\ncvt.f32.f16 %f0,%h0;\ncvt.f32.f16 %f1,%h1;\nmov.b32 %r0,%f0;\nmov.b32 %r1,%f1;\nmov.b64 ");p_reg(p_acc);p_text(",{%r0,%r1};\n");return 0;

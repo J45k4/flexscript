@@ -213,7 +213,7 @@ def picker_tests(binary, directory):
 def gpu_tests(binary, checkpoint_path):
     with tempfile.TemporaryDirectory(prefix='llm-4b-gpu-', dir=ROOT / 'build') as temp:
         history = Path(temp)
-        extra = ['--model', 'qwen3-4b', '--backend', 'rdna-direct',
+        extra = ['--model', 'qwen3-4b', '--backend', 'rdna',
                  '--context', 'auto', '--max-tokens', '512']
         if checkpoint_path:
             extra += ['--checkpoint', str(checkpoint_path)]

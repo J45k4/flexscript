@@ -505,7 +505,7 @@ an application speedup.
 
 ## Initial hybrid direct RDNA linear emission (2026-10-12)
 
-The experimental `rdna-direct` inference mode now emits F16 GEMV, paired MLP
+The experimental native RDNA inference mode now emits F16 GEMV, paired MLP
 and packed Q/K/V instructions and AMDHSA code objects directly from Flexscript.
 The remaining kernels use ROCm LLVM. GEMV uses sixteen weights per lane for
 widths divisible by 512, with an eight-weight fallback; MLP and Q/K/V keep the
@@ -522,7 +522,7 @@ llama.cpp comparison, not a new alternating comparison or evidence of a lead
 on every runtime. The 150 tokens/s target has not been reached.
 
 ```sh
-build/bench-llm --backend rdna-direct --compiler build/flex   --checkpoint build/llm/models/qwen3-1.7b   --tokens build/llm/rdna-gpu-sample-chat.json --decode 64   --context 256 --repeats 5 --report build/llm/direct-final-speed.json
+build/bench-llm --backend rdna --compiler build/flex   --checkpoint build/llm/models/qwen3-1.7b   --tokens build/llm/rdna-gpu-sample-chat.json --decode 64   --context 256 --repeats 5 --report build/llm/direct-final-speed.json
 ```
 
 The direct kernels pass CPU comparisons at widths 256, 768, 2048 and 6144,
@@ -540,7 +540,7 @@ Local evidence: `direct-final-speed.json`, `direct-final-quality.json` and
 
 ## Complete direct RDNA emission (2026-10-12)
 
-`rdna-direct` now emits every Qwen kernel directly, including WMMA prefill,
+Native RDNA now emits every Qwen kernel directly, including WMMA prefill,
 fused attention and greedy sampling. Four compact fast paths cover F16 linear
 operations and 2048-wide residual RMSNorm; no kernel falls back to LLVM.
 The AMD default selects this mode. HIP still loads and dispatches the code.
@@ -571,3 +571,117 @@ remains unmet. Earlier hybrid measurements above use a separate run.
 Evidence: `build/llm/benchmark-direct-all-native-final.json`,
 `build/llm/benchmark-llvm-all-native-final.json` and
 `build/llm/direct-native-fixed-chat.json`.
+
+## SGLang on RX 9070 XT (2026-10-13)
+
+SGLang was measured using AMD's official
+`rocm/sgl-dev:v0.5.13.post1-ubuntu24.04-py3.14-rocm7.14.1` image,
+digest `sha256:2ca81cabef4df503ac29024c341057672caede6407fefe08433c92086cac2fde`.
+The image contains SGLang 0.5.13.post1, PyTorch 2.11.0+rocm7.14.1 and
+HIP 7.14.60850. The container received only the GPU devices, a read-only
+model mount and a loopback HTTP port. No host driver or system settings changed.
+[AMD's Radeon guidance](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/sglang.html)
+calls for disabling AITER; this run also explicitly selects Triton attention.
+
+Both runners use the existing Qwen3-1.7B checkpoint, FP16 weights,
+1024-token context capacity, greedy sampling and 128 generated tokens.
+SGLang receives the exact 41- and 378-token input sequences from Flexscript's
+chat benchmark. Prefix caching, speculative decoding and profiling are off.
+SGLang uses FP16 KV storage, while Flexscript uses FP32 KV storage; this is
+an application comparison with different internal arithmetic, not a test of
+identical floating-point computations.
+
+Rates below measure client arrival time from the first token to the last,
+excluding prefill and the first selected token, but including sampling and
+stream publication. SGLang uses HTTP/SSE; Flexscript uses JSON lines over pipes.
+Each workload has one warmup and three measured requests. Flexscript alternates
+native and HIP resident workers, with both models loaded but only one generating.
+The SGLang server remains loaded and idle during the Flexscript measurements.
+Every single-request run generates exactly the same 128 token IDs across all
+three routes.
+
+| Single-request decode | 41 prompt tokens | 378 prompt tokens |
+| --- | ---: | ---: |
+| Flexscript native RDNA GPU OS | 146.36 tok/s | 139.54 tok/s |
+| Flexscript HIP GPU OS | 156.04 tok/s | 151.89 tok/s |
+| SGLang, tuned settings below | 85.14 tok/s | 84.44 tok/s |
+
+Native RDNA is about 1.72× and 1.65× faster in these two single-request tests.
+HIP was faster than native RDNA in this initial comparison. Later native
+tuning is measured separately below. SGLang reaches the first token sooner:
+32.6/29.4 ms versus native RDNA's 75.2/298.2 ms. Earlier standalone native
+measurements around 134 tok/s use a different host path and model reload
+protocol; they should not be mixed into this comparison.
+
+For eight simultaneous requests, SGLang's median aggregate throughput is
+671.77 tok/s (short) and 610.00 tok/s (longer), including prefill and request
+completion. Flexscript has no equivalent batched resident-worker measurement.
+All batched requests return 128 tokens; 15 of 24 measured short-prompt requests
+match the single-request token sequence, and all 24 longer-prompt requests match.
+The batch result therefore is not a wholly token-matched cross-runtime comparison.
+
+SGLang launch options:
+
+```sh
+SGLANG_USE_AITER=0 SGLANG_USE_AITER_AR=0 SGLANG_ROCM_FUSED_DECODE_MLA=false \
+python3 -m sglang.launch_server --model-path /model \
+  --host 0.0.0.0 --port 30080 --dtype float16 --attention-backend triton \
+  --context-length 1024 --max-total-tokens 8192 --max-running-requests 8 \
+  --cuda-graph-max-bs 8 --mem-fraction-static 0.5 --disable-radix-cache \
+  --skip-tokenizer-init --stream-interval 1 --chunked-prefill-size 4096 \
+  --num-continuous-decode-steps 4
+```
+
+The initial 2048-token chunk/one-step configuration measured 85.04/83.58 tok/s
+for single requests. Its longer eight-request batch left one request queued
+until the others finished, reducing aggregate throughput to 319.46 tok/s.
+Increasing the chunk to fit the full batch removes that bottleneck; four
+continuous steps provide no material single-request improvement here.
+
+The streaming harness is `scripts/benchmark-sglang.py`. It accepts a Flexscript
+benchmark JSON report with `samples[].done.input_ids` and `generated_ids`:
+
+```sh
+python3 scripts/benchmark-sglang.py --url http://127.0.0.1:30080 \
+  --rounds 3 --concurrency 1 --fixture build/sglang/results/flex/results.json \
+  --output build/sglang/results/repeat-single
+```
+
+Raw local evidence is under `build/sglang/results/`: `single`, `batch8`,
+`tuned-single`, `tuned-batch8` and `flex`, each containing `results.json`.
+`build/sglang/` also retains both server logs, the image identity, input/output
+fixtures and the fresh Flexscript comparison harness. The temporary server
+was stopped after measurement; the image remains cached.
+
+These are unlocked-clock desktop measurements of one small model on one Radeon,
+not a universal comparison against every SGLang version or configuration.
+
+## Native GPU OS closes the HIP gap (2026-10-13)
+
+After adding native attention, elementwise/rotary leaves, a phase/count
+rendezvous and scalar stage dispatch, the same real chat prompts were rerun
+with Qwen3-1.7B F16, FP32 KV, context 1024, greedy sampling and profiling off.
+Both workers remained loaded. One warmup plus seven alternating measured
+requests per target generated identical input and output IDs for 128 tokens.
+HIP includes the shared unprofiled-loop optimization as well.
+
+| Client-arrival decode median | 41 prompt tokens | 378 prompt tokens |
+|---|---:|---:|
+| Emitted native RDNA GPU OS | 156.54 tok/s | 152.49 tok/s |
+| Shared HIP GPU OS | 156.19 tok/s | 151.93 tok/s |
+
+Native led in all seven measured pairs for each prompt. Its median paired
+advantage was 0.23% and 0.37%, so this establishes a small local lead for these
+workloads. Timing excludes prefill and the first token and includes sampling
+and stream publication. Automatic GPU clocks and desktop activity remain in
+effect. SGLang was not rerun during this later tuning comparison.
+
+The separate three-round standalone comparison measured native
+146.67/150.73 steps/s and HIP 143.71/149.40, with all generated IDs identical.
+That host reloads weights between requests and has a different timing path;
+compare rates within each comparison. The native worker uses 96 VGPRs and
+106 SGPRs and builds through Flexscript without LLVM, an assembler or linker.
+
+Evidence: `build/gpu-os/tuning/race2/chat-stage-results/results.json`,
+`build/gpu-os/tuning/race2/stage-results/results.json` and the
+[GPU OS validation and reproduction commands](../libs/os/gpu/README.md#native-rdna-ahead-of-hip-2026-10-13).

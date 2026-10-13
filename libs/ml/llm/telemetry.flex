@@ -70,7 +70,7 @@ fn lt_init(device,backend) {
     lt_profile_reset();lt_sample_count=0;lt_last_tick=0;lt_busy=-1;lt_mem_busy=-1;lt_vram_used=-1;lt_vram_total=-1;lt_temperature=-1;lt_hotspot=-1;lt_power=-1;lt_power_cap=-1;lt_clock=-1;lt_memory_clock=-1;
     let fixture=h_getenv("FLEX_LLM_GPU_SYSFS");
     if fixture {lt_path=fixture;lt_name="GPU driver sensors";}
-    else if h_equal(backend,"hip") || h_equal(backend,"rdna") || h_equal(backend,"rdna-direct") {
+    else if h_equal(backend,"hip") || h_equal(backend,"rdna") {
         let bus=h_take(64);let ordinal=h_number(device);
         if !hip_call("hipDeviceGetPCIBusId",bus,64,ordinal,0,0,0) {let path=h_join("/sys/bus/pci/devices",bus);if h_exists(h_join(path,"gpu_busy_percent")) {lt_path=path;}}
         if lt_path {let name=hip_device_name(ordinal);if name {lt_name=name;}}

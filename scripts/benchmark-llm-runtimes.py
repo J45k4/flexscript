@@ -40,7 +40,7 @@ class Worker:
             str(Path(args.binary).resolve()), '--worker', '1',
             '--checkpoint', str(Path(args.checkpoint).resolve()),
             '--compiler', str(Path(args.compiler).resolve()),
-            '--backend', 'rdna-direct', '--weights', 'f16',
+            '--backend', 'rdna', '--weights', 'f16',
             '--runtime', runtime, '--device', '0', '--context', str(args.context),
         ], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=self.error, bufsize=0)
@@ -125,7 +125,7 @@ def main():
     prompts = dict(short=short, longer=background * 8 + '\n' + short)
     regimes = [('graph', False), ('gpu-os', False), ('gpu-os-profile', True)]
     report = dict(date=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                  settings=vars(args), backend='rdna-direct', weights='f16',
+                  settings=vars(args), backend='rdna', weights='f16',
                   sampling='greedy', thinking=False, prompts=prompts,
                   timing='Decode steps/s excludes prefill and the first selected token; '
                          'includes sampling, worker streaming/publication and host polling.',

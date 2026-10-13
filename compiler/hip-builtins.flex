@@ -2,7 +2,7 @@
 fn hp_builtins() {
     p_text("// Flexscript word operations for AMD wave32 kernels.\n");
     p_text("#include <hip/hip_runtime.h>\n");
-    p_text("#include <hip/hip_fp16.h>\n");
+    p_text("#include <hip/hip_fp16.h>\n#include <hip/hip_cooperative_groups.h>\n");
     p_text("using W=unsigned long long;\nusing G16=unsigned short __attribute__((address_space(1)));\nusing G32=unsigned int __attribute__((address_space(1)));\nusing G64=W __attribute__((address_space(1)));\n");
     p_text("struct FWords {W v[8];};\n");
     p_text("extern __shared__ __align__(8) unsigned char flex_shared[];\n");
@@ -77,5 +77,13 @@ fn hp_builtins() {
     p_text(" c=__builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(a,b,c);\n");
     p_text(" __builtin_memcpy(out,&c,32);hp_shared_store(offset,out[1]);hp_shared_store(offset+8,out[2]);hp_shared_store(offset+16,out[3]);return out[0];\n");
     p_text("}\n");
+    p_text("FD W hp_system_load(W p){return __hip_atomic_load((W*)p,__ATOMIC_ACQUIRE,__HIP_MEMORY_SCOPE_SYSTEM); }\n");
+    p_text("FD W hp_system_store(W p,W v){__hip_atomic_store((W*)p,v,__ATOMIC_RELEASE,__HIP_MEMORY_SCOPE_SYSTEM);return v;}\n");
+    p_text("FD W hp_system_exchange(W p,W v){return __hip_atomic_exchange((W*)p,v,__ATOMIC_ACQ_REL,__HIP_MEMORY_SCOPE_SYSTEM);}\n");
+    p_text("FD W hp_system_add(W p,W v){return __hip_atomic_fetch_add((W*)p,v,__ATOMIC_ACQ_REL,__HIP_MEMORY_SCOPE_SYSTEM);}\n");
+    p_text("FD W hp_device_load(W p){return __hip_atomic_load((W*)p,__ATOMIC_ACQUIRE,__HIP_MEMORY_SCOPE_AGENT); }\n");
+    p_text("FD W hp_device_relaxed(W p){return __hip_atomic_load((W*)p,__ATOMIC_RELAXED,__HIP_MEMORY_SCOPE_AGENT); }\n");
+    p_text("FD W hp_device_store(W p,W v){__hip_atomic_store((W*)p,v,__ATOMIC_RELEASE,__HIP_MEMORY_SCOPE_AGENT);return v;}\n");
+    p_text("FD W hp_device_add(W p,W v){return __hip_atomic_fetch_add((W*)p,v,__ATOMIC_ACQ_REL,__HIP_MEMORY_SCOPE_AGENT);}\n");
     return 0;
 }

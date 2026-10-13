@@ -4,8 +4,8 @@
 host, a native ByteLevel BPE tokenizer, resident 16-bit checkpoint weights, FP32
 activations and a retained FP32 KV cache. NVIDIA uses direct SASS (`--backend
 sass`) or driver-compiled PTX (`--backend cuda`). AMD uses native gfx1201 code
-objects emitted directly (`--backend rdna-direct`), native objects compiled by
-ROCm LLVM (`--backend rdna`), or runtime-compiled HIP source (`--backend hip`).
+objects emitted directly (`--backend rdna`) or runtime-compiled HIP source
+(`--backend hip`).
 The default detects a HIP device and selects direct RDNA, otherwise SASS.
 GLib supplies Unicode/regex functions. NVIDIA needs `libcuda.so.1`; AMD needs
 ROCm's HIP runtime. Direct RDNA needs no HIPRTC compilation; the LLVM routes
@@ -183,7 +183,7 @@ this catalog. CPU inference is not implemented.
 | Commands | Purpose |
 | --- | --- |
 | `/models`, `/model qwen3-1.7b|qwen3-4b`, `/download` | Select a model and explicitly download missing assets |
-| `/backend sass|cuda|hip|rdna|rdna-direct`, `/device N`, `/weights FORMAT` | Reload with selected execution settings |
+| `/backend sass|cuda|hip|rdna`, `/device N`, `/weights FORMAT` | Reload with selected execution settings |
 | `/runtime auto|graph|gpu-os` | Use automatic selection, per-token graphs or the resident GPU worker; GPU OS requires direct RDNA and F16 |
 | `/monitor on|off` | Show or hide the right-hand GPU monitor |
 | `/thinking on|off` | Select Qwen3 thinking prompt format |
@@ -289,9 +289,9 @@ build/llm-infer --backend sass --checkpoint "$QWEN_CHECKPOINT"
 # PTX compiled by the NVIDIA driver for the installed GPU.
 build/llm-infer --backend cuda --checkpoint "$QWEN_CHECKPOINT"
 # Direct gfx1201 machine code, without LLVM/HIPRTC compilation.
-build/llm-infer --backend rdna-direct --checkpoint "$QWEN_CHECKPOINT"
-# gfx1201 machine code compiled by ROCm LLVM and loaded through HIP.
 build/llm-infer --backend rdna --checkpoint "$QWEN_CHECKPOINT"
+# HIP source compiled by ROCm LLVM.
+build/llm-infer --backend hip --checkpoint "$QWEN_CHECKPOINT"
 # HIP source compiled through HIPRTC when modules are loaded.
 build/llm-infer --backend hip --checkpoint "$QWEN_CHECKPOINT"
 ```
@@ -536,8 +536,23 @@ events add instrumentation overhead; use the resident benchmark for speed
 comparisons. Its samples now include microsecond wall times alongside integer
 millisecond fields.
 
-The `--backend rdna-direct` mode encodes all Qwen kernels directly on gfx1201,
+The `--backend rdna` mode encodes all Qwen kernels directly on gfx1201,
 including WMMA prefill and sampling. Compatible F16 GEMV, paired MLP, Q/K/V and
 residual RMSNorm use specialized fast paths; BF16, tiled matrices and other
 widths use the direct word-IR compiler. This mode needs no HIPRTC compilation.
 See [RDNA targets and limits](rdna.md) for the compiler target and launch ABI.
+
+### GPU OS worker compilation
+
+The resident scheduler is shared Flexscript source under `libs/os/gpu`.
+`--runtime gpu-os --gpu-os-target rdna` runs greedy decoding through
+native AMD emission and temperature sampling through the HIP fallback. The
+AMD default keeps HIP worker compilation while native scheduler tuning is in
+progress. `--gpu-os-target hip` selects it explicitly. CUDA/PTX adapters and
+worker output are implemented but have not been tested on NVIDIA hardware;
+native SASS resident synchronization remains to be ported. See the
+[GPU OS backend documentation](../libs/os/gpu/README.md) for build paths and limits.
+Source assembly, compiler selection, caching and atomic artifact publication
+are implemented in `libs/os/gpu/build.flex` and `build-lib.flex`. Direct builds
+invoke only the Flexscript compiler; Python is no longer part of the build path.
+Explicit HIP fallback compilation still invokes ROCm's compiler.

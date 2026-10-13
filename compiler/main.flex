@@ -1818,7 +1818,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|rdna-direct-gfx1201|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1836,8 +1836,7 @@ fn main(argc, argv) {
             else if up_text(value,"ptx") {ptx_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"sass-sm75") {sass_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"hip") {hip_target=1;vm_mode=1;vm_restricted=1;}
-            else if up_text(value,"rdna-gfx1201") {hip_target=1;hp_machine=1;vm_mode=1;vm_restricted=1;}
-            else if up_text(value,"rdna-direct-gfx1201") {hip_target=1;hp_machine=2;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"rdna-gfx1201") {hip_target=1;hp_machine=2;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"ir") {frontend_ir_target=1;}
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}

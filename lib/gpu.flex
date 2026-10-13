@@ -155,3 +155,28 @@ fn gpu_f16x2_to_f32x2(value){return gpu_f16_to_f32_bits(value&65535)|(gpu_f16_to
 // C contains eight FP32 values. Return the first pair and write the other three
 // pairs at the caller's lane-private shared offset. All 32 lanes participate.
 fn gpu_rdna_wmma_f16x8(a0,a1,b0,b1,c0,c1,c2,c3,offset){return gpu_host_only();}
+
+// Cross-device/host publication. Pointers must be aligned, coherent memory.
+// These are stronger than gpu_fence (which only orders device global memory).
+fn gpu_system_fence(){return gpu_host_only();}
+// GPU wall clock, with host-provided ticks/kHz calibration in the profile ABI.
+fn gpu_clock(){return gpu_host_only();}
+fn gpu_system_load_acquire64(pointer){return gpu_host_only();}
+fn gpu_system_store_release64(pointer,value){return gpu_host_only();}
+fn gpu_system_exchange64(pointer,value){return gpu_host_only();}
+fn gpu_system_add64(pointer,value){return gpu_host_only();}
+
+// Runtime-provided cooperative grid barrier (currently HIP). Every thread
+// participates; fallbacks can instead use the portable generation barrier.
+fn gpu_cooperative_barrier(){return gpu_host_only();}
+
+// Device-scope ordering for GPU-owned synchronization scratch.
+fn gpu_device_load_acquire64(pointer){return gpu_host_only();}
+fn gpu_device_store_release64(pointer,value){return gpu_host_only();}
+fn gpu_device_add64(pointer,value){return gpu_host_only();}
+fn gpu_device_fence(){return gpu_host_only();}
+// Relaxed coherent polling; pair observation with an acquire fence before
+// consuming data. Release fences publish earlier reads/writes before signaling.
+fn gpu_device_load_relaxed64(pointer){return gpu_host_only();}
+fn gpu_device_release_fence(){return gpu_host_only();}
+fn gpu_device_acquire_fence(){return gpu_host_only();}

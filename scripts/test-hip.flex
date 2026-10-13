@@ -40,7 +40,7 @@ fn th_direct_flow() {
     let count=257;let host=alloc(count*16+16);let input=hip_buffer(count*8);th_check(hip_status);let output=hip_buffer(count*16+16);th_check(hip_status);
     let i=0;while i<count {store64(host+i*8,th_value(i));i=i+1;}th_check(hip_upload(input,host,count*8));
     store64(host+count*16,0x123456789abcdef0);store64(host+count*16+8,0xfedcba9876543210);th_check(hip_upload(output,host,count*16+16));
-    let image=h_join(t_work,"direct-flow");h_ok(h_args(t_compiler,"--target","rdna-direct-gfx1201",t_fixture,"-o",image));let module=hip_module(h_read(image));th_check(hip_status);
+    let image=h_join(t_work,"direct-flow");h_ok(h_args(t_compiler,"--target","rdna-gfx1201",t_fixture,"-o",image));let module=hip_module(h_read(image));th_check(hip_status);
     th_check(hip_launch(module,input,output,count));th_check(hip_download(host,output,count*16+16));i=0;
     while i<count {let v=th_value(i);let q=v/7;if (i&1) && (i&7)>2 {q=q+(i&7);}else {q=q-(i&3);}
         t_assert(load64(host+i*16)==q,h_cat3("direct RDNA flow/division mismatch at ",h_int(i),h_cat3(": ",h_int(load64(host+i*16)),h_cat(" expected ",h_int(q)))));
@@ -48,14 +48,63 @@ fn th_direct_flow() {
     t_assert(load64(host+count*16)==0x123456789abcdef0 && load64(host+count*16+8)==0xfedcba9876543210,"direct RDNA flow wrote beyond count");
     th_check(hip_unload(module));th_check(hip_free(input));th_check(hip_free(output));return 0;
 }
+fn th_direct_loads() {
+    t_program(h_cat3("import \"",h_real("lib/gpu.flex"),"\";fn combine(a,b,c){return a+b*3+c;}fn kernel(index,input,output,count){let p=input+index*48;let a=load64(p);let b=load64(p+8);let c=load64(p+16);let d=gpu_load_u32(p+24);let e=load64(p+32);let f=load64(p+40);let result=combine(a,b,c);if index&1{result=result+e;}else{result=result-f;}let i=0;while i<3 {result=result+(d<<i);i=i+1;}store64(output+index*24,result);store64(output+index*24+8,c/128);store64(output+index*24+16,b%64);return 0;}fn main(){return 78;}"));
+    let count=257;let host=alloc(count*48+8);let input=hip_buffer(count*48);th_check(hip_status);let output=hip_buffer(count*24+8);th_check(hip_status);
+    let i=0;while i<count {let j=0;while j<6 {store64(host+i*48+j*8,th_value(i*6+j));j=j+1;}i=i+1;}th_check(hip_upload(input,host,count*48));
+    store64(host+count*24,0x123456789abcdef0);th_check(hip_upload(output,host,count*24+8));
+    let image=h_join(t_work,"direct-loads");h_ok(h_args(t_compiler,"--target","rdna-gfx1201",t_fixture,"-o",image));let module=hip_module(h_read(image));th_check(hip_status);
+    th_check(hip_launch(module,input,output,count));th_check(hip_download(host,output,count*24+8));i=0;
+    while i<count {let expected=th_value(i*6)+th_value(i*6+1)*3+th_value(i*6+2);if i&1 {expected=expected+th_value(i*6+4);}else {expected=expected-th_value(i*6+5);}expected=expected+(th_value(i*6+3)&4294967295)*7;
+        t_assert(load64(host+i*24)==expected,"native scheduled loads changed word, narrow-load or divergent-loop semantics");t_assert(load64(host+i*24+8)==th_value(i*6+2)/128 && load64(host+i*24+16)==th_value(i*6+1)%64,"native signed power-of-two division or remainder mismatch");i=i+1;}
+    t_assert(load64(host+count*24)==0x123456789abcdef0,"scheduled load kernel overwrote guard");
+    th_check(hip_unload(module));th_check(hip_free(input));th_check(hip_free(output));return 0;
+}
+fn th_direct_zeros() {
+    t_program(h_cat3("import \"",h_real("lib/gpu.flex"),"\";fn plus(a,b){return gpu_f32_add(a,b);}fn kernel(index,input,output,count){let a=gpu_load_u32(input+index*16);let wide=load64(input+index*16+8);let value=gpu_f32_fma(plus(a,0),a,0);if index&1{value=wide;}let i=0;while i<3{if index&2{value=value^wide;}else{value=plus(value,a);}i=i+1;}store64(output+index*8,value);return 0;}fn main(){return 78;}"));
+    let count=1024;let host=h_take(count*16);let result=h_take(count*8+8);let input=hip_buffer(count*16);th_check(hip_status);let output=hip_buffer(count*8+8);th_check(hip_status);let i=0;
+    while i<count {store64(host+i*16,gpu_f32_pack(f64_div(f64_from_i64(i%17),f64_from_i64(8))));store64(host+i*16+8,((i%127+1)<<32)|gpu_f32_pack(f64_div(f64_from_i64(i%7),f64_from_i64(8))));i=i+1;}
+    th_check(hip_upload(input,host,count*16));store64(result+count*8,0x123456789abcdef0);th_check(hip_upload(output,result,count*8+8));
+    let image=h_join(t_work,"direct-zeros");h_ok(h_args(t_compiler,"--target","rdna-gfx1201",t_fixture,"-o",image));let module=hip_module(h_read(image));th_check(hip_status);
+    th_check(hip_launch(module,input,output,count));th_check(hip_download(result,output,count*8+8));i=0;
+    while i<count {let a=load64(host+i*16);let wide=load64(host+i*16+8);let value=gpu_f32_mul(a,a);if i&1 {value=wide;}let j=0;while j<3 {if i&2 {value=value^wide;}else {value=gpu_f32_add(value,a);}j=j+1;}
+        t_assert(load64(result+i*8)==value,"native zero-word reuse changed FP32/Word branch or loop semantics");i=i+1;}
+    t_assert(load64(result+count*8)==0x123456789abcdef0,"zero-word kernel overwrote guard");th_check(hip_unload(module));th_check(hip_free(input));th_check(hip_free(output));return 0;
+}
+fn th_return_value(v) {
+    if v&1 {return v+10;}if v&2 {return v*3;}
+    let i=0;while i<(v&7) {if i==3 {return v-i;}i=i+1;}return v^23;
+}
+fn th_nested_value(v) {
+    if v&4 {if v&8 {return th_return_value(v)+7;}else {return th_return_value(v)^16;}}
+    return th_return_value(v)*5;
+}
+fn th_direct_helpers() {
+    t_program(h_cat3("import \"",h_real("lib/gpu.flex"),"\";fn decide(v){if v&1{return v+10;}if v&2{return v*3;}let i=0;while i<(v&7){if i==3{return v-i;}i=i+1;}return v^23;}fn nested(v){if v&4{if v&8{return decide(v)+7;}else{return decide(v)^16;}}return decide(v)*5;}fn kernel(index,input,output,count){let y=nested(index);if index&16{y=y+decide(index+32);}else{y=y-decide(index+64);}store64(output+index*8,y);return 0;}fn main(){return 78;}"));
+    let count=257;let host=h_take(count*8+8);let output=hip_buffer(count*8+8);th_check(hip_status);
+    store64(host+count*8,0x123456789abcdef0);th_check(hip_upload(output,host,count*8+8));
+    let image=h_join(t_work,"direct-helpers");h_ok(h_args(t_compiler,"--target","rdna-gfx1201",t_fixture,"-o",image));let module=hip_module(h_read(image));th_check(hip_status);
+    th_check(hip_launch(module,0,output,count));th_check(hip_download(host,output,count*8+8));let i=0;
+    while i<count {let expected=th_nested_value(i);if i&16 {expected=expected+th_return_value(i+32);}else {expected=expected-th_return_value(i+64);}
+        t_assert(load64(host+i*8)==expected,"native helper copies or divergent early returns changed lane results");i=i+1;}
+    t_assert(load64(host+count*8)==0x123456789abcdef0,"native helper wrote beyond count");th_check(hip_unload(module));th_check(hip_free(output));
+    t_program(h_cat3("import \"",h_real("lib/gpu.flex"),"\";fn kernel(index,input,output,count){gpu_shared_store64(index*8,index*13+7);gpu_shared_barrier();let a=gpu_shared_load64(((index+1)&127)*8);let b=gpu_shared_load64(((index+3)&127)*8);let c=gpu_shared_load64(((index+7)&127)*8);let salt=gpu_load_u64(input+index*8);store64(output+index*8,a+b*3+c*5+salt);return 0;}fn main(){return 78;}"));
+    let input=hip_buffer(1024);th_check(hip_status);output=hip_buffer(1032);th_check(hip_status);let words=h_take(64);let config=hip_config(1,1,1,128,1,1,1024,0);th_check(hip_status);
+    i=0;while i<128 {store64(host+i*8,th_value(i));i=i+1;}th_check(hip_upload(input,host,1024));store64(host+1024,0x123456789abcdef0);th_check(hip_upload(output,host,1032));
+    image=h_join(t_work,"direct-lds-loads");h_ok(h_args(t_compiler,"--target","rdna-gfx1201",t_fixture,"-o",image));module=hip_module(h_read(image));th_check(hip_status);
+    th_check(hip_launch_words(module,input,output,128,config,words));th_check(hip_download(host,output,1032));i=0;
+    while i<128 {let expected=(((i+1)&127)*13+7)+(((i+3)&127)*13+7)*3+(((i+7)&127)*13+7)*5+th_value(i);
+        t_assert(load64(host+i*8)==expected,"native independent LDS/global loads changed word results");i=i+1;}
+    t_assert(load64(host+1024)==0x123456789abcdef0,"native LDS kernel overwrote guard");th_check(hip_unload(module));th_check(hip_free(input));th_check(hip_free(output));return 0;
+}
 fn suite(compiler) {
     t_init(compiler);let context=hip_context_device(0);th_check(hip_status);
     h_print(1,h_cat3("HIP device: ",hip_device_name(0),"\n"));
     t_program(h_cat3("import \"",h_real("lib/gpu.flex"),"\";fn kernel(index,input,output,count){let v=load64(input+index*8);store64(output+index*8,v*3+gpu_launch_word(0)+gpu_block_x());return 0;}fn main(){return 78;}"));
     let host=hip_host_buffer(4096);th_check(hip_status);let input=hip_buffer(4096);th_check(hip_status);let output=hip_buffer(4096);th_check(hip_status);
     let i=0;while i<512 {store64(host+i*8,i);i=i+1;}th_check(hip_upload(input,host,4096));
-    let targets=h_args("hip","rdna-gfx1201","rdna-direct-gfx1201",0,0,0);let target=0;
-    while target<3 {
+    let targets=h_args("hip","rdna-gfx1201",0,0,0,0);let target=0;
+    while target<h_count(targets) {
         let image=h_join(t_work,"kernel");h_ok(h_args(t_compiler,"--target",h_at(targets,target),t_fixture,"-o",image));
         let module=hip_module(h_read(image));th_check(hip_status);let function=hip_function(module,"flex_kernel");th_check(hip_status);
         let stream=hip_stream();th_check(hip_status);let config=hip_config(4,1,1,128,1,1,0,stream);th_check(hip_status);
@@ -69,9 +118,9 @@ fn suite(compiler) {
         i=0;while i<512 {t_assert(load64(host+i*8)==i*3+7+i/128,"HIP graph replay changed launch arguments");i=i+1;}
         th_check(hip_graph_instance_close(instance));th_check(hip_stream_close(stream));th_check(hip_unload(module));target=target+1;
     }
-    th_vector("hip");th_vector("rdna-gfx1201");th_vector("rdna-direct-gfx1201");
-    th_collectives("hip",host,input,output);th_collectives("rdna-gfx1201",host,input,output);th_collectives("rdna-direct-gfx1201",host,input,output);
-    th_direct_flow();
+    th_vector("hip");th_vector("rdna-gfx1201");
+    th_collectives("hip",host,input,output);th_collectives("rdna-gfx1201",host,input,output);
+    th_direct_flow();th_direct_loads();th_direct_zeros();th_direct_helpers();
     th_check(hip_free(input));th_check(hip_free(output));th_check(hip_host_free(host));th_check(hip_close(context));return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}

@@ -9,7 +9,7 @@ fn main(argc,argv) {
     while i<4 {store64(data+i*8,15360<<(16*((i+1)%4)));i=i+1;}go_check(hip_upload(weights,data,32));
     let logits=hip_buffer(16);go_check(hip_status);let state=hip_buffer(16);go_check(hip_status);gt_reset(logits);
     let stages=h_vec();let s=h_take(104);store64(s,3);store64(s+8,4);store64(s+16,weights);store64(s+24,state);store64(s+32,logits);store64(s+40,4);store64(s+56,4);h_add(stages,s);
-    let handle=go_open("build/gpu-os/resident.hsaco",stages,state,logits,4,4096,0);
+    let handle=go_open(b_option(argc,argv,"--image","build/gpu-os/resident.hsaco"),stages,state,logits,4,4096,0);
     go_submit(handle,1,6,999,998);h_assert(go_wait(handle)==0,"GPU OS limit reason");h_assert(go_produced(handle)==6,"GPU OS generated count");
     h_assert(!go_profile_count(handle),"disabled profiler published records");
     i=0;while i<6 {h_assert(go_token(handle,i)==i%4,"GPU OS resident token transition");i=i+1;}
@@ -28,11 +28,16 @@ fn main(argc,argv) {
     let bad=h_take(16);store64(bad,2139095040);go_check(hip_upload(logits,bad,16));go_submit(handle,1,6,999,998);
     h_assert(go_wait(handle)==4 && go_status(handle)==3 && !go_produced(handle),"GPU OS nonfinite fault");
     gt_reset(logits);go_submit(handle,4095,1,999,998);h_assert(!go_wait(handle) && go_produced(handle)==1,"GPU OS last context slot");
+    if !h_number(b_option(argc,argv,"--greedy-only","0")) {
     let uniform=h_take(16);go_check(hip_upload(logits,uniform,16));let seed=0x123456789abcdef;go_sampling(handle,1000,seed);
+    if h_equal(load64(handle+96),"rdna-greedy") {h_assert(h_equal(go_target(handle),"hip"),"native sampler did not select fallback");}
     go_submit(handle,1,1,999,998);h_assert(!go_wait(handle),"GPU OS temperature request");
     seed=seed^(seed<<13);seed=seed^(seed>>7);seed=seed^(seed<<17);
     h_assert(go_seed(handle)==seed && go_token(handle,0)==(seed&0x1fffffffffffff)*4/0x20000000000000,"GPU OS uniform sampling and seed");
     gt_reset(logits);go_sampling(handle,600,123456789);go_submit(handle,1,12,999,998);h_assert(!go_wait(handle) && go_produced(handle)==12,"GPU OS sampled token loop");
     i=0;while i<12 {h_assert(go_token(handle,i)<4,"GPU OS sampled token out of range");i=i+1;}
+    }
+    go_sampling(handle,0,123);if h_equal(load64(handle+96),"rdna-greedy") {h_assert(h_equal(go_target(handle),"rdna-greedy"),"native worker not restored");}
+    gt_reset(logits);go_submit(handle,1,6,999,998);h_assert(!go_wait(handle) && go_produced(handle)==6,"worker switch back failed");
     go_close(handle);go_check(hip_free(weights));go_check(hip_free(logits));go_check(hip_free(state));go_check(hip_close(context));h_print(1,"GPU OS mailbox, token loop, EOS, cancellation, reuse, sampling and fault checks pass\n");return 0;
 }

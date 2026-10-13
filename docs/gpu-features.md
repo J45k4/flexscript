@@ -30,7 +30,7 @@ implementation, and graphics shaders do not pass through our SASS compiler.
 | Hardware ray queries and triangle/instance acceleration structures | Separate ray API | Separate ray API | `lib/vulkan.flex`, Vulkan KHR extensions |
 
 General direct word-IR emission has been verified on SM75. The
-`rdna-direct-gfx1201` encoder emits the word-IR subset used by all Qwen GPU
+`rdna-gfx1201` encoder emits the word-IR subset used by all Qwen GPU
 kernels, with four F16 whole-kernel fast paths; see
 [RDNA targets and limits](rdna.md) for supported operations and register limits. Advanced GPU
 intrinsics select PTX 6.5 / SM75; plain integer PTX retains the SM50 baseline.

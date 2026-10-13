@@ -16,10 +16,10 @@ spec.loader.exec_module(tui)
 
 def settings(binary, directory, compiler):
     for arguments in [["--runtime", "invalid"],
-                      ["--runtime", "gpu-os", "--backend", "rdna-direct", "--weights", "bf16"],
-                      ["--runtime", "gpu-os", "--backend", "hip"]]:
+                      ["--runtime", "gpu-os", "--backend", "rdna", "--weights", "bf16"],
+                      ["--runtime", "gpu-os", "--gpu-os-target", "invalid"]]:
         result = subprocess.run([binary, *arguments], cwd=ROOT, capture_output=True)
-        assert result.returncode and (b"runtime" in result.stderr or b"GPU OS requires" in result.stderr)
+        assert result.returncode and (b"runtime" in result.stderr or b"GPU OS requires" in result.stderr or b"gpu-os-target" in result.stderr)
     for arguments in [[], ["--runtime", "auto"], ["--runtime", "graph"]]:
         result = subprocess.run([binary, "--worker", "1", "--demo", "1", *arguments],
                                 cwd=ROOT, input=b"", capture_output=True, check=True)
@@ -30,10 +30,12 @@ def settings(binary, directory, compiler):
     source.write_text('import '+json.dumps(str(ROOT / 'libs/ml/llm/chat.flex'))+''';
 fn main(argc,argv) {
     h_environment(argc,argv);
-    h_assert(h_equal(ct_choose_runtime("auto",2,"f16",0,0),"graph"),"HIP fallback");
+    h_assert(h_equal(ct_choose_runtime("auto",2,"bf16",0,0),"graph"),"HIP weight fallback");
     h_assert(h_equal(ct_choose_runtime("auto",4,"bf16",0,0),"graph"),"weight fallback");
     h_assert(h_equal(ct_choose_runtime("auto",4,"f16",0,1),"graph"),"demo fallback");
     h_assert(h_equal(ct_choose_runtime("graph",4,"f16",0,0),"graph"),"explicit graph override");
+    h_assert(h_equal(ct_choose_runtime("gpu-os",1,"f16",0,1),"gpu-os") && go_driver==1,"explicit CUDA driver selection");
+    h_assert(h_equal(ct_choose_runtime("gpu-os",2,"f16",0,1),"gpu-os") && go_driver==0,"explicit HIP driver selection");
     if hip_device_count()>0 {let supported=go_supported(0);let chosen=ct_choose_runtime("auto",4,"f16",0,0);h_assert(h_equal(chosen,"gpu-os")==!!supported,"GPU capability selection");h_print(1,h_cat3("Hardware auto runtime: ",chosen,"\\n"));}
     return 0;
 }
@@ -47,11 +49,13 @@ fn main(argc,argv) {
         # checkpoint before compiling model kernels or allocating weights.
         tools = directory / "tools"
         tools.mkdir()
-        python = tools / "python"
-        python.write_text('#!/bin/sh\necho "test resident builder unavailable" >&2\nexit 42\n')
-        python.chmod(0o700)
+        fake_compiler = tools / "flex"
+        fake_compiler.write_text('#!/bin/sh\ncase "$1" in *libs/os/gpu/build.flex) '
+                                 'echo "test resident builder unavailable" >&2; exit 42;; esac\n'
+                                 'exec '+__import__('shlex').quote(compiler)+' "$@"\n')
+        fake_compiler.chmod(0o700)
         environment = dict(os.environ, PATH=str(tools)+os.pathsep+os.environ["PATH"])
-        common = [binary, "--worker", "1", "--backend", "rdna-direct", "--checkpoint", str(directory / "absent-model")]
+        common = [binary, "--worker", "1", "--backend", "rdna", "--checkpoint", str(directory / "absent-model"), "--compiler", str(fake_compiler)]
         automatic = subprocess.run(common, cwd=ROOT, env=environment, input=b"", capture_output=True)
         assert automatic.returncode and b"GPU OS build unavailable; using graph runtime" in automatic.stdout
         explicit = subprocess.run([*common, "--runtime", "gpu-os"], cwd=ROOT, env=environment, input=b"", capture_output=True)
@@ -59,7 +63,7 @@ fn main(argc,argv) {
         assert b"using graph runtime" not in explicit.stdout, "explicit GPU OS silently fell back"
     # Exercise the real script launcher, including its native host and worker.
     terminal = tui.Terminal([compiler, "llm.flex"], directory / "settings", [
-        "--demo", "1", "--backend", "rdna-direct", "--runtime", "gpu-os"])
+        "--demo", "1", "--backend", "rdna", "--runtime", "gpu-os"])
     try:
         terminal.wait("Model ready", timeout=20)
         assert b"gpu-os" in terminal.output
@@ -86,10 +90,10 @@ fn main(argc,argv) {
 
 
 class OSWorker(tui.Worker):
-    def __init__(self, binary, checkpoint, compiler):
+    def __init__(self, binary, checkpoint, compiler, target="auto", backend="rdna"):
         self.p = subprocess.Popen([binary, "--worker", "1", "--checkpoint", checkpoint,
-            "--compiler", compiler, "--backend", "rdna-direct", "--weights", "f16",
-            "--runtime", "gpu-os", "--context", "256"], cwd=ROOT,
+            "--compiler", compiler, "--backend", backend, "--weights", "f16",
+            "--runtime", "gpu-os", "--gpu-os-target",target,"--context", "256"], cwd=ROOT,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         self.ready = self.until("ready")[-1]
         assert self.ready["runtime"] == "gpu-os" and self.ready["resident_workers"] > 0
@@ -110,7 +114,7 @@ def done(events):
     return next(e for e in events if e["event"] == "done")
 
 
-def gpu(binary, checkpoint, compiler, directory):
+def gpu(binary, checkpoint, compiler, directory, native=False):
     worker = OSWorker(binary, checkpoint, compiler)
     prompt = dict(role="user", content="My name is Alex. Remember it.")
     try:
@@ -137,9 +141,24 @@ def gpu(binary, checkpoint, compiler, directory):
             [first, recall, reset, thinking, automatic], indent=2))
     finally:
         worker.close()
+    if native:
+        worker=OSWorker(binary,checkpoint,compiler,"rdna")
+        try:
+            native_first=done(worker.generate([prompt],24))
+            assert native_first["worker_target"]=="rdna-greedy"
+            assert native_first["generated_ids"]==first["generated_ids"]
+            sampled=done(worker.generate([prompt],8,600))
+            assert sampled["worker_target"]=="hip", "temperature did not select shared HIP fallback"
+            restored=done(worker.generate([prompt],24))
+            assert restored["worker_target"]=="rdna-greedy"
+            assert restored["generated_ids"]==native_first["generated_ids"]
+            (directory/"native-results.json").write_text(json.dumps([native_first,sampled,restored],indent=2))
+        finally:
+            worker.close()
+        print("Native Qwen IDs, HIP sampling fallback and return to native pass",flush=True)
     # Actual terminal streaming, Esc cancellation and another reply afterwards.
     terminal = tui.Terminal(binary, directory / "gpu-sessions", [
-        "--runtime", "gpu-os", "--backend", "rdna-direct", "--checkpoint", checkpoint,
+        "--runtime", "gpu-os", "--backend", "rdna", "--checkpoint", checkpoint,
         "--compiler", compiler, "--context", "256", "--max-tokens", "128"])
     try:
         terminal.wait("Model ready", timeout=60)
@@ -167,6 +186,7 @@ if __name__ == "__main__":
     parser.add_argument("--binary", default="build/llm-chat")
     parser.add_argument("--compiler", default="build/flex")
     parser.add_argument("--gpu", action="store_true")
+    parser.add_argument("--native", action="store_true", help="also check native worker and HIP sampling fallback")
     parser.add_argument("--checkpoint", default="build/llm/models/qwen3-1.7b")
     args = parser.parse_args()
     directory = ROOT / "build/gpu-os/chat-validation"
@@ -175,4 +195,4 @@ if __name__ == "__main__":
         settings(args.binary, Path(temporary), args.compiler)
     if args.gpu:
         with tempfile.TemporaryDirectory(prefix="gpu-", dir=directory) as temporary:
-            gpu(args.binary, args.checkpoint, args.compiler, Path(temporary))
+            gpu(args.binary, args.checkpoint, args.compiler, Path(temporary),args.native)
