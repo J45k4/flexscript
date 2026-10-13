@@ -39,11 +39,37 @@ fn sh_compute(dir) {
     let ids=alloc(8);gfx_u32(ids,input);gfx_u32(ids+4,output);gfx_call("glDeleteBuffers",2,ids,0,0,0,0);
     gfx_call("glDeleteShader",shader,0,0,0,0,0);gfx_call("glDeleteProgram",program,0,0,0,0,0);return 0;
 }
+// Struct layout oracle: the host writes bytes at the offsets documented in the
+// generated layout comment (Light 32 bytes, Particle 128 bytes).
+fn sh_particle(p,i) {
+    gfx_u32(p,sh_float(i));gfx_u32(p+16,sh_float(i));gfx_u32(p+20,sh_float(1));gfx_u32(p+24,sh_float(2));gfx_u32(p+28,sh_float(1));
+    gfx_u32(p+32,sh_float(5));gfx_u32(p+36,sh_float(6));gfx_u32(p+48,sh_float(2));gfx_u32(p+68,sh_float(2));gfx_u32(p+88,sh_float(2));gfx_u32(p+108,sh_float(1));
+    gfx_u32(p+112,i);return 0;
+}
+fn sh_expect(p,offset,value,i) {h_assert(gfx_get_u32(p+offset)==value,h_cat3("GLSL struct mismatch at particle ",h_int(i),h_cat(" offset ",h_int(offset))));return 0;}
+fn sh_structs(dir) {
+    let shader=gfx_shader(0x91b9,sh_source(dir,"structs-compute"));h_assert(shader,gfx_error);
+    let program=gfx_int("glCreateProgram",0,0,0,0,0,0);gfx_call("glAttachShader",program,shader,0,0,0,0);gfx_call("glLinkProgram",program,0,0,0,0,0);
+    let status=alloc(8);gfx_call("glGetProgramiv",program,0x8b82,status,0,0,0);
+    if !gfx_get_u32(status) {let log=alloc(8192);gfx_call("glGetProgramInfoLog",program,8192,0,log,0,0);h_die(log);}
+    let count=129;let size=count*128;let values=alloc(size);let i=0;while i<count {sh_particle(values+i*128,i);i=i+1;}
+    let tint=alloc(32);gfx_u32(tint,sh_float(1));gfx_u32(tint+4,sh_float(2));gfx_u32(tint+8,sh_float(3));gfx_u32(tint+12,sh_float(4));
+    let uniform=sh_buffer(0,0x8a11,tint,32);let input=sh_buffer(1,0x90d2,values,size);let output=sh_buffer(2,0x90d2,0,size);
+    gfx_call("glUseProgram",program,0,0,0,0,0);gfx_call("glDispatchCompute",3,1,1,0,0,0);gfx_call("glMemoryBarrier",0x200,0,0,0,0,0);
+    gfx_call("glGetNamedBufferSubData",output,0,size,values,0,0);h_assert(!gfx_int("glGetError",0,0,0,0,0,0),"GLSL struct readback failed");
+    i=0;while i<count {let p=values+i*128;let intensity=2;if !i {intensity=1;}
+        sh_expect(p,0,sh_float(i*2+5),i);sh_expect(p,4,sh_float(6),i);sh_expect(p,8,0,i);
+        sh_expect(p,16,sh_float(i+4),i);sh_expect(p,20,sh_float(6),i);sh_expect(p,24,sh_float(10),i);sh_expect(p,28,sh_float(intensity),i);
+        sh_expect(p,32,sh_float(5),i);sh_expect(p,36,sh_float(6),i);sh_expect(p,48,sh_float(2),i);sh_expect(p,108,sh_float(1),i);sh_expect(p,112,i+1,i);i=i+1;
+    }
+    let ids=alloc(12);gfx_u32(ids,uniform);gfx_u32(ids+4,input);gfx_u32(ids+8,output);gfx_call("glDeleteBuffers",3,ids,0,0,0,0);
+    gfx_call("glDeleteShader",shader,0,0,0,0,0);gfx_call("glDeleteProgram",program,0,0,0,0,0);return 0;
+}
 fn main(argc,argv) {
     h_environment(argc,argv);let dir=b_option(argc,argv,"--dir","build/shaders");
     if !gfx_open(0,64,64) {h_print(2,h_cat3("Graphics unavailable: ",gfx_error,"\n"));gfx_close();return 77;}
     h_print(1,h_cat3("OpenGL renderer: ",gfx_renderer(),"\n"));
     sh_render(dir,"triangle-vertex","triangle-fragment",0);
-    sh_render(dir,"textured-vertex","textured-fragment",1);sh_compute(dir);gfx_close();
-    h_print(1,"GLSL execution: 8192 rendered pixels and 129 compute results passed\n");return 0;
+    sh_render(dir,"textured-vertex","textured-fragment",1);sh_compute(dir);sh_structs(dir);gfx_close();
+    h_print(1,"GLSL execution: 8192 rendered pixels, 129 compute results and 129 struct records passed\n");return 0;
 }

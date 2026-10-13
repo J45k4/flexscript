@@ -73,11 +73,40 @@ async function verify(shaders) {
   const actual = new Float32Array(readback.getMappedRange());
   for (let i = 0; i < count; i++) check(actual[i] === i * 3 + 7, `compute ${i}: ${actual[i]}`);
   readback.unmap();readback.destroy();input.destroy();output.destroy();
+  // Struct layout oracle: bytes at the offsets in the generated layout comment.
+  const recordBytes = 128, records = new ArrayBuffer(count * recordBytes);
+  for (let i = 0; i < count; i++) {
+    const f = new Float32Array(records, i * recordBytes, 32);
+    f.set([i], 0);f.set([i, 1, 2, 1, 5, 6], 4);f.set([2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1], 12);
+    new Uint32Array(records, i * recordBytes + 112, 1)[0] = i;
+  }
+  const tint = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  device.queue.writeBuffer(tint, 0, new Float32Array([1, 2, 3, 4, 0, 0, 0, 0]));
+  const particles = device.createBuffer({ size: records.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const results = device.createBuffer({ size: records.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+  const structReadback = device.createBuffer({ size: records.byteLength, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  device.queue.writeBuffer(particles, 0, records);
+  const structPipeline = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: modules['structs-compute'], entryPoint: 'main' } });
+  const structGroup = device.createBindGroup({ layout: structPipeline.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: { buffer: tint } }, { binding: 1, resource: { buffer: particles } }, { binding: 2, resource: { buffer: results } },
+  ] });
+  const structEncoder = device.createCommandEncoder();
+  const structPass = structEncoder.beginComputePass();structPass.setPipeline(structPipeline);structPass.setBindGroup(0, structGroup);structPass.dispatchWorkgroups(3);structPass.end();
+  structEncoder.copyBufferToBuffer(results, 0, structReadback, 0, records.byteLength);
+  device.queue.submit([structEncoder.finish()]);await structReadback.mapAsync(GPUMapMode.READ);
+  const mapped = structReadback.getMappedRange();
+  for (let i = 0; i < count; i++) {
+    const f = new Float32Array(mapped, i * recordBytes, 32), id = new Uint32Array(mapped, i * recordBytes + 112, 1)[0];
+    const expected = [[0, i * 2 + 5], [1, 6], [2, 0], [4, i + 4], [5, 6], [6, 10], [7, i ? 2 : 1], [8, 5], [9, 6], [12, 2], [27, 1]];
+    for (const [index, value] of expected) check(f[index] === value, `struct ${i} float ${index}: ${f[index]}, expected ${value}`);
+    check(id === i + 1, `struct ${i} id: ${id}`);
+  }
+  structReadback.unmap();structReadback.destroy();tint.destroy();particles.destroy();results.destroy();
   const validation = await device.popErrorScope();
   check(!validation, validation?.message);check(!errors.length, errors.join('\n'));
   const info = adapter.info;
   device.destroy();
-  return { modules: Object.keys(modules).length, renderedPixels: 8192, computeResults: count, adapter: { vendor: info?.vendor, architecture: info?.architecture, description: info?.description } };
+  return { modules: Object.keys(modules).length, renderedPixels: 8192, computeResults: count, structRecords: count, adapter: { vendor: info?.vendor, architecture: info?.architecture, description: info?.description } };
 }
 
 const option = (name, fallback) => {

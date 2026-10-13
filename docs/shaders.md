@@ -77,6 +77,7 @@ fn tint(value: vec3f, amount: f32) -> vec3f {
 - Arithmetic requires matching types, with scalar/vector multiplication and
   `mat4f * vec4f` or `mat4f * mat4f` also supported. Comparisons produce scalar
   bools. `and`, `or`, `not` preserve short circuit evaluation.
+- Structs group typed fields; see [Structs](#structs).
 - `if`/`else`, returns, assignments, compound assignments and literal-bounded
   `for i in low..high` loops are supported. Loop indices are read-only; bounds
   and iteration counts are limited to one million.
@@ -89,6 +90,40 @@ Math builtins: `sin`, `cos`, `abs`, `sqrt`, `floor`, `ceil`, `fract`, `normalize
 `sample(texture, uv)` uses implicit LOD and is fragment-only;
 `sample_level(texture, uv, lod)` uses an explicit f32 LOD in any stage.
 `array_length(buffer)` returns a `u32` element count.
+
+## Structs
+
+```seta
+struct Light { color: vec3f, intensity: f32, direction: vec2f }
+struct Particle { position: vec3f, light: Light, id: u32 }
+uniform sun: Light binding(0)
+buffer particles: Particle binding(1) read_write
+```
+
+Struct declarations precede functions, alongside the interface declarations.
+Fields are separated by commas or newlines. They can use any value type
+except `void`, including structs declared earlier, but a struct cannot contain itself. Construct a
+struct with every field in declaration order, as in `Light(color, 1.0, dir)`. Read
+and assign fields with `value.field`, and chain field access through nested
+structs. Structs can be locals, parameters, return values, uniforms and storage
+buffer elements. They cannot be interstage inputs/outputs, and they cannot be compared
+or used in arithmetic.
+
+Structs without `bool` fields are host-shareable. They use one layout on every
+target, following std140 rules:
+scalars align to 4 bytes, `vec2` to 8, `vec3`/`vec4`/`mat4f` and nested structs
+to 16 bytes, and a struct's size rounds up to 16 bytes. A `vec3f` followed by a
+scalar packs into its last four bytes. GLSL declares struct storage buffers
+`std140` (scalar buffers stay `std430`), so the array stride equals the struct
+size. WGSL members carry explicit `@size` padding so they land on the same offsets.
+Each emitted struct carries the layout as a comment, which is the host ABI:
+
+```text
+// layout Particle size 64: position@0 light@16 id@48
+```
+
+`tests/shaders/structs-compute.seta` is executed on OpenGL and WebGPU, and the
+host checks the result bytes at these offsets on both.
 
 ## Stages and interfaces
 
@@ -134,13 +169,14 @@ Textures reserve **both N and N+1** in the source for portability, even for
 GLSL. The host configures filtering and addressing. Texture and buffer
 resources cannot be copied into locals or passed to user functions.
 
-Uniforms support numeric scalars, vectors and column-major `mat4f`; bools are
-not host-shareable. Each uniform has its own buffer: pad scalars/vectors to a
-16-byte allocation for std140 compatibility; a `mat4f` uses 64 bytes. This avoids
-an implicit packed-struct ABI between the targets.
+Uniforms support numeric scalars, vectors, column-major `mat4f` and
+host-shareable structs; bools are not host-shareable. Each uniform has its own
+buffer: pad scalars/vectors to a 16-byte allocation for std140 compatibility; a
+`mat4f` uses 64 bytes. Group related values in a struct to share one buffer.
 
 Storage buffers currently support compute-stage runtime arrays of scalar
-`i32`, `u32` or `f32`, with four-byte element stride. Indexing requires an integer;
+`i32`, `u32` or `f32` (four-byte stride) or of host-shareable structs (stride
+equals the padded struct size). Indexing requires an integer;
 read-only buffer writes are rejected. Guard indices explicitly using
 `array_length`, as in [vector-compute.seta](../examples/seta/shaders/vector-compute.seta).
 The compiler does not add cross-API bounds behavior or synchronize buffer access.
@@ -183,7 +219,7 @@ the water. Appearance lives in the material configuration and SetaScript shader.
 
 This is a general shader compiler target with an initial typed subset. It does
 not yet provide a material DSL or automatically replace Setaworld's handwritten
-shaders. Shader files currently cannot import CPU modules. Structs, user arrays,
+shaders. Shader files currently cannot import CPU modules. User arrays,
 atomics, barriers, dynamic loops, shifts, swizzle assignments, `discard` and
 conditional `?:` expressions are not implemented. Use `if`/`else` for conditional
 values; WGSL's eager `select` is not used to approximate lazy expressions.

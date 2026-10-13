@@ -19,9 +19,15 @@ global sg_edges=0;
 global sg_output=0;
 global sg_output_size=0;
 global sg_entry=-1;
+global sg_structs=0;
+global sg_struct_count=0;
 
 // Types: i32/bool/u32/f32=1..4; float/signed/unsigned vectors=5..13;
-// mat4f=14, void=15, texture=16. Buffer references add32 until indexed.
+// mat4f=14, void=15, texture=16, structs=100+index. Buffer references add 32
+// until indexed. Struct records (64 bytes): name, length, fields, count,
+// portable size (0 when it contains bool). Fields (32 bytes): name, length,
+// type, offset. Host-shareable structs use one std140-compatible layout on
+// every target; WGSL members receive explicit @size padding to match it.
 // Declaration records (64 bytes): name, length, type, kind, slot, builtin.
 // Function records (64 bytes): name, length, return type, parameters, count,
 // source offset, body AST. Locals (48 bytes): name, length, type, ID,
@@ -34,7 +40,17 @@ fn sg_type_word(ty) {
     if ty==11 {return "vec2u";}if ty==12 {return "vec3u";}if ty==13 {return "vec4u";}
     if ty==14 {return "mat4f";}if ty==15 {return "void";}return "texture2d";
 }
-fn sg_type_id() {let i=1;while i<=15 {if s_is(sg_type_word(i)) {return i;}i=i+1;}return 0;}
+fn sg_type_id() {
+    let i=1;while i<=15 {if s_is(sg_type_word(i)) {return i;}i=i+1;}
+    i=sg_find(sg_structs,sg_struct_count,64,ir_source+s_start,s_size);if i>=0 {return 100+i;}return 0;
+}
+fn sg_is_struct(ty) {return ty>=100 && ty<132;}
+fn sg_struct(ty) {return sg_structs+(ty-100)*64;}
+fn sg_is_ref(ty) {return (ty>32 && ty<=48) || ty>=132;}
+fn sg_round(value,align) {return (value+align-1)/align*align;}
+fn sg_shareable(ty) {if sg_is_struct(ty) {return load64(sg_struct(ty)+32)>0;}return ty==14 || (sg_numeric(ty) && sg_scalar(ty)!=2);}
+fn sg_align(ty) {let width=sg_width(ty);if width==1 {return 4;}if width==2 {return 8;}return 16;}
+fn sg_size(ty) {if sg_is_struct(ty) {return load64(sg_struct(ty)+32);}if ty==14 {return 64;}return sg_width(ty)*4;}
 fn sg_type() {let ty=sg_type_id();if !ty {s_fail("unsupported shader type");}s_next();return ty;}
 fn sg_width(ty) {if ty>=5 && ty<=13 {return 2+(ty-5)%3;}if ty>=1 && ty<=4 {return 1;}return 0;}
 fn sg_scalar(ty) {if ty>=5 && ty<=7 {return 4;}if ty>=8 && ty<=10 {return 1;}if ty>=11 && ty<=13 {return 3;}return ty;}
@@ -44,7 +60,7 @@ fn sg_find(table,count,stride,name,size) {
     let i=0;while i<count {let p=table+i*stride;if s_equal(name,size,load64(p),load64(p+8)) {return i;}i=i+1;}return -1;
 }
 fn sg_name() {
-    s_name();if sg_type_id() || s_is("shader") || s_is("input") || s_is("output") || s_is("uniform") || s_is("buffer") || s_is("texture") {s_fail("reserved shader name");}return 0;
+    s_name();if sg_type_id() || s_is("shader") || s_is("input") || s_is("output") || s_is("uniform") || s_is("buffer") || s_is("texture") || s_is("struct") {s_fail("reserved shader name");}return 0;
 }
 fn sg_node(kind,ty,a,b,c) {
     if sg_node_count>=65536 {s_fail("shader AST exceeds 65536 nodes");}
@@ -146,7 +162,9 @@ fn sg_prefix() {
             if s_token!=41 {let more=1;while more {if count==16 {s_fail("too many shader arguments");}store64(args+count*8,sg_expression(1));count=count+1;if s_token==44 {s_next();}else {more=0;}}}s_expect(41);
             if ctor {
                 if !count || ctor==15 {s_fail("invalid shader constructor");}let width=sg_width(ctor);let scalar=sg_scalar(ctor);
-                if ctor==14 {if count!=4 {s_fail("mat4f requires four vec4f columns");}let i=0;while i<4 {sg_require(sg_arg_type(args,i),7);i=i+1;}}
+                if sg_is_struct(ctor) {let st=sg_struct(ctor);if count!=load64(st+24) {s_fail("shader struct constructor requires every field in order");}
+                    let i=0;while i<count {sg_require(sg_arg_type(args,i),load64(load64(st+16)+i*32+16));i=i+1;}
+                }else if ctor==14 {if count!=4 {s_fail("mat4f requires four vec4f columns");}let i=0;while i<4 {sg_require(sg_arg_type(args,i),7);i=i+1;}}
                 else if width==1 {
                     if count!=1 || sg_width(sg_arg_type(args,0))!=1 {s_fail("scalar constructor requires one scalar");}
                     if (ctor==2 || sg_arg_type(args,0)==2) && ctor!=sg_arg_type(args,0) {s_fail("shader bool and numeric conversions require an explicit if");}
@@ -169,11 +187,15 @@ fn sg_prefix() {
             let kind=load64(sg_decls+load64(n+16)*64+24);if kind!=4 && kind!=5 {s_fail("indexing requires a storage buffer");}
             s_next();let index=sg_expression(1);let ty=load64(index+8);if ty!=1 && ty!=3 {s_fail("buffer index must be i32 or u32");}s_expect(93);n=sg_node(10,load64(n+8)-32,n,index,kind==4);
         }else {
-            s_next();if s_token!=256 {s_fail("expected shader vector component");}let width=sg_width(load64(n+8));if width<2 || s_size<1 || s_size>4 {s_fail("invalid shader swizzle");}
+            s_next();if s_token!=256 {s_fail("expected shader vector component");}
+            if sg_is_struct(load64(n+8)) {let st=sg_struct(load64(n+8));let f=sg_find(load64(st+16),load64(st+24),32,ir_source+s_start,s_size);
+                if f<0 {s_fail("unknown shader struct field");}n=sg_node(11,load64(load64(st+16)+f*32+16),n,f,0);s_next();
+            }else {let width=sg_width(load64(n+8));if width<2 || s_size<1 || s_size>4 {s_fail("invalid shader swizzle");}
             let bits=0;let i=0;let family=-1;while i<s_size {let c=load8(ir_source+s_start+i);let component=-1;let group=0;
                 if c==120 || c==114 {component=0;}if c==121 || c==103 {component=1;}if c==122 || c==98 {component=2;}if c==119 || c==97 {component=3;}
                 if c==114 || c==103 || c==98 || c==97 {group=1;}if component<0 || component>=width || (family>=0 && family!=group) {s_fail("invalid shader swizzle");}family=group;bits=bits|(component<<(i*2));i=i+1;
             }n=sg_node(9,sg_vector(sg_scalar(load64(n+8)),s_size),n,bits,s_size);s_next();
+            }
         }
     }return n;
 }
@@ -198,7 +220,7 @@ fn sg_expression(minimum) {
 }
 fn sg_assignable(n) {
     let kind=load64(n);if (kind==2 || kind==3) && !load64(n+24) {if kind==3 && load64(sg_decls+load64(n+16)*64+24)==5 {s_fail("buffer assignment requires an index");}return 1;}
-    if kind==10 && !load64(n+32) {return 1;}s_fail("shader assignment target is read-only or not assignable");return 0;
+    if kind==10 && !load64(n+32) {return 1;}if kind==11 {return sg_assignable(load64(n+16));}s_fail("shader assignment target is read-only or not assignable");return 0;
 }
 fn sg_block() {
     sg_depth=sg_depth+1;if sg_depth>128 {s_fail("shader block nesting exceeds 128");}let before=sg_local_count;s_expect(123);let first=0;let last=0;let returned=0;
@@ -211,7 +233,7 @@ fn sg_statement() {
     let n=0;
     if s_is("let") {
         s_next();sg_name();let name=ir_source+s_start;let size=s_size;s_next();let ty=0;if s_token==58 {s_next();ty=sg_type();}s_expect(61);let value=sg_expression(1);if ty {sg_require(load64(value+8),ty);}else {ty=load64(value+8);}
-        if ty==15 || ty==16 || ty>32 {s_fail("invalid shader local type");}let id=sg_local(name,size,ty,0);n=sg_node(20,ty,id,value,0);s_semicolon();
+        if ty==15 || ty==16 || sg_is_ref(ty) {s_fail("invalid shader local type");}let id=sg_local(name,size,ty,0);n=sg_node(20,ty,id,value,0);s_semicolon();
     }else if s_is("return") {
         s_next();let ty=load64(sg_functions+sg_current*64+16);let value=0;if ty!=15 {value=sg_expression(1);sg_require(load64(value+8),ty);}n=sg_node(21,ty,value,0,0);store64(n+48,1);s_semicolon();
     }else if s_is("if") {
@@ -253,14 +275,28 @@ fn sg_declaration(kind) {
         else {if !s_is("location") {s_fail("shader input/output requires location or builtin");}s_next();s_expect(40);slot=s_literal();s_expect(41);if slot<0 || slot>15 || !sg_numeric(ty) || sg_stage==3 {s_fail("invalid shader location or interface type");}if kind==2 && sg_stage==2 && ty!=7 {s_fail("fragment color output must be vec4f");}}
     }else {
         if !s_is("binding") {s_fail("shader resource requires binding");}s_next();s_expect(40);slot=s_literal();s_expect(41);if slot<0 || slot>31 || (kind==6 && slot==31) {s_fail("shader binding out of range");}
-        if kind==4 {if s_is("read_write") {kind=5;}else if !s_is("read") {s_fail("buffer requires read or read_write");}s_next();if sg_stage!=3 || (ty!=1 && ty!=3 && ty!=4) {s_fail("storage buffers currently require compute stage and scalar elements");}}
-        if kind==3 && (ty==2 || sg_scalar(ty)==2) {s_fail("bool is not a host-shareable uniform type");}
+        if kind==4 {if s_is("read_write") {kind=5;}else if !s_is("read") {s_fail("buffer requires read or read_write");}s_next();}
+        if kind!=6 && !sg_shareable(ty) {s_fail("bool is not a host-shareable resource type");}
+        if (kind==4 || kind==5) && (sg_stage!=3 || (ty!=1 && ty!=3 && ty!=4 && !sg_is_struct(ty))) {s_fail("storage buffers currently require compute stage and scalar or struct elements");}
     }
     let i=0;while i<sg_decl_count {let p=sg_decls+i*64;let other=load64(p+24);
         if kind<=2 && other==kind && ((builtin && builtin==load64(p+40)) || (!builtin && !load64(p+40) && slot==load64(p+32))) {s_fail("duplicate shader location or builtin");}
         if kind>=3 && other>=3 {let end=slot;if kind==6 {end=end+1;}let other_end=load64(p+32);if other==6 {other_end=other_end+1;}if slot<=other_end && load64(p+32)<=end {s_fail("overlapping shader resource bindings");}}i=i+1;
     }
     let p=sg_decls+sg_decl_count*64;store64(p,name);store64(p+8,size);store64(p+16,ty);store64(p+24,kind);store64(p+32,slot);store64(p+40,builtin);sg_decl_count=sg_decl_count+1;s_semicolon();return 0;
+}
+fn sg_struct_declaration() {
+    if sg_struct_count==32 {s_fail("too many shader structs");}s_next();sg_name();let name=ir_source+s_start;let size=s_size;
+    if sg_builtin(name,size) || sg_find(sg_decls,sg_decl_count,64,name,size)>=0 {s_fail("duplicate or reserved shader struct name");}
+    s_next();s_expect(123);let fields=alloc(32*32);let count=0;let offset=0;let shareable=1;
+    while s_token!=125 {
+        if count==32 {s_fail("too many shader struct fields");}s_name();let field=ir_source+s_start;let length=s_size;
+        if sg_find(fields,count,32,field,length)>=0 {s_fail("duplicate shader struct field");}s_next();s_expect(58);let ty=sg_type();if ty==15 {s_fail("void shader struct field");}
+        if !sg_shareable(ty) {shareable=0;}else if sg_is_struct(ty) {offset=sg_round(offset,16);}else {offset=sg_round(offset,sg_align(ty));}
+        let p=fields+count*32;store64(p,field);store64(p+8,length);store64(p+16,ty);store64(p+24,offset);offset=offset+sg_size(ty);count=count+1;if s_token==44 {s_next();}
+    }s_expect(125);if !count {s_fail("shader struct requires fields");}
+    let p=sg_structs+sg_struct_count*64;store64(p,name);store64(p+8,size);store64(p+16,fields);store64(p+24,count);store64(p+32,shareable*sg_round(offset,16));
+    sg_struct_count=sg_struct_count+1;s_semicolon();return 0;
 }
 fn sg_signatures() {
     s_next();if !s_is("plugin") {s_fail("expected plugin header");}s_next();s_name();s_next();while s_token==46 {s_next();s_name();s_next();}
@@ -272,7 +308,8 @@ fn sg_signatures() {
     s_expect(123);let functions_started=0;
     while s_token!=125 {
         let kind=0;if s_is("input") {kind=1;}if s_is("output") {kind=2;}if s_is("uniform") {kind=3;}if s_is("buffer") {kind=4;}if s_is("texture") {kind=6;}
-        if kind {if functions_started {s_fail("shader interface declarations must precede functions");}sg_declaration(kind);}
+        if s_is("struct") {if functions_started {s_fail("shader interface declarations must precede functions");}sg_struct_declaration();}
+        else if kind {if functions_started {s_fail("shader interface declarations must precede functions");}sg_declaration(kind);}
         else {
             functions_started=1;if !s_is("fn") {s_fail("expected shader function or interface declaration");}s_next();sg_name();let name=ir_source+s_start;let size=s_size;
             if sg_function_count==128 {s_fail("too many shader functions");}if sg_find(sg_functions,sg_function_count,64,name,size)>=0 || sg_builtin(name,size) {s_fail("duplicate or reserved shader function name");}
@@ -319,6 +356,7 @@ fn sg_id(prefix,id) {
     sg_text(prefix);sg_number(id);return 0;
 }
 fn sg_emit_type(ty) {
+    if sg_is_struct(ty) {return sg_id("sw_t",ty-100);}
     if shader_target==2 {if ty==14 {sg_text("mat4x4f");}else {sg_text(sg_type_word(ty));}return 0;}
     if ty==1 {sg_text("int");}else if ty==2 {sg_text("bool");}else if ty==3 {sg_text("uint");}else if ty==4 {sg_text("float");}
     else if ty>=5 && ty<=13 {let prefix="vec";if ty>=8 && ty<=10 {prefix="ivec";}if ty>=11 {prefix="uvec";}sg_id(prefix,sg_width(ty));}
@@ -357,6 +395,7 @@ fn sg_emit_expr(n) {
     }else if kind==8 {sg_id("sw_f",a);sg_text("(");sg_emit_args(b,c);sg_text(")");}
     else if kind==9 {sg_text("(");sg_emit_expr(a);sg_text(").");let i=0;while i<c {sg_bytes("xyzw"+((b>>(i*2))&3),1);i=i+1;}}
     else if kind==10 {sg_emit_expr(a);sg_text("[");sg_emit_expr(b);sg_text("]");}
+    else if kind==11 {sg_emit_expr(a);sg_id(".sw_m",b);}
     else if kind==12 {if shader_target==2 {sg_text("(-2147483647i - 1i)");}else {sg_text("(-2147483647 - 1)");}}
     return 0;
 }
@@ -381,15 +420,31 @@ fn sg_gl_builtin(id) {
     if id==4 {return sg_text("gl_FrontFacing");}if id==5 {return sg_text("gl_FragDepth");}
     if id==6 {return sg_text("gl_GlobalInvocationID");}if id==7 {return sg_text("gl_LocalInvocationID");}return sg_text("gl_WorkGroupID");
 }
+// Structs come first so resources, prototypes and locals can name them. The
+// layout comment is the host ABI: byte offsets and the padded struct size.
+fn sg_emit_structs() {
+    let k=0;while k<sg_struct_count {let st=sg_structs+k*64;let fields=load64(st+16);let count=load64(st+24);let size=load64(st+32);
+        if size {sg_text("// layout ");sg_bytes(load64(st),load64(st+8));sg_text(" size ");sg_number(size);sg_text(":");let j=0;
+            while j<count {let f=fields+j*32;sg_text(" ");sg_bytes(load64(f),load64(f+8));sg_text("@");sg_number(load64(f+24));j=j+1;}sg_text("\n");
+        }sg_text("struct ");sg_id("sw_t",k);sg_text(" {\n");let j=0;
+        while j<count {let f=fields+j*32;let ty=load64(f+16);
+            if shader_target==2 {
+                if size {let next=size;if j+1<count {next=load64(f+56);}if next-load64(f+24)!=sg_size(ty) {sg_text("@size(");sg_number(next-load64(f+24));sg_text(") ");}}
+                sg_variable("sw_m",j,ty);sg_text(",\n");
+            }else {sg_variable("sw_m",j,ty);sg_text(";\n");}j=j+1;
+        }if shader_target==2 {sg_text("}\n");}else {sg_text("};\n");}k=k+1;
+    }return 0;
+}
 fn sg_emit_interface() {
     if shader_target!=2 {if shader_target==3 {sg_text("#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n");}else {sg_text("#version 450 core\n");}if sg_stage==3 {sg_text("layout(local_size_x=");sg_number(load64(sg_work));sg_text(",local_size_y=");sg_number(load64(sg_work+8));sg_text(",local_size_z=");sg_number(load64(sg_work+16));sg_text(") in;\n");}}
+    sg_emit_structs();
     let i=0;while i<sg_decl_count {let p=sg_decls+i*64;let ty=load64(p+16);let kind=load64(p+24);let slot=load64(p+32);let builtin=load64(p+40);
         if kind<=2 {
             if shader_target==2 {sg_text("var<private> ");sg_variable("sw_r",i,ty);sg_text(";\n");}
             else if builtin {sg_variable("sw_r",i,ty);sg_text(";\n");}
             else {if shader_target!=3 || (kind==1 && sg_stage==1) || (kind==2 && sg_stage==2) {sg_text("layout(location=");sg_number(slot);sg_text(") ");}if sg_scalar(ty)!=4 && ((kind==2 && sg_stage==1) || (kind==1 && sg_stage==2)) {sg_text("flat ");}if kind==1 {sg_text("in ");}else {sg_text("out ");}sg_variable("sw_r",i,ty);sg_text(";\n");}
         }else if shader_target!=2 {
-            if shader_target==3 {if kind==3 {sg_text("layout(std140) ");}}else {sg_text("layout(");if kind==3 {sg_text("std140,");}else if kind==4 || kind==5 {sg_text("std430,");}sg_text("binding=");sg_number(slot);sg_text(") ");}
+            if shader_target==3 {if kind==3 {sg_text("layout(std140) ");}}else {sg_text("layout(");if kind==3 {sg_text("std140,");}else if sg_is_struct(ty) {sg_text("std140,");}else if kind==4 || kind==5 {sg_text("std430,");}sg_text("binding=");sg_number(slot);sg_text(") ");}
             if kind==6 {sg_text("uniform sampler2D ");sg_id("sw_r",i);sg_text(";\n");}
             else {if kind==3 {sg_text("uniform ");}else {if kind==4 {sg_text("readonly ");}sg_text("buffer ");}sg_id("sw_block",i);sg_text(" { ");sg_variable("sw_r",i,ty);if kind==4 || kind==5 {sg_text("[]");}sg_text("; };\n");}
         }else {
@@ -422,9 +477,9 @@ fn sg_emit_entry() {
     sg_text("}\n");return 0;
 }
 fn seta_shader_frontend(text,size,path) {
-    ir_source=text;ir_source_size=size;ir_path=path;s_shader_mode=1;s_pos=0;sg_stage=0;sg_decl_count=0;sg_function_count=0;sg_node_count=0;sg_entry=-1;sg_nesting=0;
-    sg_work=alloc(24);sg_decls=alloc(128*64);sg_functions=alloc(128*64);sg_locals=alloc(1024*48);sg_nodes=alloc(65536*64);sg_edges=alloc(128*128);sg_output=alloc(4194304);sg_output_size=0;
-    if sg_work<0 || sg_decls<0 || sg_functions<0 || sg_locals<0 || sg_nodes<0 || sg_edges<0 || sg_output<0 {s_fail("shader frontend allocation failed");}
+    ir_source=text;ir_source_size=size;ir_path=path;s_shader_mode=1;s_pos=0;sg_stage=0;sg_decl_count=0;sg_struct_count=0;sg_function_count=0;sg_node_count=0;sg_entry=-1;sg_nesting=0;
+    sg_work=alloc(24);sg_decls=alloc(128*64);sg_functions=alloc(128*64);sg_locals=alloc(1024*48);sg_nodes=alloc(65536*64);sg_edges=alloc(128*128);sg_structs=alloc(32*64);sg_output=alloc(4194304);sg_output_size=0;
+    if sg_work<0 || sg_decls<0 || sg_functions<0 || sg_locals<0 || sg_nodes<0 || sg_edges<0 || sg_structs<0 || sg_output<0 {s_fail("shader frontend allocation failed");}
     sg_signatures();sg_current=0;
     while sg_current<sg_function_count {let f=sg_functions+sg_current*64;sg_local_count=0;sg_local_id=0;sg_depth=1;let i=0;let params=load64(f+24);
         while i<load64(f+32) {let p=params+i*24;sg_local(load64(p),load64(p+8),load64(p+16),0);i=i+1;}

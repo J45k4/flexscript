@@ -122,11 +122,11 @@ fn suite(compiler) {
     h_save_bytes(t_binary,h_read(rebuilt),h_file_size,420);
     // The same typed shader frontend and emitters run inside the self-hosted
     // Wasm compiler. Compare complete outputs against the native compiler.
-    let shader_names=h_args("triangle-vertex","triangle-fragment","textured-vertex","textured-fragment","vector-compute",0);
+    let shader_names=h_args("examples/seta/shaders/triangle-vertex.seta","examples/seta/shaders/triangle-fragment.seta","examples/seta/shaders/textured-vertex.seta","examples/seta/shaders/textured-fragment.seta","examples/seta/shaders/vector-compute.seta","tests/shaders/structs-compute.seta");
     let shader_targets=h_args("glsl","wgsl","glsl-es",0,0,0);let si=0;
     while si<h_count(shader_names) {
-        let sj=0;let shader_count=3;if si==4 {shader_count=2;}while sj<shader_count {
-            let mark=h_mark();let shader_source=h_cat3("examples/seta/shaders/",h_at(shader_names,si),".seta");let shader_target=h_at(shader_targets,sj);
+        let sj=0;let shader_count=3;if si>=4 {shader_count=2;}while sj<shader_count {
+            let mark=h_mark();let shader_source=h_at(shader_names,si);let shader_target=h_at(shader_targets,sj);
             request=j_object();files=j_object();j_set(files,"shader.seta",j_string(h_read(shader_source)));j_set(request,"files",files);
             argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("--target"));j_push(argv,j_string(shader_target));j_push(argv,j_string("shader.seta"));j_push(argv,j_string("-o"));j_push(argv,j_string("shader.txt"));j_set(request,"argv",argv);
             let from_wasm=h_join(t_work,"shader-wasm.txt");let from_native=h_join(t_work,"shader-native.txt");

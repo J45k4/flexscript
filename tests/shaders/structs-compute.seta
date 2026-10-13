@@ -1,0 +1,36 @@
+plugin structs v1 {}
+shader compute(64, 1, 1) {
+struct Light {
+    color: vec3f,
+    intensity: f32,
+    direction: vec2f,
+}
+struct Particle {
+    position: vec3f
+    light: Light
+    scale: mat4f
+    id: u32
+}
+struct Scratch { visible: bool, weight: f32 }
+input id: vec3u builtin(global_id)
+uniform tint: Light binding(0)
+buffer particles: Particle binding(1) read
+buffer results: Particle binding(2) read_write
+fn brighten(light: Light, amount: f32) -> Light {
+    let result = light
+    result.intensity = light.intensity * amount
+    return result
+}
+fn main() -> void {
+    let i = id.x
+    if i < array_length(particles) and i < array_length(results) {
+        let p = particles[i]
+        let scratch = Scratch(p.id > 0u, 2.0)
+        if scratch.visible { p.light = brighten(p.light, scratch.weight) }
+        p.light.color = p.light.color * tint.color + vec3f(tint.intensity)
+        p.position = (p.scale * vec4f(p.position, 1.0)).xyz + vec3f(p.light.direction, 0.0)
+        results[i] = p
+        results[i].id = p.id + 1u
+    }
+}
+}

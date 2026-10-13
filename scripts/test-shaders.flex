@@ -47,6 +47,12 @@ fn suite(compiler) {
     sh_positive("tests/shaders/types-fragment.seta","frag");
     sh_positive("tests/shaders/types-compute.seta","comp");
     sh_positive("tests/shaders/limits.seta","frag");
+    // Structs: nested host layout, struct buffers/uniforms, field assignment.
+    sh_positive("tests/shaders/structs-compute.seta","comp");
+    sh_positive("tests/shaders/structs-fragment.seta","frag");
+    h_check(sh_compile("tests/shaders/structs-compute.seta","wgsl",t_binary),0,"");
+    t_assert(h_has(h_read(t_binary),"// layout Particle size 128: position@0 light@16 scale@48 id@112"),"missing struct layout report");
+    t_assert(h_has(h_read(t_binary),"@size(16) sw_m3: u32"),"missing WGSL struct padding");
     // Independently link stages whose resource declarations have different
     // indices. Bindings must name resources, not per-file declaration order.
     let vertex=h_join(t_work,"bindings.vert");let fragment=h_join(t_work,"bindings.frag");
@@ -90,6 +96,19 @@ fn suite(compiler) {
     sh_reject("plugin test v1 {} shader fragment { texture image binding(0) uniform tint: vec4f binding(1) fn main() -> void {} }","overlapping");
     sh_reject("plugin test v1 {} shader fragment { output a: vec4f location(0) output b: vec4f location(0) fn main() -> void {} }","duplicate shader location");
     sh_reject("plugin test v1 {} shader fragment { uniform enabled: bool binding(0) fn main() -> void {} }","host-shareable");
+    sh_reject("plugin test v1 {} shader fragment { struct S { on: bool } uniform s: S binding(0) fn main() -> void {} }","host-shareable");
+    sh_reject("plugin test v1 {} shader fragment { struct S { a: f32 } struct S { b: f32 } fn main() -> void {} }","reserved shader name");
+    sh_reject("plugin test v1 {} shader fragment { struct S { a: f32, a: f32 } fn main() -> void {} }","duplicate shader struct field");
+    sh_reject("plugin test v1 {} shader fragment { struct S {} fn main() -> void {} }","requires fields");
+    sh_reject("plugin test v1 {} shader fragment { struct S { next: S } fn main() -> void {} }","unsupported shader type");
+    sh_reject("plugin test v1 {} shader fragment { struct S { a: f32 } fn main() -> void { let s = S(1.0) let x = s.b } }","unknown shader struct field");
+    sh_reject("plugin test v1 {} shader fragment { struct S { a: f32, b: f32 } fn main() -> void { let s = S(1.0) } }","every field in order");
+    sh_reject("plugin test v1 {} shader fragment { struct S { a: f32 } fn main() -> void { let s = S(1) } }","type mismatch");
+    sh_reject("plugin test v1 {} shader fragment { struct S { a: f32 } uniform s: S binding(0) fn main() -> void { s.a = 1.0 } }","read-only or not assignable");
+    sh_reject("plugin test v1 {} shader fragment { struct S { a: f32 } fn main() -> void { let x = S(1.0) == S(1.0) } }","scalar operands");
+    sh_reject("plugin test v1 {} shader fragment { struct S { a: f32 } input s: S location(0) fn main() -> void {} }","invalid shader location");
+    sh_reject("plugin test v1 {} shader fragment { fn main() -> void {} struct S { a: f32 } }","must precede functions");
+    sh_reject("plugin test v1 {} shader compute(1,1,1) { struct S { a: f32 } buffer s: S binding(0) read fn main() -> void { s[0].a = 1.0 } }","read-only or not assignable");
     sh_reject("plugin test v1 {} shader fragment { input uv: vec2f location(0) fn main() -> void { uv = vec2f(0.0) } }","read-only or not assignable");
     sh_reject("plugin test v1 {} shader compute(1,1,1) { buffer values: f32 binding(0) read fn main() -> void { values[0] = 1.0 } }","read-only or not assignable");
     sh_reject("plugin test v1 {} shader compute(1,1,1) { buffer values: f32 binding(0) read_write fn main() -> void { let x = values } }","invalid shader local type");

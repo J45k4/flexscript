@@ -1,0 +1,13 @@
+plugin structs v1 {}
+shader fragment {
+struct Material { base: vec4f, rough_metal: vec2f, emissive: vec3f }
+input uv: vec2f location(0)
+output pixel: vec4f location(0)
+uniform material: Material binding(2)
+fn shade(m: Material) -> vec4f {
+    return m.base * vec4f(uv, m.rough_metal.x, 1.0) + vec4f(m.emissive, 0.0)
+}
+fn main() -> void {
+    pixel = shade(material)
+}
+}
