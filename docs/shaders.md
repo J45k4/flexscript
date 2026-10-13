@@ -90,6 +90,11 @@ Math builtins: `sin`, `cos`, `abs`, `sqrt`, `floor`, `ceil`, `fract`, `normalize
 `sample(texture, uv)` uses implicit LOD and is fragment-only;
 `sample_level(texture, uv, lod)` uses an explicit f32 LOD in any stage.
 `array_length(buffer)` returns a `u32` element count.
+`sample_compare(depth, uv, reference)` returns the `f32` result of comparing
+`reference` against a declared `depth_texture` (1.0 where the comparison passes)
+for shadow maps; it is fragment-only. The host sets the comparison function and
+filtering: OpenGL `GL_TEXTURE_COMPARE_MODE`/`GL_TEXTURE_COMPARE_FUNC` on the
+texture, WebGPU a `compare` sampler. Linear filtering gives hardware 2x2 PCF.
 
 ## Structs
 
@@ -164,8 +169,9 @@ limits are checked when the host creates its pipeline.
 | `buffer data: TYPE binding(N) read` | Read-only std430 storage block at N | Read-only storage buffer at N |
 | `buffer data: TYPE binding(N) read_write` | Writable std430 storage block at N | Writable storage buffer at N |
 | `texture image binding(N)` | Combined `sampler2D` at texture unit N | `texture_2d<f32>` at N and sampler at N+1 |
+| `depth_texture shadow binding(N)` | `sampler2DShadow` at texture unit N | `texture_depth_2d` at N and `sampler_comparison` at N+1 |
 
-Textures reserve **both N and N+1** in the source for portability, even for
+Textures and depth textures reserve **both N and N+1** in the source for portability, even for
 GLSL. The host configures filtering and addressing. Texture and buffer
 resources cannot be copied into locals or passed to user functions.
 

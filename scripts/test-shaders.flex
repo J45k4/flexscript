@@ -50,6 +50,7 @@ fn suite(compiler) {
     // Structs: nested host layout, struct buffers/uniforms, field assignment.
     sh_positive("tests/shaders/structs-compute.seta","comp");
     sh_positive("tests/shaders/structs-fragment.seta","frag");
+    sh_positive("examples/seta/shaders/shadow-fragment.seta","frag");
     h_check(sh_compile("tests/shaders/structs-compute.seta","wgsl",t_binary),0,"");
     t_assert(h_has(h_read(t_binary),"// layout Particle size 128: position@0 light@16 scale@48 id@112"),"missing struct layout report");
     t_assert(h_has(h_read(t_binary),"@size(16) sw_m3: u32"),"missing WGSL struct padding");
@@ -97,6 +98,13 @@ fn suite(compiler) {
     sh_reject("plugin test v1 {} shader fragment { output a: vec4f location(0) output b: vec4f location(0) fn main() -> void {} }","duplicate shader location");
     sh_reject("plugin test v1 {} shader fragment { uniform enabled: bool binding(0) fn main() -> void {} }","host-shareable");
     sh_reject("plugin test v1 {} shader fragment { struct S { on: bool } uniform s: S binding(0) fn main() -> void {} }","host-shareable");
+    sh_reject("plugin test v1 {} shader fragment { texture t binding(0) fn main() -> void { let x = sample_compare(t, vec2f(0.0), 0.5) } }","requires a declared depth_texture");
+    sh_reject("plugin test v1 {} shader fragment { depth_texture d binding(0) fn main() -> void { let x = sample(d, vec2f(0.0)) } }","requires a declared texture");
+    sh_reject("plugin test v1 {} shader fragment { depth_texture d binding(0) fn main() -> void { let x = sample_compare(d, vec2f(0.0), 1) } }","type mismatch");
+    sh_reject("plugin test v1 {} shader fragment { depth_texture d binding(0) uniform u: vec4f binding(1) fn main() -> void {} }","overlapping");
+    sh_reject("plugin test v1 {} shader fragment { depth_texture d binding(31) fn main() -> void {} }","binding out of range");
+    sh_reject("plugin test v1 {} shader fragment { depth_texture d binding(0) fn main() -> void { let x = d } }","invalid shader local type");
+    sh_reject("plugin test v1 {} shader vertex { output p: vec4f builtin(position) depth_texture d binding(0) fn main() -> void { let x = sample_compare(d, vec2f(0.0), 0.5) } }","requires fragment stage");
     sh_reject("plugin test v1 {} shader fragment { struct S { a: f32 } struct S { b: f32 } fn main() -> void {} }","reserved shader name");
     sh_reject("plugin test v1 {} shader fragment { struct S { a: f32, a: f32 } fn main() -> void {} }","duplicate shader struct field");
     sh_reject("plugin test v1 {} shader fragment { struct S {} fn main() -> void {} }","requires fields");

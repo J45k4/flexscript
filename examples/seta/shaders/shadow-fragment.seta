@@ -1,0 +1,14 @@
+plugin shader.shadow_fragment v1 {}
+
+shader fragment {
+    input uv: vec2f location(0)
+    output pixel: vec4f location(0)
+    depth_texture shadow binding(0)
+
+    // Shadow-map lookup: 1.0 where the reference depth passes the host's
+    // comparison (lit), 0.0 where an occluder is nearer (shadowed).
+    fn main() -> void {
+        let lit = sample_compare(shadow, uv, 0.5)
+        pixel = vec4f(lit, 1.0 - lit, 0.25, 1.0)
+    }
+}

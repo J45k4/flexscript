@@ -102,11 +102,36 @@ async function verify(shaders) {
     check(id === i + 1, `struct ${i} id: ${id}`);
   }
   structReadback.unmap();structReadback.destroy();tint.destroy();particles.destroy();results.destroy();
+  // Shadow-map comparison: fill a 2x1 depth texture with 0.75, overwrite the
+  // left texel with 0.25 (depth-only pass), then sample with reference 0.5 and
+  // less-equal: shadowed (0) on the left, lit (1) on the right.
+  const depth = device.createTexture({ size: [2, 1], format: 'depth32float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+  const fill = device.createShaderModule({ code: '@vertex fn main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f { let p = array(vec2f(-1, -1), vec2f(0, -1), vec2f(-1, 1), vec2f(0, 1)); return vec4f(p[i], 0.25, 1); }' });
+  const fillPipeline = await device.createRenderPipelineAsync({ layout: 'auto', vertex: { module: fill, entryPoint: 'main' }, primitive: { topology: 'triangle-strip' }, depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'always' } });
+  const shadowTarget = device.createTexture({ size: [64, 64], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+  const shadowReadback = device.createBuffer({ size: 64 * 256, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  const shadowPipeline = await device.createRenderPipelineAsync({ layout: 'auto', vertex: { module: modules['textured-vertex'], entryPoint: 'main' }, fragment: { module: modules['shadow-fragment'], entryPoint: 'main', targets: [{ format: 'rgba8unorm' }] }, primitive: { topology: 'triangle-list' } });
+  const shadowGroup = device.createBindGroup({ layout: shadowPipeline.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: depth.createView() }, { binding: 1, resource: device.createSampler({ compare: 'less-equal' }) },
+  ] });
+  const shadowEncoder = device.createCommandEncoder();
+  const fillPass = shadowEncoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: { view: depth.createView(), depthClearValue: 0.75, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+  fillPass.setPipeline(fillPipeline);fillPass.draw(4);fillPass.end();
+  const shadowPass = shadowEncoder.beginRenderPass({ colorAttachments: [{ view: shadowTarget.createView(), clearValue: [0, 0, 0, 0], loadOp: 'clear', storeOp: 'store' }] });
+  shadowPass.setPipeline(shadowPipeline);shadowPass.setBindGroup(0, shadowGroup);shadowPass.draw(3);shadowPass.end();
+  shadowEncoder.copyTextureToBuffer({ texture: shadowTarget }, { buffer: shadowReadback, bytesPerRow: 256 }, [64, 64]);
+  device.queue.submit([shadowEncoder.finish()]);await shadowReadback.mapAsync(GPUMapMode.READ);
+  const shadowBytes = new Uint8Array(shadowReadback.getMappedRange());
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const at = y * 256 + x * 4, lit = x >= 32, r = shadowBytes[at], g = shadowBytes[at + 1];
+    check(lit ? r >= 254 && g <= 1 : r <= 1 && g >= 254, `shadow comparison ${x},${y}: ${r},${g}`);
+  }
+  shadowReadback.unmap();shadowReadback.destroy();shadowTarget.destroy();depth.destroy();
   const validation = await device.popErrorScope();
   check(!validation, validation?.message);check(!errors.length, errors.join('\n'));
   const info = adapter.info;
   device.destroy();
-  return { modules: Object.keys(modules).length, renderedPixels: 8192, computeResults: count, structRecords: count, adapter: { vendor: info?.vendor, architecture: info?.architecture, description: info?.description } };
+  return { modules: Object.keys(modules).length, renderedPixels: 8192, computeResults: count, structRecords: count, shadowComparisons: 4096, adapter: { vendor: info?.vendor, architecture: info?.architecture, description: info?.description } };
 }
 
 const option = (name, fallback) => {

@@ -23,7 +23,7 @@ global sg_structs=0;
 global sg_struct_count=0;
 
 // Types: i32/bool/u32/f32=1..4; float/signed/unsigned vectors=5..13;
-// mat4f=14, void=15, texture=16, structs=100+index. Buffer references add 32
+// mat4f=14, void=15, texture=16, depth texture=17, structs=100+index. Buffer references add 32
 // until indexed. Struct records (64 bytes): name, length, fields, count,
 // portable size (0 when it contains bool). Fields (32 bytes): name, length,
 // type, offset. Host-shareable structs use one std140-compatible layout on
@@ -60,7 +60,7 @@ fn sg_find(table,count,stride,name,size) {
     let i=0;while i<count {let p=table+i*stride;if s_equal(name,size,load64(p),load64(p+8)) {return i;}i=i+1;}return -1;
 }
 fn sg_name() {
-    s_name();if sg_type_id() || s_is("shader") || s_is("input") || s_is("output") || s_is("uniform") || s_is("buffer") || s_is("texture") || s_is("struct") {s_fail("reserved shader name");}return 0;
+    s_name();if sg_type_id() || s_is("shader") || s_is("input") || s_is("output") || s_is("uniform") || s_is("buffer") || s_is("texture") || s_is("depth_texture") || s_is("struct") {s_fail("reserved shader name");}return 0;
 }
 fn sg_node(kind,ty,a,b,c) {
     if sg_node_count>=65536 {s_fail("shader AST exceeds 65536 nodes");}
@@ -93,7 +93,8 @@ fn sg_builtin(name,size) {
     if s_equal(name,size,"max",3) {return 13;}if s_equal(name,size,"clamp",5) {return 14;}
     if s_equal(name,size,"mix",3) {return 15;}if s_equal(name,size,"pow",3) {return 16;}
     if s_equal(name,size,"sample",6) {return 17;}if s_equal(name,size,"sample_level",12) {return 18;}
-    if s_equal(name,size,"array_length",12) {return 19;}return 0;
+    if s_equal(name,size,"array_length",12) {return 19;}
+    if s_equal(name,size,"sample_compare",14) {return 20;}return 0;
 }
 fn sg_arg_type(args,i) {return load64(load64(args+i*8)+8);}
 // Compare decimal literals to the exact finite f32 maximum without depending
@@ -122,11 +123,18 @@ fn sg_float_literal(text,size) {
 }
 fn sg_call_type(id,args,count) {
     let expected=1;if id==10 || id==11 || id==12 || id==13 || id==16 || id==17 {expected=2;}
-    if id==14 || id==15 || id==18 {expected=3;}if count!=expected {s_fail("wrong shader builtin argument count");}
+    if id==14 || id==15 || id==18 || id==20 {expected=3;}if count!=expected {s_fail("wrong shader builtin argument count");}
     let ty=sg_arg_type(args,0);let scalar=sg_scalar(ty);
     if id==17 || id==18 {
         let tex=load64(args);if load64(tex)!=3 || ty!=16 {s_fail("sample requires a declared texture");}
         sg_require(sg_arg_type(args,1),5);if id==18 {sg_require(sg_arg_type(args,2),4);}else if sg_stage!=2 {s_fail("implicit texture sampling requires fragment stage; use sample_level");}return 7;
+    }
+    // Depth comparison (shadow maps): 1.0 where ref passes the host's compare
+    // function, filtered by the comparison sampler. Fragment stage only, like
+    // WGSL textureSampleCompare and implicit-LOD GLSL shadow lookups.
+    if id==20 {
+        let tex=load64(args);if load64(tex)!=3 || ty!=17 {s_fail("sample_compare requires a declared depth_texture");}
+        sg_require(sg_arg_type(args,1),5);sg_require(sg_arg_type(args,2),4);if sg_stage!=2 {s_fail("sample_compare requires fragment stage");}return 4;
     }
     if id==19 {let n=load64(args);if load64(n)!=3 {s_fail("array_length requires a buffer");}let kind=load64(sg_decls+load64(n+16)*64+24);if kind!=4 && kind!=5 {s_fail("array_length requires a buffer");}return 3;}
     if !sg_numeric(ty) {s_fail("shader builtin requires numeric values");}
@@ -233,7 +241,7 @@ fn sg_statement() {
     let n=0;
     if s_is("let") {
         s_next();sg_name();let name=ir_source+s_start;let size=s_size;s_next();let ty=0;if s_token==58 {s_next();ty=sg_type();}s_expect(61);let value=sg_expression(1);if ty {sg_require(load64(value+8),ty);}else {ty=load64(value+8);}
-        if ty==15 || ty==16 || sg_is_ref(ty) {s_fail("invalid shader local type");}let id=sg_local(name,size,ty,0);n=sg_node(20,ty,id,value,0);s_semicolon();
+        if ty==15 || ty==16 || ty==17 || sg_is_ref(ty) {s_fail("invalid shader local type");}let id=sg_local(name,size,ty,0);n=sg_node(20,ty,id,value,0);s_semicolon();
     }else if s_is("return") {
         s_next();let ty=load64(sg_functions+sg_current*64+16);let value=0;if ty!=15 {value=sg_expression(1);sg_require(load64(value+8),ty);}n=sg_node(21,ty,value,0,0);store64(n+48,1);s_semicolon();
     }else if s_is("if") {
@@ -267,21 +275,21 @@ fn sg_builtin_valid(kind,ty,builtin) {
 }
 fn sg_declaration(kind) {
     if sg_decl_count==128 {s_fail("too many shader interface declarations");}s_next();sg_name();let name=ir_source+s_start;let size=s_size;
-    if sg_find(sg_decls,sg_decl_count,64,name,size)>=0 {s_fail("duplicate shader interface name");}s_next();let ty=16;
-    if kind!=6 {s_expect(58);ty=sg_type();if ty==15 {s_fail("void shader interface type");}}
+    if sg_find(sg_decls,sg_decl_count,64,name,size)>=0 {s_fail("duplicate shader interface name");}s_next();let ty=16;if kind==7 {ty=17;}
+    if kind!=6 && kind!=7 {s_expect(58);ty=sg_type();if ty==15 {s_fail("void shader interface type");}}
     let builtin=0;let slot=0;
     if kind==1 || kind==2 {
         if s_is("builtin") {s_next();s_expect(40);builtin=sg_builtin_id();if !builtin || !sg_builtin_valid(kind,ty,builtin) {s_fail("invalid shader builtin for stage, direction or type");}s_next();s_expect(41);}
         else {if !s_is("location") {s_fail("shader input/output requires location or builtin");}s_next();s_expect(40);slot=s_literal();s_expect(41);if slot<0 || slot>15 || !sg_numeric(ty) || sg_stage==3 {s_fail("invalid shader location or interface type");}if kind==2 && sg_stage==2 && ty!=7 {s_fail("fragment color output must be vec4f");}}
     }else {
-        if !s_is("binding") {s_fail("shader resource requires binding");}s_next();s_expect(40);slot=s_literal();s_expect(41);if slot<0 || slot>31 || (kind==6 && slot==31) {s_fail("shader binding out of range");}
+        if !s_is("binding") {s_fail("shader resource requires binding");}s_next();s_expect(40);slot=s_literal();s_expect(41);if slot<0 || slot>31 || ((kind==6 || kind==7) && slot==31) {s_fail("shader binding out of range");}
         if kind==4 {if s_is("read_write") {kind=5;}else if !s_is("read") {s_fail("buffer requires read or read_write");}s_next();}
-        if kind!=6 && !sg_shareable(ty) {s_fail("bool is not a host-shareable resource type");}
+        if kind!=6 && kind!=7 && !sg_shareable(ty) {s_fail("bool is not a host-shareable resource type");}
         if (kind==4 || kind==5) && (sg_stage!=3 || (ty!=1 && ty!=3 && ty!=4 && !sg_is_struct(ty))) {s_fail("storage buffers currently require compute stage and scalar or struct elements");}
     }
     let i=0;while i<sg_decl_count {let p=sg_decls+i*64;let other=load64(p+24);
         if kind<=2 && other==kind && ((builtin && builtin==load64(p+40)) || (!builtin && !load64(p+40) && slot==load64(p+32))) {s_fail("duplicate shader location or builtin");}
-        if kind>=3 && other>=3 {let end=slot;if kind==6 {end=end+1;}let other_end=load64(p+32);if other==6 {other_end=other_end+1;}if slot<=other_end && load64(p+32)<=end {s_fail("overlapping shader resource bindings");}}i=i+1;
+        if kind>=3 && other>=3 {let end=slot;if kind==6 || kind==7 {end=end+1;}let other_end=load64(p+32);if other==6 || other==7 {other_end=other_end+1;}if slot<=other_end && load64(p+32)<=end {s_fail("overlapping shader resource bindings");}}i=i+1;
     }
     let p=sg_decls+sg_decl_count*64;store64(p,name);store64(p+8,size);store64(p+16,ty);store64(p+24,kind);store64(p+32,slot);store64(p+40,builtin);sg_decl_count=sg_decl_count+1;s_semicolon();return 0;
 }
@@ -307,7 +315,7 @@ fn sg_signatures() {
     if sg_stage==3 {s_expect(40);let i=0;let product=1;while i<3 {let value=s_literal();if value<1 || value>256 {s_fail("shader workgroup dimension must be 1..256");}store64(sg_work+i*8,value);product=product*value;i=i+1;if i<3 {s_expect(44);}}s_expect(41);if product>256 {s_fail("shader workgroup exceeds 256 invocations");}}
     s_expect(123);let functions_started=0;
     while s_token!=125 {
-        let kind=0;if s_is("input") {kind=1;}if s_is("output") {kind=2;}if s_is("uniform") {kind=3;}if s_is("buffer") {kind=4;}if s_is("texture") {kind=6;}
+        let kind=0;if s_is("input") {kind=1;}if s_is("output") {kind=2;}if s_is("uniform") {kind=3;}if s_is("buffer") {kind=4;}if s_is("texture") {kind=6;}if s_is("depth_texture") {kind=7;}
         if s_is("struct") {if functions_started {s_fail("shader interface declarations must precede functions");}sg_struct_declaration();}
         else if kind {if functions_started {s_fail("shader interface declarations must precede functions");}sg_declaration(kind);}
         else {
@@ -391,6 +399,10 @@ fn sg_emit_expr(n) {
             let tex=load64(b);let id=load64(tex+16);if shader_target!=2 {if a==17 {sg_text("texture(");}else {sg_text("textureLod(");}}
             else {if a==17 {sg_text("textureSample(");}else {sg_text("textureSampleLevel(");}}sg_id("sw_r",id);
             if shader_target==2 {sg_text(", ");sg_id("sw_s",id);}sg_text(", ");sg_emit_expr(load64(b+8));if a==18 {sg_text(", ");sg_emit_expr(load64(b+16));}sg_text(")");
+        }else if a==20 {
+            let id=load64(load64(b)+16);
+            if shader_target==2 {sg_text("textureSampleCompare(");sg_id("sw_r",id);sg_text(", ");sg_id("sw_s",id);sg_text(", ");sg_emit_expr(load64(b+8));sg_text(", ");sg_emit_expr(load64(b+16));sg_text(")");}
+            else {sg_text("texture(");sg_id("sw_r",id);sg_text(", vec3(");sg_emit_expr(load64(b+8));sg_text(", ");sg_emit_expr(load64(b+16));sg_text("))");}
         }else {sg_text(sg_builtin_word(a));sg_text("(");sg_emit_args(b,c);sg_text(")");}
     }else if kind==8 {sg_id("sw_f",a);sg_text("(");sg_emit_args(b,c);sg_text(")");}
     else if kind==9 {sg_text("(");sg_emit_expr(a);sg_text(").");let i=0;while i<c {sg_bytes("xyzw"+((b>>(i*2))&3),1);i=i+1;}}
@@ -436,7 +448,7 @@ fn sg_emit_structs() {
     }return 0;
 }
 fn sg_emit_interface() {
-    if shader_target!=2 {if shader_target==3 {sg_text("#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n");}else {sg_text("#version 450 core\n");}if sg_stage==3 {sg_text("layout(local_size_x=");sg_number(load64(sg_work));sg_text(",local_size_y=");sg_number(load64(sg_work+8));sg_text(",local_size_z=");sg_number(load64(sg_work+16));sg_text(") in;\n");}}
+    if shader_target!=2 {if shader_target==3 {sg_text("#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\nprecision highp sampler2DShadow;\n");}else {sg_text("#version 450 core\n");}if sg_stage==3 {sg_text("layout(local_size_x=");sg_number(load64(sg_work));sg_text(",local_size_y=");sg_number(load64(sg_work+8));sg_text(",local_size_z=");sg_number(load64(sg_work+16));sg_text(") in;\n");}}
     sg_emit_structs();
     let i=0;while i<sg_decl_count {let p=sg_decls+i*64;let ty=load64(p+16);let kind=load64(p+24);let slot=load64(p+32);let builtin=load64(p+40);
         if kind<=2 {
@@ -446,10 +458,12 @@ fn sg_emit_interface() {
         }else if shader_target!=2 {
             if shader_target==3 {if kind==3 {sg_text("layout(std140) ");}}else {sg_text("layout(");if kind==3 {sg_text("std140,");}else if sg_is_struct(ty) {sg_text("std140,");}else if kind==4 || kind==5 {sg_text("std430,");}sg_text("binding=");sg_number(slot);sg_text(") ");}
             if kind==6 {sg_text("uniform sampler2D ");sg_id("sw_r",i);sg_text(";\n");}
+            else if kind==7 {sg_text("uniform sampler2DShadow ");sg_id("sw_r",i);sg_text(";\n");}
             else {if kind==3 {sg_text("uniform ");}else {if kind==4 {sg_text("readonly ");}sg_text("buffer ");}sg_id("sw_block",i);sg_text(" { ");sg_variable("sw_r",i,ty);if kind==4 || kind==5 {sg_text("[]");}sg_text("; };\n");}
         }else {
             sg_text("@group(0) @binding(");sg_number(slot);sg_text(") ");
             if kind==6 {sg_text("var ");sg_id("sw_r",i);sg_text(": texture_2d<f32>;\n@group(0) @binding(");sg_number(slot+1);sg_text(") var ");sg_id("sw_s",i);sg_text(": sampler;\n");}
+            else if kind==7 {sg_text("var ");sg_id("sw_r",i);sg_text(": texture_depth_2d;\n@group(0) @binding(");sg_number(slot+1);sg_text(") var ");sg_id("sw_s",i);sg_text(": sampler_comparison;\n");}
             else {if kind==3 {sg_text("var<uniform> ");}else if kind==4 {sg_text("var<storage, read> ");}else {sg_text("var<storage, read_write> ");}sg_id("sw_r",i);sg_text(": ");if kind==4 || kind==5 {sg_text("array<");}sg_emit_type(ty);if kind==4 || kind==5 {sg_text(">");}sg_text(";\n");}
         }i=i+1;
     }return 0;

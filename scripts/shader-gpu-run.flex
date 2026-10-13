@@ -1,6 +1,7 @@
 // Driver-level execution of SetaScript-generated GLSL, with CPU readback oracles.
 import "lib/build.flex";
 import "../lib/graphics.flex";
+import "../lib/ffi-words.flex";
 fn sh_source(dir,name) {return h_read(h_join(dir,h_cat(name,".glsl")));}
 fn sh_float(n) {
     if !n {return 0;}let exponent=0;while (1<<(exponent+1))<=n {exponent=exponent+1;}
@@ -65,11 +66,30 @@ fn sh_structs(dir) {
     let ids=alloc(12);gfx_u32(ids,uniform);gfx_u32(ids+4,input);gfx_u32(ids+8,output);gfx_call("glDeleteBuffers",3,ids,0,0,0,0);
     gfx_call("glDeleteShader",shader,0,0,0,0,0);gfx_call("glDeleteProgram",program,0,0,0,0,0);return 0;
 }
+// Shadow-map comparison: a 2x1 depth texture (0.25 | 0.75) sampled with
+// reference 0.5 under LEQUAL must be shadowed on the left, lit on the right.
+fn sh_shadow(dir) {
+    let program=gfx_program(sh_source(dir,"textured-vertex"),sh_source(dir,"shadow-fragment"));h_assert(program,gfx_error);
+    let value=alloc(8);gfx_call("glCreateTextures",0x0de1,1,value,0,0,0);let depth=gfx_get_u32(value);
+    gfx_call("glTextureStorage2D",depth,1,0x8cac,2,1,0);let texels=alloc(8);gfx_u32(texels,0x3e800000);gfx_u32(texels+4,0x3f400000);
+    // glTextureSubImage2D(depth, 0, 0, 0, 2, 1, GL_DEPTH_COMPONENT, GL_FLOAT, texels): nine arguments.
+    let words=alloc(88);store64(words,depth);store64(words+8,0);store64(words+16,0);store64(words+24,0);store64(words+32,2);store64(words+40,1);
+    store64(words+48,0x1902);store64(words+56,0x1406);store64(words+64,texels);store64(words+72,0);store64(words+80,0);
+    ffi_call_words(gfx_symbol("glTextureSubImage2D"),words);
+    gfx_call("glTextureParameteri",depth,0x2801,0x2600,0,0,0);gfx_call("glTextureParameteri",depth,0x2800,0x2600,0,0,0);
+    gfx_call("glTextureParameteri",depth,0x884c,0x884e,0,0,0);gfx_call("glTextureParameteri",depth,0x884d,0x0203,0,0,0);
+    gfx_call("glBindTextureUnit",0,depth,0,0,0,0);h_assert(!gfx_int("glGetError",0,0,0,0,0,0),"GLSL depth texture setup failed");
+    let target=gfx_texture(64,64);gfx_texture_clear(target,0);h_assert(gfx_draw(program,target,64,64,3),gfx_error);
+    let pixels=alloc(64*64*4);h_assert(!gfx_read(target,pixels,64*64*4),"GLSL shadow readback failed");
+    let y=0;while y<64 {let x=0;while x<64 {let at=pixels+(y*64+x)*4;let lit=x>=32;let r=load8(at);let g=load8(at+1);let b=load8(at+2);
+        h_assert((lit && r>=254 && g<=1) || (!lit && r<=1 && g>=254),h_cat("GLSL shadow comparison mismatch at x ",h_int(x)));h_assert(b>=63 && b<=65,"GLSL shadow blue channel");x=x+1;}y=y+1;}
+    let ids=alloc(8);gfx_u32(ids,target);gfx_u32(ids+4,depth);gfx_call("glDeleteTextures",2,ids,0,0,0,0);gfx_call("glDeleteProgram",program,0,0,0,0,0);return 0;
+}
 fn main(argc,argv) {
     h_environment(argc,argv);let dir=b_option(argc,argv,"--dir","build/shaders");
     if !gfx_open(0,64,64) {h_print(2,h_cat3("Graphics unavailable: ",gfx_error,"\n"));gfx_close();return 77;}
     h_print(1,h_cat3("OpenGL renderer: ",gfx_renderer(),"\n"));
     sh_render(dir,"triangle-vertex","triangle-fragment",0);
-    sh_render(dir,"textured-vertex","textured-fragment",1);sh_compute(dir);sh_structs(dir);gfx_close();
-    h_print(1,"GLSL execution: 8192 rendered pixels, 129 compute results and 129 struct records passed\n");return 0;
+    sh_render(dir,"textured-vertex","textured-fragment",1);sh_compute(dir);sh_structs(dir);sh_shadow(dir);gfx_close();
+    h_print(1,"GLSL execution: 8192 rendered pixels, 129 compute results, 129 struct records and 4096 shadow comparisons passed\n");return 0;
 }
