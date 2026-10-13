@@ -1,11 +1,17 @@
 import "../../lib/x86.flex";
-fn expect(v) {if !v {syscall(1,2,"MXCSR assertion failed\n",23,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
+global check=0;
+// Each expect advances the check number, so CI failures name the failing step.
+fn expect(v) {
+    check=check+1;if v {return 0;}let text=alloc(64);let n=0;let s="MXCSR assertion failed at check ";while load8(s+n) {store8(text+n,load8(s+n));n=n+1;}
+    let digits=alloc(24);let d=0;let value=check;while value || !d {store8(digits+d,48+value%10);value=value/10;d=d+1;}while d {d=d-1;store8(text+n,load8(digits+d));n=n+1;}
+    store8(text+n,10);syscall(1,2,text,n+1,0,0,0);syscall(60,1,0,0,0,0,0);return 0;
+}
 fn reset(c,ram,text) {expect(x86_start(c,0x1000,32,0,0));store64(c+144,64);store64(c+168,512);xf_hex(ram+0x1000,text);return 0;}
 fn main(argc,argv) {
     expect(argc==2 || argc==3);x86_jit_enabled=argc==3;x86_jit_min_fuel=0;x86_jit_threshold=1;
     let ram=alloc(1048576);let c=x86_create(ram,1048576);let run=alloc(4096);let row=alloc(40);
     let fd=syscall(2,load64(argv+8),0,0,0,0,0);expect(fd>=0 && syscall(0,fd,row,8,0,0,0)==8);
-    let mask=load64(row);expect(mask==xf_mxcsr_mask() && (load64(c+1048)>>32)==mask);
+    let mask=load64(row);expect(mask==xf_mxcsr_mask());expect((load64(c+1048)>>32)==mask);
     let mode=0;while mode<4 {
         expect(syscall(0,fd,row,40,0,0,0)==40);
         reset(c,ram,"0fae142500200000f30f10042510200000f30f58042518200000f30f110425202000000fae1c2528200000f4");

@@ -7,8 +7,12 @@ int main(int argc, char **argv) {
     if (!file) return 2;
     _Alignas(16) unsigned char state[512] = {0};
     __asm__ volatile("fxsave64 %0" : "=m"(state));
-    uint32_t mask = *(uint32_t *)(state + 28);
+    uint32_t raw = *(uint32_t *)(state + 28);
+    // AMD reports bit 17 (misaligned-exception mode, 0x2ffff). The emulator,
+    // like xf_mxcsr_mask, advertises only the architectural low 16 bits.
+    uint32_t mask = raw & 0xffff;
     if (!mask) mask = 0xffbf;
+    fprintf(stderr, "host MXCSR_MASK 0x%x, emulated 0x%x\n", raw, mask);
     uint64_t header = mask;
     if (fwrite(&header, sizeof header, 1, file) != 1) return 1;
     for (unsigned mode = 0; mode < 4; ++mode) {
