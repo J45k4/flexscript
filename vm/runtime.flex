@@ -420,7 +420,7 @@ fn vm_number_limit(text,limit) {
 fn vm_number(text) {return vm_number_limit(text,1000000000);}
 fn vm_prefix(text,prefix) {return equal(text,length(prefix),prefix,length(prefix));}
 fn vm_help(fd) {
-    print(fd,"Usage: flex run [options] <source> [args...]\n");
+    print(fd,"Usage: flexscript run [options] <source> [args...]\n");
     print(fd,"  --language NAME      flex, seta or ir (.seta is detected automatically)\n  --frontend PATH      run a Flexscript frontend extension in a bounded VM\n");
     print(fd,"  --interpret          bytecode interpreter only\n  --jit                compile eligible functions on first call\n  --stats              report interpreter/JIT counters\n");
     print(fd,"  --fuel=N             instruction budget (default 10000000)\n  --memory=N           guest heap bytes; k/m suffixes accepted (default 16m)\n  --timeout-ms=N       execution deadline (default 5000)\n");

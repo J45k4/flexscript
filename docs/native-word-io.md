@@ -3,7 +3,7 @@
 Native FIR programs can opt into a 64 KiB output buffer:
 
 ```sh
-flex --word-io buffered program.seta -o program
+flexscript --word-io buffered program.seta -o program
 ```
 
 Without this option, `write_word` retains the original immediate eight-byte

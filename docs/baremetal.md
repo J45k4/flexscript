@@ -1,7 +1,7 @@
 # Bare-metal x86-64 target
 
 ```sh
-flex --target baremetal-x86_64 kernel.flex -o kernel.bin
+flexscript --target baremetal-x86_64 kernel.flex -o kernel.bin
 qemu-system-x86_64 -accel tcg -m 64M -smp 1 -display none \
   -monitor none -serial stdio -nic none -no-reboot -no-shutdown -kernel kernel.bin
 ```

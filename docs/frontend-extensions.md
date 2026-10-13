@@ -114,7 +114,7 @@ domain errors against the original bytes before lowering.
 GPU targets. FSX1 bare-metal output is not supported yet. FSX1 itself does not
 restrict generated code to portable word operations: application execution
 uses the normal target capabilities, including the usual restrictions of
-`flex run --restricted`. Native output has the ordinary native trust model.
+`flexscript run --restricted`. Native output has the ordinary native trust model.
 The frontend process always retains its restricted VM and budgets.
 
 `scripts/test-pup.flex` covers native, interpreter, JIT, Wasm and both GPU
@@ -125,7 +125,7 @@ native code addresses. Fork/pipe transport currently requires Linux, so external
 frontend loading is unavailable inside a Wasm-hosted compiler. The bundled Seta
 frontend works there without that transport.
 
-Guest application permissions still follow `flex run` options. Native and Wasm
+Guest application permissions still follow `flexscript run` options. Native and Wasm
 AOT output are not fuel-metered; the embedding host controls their execution.
 
 ## Initial SetaScript subset
@@ -355,7 +355,7 @@ External frontends use a 128 MiB restricted heap, one billion instructions and
 a 60-second deadline, with no new device capabilities. Native/Wasm/IR compilation
 uses a 32 MiB state-image budget. Application execution retains the default
 16 MiB guest limit and explicit `--memory` limits: maximum-state FIR5 programs
-need `flex run --memory=32m ...`. Small and older-profile artifacts serialize
+need `flexscript run --memory=32m ...`. Small and older-profile artifacts serialize
 unchanged.
 
 The preserved Setaworld native scene has 199,723 static cuboids, including
@@ -385,7 +385,7 @@ The restricted external-frontend heap is bounded at 256 MiB, with the same
 one-billion-instruction and 60-second limits. Compilation uses a 128 MiB
 state-image budget and FIR6 native/Wasm output bound; earlier profiles keep
 their 64 MiB output bound. Application execution retains its default 16 MiB budget.
-Maximum-state FIR6 programs require `flex run --memory=128m ...`. Frontend source
+Maximum-state FIR6 programs require `flexscript run --memory=128m ...`. Frontend source
 is smaller than 64 MiB for the bundled SetaScript frontend (32 MiB for external frontend source); saved IR input may be smaller than 128 MiB.
 
 Artifacts are validated before relocation or execution on every backend;

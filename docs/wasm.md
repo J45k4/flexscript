@@ -39,7 +39,7 @@ hardware intrinsics and `native_callback` are unavailable. Floating-point types
 are not part of the current Flexscript language on either target.
 
 This is a host-neutral module ABI, **not WASI**. No entry function runs during
-instantiation: the host calls `main` or another export. `flex run` continues to
+instantiation: the host calls `main` or another export. `flexscript run` continues to
 run Flexscript source in the existing VM; it does not load `.wasm` files.
 
 ## Browser and Linux JavaScript hosts

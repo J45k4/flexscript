@@ -86,18 +86,18 @@ the system DNS resolver requires FFI.
 Native compilation and VM execution fetch URL sources by default:
 
 ```sh
-flex run app.flex
+flexscript run app.flex
 # The entry source can also be a URL:
-flex run https://example.com/flex/app.flex
-flex run http://localhost:8080/app.flex
+flexscript run https://example.com/flex/app.flex
+flexscript run http://localhost:8080/app.flex
 # Disable downloads when running local source:
-flex run --no-url-imports app.flex
+flexscript run --no-url-imports app.flex
 ```
 
 `--no-url-imports` rejects URL sources before making a network request.
-`flex run --restricted` also disables downloads unless `--allow-url-imports`
+`flexscript run --restricted` also disables downloads unless `--allow-url-imports`
 is provided. In restricted mode, source downloads do not grant network or FFI
-access to guest code. Ordinary `flex run` permits native host operations.
+access to guest code. Ordinary `flexscript run` permits native host operations.
 Use immutable URLs, such as a Git commit path, when builds
 need to reproduce the same source.
 

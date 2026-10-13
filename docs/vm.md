@@ -12,7 +12,7 @@ Build them with the published Flexscript compiler:
 ./build/flexvm run examples/hello.flex
 ```
 
-`flex run myapp.flex [args...]` compiles source and imports to in-memory bytecode
+`flexscript run myapp.flex [args...]` compiles source and imports to in-memory bytecode
 and executes it in a new VM. It uses the same parser, name resolution and
 language semantics as native compilation. There is no temporary executable,
 external compiler or shell. The native `<source> -o <binary>` command remains
@@ -53,7 +53,7 @@ interpretation.
 
 ## Trusted execution by default
 
-`flex run app.flex` runs trusted code with native pointers, direct Linux syscalls
+`flexscript run app.flex` runs trusted code with native pointers, direct Linux syscalls
 and raw FFI. Programs can read and write files, use TCP/TLS, read standard input,
 create processes and call host libraries using the same interfaces as native
 compilation. URL sources and imports are enabled by default. `--no-url-imports`
@@ -80,18 +80,18 @@ fuel, deadline, call-stack and managed-memory limits. Standard output has no
 VM quota in trusted mode. Guest `exit` ends the invocation.
 
 ```sh
-flex run app.flex
-flex run http://localhost:8080/app.flex
-flex run --jit --stats examples/vm-compute.flex
+flexscript run app.flex
+flexscript run http://localhost:8080/app.flex
+flexscript run --jit --stats examples/vm-compute.flex
 ```
 
-`flex app.flex [args...]` and `flex app.seta [args...]` are shortcuts for
-`flex run` with default VM settings. `flex app.flex -o binary` still compiles
+`flexscript app.flex [args...]` and `flexscript app.seta [args...]` are shortcuts for
+`flexscript run` with default VM settings. `flexscript app.flex -o binary` still compiles
 a native executable. Use the explicit `run` form to set VM options.
 
 ## Restricted execution
 
-Use `flex run --restricted app.flex` to opt into guest memory isolation and
+Use `flexscript run --restricted app.flex` to opt into guest memory isolation and
 explicit host capabilities.
 
 Guest pointers are offsets into the VM's private, initially zeroed linear heap.
@@ -111,11 +111,11 @@ Limits shared by both modes, followed by restricted-mode permissions:
 - No filesystem, networking, process creation, raw FFI or arbitrary syscalls.
 
 ```sh
-flex run --interpret --fuel=100000 --memory=4m --timeout-ms=1000 app.flex
-flex run --jit --stats examples/vm-compute.flex
-flex run --restricted --allow-read=./data examples/vm-read.flex example.txt
-flex run --restricted --allow-stdin app.flex
-flex run --restricted --allow-url-imports https://example.com/app.flex
+flexscript run --interpret --fuel=100000 --memory=4m --timeout-ms=1000 app.flex
+flexscript run --jit --stats examples/vm-compute.flex
+flexscript run --restricted --allow-read=./data examples/vm-read.flex example.txt
+flexscript run --restricted --allow-stdin app.flex
+flexscript run --restricted --allow-url-imports https://example.com/app.flex
 ```
 
 Resource options accept positive decimal values up to 1,000,000,000; `k` and `m`
@@ -159,7 +159,7 @@ code also needs process/filesystem isolation around the compiler and VM.
 The same Flexscript implementation can execute inside its own interpreter:
 
 ```sh
-flex run --restricted --interpret --allow-read=. --memory=256m --fuel=100000000 \
+flexscript run --restricted --interpret --allow-read=. --memory=256m --fuel=100000000 \
   --timeout-ms=10000 flexvm.flex run --interpret examples/hello.flex
 ```
 

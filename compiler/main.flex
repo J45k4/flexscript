@@ -1687,7 +1687,7 @@ fn up_execute(check) {
     }
     if check {
         print(1,"Upgrade available: "); print(1,compiler_version()); print(1," -> "); print(1,up_version);
-        print(1,". Run flex upgrade to install.\n"); return 0;
+        print(1,". Run flexscript upgrade to install.\n"); return 0;
     }
     up_message="Cannot locate or lock the running compiler.";
     if !up_resolve_target() { return 1; }
@@ -1718,11 +1718,11 @@ fn up_main(argc,argv) {
     let check=0;
     if argc==3 && up_text(load64(argv+16),"--check") { check=1; }
     else if argc!=2 {
-        print(2,"Usage: flex upgrade [--check]\n"); return 1;
+        print(2,"Usage: flexscript upgrade [--check]\n"); return 1;
     }
     up_environment=argv+(argc+1)*8;
-    if !up_init() { print(2,"flex upgrade: memory allocation failed\n"); return 1; }
-    if !up_start_signals() { print(2,"flex upgrade: cannot initialize signal handling\n"); return 1; }
+    if !up_init() { print(2,"flexscript upgrade: memory allocation failed\n"); return 1; }
+    if !up_start_signals() { print(2,"flexscript upgrade: cannot initialize signal handling\n"); return 1; }
     up_message="Upgrade failed; installed compiler left unchanged.";
     let status=up_execute(check);
     if up_owns_dir {
@@ -1730,7 +1730,7 @@ fn up_main(argc,argv) {
         syscall(84,up_dir,0,0,0,0,0);
     }
     if up_exe_fd>=0 { syscall(3,up_exe_fd,0,0,0,0,0); }
-    if status { print(2,"flex upgrade: "); print(2,up_message); print(2,"\n"); }
+    if status { print(2,"flexscript upgrade: "); print(2,up_message); print(2,"\n"); }
     up_stop_signals(); if up_cancelled { return up_cancelled; } return status;
 }
 
@@ -1818,7 +1818,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|rdna-direct-gfx1201|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flex upgrade [--check]\n       flex run [options] <source> [args...]\n       flex <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|rdna-direct-gfx1201|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;

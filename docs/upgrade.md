@@ -3,8 +3,8 @@
 The new compiler supports:
 
 ```sh
-flex upgrade --check
-flex upgrade
+flexscript upgrade --check
+flexscript upgrade
 ```
 
 `--check` reports whether a newer stable release is available. `upgrade` downloads

@@ -50,7 +50,7 @@ fn tu_setting(key,value) {
 fn tu_fixture(name,settings) {
     tu_dir=h_join(t_work,name);
     h_mkdir(tu_dir);
-    tu_install=h_join(tu_dir,"flex");
+    tu_install=h_join(tu_dir,"flexscript");
     tu_copy(tu_compiler,tu_install,489);
     tu_before=tu_stat(tu_install);
     let metadata=tu_metadata(tu_future);
@@ -219,11 +219,11 @@ fn suite(compiler) {
     h_check(h_run(h_args(binary,0,0,0,0,0)),42,0);
     tu_fixture("symlink",j_object());
     let launcher=h_join(tu_dir,"launcher");
-    h_assert(syscall(88,"flex",launcher,0,0,0,0)==0,"launcher symlink");
+    h_assert(syscall(88,"flexscript",launcher,0,0,0,0)==0,"launcher symlink");
     h_check(h_run(h_args(launcher,"upgrade",0,0,0,0)),0,0);
     let link=h_take(32);
     let n=syscall(89,launcher,link,32,0,0,0);
-    h_assert(n==4 && h_bytes(link,"flex",4),"launcher symlink replaced");
+    h_assert(n==10 && h_bytes(link,"flexscript",10),"launcher symlink replaced");
     h_assert(h_equal(h_sha(tu_install),h_sha(tu_payload)),"symlink upgrade failed");
     tu_no_staging(tu_dir);
     t_checks=t_checks+1;
@@ -356,7 +356,7 @@ fn suite(compiler) {
     tu_unchanged();
     t_checks=t_checks+1;
     p=h_check(h_run(h_args(tu_install,"upgrade","--unknown",0,0,0)),1,0);
-    h_assert(h_has(h_err(p),"Usage: flex upgrade"),h_err(p));
+    h_assert(h_has(h_err(p),"Usage: flexscript upgrade"),h_err(p));
     tu_unchanged();
     t_checks=t_checks+1;
     h_env=env;
@@ -418,7 +418,7 @@ fn suite(compiler) {
         tu_fixture("permissions",j_object());
         let parent=h_join(tu_dir,"installation");
         h_mkdir(parent);
-        let relocated=h_join(parent,"flex");
+        let relocated=h_join(parent,"flexscript");
         syscall(82,tu_install,relocated,0,0,0,0);
         let control=j_object();
         j_set(control,"target",j_string(relocated));
