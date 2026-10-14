@@ -2,6 +2,7 @@ import "support.flex";
 // Keyed, portable UI records. HTML is one renderer; patches address stable keys.
 global ui_index=0;
 global ui_count=0;
+global ui_generic_diff_calls=0;
 fn ui_hash(key) {let hash=2166136261;let i=0;while load8(key+i) {hash=((hash^load8(key+i))*16777619)&0xffffffff;i=i+1;}return hash&8191;}
 fn ui_find(index,key) {
     if !index {return 0;}let slot=ui_hash(key);let i=0;
@@ -10,7 +11,7 @@ fn ui_find(index,key) {
 fn ui_begin() {ui_index=m_take(65536);let i=0;while i<65536 {store64(ui_index+i,0);i=i+8;}ui_count=0;return 0;}
 fn ui_node(kind,key,text) {
     m_assert(ui_count<2048 && m_len(key)>0 && !ui_find(ui_index,key),"UI keys must be unique; tree limit is 2048 nodes");ui_count=ui_count+1;
-    let p=m_take(104);let i=0;while i<104 {store64(p+i,0);i=i+8;}store64(p,kind);store64(p+8,key);store64(p+16,text);
+    let p=m_take(136);let i=0;while i<136 {store64(p+i,0);i=i+8;}store64(p,kind);store64(p+8,key);store64(p+16,text);
     let slot=ui_hash(key);while load64(ui_index+slot*8) {slot=(slot+1)&8191;}store64(ui_index+slot*8,p);return p;
 }
 fn ui_add(parent,child) {
@@ -40,7 +41,7 @@ fn ui_html(b,node) {
     else if m_eq(kind,"input") {if !ui_attribute_value(node,"type") {ui_attr(b,"type","text");}if load64(node+16) {ui_attr(b,"placeholder",load64(node+16));}}
     else if m_eq(kind,"form") {ui_attr(b,"method","post");ui_attr(b,"action","/action");}
     else if m_eq(kind,"button") {if !ui_attribute_value(node,"type") {ui_attr(b,"type","button");}}
-    if m_eq(kind,"empty") && load64(node+24) {m_text(b," hidden");}
+    if (m_eq(kind,"empty") || (load64(node+112)&4)) && load64(node+24) {m_text(b," hidden");}
     let attr=load64(node+96);while attr {if load64(attr+8) {ui_attr(b,load64(attr),load64(attr+8));}attr=load64(attr+16);}m_text(b,">");
     if m_eq(kind,"form") {
         m_assert(load64(node+32),"forms need ui_action(form,action,id)");
@@ -99,5 +100,6 @@ fn ui_diff_removed(b,node,new_index) {
     let child=load64(node+40);while child {ui_diff_removed(b,child,new_index);child=load64(child+56);}return 0;
 }
 fn ui_diff(old,new,old_index,new_index) {
+    ui_generic_diff_calls=ui_generic_diff_calls+1;
     let b=m_buffer();m_text(b,"[");if old {ui_diff_removed(b,old,new_index);}ui_diff_new(b,new,old_index);m_text(b,"]");return m_data(b);
 }

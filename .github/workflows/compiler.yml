@@ -97,6 +97,7 @@ jobs:
         run: |
           build/tools/test-libraries build/stage2 --report build/library-tests.json
           build/tools/build-monolith --compiler build/stage2
+          build/test-monolith-syntax build/stage2 --report build/monolith-syntax-tests.json
           build/test-monolith-integration build/stage2
           build/test-monolith-integration build/stage2 --source
           build/test-monolith-browser build/stage2 google-chrome --source
@@ -197,6 +198,7 @@ jobs:
             build/harness-tests.json
             build/gui-report.json
             build/library-tests.json
+            build/monolith-syntax-tests.json
             build/monolith-*.png
           if-no-files-found: error
           retention-days: 30

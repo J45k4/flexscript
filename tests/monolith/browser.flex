@@ -27,11 +27,11 @@ fn bt_counter() {
     cd_eval(b,"window.note=document.querySelector('[data-mkey=\"note\"]');note.value='My counter draft';note.focus();note.setSelectionRange(3,8);document.querySelector('[data-mkey=\"step\"]').value='7';document.querySelector('[data-mkey=\"choice\"]').value='large';true");
     let preserved="document.querySelector('[data-mkey=\"note\"]')===note && note.value==='My counter draft' && document.activeElement===note && note.selectionStart===3 && note.selectionEnd===8 && document.querySelector('[data-mkey=\"step\"]').value==='7' && document.querySelector('[data-mkey=\"choice\"]').value==='large'";
     cd_eval(a,"document.querySelector('[data-mkey=\"increase\"]').click();true");cd_wait(b,"document.querySelector('[data-mkey=\"count\"]').textContent==='1'");
-    bt_check(b,"document.querySelector('[data-mkey=\"increase\"]').dataset.action==='double' && document.querySelector('[data-mkey=\"increase\"]').getAttribute('aria-label')==='Increase from 1' && document.querySelector('[data-mkey=\"increase\"]').dataset.odd==='yes'","generic attributes and action changes failed");bt_check(b,preserved,"counter update lost local draft");
+    bt_check(b,"document.querySelector('[data-mkey=\"increase\"]').dataset.action==='double' && document.querySelector('[data-mkey=\"increase\"]').getAttribute('aria-label')==='Increase from 1' && document.querySelector('[data-mkey=\"increase\"]').dataset.odd==='yes'","generic attributes and action changes failed");bt_check(b,preserved,"counter update lost local draft");bt_check(b,"document.querySelector('[data-mkey=\"parity\"]').tagName==='P' && document.querySelector('[data-mkey=\"parity\"]').textContent==='An odd number.'","compiled conditional did not replace its keyed element");
     cd_eval(a,"document.querySelector('[data-mkey=\"increase\"]').click();true");cd_wait(b,"document.querySelector('[data-mkey=\"count\"]').textContent==='3'");bt_check(b,preserved,"changed action lost draft");
     cd_eval(a,"document.querySelector('[data-mkey=\"step\"]').value='4';document.querySelector('[data-mkey=\"step-form\"]').requestSubmit();true");cd_wait(b,"document.querySelector('[data-mkey=\"count\"]').textContent==='7'");bt_check(b,preserved,"arbitrary form fields lost draft");
     cd_eval(a,"document.querySelector('[data-mkey=\"rejected-check\"]').click();true");cd_wait(a,"document.querySelector('[data-mono-error]').textContent.includes('422')");bt_check(a,"!document.querySelector('[data-mkey=\"rejected-check\"]').checked","rejected checkbox action was not restored");
-    cd_eval(a,"document.querySelector('[data-mkey=\"reset\"]').click();true");cd_wait(b,"document.querySelector('[data-mkey=\"count\"]').textContent==='0'");bt_check(b,"!document.querySelector('[data-mkey=\"increase\"]').hasAttribute('data-odd') && document.querySelector('[data-mkey=\"increase\"]').dataset.action==='increase'","attribute removal failed");
+    cd_eval(a,"document.querySelector('[data-mkey=\"reset\"]').click();true");cd_wait(b,"document.querySelector('[data-mkey=\"count\"]').textContent==='0'");bt_check(b,"!document.querySelector('[data-mkey=\"increase\"]').hasAttribute('data-odd') && document.querySelector('[data-mkey=\"increase\"]').dataset.action==='increase'","attribute removal failed");bt_check(b,"document.querySelector('[data-mkey=\"parity\"]').tagName==='DIV' && document.querySelector('[data-mkey=\"parity\"]').textContent==='An even number.'","compiled conditional did not restore its alternate template");
     // The counter deliberately resets on restart; local form state survives.
     h_stop(process);cd_wait(b,"document.querySelector('[data-mono-status]').textContent==='Reconnecting…'");process=bt_start();cd_wait(b,live);cd_wait(a,live);
     bt_check(b,preserved,"counter snapshot lost textarea/select state");
@@ -40,6 +40,29 @@ fn bt_counter() {
     bt_check(a,"document.querySelector('[data-mkey=\"count\"]').textContent==='0'","counter clients diverged");
     h_assert(!h_exists(bt_database),"database-free app created a database");bt_checks=bt_checks+1;
     cd_screenshot(a,"build/monolith-counter-desktop.png",1100,1100,0);cd_close(a);cd_close(b);h_stop(process);return 0;
+}
+fn bt_fixture_action(tab,name) {
+    let literal=j_dump(j_string(name));
+    let expression=h_cat3("fetch('/action',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token:document.querySelector('meta[name=\"monolith-token\"]').content,action:",literal,"})}).then(response=>response.status===200)");
+    bt_check(tab,expression,"compiled fixture action failed");return 0;
+}
+fn bt_fixture() {
+    bt_name="Monolith Fixture listening";if bt_source {bt_source=h_real("tests/monolith/declarative.flex");}else {bt_binary=h_real("build/monolith-fixture");}
+    let process=bt_start();let tab=cd_tab(h_cat3("http://127.0.0.1:",h_int(bt_port),"/"));
+    cd_wait(tab,"document.querySelector('[data-mono-status]')?.textContent==='Live' && !!document.querySelector('[data-mkey=\"row-1\"]') && !!document.querySelector('[data-mkey=\"row-2\"]')");
+    // Wait for the initial snapshot before saving DOM identities.
+    cd_eval(tab,"window.beforeOne=document.querySelector('[data-mkey=\"row-1\"]');window.beforeTwo=document.querySelector('[data-mkey=\"row-2\"]');window.beforeLabel=document.querySelector('[data-mkey=\"label-1\"]');window.beforeHeading=document.querySelector('[data-mkey=\"static-heading\"]');true");
+    bt_fixture_action(tab,"reverse");cd_wait(tab,"[...document.querySelector('[data-mkey=\"rows\"]').children].map(n=>n.dataset.mkey).join(',')==='row-2,row-1'");
+    bt_check(tab,"document.querySelector('[data-mkey=\"row-1\"]')===beforeOne && document.querySelector('[data-mkey=\"row-2\"]')===beforeTwo && document.querySelector('[data-mkey=\"label-1\"]')===beforeLabel","compiled keyed reorder replaced DOM nodes");
+    bt_fixture_action(tab,"remove");cd_wait(tab,"!document.querySelector('[data-mkey=\"row-1\"]')");bt_check(tab,"document.querySelector('[data-mkey=\"row-2\"]')===beforeTwo","compiled remove replaced a surviving row");
+    bt_fixture_action(tab,"insert");cd_wait(tab,"[...document.querySelector('[data-mkey=\"rows\"]').children].map(n=>n.dataset.mkey).join(',')==='row-3,row-2'");bt_check(tab,"document.querySelector('[data-mkey=\"label-3\"]')?.textContent==='3' && document.querySelector('[data-mkey=\"row-2\"]')===beforeTwo","compiled subtree insertion lost identity");
+    bt_fixture_action(tab,"empty");cd_wait(tab,"document.querySelector('[data-mkey=\"rows\"]').children.length===0");
+    bt_fixture_action(tab,"refill");cd_wait(tab,"[...document.querySelector('[data-mkey=\"rows\"]').children].map(n=>n.dataset.mkey).join(',')==='row-1,row-2'");
+    bt_fixture_action(tab,"start");cd_wait(tab,"document.querySelector('[data-mkey=\"branch\"]').tagName==='SECTION'");
+    bt_check(tab,"document.querySelector('[data-mkey=\"branch-label\"]').textContent==='Section branch' && document.querySelector('[data-mkey=\"static-heading\"]')===beforeHeading","compiled branch replacement altered static markup");
+    bt_fixture_action(tab,"change");cd_wait(tab,"document.querySelector('[data-mkey=\"hidden\"]').hidden");
+    bt_check(tab,"!document.querySelector('[data-mkey=\"value\"]').hasAttribute('title') && document.querySelector('[data-mkey=\"value\"]').textContent==='2'","compiled hidden/text/attribute bindings diverged");
+    cd_close(tab);h_stop(process);return 0;
 }
 fn main(argc,argv) {
     h_environment(argc,argv);h_assert(argc==3 || (argc==4 && h_equal(load64(argv+24),"--source")),"Usage: test-browser TODO-BINARY-OR-COMPILER CHROMIUM [--source]");if argc==4 {bt_source=h_real("examples/monolith/todo.flex");}bt_name="Monolith Todo listening";bt_binary=h_real(load64(argv+8));let chromium=load64(argv+16);let temp=h_temp();bt_database=h_join(temp,"todo.db");bt_port=bt_free_port();let process=bt_start();
@@ -60,6 +83,6 @@ fn main(argc,argv) {
     bt_check(b,"![...document.querySelectorAll('.task-title')].some(n=>n.textContent==='Realtime across two windows')","reconnect retained a deleted task");bt_check(b,preserved,"reconnect lost draft, focus or selection");cd_wait(a,live);
     bt_add(a,"Ship something small 🌱");cd_wait(b,"document.querySelectorAll('.task').length===3");bt_check(b,"document.querySelector('[data-mkey=\"summary\"]').textContent==='2 remaining · 1 complete'","reconnect actions or summary failed");
     cd_screenshot(a,"build/monolith-todo-desktop.png",1100,900,0);cd_screenshot(a,"build/monolith-todo-mobile.png",390,844,1);bt_check(a,"document.documentElement.scrollWidth<=390","mobile layout overflowed");
-    bt_check(a,"document.querySelector('[data-mkey=\"error\"]').textContent===''","browser action failed");cd_close(a);cd_close(b);h_stop(process);bt_counter();h_stop(chrome);
+    bt_check(a,"document.querySelector('[data-mkey=\"error\"]').textContent===''","browser action failed");cd_close(a);cd_close(b);h_stop(process);bt_counter();bt_fixture();h_stop(chrome);
     h_print(1,h_cat3("PASS: ",h_int(bt_checks)," real Chromium UI/reconnect/local-state checks\n"));return 0;
 }

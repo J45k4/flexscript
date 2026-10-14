@@ -1,29 +1,46 @@
 import "monolith";
 import "monolith/sqlite.flex";
-// Declarative trees use ordinary Flexscript functions until records/closures exist.
-fn todo_row(id,title,completed) {
-    let key=m_int(id);let row=ui_class(ui_node("li",m_cat("todo-",key),0),"task");
-    let check=ui_action(ui_node("check",m_cat("check-",key),m_cat("Complete ",title)),"toggle",id);ui_value(check,completed);ui_add(row,check);
-    let label=ui_node("span",m_cat("title-",key),title);let class="task-title";if completed {class="task-title completed";}ui_class(label,class);ui_add(row,label);
-    ui_add(row,ui_class(ui_action(ui_node("button",m_cat("delete-",key),"Delete"),"delete",id),"delete"));return row;
+extend "monolith/syntax.flex";
+// Query once per render. Each item is an app-owned row handle.
+fn todo_rows() {
+    let rows=ui_items();let stmt=db_prepare(app_select_sql());
+    while db_step(stmt) {let row=m_take(24);store64(row,db_column_int(stmt,0));store64(row+8,db_column_text(stmt,1));store64(row+16,db_column_int(stmt,2));ui_item_add(rows,row);}db_finish(stmt);return rows;
 }
-fn app_view() {
-    ui_begin();let root=ui_class(ui_node("main","todo-app",0),"app");
-    let header=ui_add(root,ui_class(ui_node("header","header",0),"header"));
-    ui_add(header,ui_class(ui_node("p","eyebrow","MONOLITH / FLEXSCRIPT"),"eyebrow"));
-    ui_add(header,ui_node("h1","heading","A little room for progress."));
-    ui_add(header,ui_class(ui_node("p","intro","Your tasks, kept simply. Changes appear in every open window."),"intro"));
-    let panel=ui_add(root,ui_class(ui_node("section","panel",0),"panel"));
-    let form=ui_add(panel,ui_class(ui_action(ui_node("form","add-form",0),"add",0),"add-form"));
-    let draft=ui_add(form,ui_node("input","draft","What needs doing?"));ui_attribute(draft,"name","title");ui_attribute(draft,"maxlength","240");ui_attribute(draft,"aria-label","New task");ui_attribute(draft,"required","");ui_attribute(draft,"autocomplete","off");ui_attribute(draft,"data-mono-clear","");ui_add(form,ui_class(ui_attribute(ui_node("button","add-button","Add task"),"type","submit"),"add"));
-    let meta=ui_add(panel,ui_class(ui_node("div","meta",0),"meta"));let summary=ui_add(meta,ui_node("span","summary",""));
-    ui_add(meta,ui_class(ui_attribute(ui_node("span","connection","Connecting…"),"data-mono-status",""),"connection"));
-    let list=ui_add(panel,ui_class(ui_node("ul","tasks",0),"tasks"));let stmt=db_prepare(app_select_sql());let total=0;let done=0;
-    while db_step(stmt) {let completed=db_column_int(stmt,2);ui_add(list,todo_row(db_column_int(stmt,0),db_column_text(stmt,1),completed));total=total+1;done=done+completed;}db_finish(stmt);
-    ui_text(summary,m_cat(m_cat(m_int(total-done)," remaining · "),m_cat(m_int(done)," complete")));
-    ui_add(panel,ui_class(ui_value(ui_node("empty","empty","Nothing on your list. Start with one small thing."),total>0),"empty"));
-    ui_add(root,ui_class(ui_attribute(ui_node("p","error",""),"data-mono-error",""),"error"));
-    ui_add(root,ui_class(ui_node("footer","footer","Stored in SQLite. Served by a native Flexscript binary."),"footer"));return root;
+fn todo_completed(rows) {let done=0;let i=0;while i<load64(rows) {done=done+load64(load64(rows+8+i*8)+16);i=i+1;}return done;}
+fn todo_summary(rows) {let done=todo_completed(rows);return m_cat(m_cat(m_int(load64(rows)-done)," remaining · "),m_cat(m_int(done)," complete"));}
+fn todo_class(completed) {if completed {return "task-title completed";}return "task-title";}
+view todo_row(id,title,completed) {
+    li(m_cat("todo-",m_int(id)), class: "task") {
+        check(m_cat("check-",m_int(id)), text: m_cat("Complete ",title), action: "toggle", action_id: id, checked: completed);
+        span(m_cat("title-",m_int(id)), text: title, class: todo_class(completed));
+        button(m_cat("delete-",m_int(id)), text: "Delete", class: "delete", action: "delete", action_id: id);
+    }
+}
+view app_view() {
+    let rows=todo_rows();
+    main("todo-app", class: "app") {
+        header("header", class: "header") {
+            p("eyebrow", class: "eyebrow", text: "MONOLITH / FLEXSCRIPT");
+            h1("heading", text: "A little room for progress.");
+            p("intro", class: "intro", text: "Your tasks, kept simply. Changes appear in every open window.");
+        }
+        section("panel", class: "panel") {
+            form("add-form", class: "add-form", action: "add") {
+                input("draft", text: "What needs doing?", name: "title", maxlength: "240", aria-label: "New task", required: "", autocomplete: "off", data-mono-clear: "");
+                button("add-button", text: "Add task", class: "add", type: "submit");
+            }
+            div("meta", class: "meta") {
+                span("summary", text: todo_summary(rows));
+                span("connection", class: "connection", text: "Connecting…", data-mono-status: "");
+            }
+            ul("tasks", class: "tasks") {
+                each row in rows {use todo_row(load64(row),load64(row+8),load64(row+16));}
+            }
+            empty("empty", class: "empty", text: "Nothing on your list. Start with one small thing.", hidden: load64(rows)>0);
+        }
+        p("error", class: "error", data-mono-error: "");
+        footer("footer", class: "footer", text: "Stored in SQLite. Served by a native Flexscript binary.");
+    }
 }
 fn todo_action(action,title,id) {
     if m_eq(action,"add") {

@@ -1,15 +1,17 @@
 # Monolith
 
-Monolith is an optional Flexscript library for native web apps. The app builds a
-keyed UI tree in Flexscript. Monolith renders the initial HTML and sends small
-DOM patches over SSE; the bundled JavaScript adapter applies them and preserves
-local input drafts, focus, and selection. SQLite is a separate optional module.
+Monolith is an optional Flexscript library for native web apps. Declarative
+`view` definitions compile into render functions and specialized DOM patch
+programs. Monolith renders initial HTML and sends those patches over SSE; the
+bundled JavaScript adapter applies them and preserves local input drafts, focus,
+and selection. SQLite is a separate optional module.
 
 The library is in `libs/monolith/`, with the public entry point
 `libs/monolith.flex`. Applications import it by name:
 
 ```flex
 import "monolith";
+extend "monolith/syntax.flex";
 ```
 
 ## Build and run
@@ -76,14 +78,15 @@ Define these four functions and call `mono_run`:
 
 ```flex
 import "monolith";
+extend "monolith/syntax.flex";
 global count=0;
 fn app_init(state_path) {return 0;}
 fn app_tick() {return 0;}
-fn app_view() {
-    ui_begin();let root=ui_node("main","app",0);
-    ui_add(root,ui_node("p","count",m_int(count)));
-    ui_add(root,ui_action(ui_node("button","increase","Increase"),"increase",0));
-    return root;
+view app_view() {
+    main("app") {
+        p("count", text: m_int(count));
+        button("increase", text: "Increase", action: "increase");
+    }
 }
 fn app_action(action,id) {
     if m_eq(action,"increase") {count=count+1;return 200;}return 422;
@@ -92,7 +95,7 @@ fn main(argc,argv) {return mono_run(argc,argv,"My app",8080,"");}
 ```
 
 `app_init` initializes persistent app state and returns zero on success.
-`app_view` builds a fresh tree with stable, unique keys. `app_action` receives
+`view app_view` defines the tree with stable, unique keys. `app_action` receives
 an app-defined action name and optional positive numeric ID, and returns an HTTP
 status; `200` refreshes the view and publishes its patches. The app owns mutations,
 validation, and transaction boundaries. `app_tick` runs once per second and
@@ -102,7 +105,119 @@ returns nonzero when externally changed state needs a refresh.
 title, listener, and app state path. Set `mono_style` in `app_init` to replace the
 default stylesheet. All browser clients share the same app view and state.
 
-## UI and actions
+## Declarative views and compiled diffing
+
+The syntax extension is an ordinary Flexscript `transform_syntax` program. It
+runs before application parsing, including native builds and interpreter/JIT
+source execution. Its implementation and bundled API1 SDK ship inside the
+library, so installed apps do not need a compiler source checkout.
+
+Every node has an explicit string key as its first argument. Subsequent named
+properties are either UI bindings (`text`, `class`, `action`, `action_id`,
+`checked`, `hidden`) or HTML attributes such as `name`, `type`, `aria-label`, and
+`data-mono-clear`. Nonliteral property expressions become dynamic bindings.
+Text/class/action/attribute values are strings or `0`; format numeric text with
+`m_int`. `checked` and `hidden` accept ordinary word-valued boolean expressions.
+`checked` belongs to `check` nodes. `hidden` works on any other element.
+`action_id` is the optional numeric record ID; `id` remains an HTML attribute.
+
+Nodes with children use braces; leaf nodes end with a semicolon. Each view has
+one unconditional root element. `let` declarations compute intermediate values.
+Use normal Flexscript helper functions for application calculations:
+
+```flex
+view greeting(name) {
+    section(m_cat("greeting-",name), class: "greeting") {
+        h2(m_cat("name-",name), text: name);
+    }
+}
+view app_view() {
+    main("app") {
+        if show_greeting {use greeting("Alice");}
+        else {p("empty", text: "No greeting yet.");}
+    }
+}
+```
+
+`use` calls another declarative view, including one declared later or in an
+imported file. `each item in items { ... }` iterates a list made with `ui_items`
+and `ui_item_add`. The key belongs to the row node/component, so reordering
+retains the existing DOM nodes:
+
+```flex
+view row(id) {
+    li(m_cat("row-",m_int(id)), text: m_int(id));
+}
+view app_view() {
+    let items=load_rows();
+    ul("rows") {each id in items {use row(id);}}
+}
+```
+
+Repeated nodes require dynamic stable keys; every node in a repeated component
+must derive its key from that instance. The compiler validates this through
+nested component calls. Coexisting duplicate literal keys are rejected during
+compilation. Opposite branches of the same `if` may reuse a key; switching
+between their templates replaces that subtree. Runtime uniqueness checks remain
+for keys computed from arbitrary expressions.
+
+The compiler plans the patch work from the declarations:
+
+- Literal text, attributes, and classes emit no property comparisons.
+- Dynamic bindings get direct checks for their known fields/attribute slots and
+  produce only the corresponding text, class, checked, hidden, or attribute op.
+- Conditional/component/list roots get keyed insert, remove, and move handling.
+  An ancestor replacement includes its subtree once.
+- Reconnects send a complete keyed snapshot, which the browser reconciles while
+  retaining drafts, focus, and selection.
+
+Future values and collection membership are still compared at runtime by this
+generated program. Declarative apps do not call the generic `ui_diff` tree
+differ. The shared view is currently recomputed after each successful action;
+compile-time dependency-based scheduling and persistent in-place render state
+are not implemented. Initial HTML and inserted subtrees use the shared HTML
+renderer. View helper functions should compute values and lists; compose UI
+with `use`, rather than manually mutating or inserting builder nodes behind the
+generated patch program.
+
+To inspect the generated render and patch source, use:
+
+```flex
+extend "monolith/syntax.flex" with "dump";
+```
+
+The compiler writes the expansion to stderr. The `_mono_` prefix is reserved for
+generated locals and functions. The extension allows 128 views, 1,024 node
+templates, 64 properties per node, and 64 levels of nested view/control blocks;
+generated source buffers are bounded to 1 MiB. Expanded code also obeys the
+ordinary compiler and runtime limits.
+
+## Forms and actions
+
+Forms carry their action on the form node. Give fields their own names and mark
+submit buttons explicitly; normal form submission also works without JavaScript:
+
+```flex
+view rename_form(id) {
+    form(m_cat("rename-",m_int(id)), action: "rename", action_id: id) {
+        input(m_cat("name-",m_int(id)), text: "New name", name: "display_name");
+        button(m_cat("save-",m_int(id)), text: "Save", type: "submit");
+    }
+}
+```
+
+Buttons send their `action` on click; checkboxes and selects send it on change.
+Inside `app_action`, `mono_field("display_name")` reads the decoded field value.
+Fields live until the request finishes; copy values into app-owned storage if
+they must survive. Duplicate field names are rejected. `token`, `action`, and
+`id` are reserved form fields managed by the transport.
+
+Draft input values are preserved across remote patches and reconnect snapshots.
+Use `data-mono-clear: ""` on a field to clear an unchanged submitted draft after
+a successful form action. Optional `data-mono-status: ""` and
+`data-mono-error: ""` elements display connection state and action errors.
+
+## Builder compatibility
 
 `ui_node(tag,key,text)` creates a node; `ui_add(parent,child)` appends a child.
 Use `ui_text`, `ui_class`, and `ui_attribute` to set text, classes, and ordinary
@@ -177,6 +292,7 @@ a separate entry point; it does not import the keyed UI server.
 ```sh
 build/flexscript scripts/build-monolith.flex -o build/build-monolith
 build/build-monolith --compiler build/flexscript
+build/test-monolith-syntax build/flexscript --report build/monolith-syntax-tests.json
 build/test-monolith-integration build/flexscript
 build/test-monolith-integration build/flexscript --source
 build/test-monolith-browser build/flexscript /usr/bin/chromium --source
@@ -194,6 +310,11 @@ arbitrary action and field names, changing attributes, rejected controls, and
 mobile Todo layout. Screenshots are saved to `build/monolith-*.png`.
 The library suite checks named imports in native/interpreter/JIT execution,
 local precedence, explicit relative paths, and installed and symlinked compilers.
+The syntax suite exercises generated patch traces natively and in both VM tiers,
+keyed reorders, conditional subtree replacement, dynamic properties, static-node
+elision, compile-time errors preserving prior binaries, and installed extension
+sources. It verifies a 1,001-node static tree performs zero binding comparisons
+and never calls the generic differ.
 
 Refresh the committed asset bundle after editing the browser adapter or CSS:
 
@@ -210,4 +331,5 @@ process token and reject foreign Host/Origin headers. HTML/JSON values are
 escaped and SQLite values are bound parameters. The keyed server currently
 allows 2,048 UI nodes, 64 connections, 32 SSE subscribers, 8-KiB headers, 4-KiB
 form bodies, and 64 fields with unique names. View dependency tracking is coarse:
-each successful action recomputes the shared tree, then diffs minimize patches.
+each successful action recomputes the shared tree, then its generated patch
+program checks the dynamic bindings and structural candidates.
