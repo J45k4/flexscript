@@ -14,6 +14,7 @@ fn suite(compiler) {
     h_compile(t_compiler,"libs/db/tests/replay-index.flex",t_binary);p=h_check(h_run(h_args(t_binary,h_join(t_work,"replay-index.db"),0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
     h_compile(t_compiler,"libs/db/tests/transactions.flex",t_binary);p=h_check(h_run(h_args(t_binary,h_join(t_work,"transactions.db"),0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
     h_compile(t_compiler,"libs/db/tests/native-scan.flex",t_binary);p=h_check(h_run(h_args(t_binary,h_join(t_work,"native-scan.db"),0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
+    h_compile(t_compiler,"libs/db/tests/native-pack.flex",t_binary);p=h_check(h_run(h_args(t_binary,h_join(t_work,"native-pack.db"),0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
     db_compile_reject("global changed=0;fn predicate(row){changed=1;return 1;}fn main(){return 0;}","must not mutate");
     db_compile_reject("fn helper(row){store64(row,5);return 1;}fn predicate(row){return helper(row);}fn main(){return 0;}","must not mutate");
     db_compile_reject("fn helper(row){return helper(row);}fn predicate(row){return helper(row);}fn main(){return 0;}","recursive predicate");

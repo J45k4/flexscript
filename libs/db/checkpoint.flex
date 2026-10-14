@@ -1,4 +1,5 @@
 import "scan-native.flex";
+import "pack-native.flex";
 // Append-only checkpoints. Metadata is checked on open; directory pages and
 // individual rows are checked before use. Everything stays in the same file.
 fn fd_footer(a,magic,sequence,start,checkpoint) {
@@ -102,14 +103,18 @@ fn fd_cp_row(a,b,row) {
 fn fd_cp_capacity(db,meta) {
     let bytes=meta;let tables=load64(db+40);let i=0;
     while i<fd_size(tables) {let t=fd_at(tables,i);let rows=load64(t+24);bytes=bytes+fd_size(rows)*16;let j=0;
-        while j<fd_size(rows) {let row=fd_table_row(t,j);if !row {return 0;}let count=load64(row+8);if count {bytes=bytes+8;let c=0;while c<count {let v=load64(row+16+c*8);let kind=load64(v);if kind {bytes=bytes+8;if kind==2 || kind==3 {bytes=bytes+load64(v+16);}}c=c+1;}}j=j+1;}
+        // RAM tables need no lazy decode pass. Checkpoint-backed tables must
+        // validate/hydrate remaining rows before trusted owned-row packing.
+        if load64(t+64) {while j<fd_size(rows) {if !fd_at(rows,j) && !fd_table_row(t,j) {return 0;}j=j+1;}}
+        let payload=-2;if fd_size(rows)>=128 {payload=fd_pack_size(t);}if payload==-1 {return 0;}
+        if payload>=0 {bytes=bytes+payload;}else {j=0;while j<fd_size(rows) {let row=fd_at(rows,j);if !row {return 0;}let count=load64(row+8);if count {bytes=bytes+8;let c=0;while c<count {let v=load64(row+16+c*8);let kind=load64(v);if kind {bytes=bytes+8;if kind==2 || kind==3 {bytes=bytes+load64(v+16);}}c=c+1;}}j=j+1;}}
         let indexes=load64(t+120);if indexes {let k=0;while k<fd_size(indexes) {bytes=bytes+load64(fd_at(indexes,k)+56)*16;k=k+1;}}i=i+1;
     }if bytes>16777216 {bytes=16777216;}return bytes;
 }
 fn fd_cp_build(db,a) {
     fd_cp_cache_close(db);
     let b=fd_vec(a);let info=fd_vec(a);let tables=load64(db+40);let meta_bytes=16+fd_auto_meta_bytes(db);let ti=0;
-    while ti<fd_size(tables) {let t=fd_at(tables,ti);meta_bytes=meta_bytes+40+fd_len(load64(t+8))+((fd_size(load64(t+24))*16+4095)/4096)*8;let columns=load64(t+16);let ci=0;while ci<fd_size(columns) {meta_bytes=meta_bytes+24+fd_len(load64(fd_at(columns,ci)));ci=ci+1;}ti=ti+1;}let capacity=fd_cp_capacity(db,meta_bytes);if !capacity || !fd_reserve(a,b,capacity) {return 0;}
+    while ti<fd_size(tables) {let t=fd_at(tables,ti);meta_bytes=meta_bytes+40+fd_len(load64(t+8))+((fd_size(load64(t+24))*16+4095)/4096)*8;let columns=load64(t+16);let ci=0;while ci<fd_size(columns) {meta_bytes=meta_bytes+24+fd_len(load64(fd_at(columns,ci)));ci=ci+1;}ti=ti+1;}if meta_bytes>16777216 {return 0;}let capacity=fd_cp_capacity(db,meta_bytes);if !capacity || !fd_reserve(a,b,capacity) {return 0;}
     fd_word(a,b,0);fd_word(a,b,fd_size(tables));let i=0;
     while i<fd_size(tables) {
         let t=fd_at(tables,i);let name=load64(t+8);let columns=load64(t+16);fd_word(a,b,fd_len(name));fd_append(a,b,name,fd_len(name));fd_word(a,b,fd_size(columns));let j=0;
@@ -121,7 +126,8 @@ fn fd_cp_build(db,a) {
     while i<fd_size(info) {
         let record=fd_at(info,i);let t=load64(record);let rows=load64(record+24);let directory=load64(b);let bytes=rows*16;
         if !fd_reserve(a,b,directory+bytes) {return 0;}store64(load64(b+16)+load64(record+8),directory);store64(b,directory+bytes);let j=0;
-        while j<rows {let row=fd_table_row(t,j);if !row {return 0;}if !load64(row+8) {let entry=load64(b+16)+directory+j*16;store64(entry,0);store64(entry+8,0);}else {let offset=load64(b);let size=fd_cp_row(a,b,row);if !size {return 0;}let base=load64(b+16);let entry=base+directory+j*16;store64(entry,offset);store64(entry+8,size|((fd_crc(4294967295,base+offset,size)^4294967295)<<32));}j=j+1;}
+        let packed=0;if rows>=128 {packed=fd_pack_rows(t,b,directory);}if packed<0 {return 0;}
+        if !packed {while j<rows {let row=fd_at(load64(t+24),j);if !row {return 0;}if !load64(row+8) {let entry=load64(b+16)+directory+j*16;store64(entry,0);store64(entry+8,0);}else {let offset=load64(b);let size=fd_cp_row(a,b,row);if !size {return 0;}let base=load64(b+16);let entry=base+directory+j*16;store64(entry,offset);store64(entry+8,size|((fd_crc(4294967295,base+offset,size)^4294967295)<<32));}j=j+1;}}
         let pages=(bytes+4095)/4096;j=0;while j<pages {let count=bytes-j*4096;if count>4096 {count=4096;}let base=load64(b+16);store64(base+load64(record+16)+j*8,fd_crc(4294967295,base+directory+j*4096,count)^4294967295);j=j+1;}i=i+1;
     }if !fd_auto_cp_data(a,b,indexes) {return 0;}return b;
 }

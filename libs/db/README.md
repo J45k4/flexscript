@@ -373,6 +373,16 @@ checkpoint API to retain learning from a short read-only session. An oversized a
 without discarding committed data; the explicit API reports the limit. Closing
 a connection with an active transaction discards it and skips checkpointing.
 
+For tables with at least 128 rows, checkpoint construction can emit a
+schema-specific x86-64 sizing loop and bulk row writer in Flexscript. Remaining
+mapped rows are validated and hydrated first; the writer consumes engine-owned
+rows, checks destination bounds and retains the exact CP03 encoding and IEEE
+checksums. Each temporary code mapping changes from RW to RX and is released
+after use. Smaller tables and unavailable executable memory use the ordinary
+Flexscript writer. Large disjoint byte copies also have a bounded native entry;
+small or overlapping copies retain their existing loop. Arena cleanup combines
+exactly adjacent owned blocks into one unmap without releasing intervening maps.
+
 On reopen, the final completed footer locates the latest checkpoint directly.
 The file is mapped read-only; schema metadata is verified immediately, while
 row-directory pages and individual row checksums are verified on first access.

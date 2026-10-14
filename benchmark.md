@@ -22,14 +22,14 @@ measurements, including resource usage; complete variation coverage is still
 pending. Every target's measured or missing coverage is listed in the
 [comparison results](libs/db/benchmark-results.md#coverage-against-all-75-targets).
 
-The latest transaction/field-reader snapshot has **273 timing rows favoring
-FlexDB, 53 within 10%, and 29 favoring SQLite**, using a >10% margin.
-The ordinary SUM loop and empty transactions now beat SQLite in their measured
-variants. These counts exclude resource metrics and do not prove complete
-coverage of the 75 targets. Storage/first-scan/integrity costs, duplicate index
-builds, some adaptive/schema cases, retained memory and file sizes remain work.
-See the [latest before/after analysis](libs/db/benchmark-results.md#transaction-and-field-reader-optimization-2026-10-14)
-and [all current timing/resource tables](libs/db/benchmark-current.md).
+The latest bulk-checkpoint snapshot has **279 timing rows favoring FlexDB,
+57 within 10%, and 19 favoring SQLite**, using a >10% margin. Checkpoint/close
+has improved (100K rows: 21.62 ms versus 33.35 ms in a fresh pre-change run), but
+SQLite still takes 9.64 ms. First validated scans remain a loss with substantial
+variation; memory use and file size remain gaps. Complete 75-target coverage and
+resource metrics are separate. See the
+[latest analysis](libs/db/benchmark-results.md#bulk-checkpoint-packing-2026-10-14)
+and [current timing/resource tables](libs/db/benchmark-checkpoint-pack.md).
 
 The [matrix runner](scripts/benchmark-flexdb-matrix.flex) executes concrete
 variants and saves JSON/raw samples plus Markdown. Gated capabilities, physical

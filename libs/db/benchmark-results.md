@@ -15,6 +15,118 @@ and null fractions 0/10/50/90%. I/O counters confirm these are warm OS-cache
 workloads: measured physical read-byte counters were zero. This is not a
 physical-cold, concurrent or larger-than-memory comparison.
 
+## Bulk checkpoint packing (2026-10-14)
+
+Checkpoint construction now uses schema-specific sizing and row-packing loops
+emitted in Flexscript for tables of at least 128 rows. The writer consumes owned
+RAM rows after remaining mapped rows are validated/hydrated, checks each buffer
+bound, emits the exact existing CP03 image and calls the same IEEE CRC helper.
+Temporary code changes from RW to RX and is released after each call. Small
+tables and unavailable native code retain the ordinary Flexscript path.
+Large disjoint copies have a bounded REP MOVSB entry; arena cleanup combines
+exactly adjacent owned blocks, preserving intervening mappings and row lifetimes.
+
+The full run has **279 FlexDB timing wins, 57 within 10%, and 19 SQLite
+wins** across the same 355 comparisons and 24 scenarios, five measured rounds
+plus excluded warmup. All 2,130 cross-engine raw case pairs, timing/resource
+median and range aggregates, and preserved worker hashes were checked. These are
+>10% classifications of sample medians, not statistical significance or full
+75-target coverage. Resources are separate, and older snapshots remain below.
+
+| Scenario / case | Previous full FlexDB ms | Current full FlexDB ms | Current SQLite ms |
+| --- | ---: | ---: | ---: |
+| lifecycle_100k / checkpoint_close | 31.639925 | 21.623147 | 9.641123 |
+| read_100k / final_close | 33.853219 | 21.305732 | 11.842441 |
+| text256_10k / final_close | 11.911962 | 10.071731 | 0.897856 |
+| lifecycle_100k / compaction | 33.434603 | 25.197188 | 50.332295 |
+| recovery_10k / final_close | 11.658669 | 10.506038 | 10.187603 |
+| lifecycle_100k / session_total | 225.982524 | 204.786659 | 252.093102 |
+| lifecycle_100k / first_full_scan | 13.847702 | 17.078950 | 3.545041 |
+| lifecycle_100k / integrity | 37.851311 | 38.518794 | 20.045711 |
+
+A fresh pre-change storage run measured 33.35 ms
+for 100K-row checkpoint/close; the full current run measures
+21.62 ms (about 35% less time).
+SQLite still takes 9.64 ms. A separate diagnostic
+fixture puts capacity sizing near 0.3 ms, row packing near 4.2 ms, index emission
+near 3 ms, and checkpoint writes/fsync near 11 ms; these diagnostic figures are
+not substituted for full matched benchmark rows. Stored footprint and I/O now
+limit further checkpoint gains. Lifecycle final file sizes are 12,187,001 bytes
+for FlexDB versus 6,017,024 for SQLite; peak RSS is 49,536 versus 20,080 KiB.
+
+First-scan latency remains variable and lost again in this run, and integrity is
+still slower. The broad win/loss count also moves with unrelated timing variation;
+it does not mean every changed classification was caused by the writer.
+Memory use and file size have not been solved by this optimization.
+
+Checks pass: 1,005 core checks plus 77 harness checks, including complete native
+versus fallback checkpoint-image parity, exact sizing, 1..64 mixed columns,
+nullable high-bit fields, tombstones, extreme scalar values and binary payloads,
+every short buffer ending at a guard page, oversized field/total payload rejection,
+reopen/compaction, native/fallback large-copy bounds and adjacent-arena release
+without unmapping another owner's gap. Existing torn-prefix and corruption checks
+also pass. No stored-format or API ownership/lifetime change was introduced.
+
+See [full current timing/resource tables](benchmark-checkpoint-pack.md). Next
+work remains denser storage/index representation, first-read and integrity costs,
+retained memory, and the remaining schema/adaptive/roadmap variants. The full
+all-metric objective is unfinished.
+
+## Index construction and native validation scan (2026-10-14)
+
+Duplicate-heavy builds can now use a temporary successor array with path
+compression to find the next empty probing slot directly. It preserves the exact
+bucket image/order of ordinary insertion and the CP03 format. Construction is
+still bounded by the existing row/time limits; scratch is released on success
+or abandonment. Observed duplicate matches select the strategy, while unique
+builds retain their direct path. Peak scratch memory remains a separate cost.
+
+First integer count scans over checkpoints now can use a schema-specific x86-64
+scanner emitted in Flexscript. It preserves the complete directory/row CRC,
+null-mask, required-field, length, row-bound and final-encoding checks, including
+unrelated fields. RAM rows are skipped and continue to override the view.
+The code uses base x86-64 instructions, transitions RW to RX, calls the existing
+IEEE CRC helper and is released after filling the view. Failure to obtain
+executable memory uses the Flexscript fallback.
+
+The full snapshot contains **275 timing wins, 50 within 10%, 30 SQLite
+wins** across the same 355 comparisons / 24 scenarios, five measured rounds
+plus warmup. Every checksum/operation count, timing/resource aggregate and both
+worker hashes were verified. These counts exclude resource metrics and do not
+prove all roadmap targets or every variation. Prior snapshots remain below.
+
+| Scenario / case | FlexDB before ms | FlexDB now ms | SQLite now ms |
+| --- | ---: | ---: | ---: |
+| duplicates10_10k / learn_integer | 1.346346 | 1.275290 | 8.689133 |
+| duplicates100_10k / learn_integer | 3.938996 | 1.230918 | 8.797714 |
+| duplicates1000_10k / learn_integer | 29.483225 | 1.109567 | 8.779155 |
+| read_10k / learn_integer | 1.055200 | 1.070507 | 11.371074 |
+| lifecycle_100k / first_full_scan | 15.482177 | 13.847702 | 3.495114 |
+| lifecycle_100k / cached_full_scan | 0.923118 | 1.432052 | 2.265564 |
+| lifecycle_100k / checkpoint_close | 30.316931 | 31.639925 | 9.379804 |
+| lifecycle_100k / integrity | 37.723423 | 37.851311 | 20.224550 |
+
+The duplicate-build gap is closed in these measured variants. First-scan latency
+is still a loss and varies substantially. A focused run of the identical worker
+binary had a 7.44 ms median, whereas this full run has 13.85 ms; raw samples range
+roughly 6–18 ms. The full snapshot is retained as current evidence rather than
+choosing the faster subset. A diagnostic run added CPU time, page-fault and
+context-switch counters outside the timed interval: samples took 7.59–18.17 ms
+CPU time, had 620 minor faults and zero major faults. Descheduling alone does not
+explain the spread. The diagnostics are in `roadmap-scan-diagnostics.json`.
+
+Tests pass: 1,005 core checks plus 76 harness checks, including exact successor
+bucket parity across collisions/wrap, deadline fallback, 64 mixed columns,
+nullable/required high-bit columns, extreme integers, multi-page directories,
+tombstones, known RAM rows, native/Flexscript view parity, corruption with valid
+CRCs and a row ending immediately before an inaccessible page. Source data and
+stored row ownership/lifetimes remain unchanged.
+
+See [all current tables and resource measurements](benchmark-index-scan.md).
+Next work is still checkpoint/close and integrity cost, first-scan variation and
+remaining latency, schema/adaptive cases, retained memory and file size. The
+all-metric objective remains active.
+
 ## Transaction and field-reader optimization (2026-10-14)
 
 Empty transactions now defer log allocation and rollback snapshots until the

@@ -1,5 +1,6 @@
 // Private arenas and byte containers. Database and query lifetimes are separate.
 global fd_last_error=0;
+global fd_copy_code=0;
 fn fd_panic() {syscall(1,2,"FlexDB: out of memory\n",22,0,0,0);syscall(60,1,0,0,0,0,0);return 0;}
 fn fd_alloc(a,n) {
     if n<0 || n>67108864 {fd_panic();}
@@ -12,10 +13,27 @@ fn fd_alloc(a,n) {
     let p=load64(a)+16+load64(a+8);store64(a+8,load64(a+8)+n);return p;
 }
 fn fd_clear(a) {
-    let p=load64(a);while p {let next=load64(p);syscall(11,p,load64(p+8),0,0,0,0);p=next;}
+    // mmap commonly puts successive arena blocks next to one another. Release
+    // an adjacent owned run with one munmap, reading its links beforehand.
+    // Exact adjacency is required: gaps and blocks from other arenas survive.
+    let p=load64(a);while p {let start=p;let end=p+load64(p+8);let next=load64(p);let joined=1;
+        while next && joined {let size=load64(next+8);if next+size==start {start=next;next=load64(next);}else if next==end {end=next+size;next=load64(next);}else {joined=0;}}
+        syscall(11,start,end-start,0,0,0,0);p=next;
+    }
     store64(a,0);store64(a+8,0);store64(a+16,0);return 0;
 }
-fn fd_copy(to,from,n) {let i=0;while i<=n-32 {store64(to+i,load64(from+i));store64(to+i+8,load64(from+i+8));store64(to+i+16,load64(from+i+16));store64(to+i+24,load64(from+i+24));i=i+32;}while i<=n-8 {store64(to+i,load64(from+i));i=i+8;}while i<n {store8(to+i,load8(from+i));i=i+1;}return to;}
+// Large disjoint copies use a tiny baseline x86-64 entry (System V arguments
+// RDI/RSI/RDX). REP MOVSB has exact byte bounds; small/overlapping copies keep
+// the original loop. Executable-memory failure keeps the Flexscript fallback.
+fn fd_copy_init() {
+    if fd_copy_code {return fd_copy_code;}fd_copy_code=-1;let p=alloc(4096);if p<=0 {return -1;}
+    store64(p,0xf3fcd18948f88948);store8(p+8,0xa4);store8(p+9,0xc3); // mov rax,rdi; mov rcx,rdx; cld; rep movsb; ret
+    if syscall(10,p,4096,5,0,0,0)<0 {syscall(11,p,4096,0,0,0,0);return -1;}fd_copy_code=p;return p;
+}
+fn fd_copy(to,from,n) {
+    if n>=512 && ((to>=from && to-from>=n) || (from>=to && from-to>=n)) {let code=fd_copy_code;if !code {code=fd_copy_init();}if code>0 {return ffi_call(code,to,from,n,0,0,0);}}
+    let i=0;while i<=n-32 {store64(to+i,load64(from+i));store64(to+i+8,load64(from+i+8));store64(to+i+16,load64(from+i+16));store64(to+i+24,load64(from+i+24));i=i+32;}while i<=n-8 {store64(to+i,load64(from+i));i=i+8;}while i<n {store8(to+i,load8(from+i));i=i+1;}return to;
+}
 fn fd_len(s) {let n=0;while (s+n)&7 {if !load8(s+n) {return n;}n=n+1;}while 1 {let w=load64(s+n);if ((w-0x0101010101010101)&(~w)&0x8080808080808080) {let i=0;while i<8 {if !load8(s+n+i) {return n+i;}i=i+1;}}n=n+8;}return n;}
 fn fd_bytes(a,b,n) {let i=0;while i<=n-32 {if load64(a+i)!=load64(b+i) || load64(a+i+8)!=load64(b+i+8) || load64(a+i+16)!=load64(b+i+16) || load64(a+i+24)!=load64(b+i+24) {return 0;}i=i+32;}while i<=n-8 {if load64(a+i)!=load64(b+i) {return 0;}i=i+8;}while i<n {if load8(a+i)!=load8(b+i) {return 0;}i=i+1;}return 1;}
 fn fd_text(a,s) {let n=fd_len(s);let p=fd_alloc(a,n+1);fd_copy(p,s,n);store8(p+n,0);return p;}

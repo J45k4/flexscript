@@ -2,16 +2,15 @@
 
 ## Broader roadmap comparison (2026-10-14)
 
-The latest [roadmap results](benchmark-results.md#transaction-and-field-reader-optimization-2026-10-14)
-contain 355 timing comparisons across 24 scenarios, five measured runs plus
-warmup: **273 FlexDB wins, 53 within 10%, 29 SQLite wins**, using a
->10% timing margin. Empty transactions prepare scratch/snapshots lazily, small
-transaction arenas are reused, verified field readers are simplified and common
-primary-ID lookups retain checks without helper calls. The unchanged ordinary
-SUM loop now beats SQLite at 1K/10K/100K rows. Resource metrics and missing roadmap
-variants remain separate: checkpoint/first-scan/integrity work, duplicate index
-builds, some adaptive/schema cases, retained memory and file size still need work.
-See [the current tables](benchmark-current.md) and preserved [replay snapshot](benchmark-replay.md).
+The latest [roadmap results](benchmark-results.md#bulk-checkpoint-packing-2026-10-14)
+contain 355 timing comparisons / 24 scenarios, five measured rounds plus warmup:
+**279 FlexDB wins, 57 within 10%, 19 SQLite wins**, using a >10% timing margin.
+Schema-specific bulk sizing/packing emitted in Flexscript preserves CP03 bytes
+and IEEE checksums. The 100K-row checkpoint/close takes 21.62 ms versus 33.35 ms
+in the fresh pre-change storage run; SQLite still takes 9.64 ms in the full run.
+First scans and integrity remain losses, and memory/file size need work.
+See [current tables](benchmark-checkpoint-pack.md) and the
+[previous index-build/scan snapshot](benchmark-index-scan.md).
 
 ## Earlier comparison after adaptive indexes (2026-10-14)
 
