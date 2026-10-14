@@ -1234,7 +1234,7 @@ fn compile_modules() {
 }
 
 // Upgrade logic is Flexscript; the HTTPS library uses OpenSSL through FFI.
-fn compiler_version() { return "0.0.5"; }
+fn compiler_version() { return "0.0.6"; }
 fn up_copy(to,from,n) { let i=0; while i<n { store8(to+i,load8(from+i)); i=i+1; } return 0; }
 fn up_text(a,b) { return equal(a,length(a),b,length(b)); }
 fn up_join(a,b,c) {
