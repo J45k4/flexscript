@@ -1,4 +1,5 @@
 import "lib/build.flex";
+import "lib/library-package.flex";
 fn pk_checks(report,key,count,minimum) {
     let tests=j_need(report,key);
     let results=j_need(tests,"results");
@@ -56,7 +57,11 @@ fn main(argc,argv) {
     data=h_read(core);
     h_save_bytes(h_join(dist,core_name),data,h_file_size,493);
     syscall(90,h_join(dist,core_name),493,0,0,0,0);
-    h_save(h_join(dist,"SHA256SUMS"),h_cat3(h_cat3(checksum,"  ",h_cat(name,"\n")),core_checksum,h_cat3("  ",core_name,"\n")));
+    let libraries=lp_bundle(dist,version);
+    let checksums=h_buffer();h_text(checksums,h_cat3(checksum,"  ",h_cat(name,"\n")));
+    h_text(checksums,h_cat3(core_checksum,"  ",h_cat(core_name,"\n")));
+    h_text(checksums,h_cat3(h_sha(h_join(dist,libraries)),"  ",h_cat(libraries,"\n")));
+    h_save(h_join(dist,"SHA256SUMS"),h_data(checksums));
     let notes=h_buffer();
     h_text(notes,h_trim(h_read(h_cat3("docs/releases/",version,".md"))));
     h_text(notes,"\n\nVerified build:\n\n");
@@ -78,6 +83,7 @@ fn main(argc,argv) {
     h_text(notes,h_cat3("- ",h_int(j_n(clean,"checks"))," clean-room checks without a toolchain or libc.\n\n"));
     h_text(notes,"The full compiler requires the Linux x86-64 glibc loader and libc. HTTPS upgrades require OpenSSL 3 and a trusted CA store. Upgrades verify the Ed25519 signature over version-bound checksums before downloading or executing a candidate. The separate static core can rebuild the full compiler without libc.\n\nThe full compiler provides `flexscript run [options] app.flex` with trusted execution by default and a baseline x86-64 JIT. Use `--restricted` for guest memory isolation and explicit host capabilities. HTTP/HTTPS source imports are enabled by default; `--no-url-imports` disables downloads. Restricted mode requires `--allow-url-imports` to enable downloads. The core supports `run --interpret`. See `docs/vm.md` and `docs/signing.md`.\n\nBuild orchestration, tests, packaging and signing are written in Flexscript. See `docs/bootstrapping.md` to reproduce the build without Python or Rust using released compiler binaries.\n\n");
     h_text(notes,h_cat3("Compiler SHA-256: `",checksum,"`\n"));
+    h_text(notes,h_cat3("\nSource libraries and Monolith examples: `",libraries,"`. Extract the bundle and compile `scripts/install.flex` with this compiler; run it with `--compiler PATH --prefix PREFIX` to install the compiler and its source libraries together. `flexscript upgrade` updates the executable only.\n"));
     h_save(h_join(dist,"release-notes.md"),h_data(notes));
     h_print(1,h_cat3("Packaged ",name,h_cat3(": ",checksum,"\n")));
     return 0;

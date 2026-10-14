@@ -1026,6 +1026,44 @@ fn source_url(url) {
     return result;
 }
 
+fn source_library_regular(file) {
+    let stat=alloc(144);if stat<0 {fail("memory allocation failed");}
+    let regular=syscall(4,file,stat,0,0,0,0)==0 && (load64(stat+24)&61440)==32768;
+    syscall(11,stat,144,0,0,0,0);return regular;
+}
+fn source_library_file(root,path) {
+    if !root || !length(root) {return 0;}
+    let file=up_join(root,"/",path);
+    if source_library_regular(file) {return file;}
+    let n=length(path);
+    if n<5 || !up_text(path+n-5,".flex") {
+        file=up_join(file,".flex","");
+        if source_library_regular(file) {return file;}
+    }
+    return 0;
+}
+fn source_library(path) {
+    // Explicit relative/absolute paths keep their existing meaning. Library
+    // names cannot escape the library root through dot path components.
+    if load8(path)==46 || load8(path)==47 {return 0;}
+    let i=0;
+    while load8(path+i) {
+        if load8(path+i)==47 && (load8(path+i+1)==46 || !load8(path+i+1)) {return 0;}
+        i=i+1;
+    }
+    let configured=up_env("FLEXSCRIPT_LIB");
+    if configured && length(configured) {return source_library_file(configured,path);}
+    let executable=alloc(4096);
+    if executable<0 {fail("memory allocation failed");}
+    let n=syscall(89,"/proc/self/exe",executable,4095,0,0,0);
+    if n<=0 {return 0;}store8(executable+n,0);
+    while n>0 && load8(executable+n-1)!=47 {n=n-1;}
+    store8(executable+n,0);
+    let found=source_library_file(up_join(executable,"../share/flexscript/libs",""),path);
+    if !found {found=source_library_file(up_join(executable,"../libs",""),path);}
+    if !found {found=source_library_file(up_join(executable,"libs",""),path);}
+    return found;
+}
 fn source_resolve(path) {
     if source_scheme(path) { return source_url(path); }
     if source_prefix(source_path, "https://") || source_prefix(source_path, "http://") {
@@ -1055,11 +1093,18 @@ fn source_resolve(path) {
     }
     let size = length(path);
     if prefix + size > 4095 { fail("import path exceeds 4095 bytes"); }
+    let requested=up_join(path,"","");
     i = size;
     while i > 0 { i = i - 1; store8(path + prefix + i, load8(path + i)); }
     i = 0;
     while i < prefix { store8(path + i, load8(source_path + i)); i = i + 1; }
     store8(path + prefix + size, 0);
+    // Local files win. Missing named imports can come from the compiler's
+    // source library installation; nested library imports remain relative.
+    if !source_library_regular(path) {
+        let library=source_library(requested);
+        if library {return library;}
+    }
     return path;
 }
 
@@ -1804,6 +1849,7 @@ fn up_sha_constants() {
 
 fn main(argc, argv) {
     source_path = "flexscript";
+    up_environment=argv+(argc+1)*8;
     if argc>=2 && up_text(load64(argv+8),"run") {return vm_main(argc,argv);}
     if argc >= 2 && up_text(load64(argv + 8), "upgrade") { return up_main(argc, argv); }
     if argc>=2 {

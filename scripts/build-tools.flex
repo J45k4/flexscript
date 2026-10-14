@@ -36,6 +36,12 @@ fn main(argc,argv) {
     h_add(names,"test-todo");
     h_add(names,"test-http");
     h_add(names,"test-harness");
+    h_add(names,"install");
+    h_add(names,"test-libraries");
+    h_add(names,"build-monolith");
+    h_add(names,"monolith-assets");
+    h_add(names,"monolith-build");
+    h_add(names,"package-libraries");
     h_add(names,"bench-vm");
     let i=0;
     while i<h_count(names) {

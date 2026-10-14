@@ -18,14 +18,16 @@ gh secret set FLEXSCRIPT_RELEASE_SIGNING_KEY --repo J45k4/flexscript < private.p
 ```
 
 Only the tag-triggered release job receives this secret. After bootstrap tests
-and packaging succeed, `scripts/sign-release.flex` checks both compiler hashes,
+and packaging succeed, `scripts/sign-release.flex` checks both compiler hashes
+and the source library bundle hash when present,
 the source version and the pinned public key before signing. The Flexscript signer calls OpenSSL directly through FFI; the private key stays
 in memory and is never passed to a child process or written to a temporary file.
 A missing or mismatched private key fails publication. Branch and pull-request builds use
 independent, temporary test keys and produce unsigned verification artifacts.
 
-The release assets are the full compiler, static core, `SHA256SUMS` and
-`SHA256SUMS.sig`. The signature is a raw 64-byte Pure Ed25519 signature over the
+The release assets are the full compiler, static core, source library bundle,
+`SHA256SUMS` and `SHA256SUMS.sig`. Older releases omit the library bundle.
+The signature is a raw 64-byte Pure Ed25519 signature over the
 following UTF-8/ASCII prefix followed immediately by the exact checksum file
 bytes (no normalization):
 
@@ -36,7 +38,7 @@ target=linux-x86_64
 ```
 
 The prefix includes a newline after the target. Binding the version and target
-prevents moving a signed manifest to another release. Both asset names and their
+prevents moving a signed manifest to another release. All asset names and their
 SHA-256 digests are covered. The updater first verifies this signature, then
 checks the downloaded compiler's hash. It never executes an unauthenticated
 candidate, including for the version probe. Verification uses `libcrypto.so.3`

@@ -1,0 +1,29 @@
+:root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; color: #26312d; background: #f2f3ed; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.app { max-width: 760px; margin: 0 auto; padding: 80px 28px 32px; }
+.header { margin-bottom: 38px; }
+.eyebrow { font-size: 11px; font-weight: 750; letter-spacing: .18em; color: #607164; margin-bottom: 22px; }
+h1 { max-width: 640px; font-size: clamp(36px, 6vw, 56px); line-height: 1.08; letter-spacing: -.045em; font-weight: 650; margin: 0 0 20px; }
+.intro { color: #6c756d; line-height: 1.6; max-width: 440px; }
+.panel { background: #fff; border: 1px solid #dce1d7; border-radius: 20px; padding: 24px; box-shadow: 0 12px 40px #29392c08; }
+.add-form { display: flex; gap: 12px; padding-bottom: 24px; border-bottom: 1px solid #edf0e8; }
+input[type=text] { min-width: 0; flex: 1; border: 1px solid #dce1d7; background: #fafbf7; border-radius: 10px; padding: 14px; font: inherit; }
+input[type=text]:focus { outline: 2px solid #76977b; outline-offset: 2px; }
+button { cursor: pointer; font: inherit; }
+.add { background: #2c503b; color: #fff; border: 0; border-radius: 10px; padding: 12px 20px; font-weight: 600; }
+.add:hover { background: #203e2c; }
+.meta { display: flex; justify-content: space-between; gap: 16px; color: #737c72; font-size: 12px; padding: 22px 0 12px; }
+.connection { color: #426d4c; }
+.tasks { list-style: none; margin: 0; padding: 0; }
+.task { display: flex; align-items: center; gap: 14px; padding: 17px 0; border-bottom: 1px solid #edf0e8; }
+.task:last-child { border-bottom: 0; }
+input[type=checkbox] { width: 19px; height: 19px; margin: 0; accent-color: #3a6548; flex-shrink: 0; cursor: pointer; }
+.task-title { flex: 1; overflow-wrap: anywhere; line-height: 1.5; }
+.completed { text-decoration: line-through; color: #899187; }
+.delete { font-size: 12px; background: none; border: 0; color: #7d857b; padding: 8px; border-radius: 6px; }
+.delete:hover { background: #f9ede9; color: #9c483b; }
+.empty { text-align: center; color: #899187; font-size: 14px; padding: 32px 16px 18px; line-height: 1.6; }
+.error { color: #a03b31; min-height: 20px; font-size: 13px; }
+.footer { color: #92998d; font-size: 11px; text-align: center; padding-top: 12px; }
+@media (max-width: 520px) { .app { padding: 44px 16px 24px; } .panel { padding: 18px; } .add-form { gap: 8px; } .add { padding: 12px; } }

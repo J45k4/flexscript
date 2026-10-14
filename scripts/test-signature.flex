@@ -135,6 +135,15 @@ fn suite(compiler) {
     let wrong=sg_message(version,"linux-aarch64",h_data(manifest));
     ts_verify(harness,anchor,signature,wrong,h_len(wrong),0,32,64);
     ts_verify(harness,anchor,signature,message,h_len(message)-1,0,32,64);
+    // Library sources are covered by the same signed release manifest.
+    let library_name=h_cat3("flexscript-libraries-",version,".tar.gz");
+    let library_path=h_join(tree,h_cat("dist/",library_name));h_save(library_path,"library fixture");
+    let with_library=h_cat(h_data(manifest),h_cat3(h_sha(library_path),"  ",h_cat(library_name,"\n")));
+    h_save(manifest_path,with_library);h_check(h_wait(h_spawn(h_args(tool,0,0,0,0,0),"",tree)),0,0);
+    signature=h_read(h_join(tree,"dist/SHA256SUMS.sig"));message=sg_message(version,"linux-x86_64",with_library);
+    ts_verify(harness,anchor,signature,message,h_len(message),1,32,64);
+    h_save(library_path,"tampered library");ts_refuse(tool,tree,"checksums do not match",0);
+    syscall(87,library_path,0,0,0,0,0);h_save(manifest_path,h_data(manifest));
     h_setenv("FLEXSCRIPT_RELEASE_SIGNING_KEY",0);
     ts_refuse(tool,tree,"required; refusing unsigned",0);
     let other=h_join(t_work,"other.pem");

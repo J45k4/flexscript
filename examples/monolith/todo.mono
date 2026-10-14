@@ -1,0 +1,6 @@
+// The first schema compiler supports one model, with an automatic integer key.
+model Todo {
+    id Int primary auto;
+    title Text(240);
+    completed Bool default false;
+}

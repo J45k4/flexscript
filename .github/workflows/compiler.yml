@@ -29,7 +29,7 @@ jobs:
       - name: Install verification dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -92,6 +92,15 @@ jobs:
 
       - name: Test WebAssembly output and compiler self-hosting
         run: build/tools/test-wasm build/stage2 --report build/wasm-tests.json
+
+      - name: Test installed libraries and Monolith native and browser apps
+        run: |
+          build/tools/test-libraries build/stage2 --report build/library-tests.json
+          build/tools/build-monolith --compiler build/stage2
+          build/test-monolith-integration build/stage2
+          build/test-monolith-integration build/stage2 --source
+          build/test-monolith-browser build/stage2 google-chrome --source
+          build/test-monolith-browser build/monolith-todo google-chrome
 
       - name: Test buffered native word I/O and failure recovery
         run: python3 tests/word-io/check.py build/stage2
@@ -187,6 +196,8 @@ jobs:
             build/clean-room.json
             build/harness-tests.json
             build/gui-report.json
+            build/library-tests.json
+            build/monolith-*.png
           if-no-files-found: error
           retention-days: 30
 
@@ -233,4 +244,5 @@ jobs:
             --title "Flexscript $RELEASE_TAG native compiler" \
             --notes-file release-notes.md \
             "flexscript-$RELEASE_TAG-linux-x86_64" \
-            "flexscript-core-$RELEASE_TAG-linux-x86_64" SHA256SUMS SHA256SUMS.sig
+            "flexscript-core-$RELEASE_TAG-linux-x86_64" \
+            "flexscript-libraries-$RELEASE_TAG.tar.gz" SHA256SUMS SHA256SUMS.sig

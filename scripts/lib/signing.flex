@@ -68,7 +68,12 @@ fn sg_sign(dist,version) {
         h_text(expected,h_cat3(h_sha_bytes(data,h_file_size),"  ",h_cat(name,"\n")));
         i=i+1;
     }
-    h_assert(h_equal(manifest,h_data(expected)),"release checksums do not match both compiler assets");
+    // Older releases contain two compiler assets. New releases also bind the
+    // source library bundle into the same signed, version-specific manifest.
+    let library_name=h_cat3("flexscript-libraries-",version,".tar.gz");
+    let library_path=h_join(dist,library_name);
+    if h_exists(library_path) {h_text(expected,h_cat3(h_sha(library_path),"  ",h_cat(library_name,"\n")));}
+    h_assert(h_equal(manifest,h_data(expected)),"release checksums do not match compiler and library assets");
     let public=sg_key(h_read("keys/release-ed25519.pub.pem"),0);
     let anchor=sg_public(public);
     let source=h_read("compiler/main.flex");
