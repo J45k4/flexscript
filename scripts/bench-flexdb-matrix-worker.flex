@@ -1,0 +1,103 @@
+// Native FlexDB worker for the roadmap comparison. No SQLite dependencies.
+import "../libs/db/flexdb.flex";
+import "lib/json.flex";
+extend "../libs/db/schema.flex";
+extend "../libs/db/compile.flex" with "eq";
+extend "../libs/db/compile.flex" with "named";
+extend "../libs/db/compile.flex" with "ge";
+extend "../libs/db/compile.flex" with "combined";
+extend "../libs/db/compile.flex" with "nulls";
+database App {table Items {id: rowid; key: i64; name: text; maybe: i64?;}}
+global b_clock=0;
+global b_cases=0;
+global b_pool=0;
+global b_width=32;
+global b_distinct=0;
+fn now() {h_assert(syscall(228,1,b_clock,0,0,0,0)==0,"clock");return load64(b_clock)*1000000000+load64(b_clock+8);}
+fn eq(row,key) {return Items_key(row)==key;}
+fn named(row,key) {return fd_same(Items_name(row),key);}
+fn ge(row,key) {return Items_key(row)>=key;}
+fn combined(row,key) {return Items_key(row)>=key && !Items_maybe_is_null(row) && Items_maybe(row)%3==0;}
+fn nulls(row) {return Items_maybe_is_null(row);}
+fn record(ids,name,ns,ops,sum) {let v=j_object();j_set(v,"ids",j_string(ids));j_set(v,"case",j_string(name));j_set(v,"ns",j_int(ns));j_set(v,"operations",j_int(ops));j_set(v,"checksum",j_int(sum));j_push(b_cases,v);return v;}
+fn text_key(i) {return b_pool+(i%b_distinct)*(b_width+1);}
+fn text_pool(n,width,shared) {b_distinct=n;b_width=width;b_pool=h_take(n*(width+1));let i=0;let hex="0123456789abcdef";while i<n {let p=b_pool+i*(width+1);let j=0;while j<width {store8(p+j,97+j%26);j=j+1;}let at=0;if shared {at=width-8;}j=0;while j<8 {store8(p+at+j,load8(hex+((i>>((7-j)*4))&15)));j=j+1;}if width>=32 && shared==2 {store8(p+16,195);store8(p+17,164);}store8(p+width,0);i=i+1;}return b_pool;}
+fn input(db,key,name,maybe) {let v=flexdb_values(db);flexdb_add(db,v,flexdb_int(db,key));flexdb_add(db,v,flexdb_text(db,name));flexdb_add(db,v,maybe);return v;}
+fn seeded(path,n,matches,width,shared,nullp) {
+ text_pool(n/matches,width,shared);let db=App_open(path);h_assert(db,"open");let t=Items_table(db);let v=input(db,0,text_key(0),flexdb_int(db,0));let k=fd_at(v,0);let name=fd_at(v,1);let m=fd_at(v,2);let start=now();h_assert(flexdb_begin(db),"seed begin");let i=0;while i<n {store64(k+8,i%b_distinct);store64(name+8,text_key(i));store64(name+16,width);store64(m,1);store64(m+8,i);if i%100<nullp {store64(m,0);store64(m+8,0);}h_assert(flexdb_insert(t,v)==i+1,"seed insert");i=i+1;if i<n && i%(8388608/(width+32))==0 {h_assert(flexdb_commit(db) && flexdb_begin(db),"seed chunk");}}h_assert(flexdb_commit(db),"seed commit");record("W01,M02,M04","insert_reused",now()-start,n,matches*b_distinct*(b_distinct-1)/2);return db;
+}
+fn learn(t,text) {let i=0;let start=now();let sum=0;let col=0;if text {col=1;}while flexdb_index_state(t,col)!=2 && i<128 {if text {sum=sum+named_count(t,text_key(i));}else {sum=sum+eq_count(t,i%b_distinct);}i=i+1;}let v=record("A01,A02,A05","learn_integer",now()-start,i,sum);if text {j_set(v,"case",j_string("learn_text"));}j_set(v,"index_state",j_int(flexdb_index_state(t,col)));return flexdb_index_state(t,col);}
+fn read_cases(db,n,matches,text) {
+ let t=Items_table(db);let i=0;let start=now();let sum=0;while i<100000 {let row=flexdb_get(t,i%n+1);sum=sum+Items_key(row)+1;i=i+1;}record("Q01","id_sequential",now()-start,100000,sum);
+ start=now();sum=0;i=0;while i<100000 {let row=flexdb_get(t,(i*7919)%n+1);sum=sum+Items_key(row)+1;i=i+1;}record("Q01","id_random",now()-start,100000,sum);
+ start=now();sum=0;i=0;while i<100000 {let row=flexdb_get(t,i%32+1);sum=sum+Items_key(row)+1;i=i+1;}record("Q01","id_hot32",now()-start,100000,sum);
+ start=now();sum=0;i=0;while i<100000 {sum=sum+(flexdb_get(t,n+i+1)!=0);i=i+1;}record("Q01","id_missing",now()-start,100000,sum);h_assert(!sum,"missing IDs");
+ let targets=h_args(h_int(0),h_int(1),h_int(n/100),h_int(n/10),h_int(n/2),h_int(n));let variant=0;
+ while variant<6 {let want=h_number(h_at(targets,variant));let threshold=b_distinct-want/matches;start=now();sum=0;i=0;while i<20 {sum=sum+ge_count(t,threshold);i=i+1;}h_assert(sum==20*(want/matches)*matches,"selectivity count");let elapsed=now()-start;record("Q06",h_cat("scan_matches_",h_int(want/matches*matches)),elapsed,20,sum);variant=variant+1;}
+ start=now();sum=0;i=0;while i<20 {sum=sum+combined_count(t,b_distinct/2);i=i+1;}record("Q08","combined_scan",now()-start,20,sum);
+ start=now();sum=0;i=0;while i<20 {sum=sum+nulls_count(t);i=i+1;}record("Q05","null_scan",now()-start,20,sum);
+ if text {learn(t,1);}else {h_assert(learn(t,0)==2,"integer index must build");}
+ let kind="integer";if text {kind="text";}
+ start=now();sum=0;i=0;while i<10000 {let k=(i*7919)%b_distinct;if text {sum=sum+named_count(t,text_key(k));}else {sum=sum+eq_count(t,k);}i=i+1;}record("Q02,Q03,Q04,A06",h_cat(kind,"_hit"),now()-start,10000,sum);h_assert(sum==10000*matches,"equality hits");
+ start=now();sum=0;i=0;while i<10000 {if text {sum=sum+named_count(t,"missing-key");}else {sum=sum+eq_count(t,n+i);}i=i+1;}record("Q02,Q03,Q04",h_cat(kind,"_miss"),now()-start,10000,sum);h_assert(!sum,"equality misses");
+ start=now();sum=0;i=0;while i<100 {let q=flexdb_query(db);let k=(i*7919)%b_distinct;let r=0;if text {r=named_query(q,t,text_key(k));}else {r=eq_query(q,t,k);}h_assert(r && flexdb_count(r)==matches,"materialized count");let j=0;let prior=0;while j<flexdb_count(r) {let row=flexdb_at(r,j);let id=flexdb_rowid(row);h_assert(id>prior,"materialized order");prior=id;sum=sum+id+Items_key(row)+fd_len(Items_name(row));if !Items_maybe_is_null(row) {sum=sum+Items_maybe(row);}j=j+1;}flexdb_query_close(q);i=i+1;}record("Q04,Q09",h_cat(kind,"_materialized"),now()-start,100,sum);
+ start=now();sum=0;i=0;while i<10 {let q=flexdb_query(db);let result=ge_page(q,t,n/2,25,0);let j=0;while j<flexdb_count(result) {sum=sum+flexdb_rowid(flexdb_at(result,j));j=j+1;}flexdb_query_close(q);i=i+1;}record("Q10","offset_page_middle",now()-start,10,sum);
+ start=now();sum=0;i=0;while i<20 {let j=0;while j<n {let row=flexdb_get(t,j+1);sum=sum+Items_key(row);j=j+1;}i=i+1;}record("Q15","aggregate_sum_loop",now()-start,20,sum);
+}
+fn sort64(p,n) {let i=1;while i<n {let at=i;let value=load64(p+i*8);while at>0 && load64(p+(at-1)*8)>value {store64(p+at*8,load64(p+(at-1)*8));at=at-1;}store64(p+at*8,value);i=i+1;}return 1;}
+fn latency(db,n) {let t=Items_table(db);let samples=h_take(2000*8);let empty=h_take(2000*8);let i=0;let sum=0;while i<2000 {let start=now();let end=now();store64(empty+i*8,end-start);i=i+1;}i=0;while i<2000 {let start=now();let row=flexdb_get(t,(i*7919)%n+1);let end=now();store64(samples+i*8,end-start);sum=sum+Items_key(row);i=i+1;}sort64(samples,2000);sort64(empty,2000);let v=record("Q01","id_latency_sample",load64(samples+1000*8),2000,sum);j_set(v,"p50_ns",j_int(load64(samples+1000*8)));j_set(v,"p95_ns",j_int(load64(samples+1899*8)));j_set(v,"p99_ns",j_int(load64(samples+1979*8)));j_set(v,"clock_pair_p50_ns",j_int(load64(empty+1000*8)));return 1;}
+fn mutate(db,id,key,name) {return flexdb_update(Items_table(db),id,input(db,key,name,flexdb_int(db,id-1)));}
+fn writes(db,n) {
+ let t=Items_table(db);h_assert(learn(t,0)==2,"write index");let i=0;let start=now();h_assert(flexdb_begin(db),"update begin");while i<1000 {h_assert(mutate(db,i+1,i,"same-key-new-text"),"unchanged indexed update");i=i+1;}h_assert(flexdb_commit(db),"update commit");record("W04","update_unindexed_field",now()-start,1000,1000);
+ start=now();h_assert(flexdb_begin(db),"update begin");i=0;while i<1000 {h_assert(mutate(db,i+1,n+i,"new-key"),"indexed update");i=i+1;}h_assert(flexdb_commit(db),"update commit");record("W04","update_indexed_field",now()-start,1000,1000);h_assert(eq_count(t,42)==0 && eq_count(t,n+42)==1,"updated index");
+ start=now();h_assert(flexdb_begin(db),"rollback begin");i=0;while i<1000 {h_assert(mutate(db,i+1,n*2+i,"rolled-back"),"rollback update");i=i+1;}h_assert(flexdb_insert(t,input(db,-1,"rollback insert",flexdb_null(db))) && flexdb_delete(t,1) && flexdb_rollback(db),"mixed rollback");record("W08","rollback_mixed_1002",now()-start,1002,Items_key(flexdb_get(t,1)));h_assert(Items_key(flexdb_get(t,1))==n && !flexdb_get(t,n+1),"rollback preserved state");
+ let payload=h_take(257);i=0;while i<256 {store8(payload+i,120);i=i+1;}store8(payload+256,0);let round=0;while round<2 {let value=payload;let label="grow_text_256";if round {value="short";label="shrink_text_5";}start=now();h_assert(flexdb_begin(db),"resize begin");i=0;while i<1000 {h_assert(mutate(db,i+1,n+i,value),"resize");i=i+1;}h_assert(flexdb_commit(db),"resize commit");record("W06",label,now()-start,1000,fd_len(Items_name(flexdb_get(t,1))));round=round+1;}
+ start=now();h_assert(flexdb_begin(db),"delete begin");i=0;while i<1000 {h_assert(flexdb_delete(t,i+1),"delete");i=i+1;}h_assert(flexdb_commit(db),"delete commit");record("W07","delete_batch",now()-start,1000,1000);start=now();let sum=0;i=0;while i<10000 {sum=sum+(flexdb_get(t,i%1000+1)!=0);i=i+1;}record("Q01,W07","deleted_id_reads",now()-start,10000,sum);h_assert(!sum,"deleted absent");
+ start=now();sum=0;i=0;while i<100 {h_assert(flexdb_begin(db) && flexdb_commit(db),"empty commit");h_assert(flexdb_begin(db) && flexdb_rollback(db),"empty rollback");i=i+1;}record("W09","empty_transactions",now()-start,200,0);
+ start=now();h_assert(flexdb_begin(db),"indexed insert begin");i=0;while i<1000 {h_assert(flexdb_insert(t,input(db,n*3+i,"indexed insert",flexdb_int(db,i))),"indexed insert");i=i+1;}h_assert(flexdb_commit(db),"indexed insert commit");record("W03","indexed_insert_batch",now()-start,1000,eq_count(t,n*3+42));h_assert(eq_count(t,n*3+42)==1,"indexed insert visibility");
+}
+fn mixed(db,n,writep) {let t=Items_table(db);h_assert(learn(t,0)==2,"mixed index");let start=now();let sum=0;let writes=0;let i=0;while i<1000 {if i%100<writep {let id=(i*7919)%n+1;let row=flexdb_get(t,id);h_assert(flexdb_begin(db) && mutate(db,id,Items_key(row),"mixed write") && flexdb_commit(db),"mixed write");writes=writes+1;}else {sum=sum+eq_count(t,(i*7919)%n);}i=i+1;}record("X01,A03",h_cat("mixed_writes_",h_int(writep)),now()-start,1000,sum);h_assert(sum==1000-writes,"mixed reads");return 1;}
+fn lifecycle(path,db,n) {
+ let t=Items_table(db);h_assert(learn(t,0)==2,"lifecycle index");let start=now();h_assert(flexdb_checkpoint(db) && close_flexdb(db),"checkpoint close");record("S04","checkpoint_close",now()-start,n,n);
+ start=now();db=App_open(path);t=Items_table(db);let row=flexdb_get(t,43);let key=Items_key(row);record("S01,S02,A07,D01","reopen_first_id",now()-start,1,key);h_assert(key==42 && load64(db+184)==1,"lazy first ID");start=now();let count=ge_count(t,0);record("S03","first_full_scan",now()-start,1,count);h_assert(count==n,"first scan count");start=now();count=ge_count(t,0);record("S03","cached_full_scan",now()-start,1,count);
+ start=now();let i=0;while i<1000 {h_assert(App_init(db),"matching schema");i=i+1;}record("D01","matching_schema_1000",now()-start,1000,0);
+ let pass=0;while pass<2 {start=now();h_assert(flexdb_begin(db),"mapped update begin");i=0;while i<1000 {h_assert(mutate(db,i+1,n*(pass+1)+i,"mapped update"),"mapped update");i=i+1;}h_assert(flexdb_commit(db),"mapped update commit");let label="mapped_first_write";if pass {label="mapped_later_write";}record("A08,W04",label,now()-start,1000,eq_count(t,n*(pass+1)+42));pass=pass+1;}
+ start=now();h_assert(flexdb_integrity(db),"integrity");record("S08","integrity",now()-start,n,n);start=now();h_assert(flexdb_compact(db),"compact");record("S07,S09","compaction",now()-start,n,n);
+ close_flexdb(db);return 0;
+}
+fn joins(db,n,matches) {let t=Items_table(db);let total=0;let start=now();let q=flexdb_query(db);let all=flexdb_scan(q,t);let r=flexdb_join(q,all,0,all,0);let i=0;while i<flexdb_count(r) {let row=flexdb_at(r,i);total=total+flexdb_word(flexdb_cell(row,2))+flexdb_word(flexdb_cell(row,5))+1;i=i+1;}record("Q11","self_join",now()-start,1,total);h_assert(flexdb_count(r)==n*matches,"join multiplicity");flexdb_query_close(q);return 1;}
+fn schema_change(t,mode) {
+ let db=load64(t);let columns=flexdb_schema(db);let sources=fd_vec(db);let drops=fd_vec(db);let names=h_args("key","name","maybe",0,0,0);let kinds=h_args(h_int(1),h_int(2),h_int(1),0,0,0);let nullable=h_args(h_int(0),h_int(0),h_int(1),0,0,0);
+ if mode<=1 {h_add(names,"note");h_add(kinds,h_int(2));h_add(nullable,h_int(1));if mode {h_add(names,"flag");h_add(kinds,h_int(1));h_add(nullable,h_int(0));}}
+ else {names=h_args("label","key","maybe","flag",0,0);kinds=h_args(h_int(2),h_int(1),h_int(1),h_int(1),0,0);nullable=h_args(h_int(0),h_int(0),h_int(1),h_int(0),0,0);if mode==2 {fd_push(db,drops,"note");}if mode==3 {store64(kinds+16,h_int(2));}}
+ let i=0;while i<h_count(names) {let name=h_at(names,i);flexdb_column(db,columns,name,h_number(h_at(kinds,i)),h_number(h_at(nullable,i)));let source=0;if fd_same(name,"label") && mode==2 {source="name";}fd_push(db,sources,source);i=i+1;}
+ let map=fd_schema_map(t,columns,sources,drops);h_assert(map,"schema map");let rows=fd_vec(db);i=0;while i<fd_size(load64(t+24)) {let row=fd_table_row(t,i);let v=flexdb_values(db);let j=0;while j<fd_size(columns) {let old=fd_at(map,j);let value=0;if old>=0 {value=flexdb_cell(row,old);}else if fd_same(load64(fd_at(columns,j)),"flag") {value=flexdb_int(db,7);}else {value=flexdb_null(db);}if mode==3 && fd_same(load64(fd_at(columns,j)),"key") {value=flexdb_text(db,h_int(flexdb_word(value)));}flexdb_add(db,v,value);j=j+1;}h_assert(fd_check_columns(db,columns,v),"schema row types");fd_push(db,rows,fd_row_refs(db,load64(row),v));i=i+1;}return fd_replace_schema(t,columns,rows);
+}
+fn schemas(db,n) {let t=Items_table(db);let start=now();let i=0;while i<1000 {h_assert(App_init(db),"schema match");i=i+1;}record("D01","schema_noop",now()-start,1000,0);let mode=0;let labels=h_args("schema_add_nullable","schema_add_default","schema_rename_reorder_drop","schema_convert",0,0);while mode<4 {start=now();h_assert(flexdb_begin(db) && schema_change(t,mode) && flexdb_commit(db),"schema commit");record("D02,D03,D04",h_at(labels,mode),now()-start,n,n);mode=mode+1;}let row=flexdb_get(t,43);h_assert(h_number(flexdb_word(flexdb_cell(row,1)))==42 && flexdb_word(flexdb_cell(row,3))==7,"schema values preserved");return 1;}
+fn batching(db,n) {let t=Items_table(db);let sizes=h_args(h_int(1),h_int(10),h_int(100),h_int(1000),0,0);let at=0;let next=n;while at<4 {let batch=h_number(h_at(sizes,at));let v=input(db,0,"batch insert",flexdb_null(db));let scalar=fd_at(v,0);let start=now();let i=0;while i<1000 {h_assert(flexdb_begin(db),"batch begin");let j=0;while j<batch {store64(scalar+8,next);h_assert(flexdb_insert(t,v),"batch insert");next=next+1;j=j+1;i=i+1;}h_assert(flexdb_commit(db),"batch commit");}record("W02,W05",h_cat("insert_batch_",h_int(batch)),now()-start,1000,next);at=at+1;}return 1;}
+fn churn(db,n) {let t=Items_table(db);h_assert(learn(t,0)==2,"churn index");let ids=h_take(n*8);let i=0;while i<n {store64(ids+i*8,i+1);i=i+1;}let total=now();let phase=total;let cycle=1;while cycle<=100 {h_assert(flexdb_begin(db),"churn begin");i=0;while i<n {let id=load64(ids+i*8);h_assert(mutate(db,id,cycle*n+i,"churn"),"churn update");i=i+1;}i=0;while i<10 {let id=load64(ids+i*8);h_assert(flexdb_delete(t,id),"churn delete");let next=flexdb_insert(t,input(db,cycle*n+i,"churn",flexdb_int(db,id-1)));h_assert(next,"churn reinsert");store64(ids+i*8,next);i=i+1;}h_assert(flexdb_commit(db),"churn commit");if cycle%25==0 {let elapsed=now()-phase;let sum=0;i=0;while i<n {sum=sum+Items_key(flexdb_get(t,load64(ids+i*8)));i=i+1;}h_assert(sum==cycle*n*n+n*(n-1)/2,"churn state");let r=record("W10,M01",h_cat("churn_cycle_",h_int(cycle)),elapsed,25*(n+20),sum);j_set(r,"rss_kib",j_int(proc_number("/proc/self/status","VmRSS:")));let start=now();h_assert(flexdb_compact(db),"churn compaction");record("W10,S07",h_cat("churn_compact_",h_int(cycle)),now()-start,n,sum);phase=now();}cycle=cycle+1;}record("W10","churn_total",now()-total,100*(n+20),100*n*n+n*(n-1)/2);h_assert(flexdb_integrity(db),"churn integrity");return 1;}
+fn adaptive(db,n) {
+ let t=Items_table(db);let budgets=h_args(h_int(0),h_int(262144),h_int(1048576),h_int(4194304),h_int(8388608),0);let v=0;while v<5 {let budget=h_number(h_at(budgets,v));h_assert(flexdb_auto_budget(db,budget),"index budget");let start=now();let sum=0;let i=0;while i<200 {sum=sum+eq_count(t,(i*7919)%n);i=i+1;}let elapsed=now()-start;let r=record("A01,A02,A04,A05",h_cat("budget_",h_int(budget)),elapsed,200,sum);j_set(r,"index_state",j_int(flexdb_index_state(t,0)));h_assert(sum==200,"budget result");v=v+1;}
+ let start=now();let sum=0;let i=0;while i<2000 {sum=sum+named_count(t,text_key((i*7919)%n));i=i+1;}record("A03,A10","switch_to_text",now()-start,2000,sum);h_assert(sum==2000,"text demand");start=now();sum=0;i=0;while i<200 {sum=sum+eq_count(t,(i*7919)%n);i=i+1;}record("A03,A10","return_to_integer",now()-start,200,sum);
+ h_assert(flexdb_begin(db),"broad rewrite");i=0;while i<n*9/10 {h_assert(mutate(db,i+1,0,text_key(i)),"broad key update");i=i+1;}h_assert(flexdb_commit(db),"broad commit");start=now();sum=0;i=0;while i<100 {sum=sum+eq_count(t,0);i=i+1;}record("A03,Q04","demand_becomes_broad",now()-start,100,sum);h_assert(sum==100*(n*9/10),"broad result");return 1;
+}
+fn crash_seed(db,n) {let t=Items_table(db);h_assert(learn(t,0)==2 && flexdb_checkpoint(db),"crash base");h_assert(flexdb_begin(db) && mutate(db,43,n+42,"committed tail") && flexdb_commit(db),"durable crash tail");h_assert(flexdb_begin(db) && mutate(db,44,n+43,"uncommitted tail"),"uncommitted before exit");return 1;}
+fn recover(path,n) {let start=now();let db=App_open(path);h_assert(db,"recovery open");let t=Items_table(db);let row=flexdb_get(t,43);let row2=flexdb_get(t,44);record("R01,S06,A09","process_exit_recovery",now()-start,1,Items_key(row)+Items_key(row2));h_assert(Items_key(row)==n+42 && Items_key(row2)==43,"acknowledged commit and rollback on exit");start=now();let found=eq_count(t,n+42);record("A09,A07","first_equality_after_tail",now()-start,1,found);h_assert(found==1,"recovered equality");return db;}
+fn proc_number(path,key) {let fd=syscall(2,path,524288,0,0,0,0);h_assert(fd>=0,"proc open");let p=h_take(4096);let size=syscall(0,fd,p,4095,0,0,0);syscall(3,fd,0,0,0,0,0);h_assert(size>0,"proc read");store8(p+size,0);let at=h_find(p,key);h_assert(at>=0,"proc field");at=at+h_len(key);while load8(p+at)==32 || load8(p+at)==9 {at=at+1;}let n=0;while load8(p+at)>=48 && load8(p+at)<=57 {n=n*10+load8(p+at)-48;at=at+1;}return n;}
+fn main(argc,argv) {
+ h_environment(argc,argv);h_assert(argc==8,"path n family matches width shared null-percent");b_clock=h_take(16);b_cases=j_array();let path=load64(argv+8);let n=h_number(load64(argv+16));let family=load64(argv+24);let matches=h_number(load64(argv+32));let width=h_number(load64(argv+40));let shared=h_number(load64(argv+48));let nullp=h_number(load64(argv+56));h_assert(n>=1000 && n<=100000 && matches>=1 && n%matches==0 && width>=8 && width<=256,"bounds");let whole=now();let db=0;if h_equal(family,"recover") {db=recover(path,n);}else {db=seeded(path,n,matches,width,shared,nullp);}
+ if h_equal(family,"read") || h_equal(family,"text") {read_cases(db,n,matches,h_equal(family,"text"));latency(db,n);}
+ else if h_equal(family,"write") {writes(db,n);}
+ else if h_equal(family,"lifecycle") {db=lifecycle(path,db,n);}
+ else if h_equal(family,"join") {joins(db,n,matches);}
+ else if h_equal(family,"schema") {schemas(db,n);}
+ else if h_equal(family,"adaptive") {adaptive(db,n);}
+ else if h_equal(family,"batch") {batching(db,n);}
+ else if h_equal(family,"churn") {churn(db,n);}
+ else if h_equal(family,"crash") {crash_seed(db,n);}
+ else if h_equal(family,"recover") {}
+ else if h_starts(family,"mixed") {mixed(db,n,h_number(family+5));}
+ else {h_die("unknown family");}
+ if db && !h_equal(family,"crash") {let start=now();h_assert(close_flexdb(db),"close");record("S04","final_close",now()-start,n,n);}record("S05","session_total",now()-whole,1,0);
+ let stat=h_take(144);h_assert(syscall(4,path,stat,0,0,0,0)==0,"stat");let usage=h_take(144);h_assert(syscall(98,0,usage,0,0,0,0)==0,"usage");let report=j_object();j_set(report,"cases",b_cases);j_set(report,"bytes",j_int(load64(stat+48)));j_set(report,"peak_kib",j_int(proc_number("/proc/self/status","VmHWM:")));j_set(report,"write_bytes",j_int(proc_number("/proc/self/io","write_bytes:")));j_set(report,"read_bytes",j_int(proc_number("/proc/self/io","read_bytes:")));j_set(report,"minor_faults",j_int(load64(usage+64)));j_set(report,"major_faults",j_int(load64(usage+72)));h_print(1,j_dump(report));h_print(1,"\n");return 0;
+}

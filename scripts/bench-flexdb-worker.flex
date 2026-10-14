@@ -1,0 +1,17 @@
+import "../libs/db/flexdb.flex";
+import "lib/host.flex";
+import "lib/json.flex";
+extend "../libs/db/compile.flex" with "qualifies";
+fn qualifies(row,minimum) {return flexdb_word(flexdb_cell(row,0))>=minimum;}
+fn now() {let t=h_take(16);h_assert(syscall(228,1,t,0,0,0,0)==0,"clock");return load64(t)*1000000000+load64(t+8);}
+fn main(argc,argv) {
+    h_environment(argc,argv);h_assert(argc==3 || argc==4,"path rows [prepared]");let path=load64(argv+8);let n=h_number(load64(argv+16));h_assert(n>=1000 && n<=100000 && n%100==0,"1000..100000 rows");let r=j_object();
+    let db=open_flexdb(path);h_assert(db && flexdb_begin(db),"open/begin");let schema=flexdb_schema(db);flexdb_column(db,schema,"age",1,0);flexdb_column(db,schema,"name",2,0);let t=flexdb_create(db,"people",schema);h_assert(t && flexdb_commit(db),"schema");
+    let input=flexdb_values(db);let input_age=flexdb_int(db,0);flexdb_add(db,input,input_age);flexdb_add(db,input,flexdb_text(db,"benchmark-name"));let start=now();h_assert(flexdb_begin(db),"insert begin");let i=0;while i<n {let v=input;if argc==4 {store64(input_age+8,(i*17)%100);}else {v=flexdb_values(db);flexdb_add(db,v,flexdb_int(db,(i*17)%100));flexdb_add(db,v,flexdb_text(db,"benchmark-name"));}h_assert(flexdb_insert(t,v)==i+1,"insert");i=i+1;}let built=now();h_assert(flexdb_commit(db),"insert commit");let committed=now();j_set(r,"insert_ns",j_int(committed-start));j_set(r,"insert_build_ns",j_int(built-start));j_set(r,"insert_commit_ns",j_int(committed-built));
+    let sum=0;start=now();i=0;while i<100000 {let id=(i*7919)%n+1;let row=flexdb_get(t,id);sum=sum+flexdb_word(flexdb_cell(row,0));i=i+1;}j_set(r,"lookup_ns",j_int(now()-start));h_assert(sum==4950000,"lookup sum");
+    start=now();sum=0;i=0;while i<100 {sum=sum+qualifies_count(t,50);i=i+1;}j_set(r,"count_ns",j_int(now()-start));h_assert(sum==n*50,"filter count");
+    start=now();sum=0;i=0;while i<20 {let q=flexdb_query(db);let rows=qualifies_query(q,t,50);sum=sum+flexdb_count(rows);flexdb_query_close(q);i=i+1;}j_set(r,"materialize_ns",j_int(now()-start));h_assert(sum==n*10,"materialized count");
+    let values=flexdb_values(db);flexdb_add(db,values,flexdb_int(db,99));flexdb_add(db,values,flexdb_text(db,"benchmark-name"));start=now();h_assert(flexdb_begin(db),"update begin");i=0;while i<1000 {h_assert(flexdb_update(t,i+1,values),"update");i=i+1;}h_assert(flexdb_commit(db),"update commit");j_set(r,"update_ns",j_int(now()-start));
+    fd_put(values,0,flexdb_int(db,98));start=now();i=0;while i<100 {h_assert(flexdb_begin(db) && flexdb_update(t,i+1,values) && flexdb_commit(db),"durable individual write");i=i+1;}j_set(r,"durable_ns",j_int(now()-start));
+    start=now();h_assert(close_flexdb(db),"checkpoint close");j_set(r,"close_checkpoint_ns",j_int(now()-start));start=now();db=open_flexdb(path);h_assert(db,"reopen");t=flexdb_table(db,"people");let expected=((n-1)*17)%100;if n==1000 {expected=99;}h_assert(flexdb_word(flexdb_cell(flexdb_get(t,n),0))==expected,"reopened value");j_set(r,"reopen_ns",j_int(now()-start));start=now();h_assert(qualifies_count(t,50)==n/2+500,"first scan count");j_set(r,"first_scan_ns",j_int(now()-start));let stat=h_take(144);h_assert(syscall(4,path,stat,0,0,0,0)==0,"stat");j_set(r,"bytes",j_int(load64(stat+48)));close_flexdb(db);let usage=h_take(144);h_assert(syscall(98,0,usage,0,0,0,0)==0,"rusage");j_set(r,"peak_kib",j_int(load64(usage+32)));h_print(1,j_dump(r));h_print(1,"\n");return 0;
+}

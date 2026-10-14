@@ -5,3 +5,5 @@ low-level adapters in `lib/` remain available and can be imported directly.
 
 - [`ml`](ml/README.md): tensors, reverse-mode autodiff, neural-network layers,
   optimizers and optional CUDA kernels, implemented in ordinary Flexscript.
+- [`db`](db/README.md): FlexDB, an experimental single-file relational database
+  with typed rows, transactions and programmatic queries.
