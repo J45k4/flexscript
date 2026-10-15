@@ -24,6 +24,13 @@ global s_nesting=0;
 global s_edges=0;
 global s_state_fields=0;
 global s_state_count=0;
+// Imported files keep their own bytes. Each record holds text, size, path,
+// declaration offset, import list and import count; ir_source/ir_path follow
+// the file being parsed, so diagnostics name that file and line.
+global s_files=0;
+global s_file_count=0;
+global s_order=0;
+global s_order_count=0;
 fn s_fail(message) {return ir_error(message,s_start);}
 fn s_letter(c) {return (c>=65 && c<=90) || (c>=97 && c<=122) || c==95;}
 fn s_digit(c) {return c>=48 && c<=57;}
@@ -264,13 +271,49 @@ fn s_block() {
     while s_token!=125 {if !s_token {s_fail("unterminated SetaScript block");}let r=s_statement();returns=returns || r;}
     s_expect(125);s_local_count=before;s_depth=s_depth-1;return returns;
 }
-fn s_signatures() {
-    s_next();if !s_is("plugin") {s_fail("expected plugin header");}s_next();s_name();s_next();
-    while s_token==46 {s_next();s_name();s_next();}
-    if !s_is("v1") {s_fail("expected plugin version v1");}s_next();s_expect(123);
-    if s_token!=125 {s_fail("plugin configuration is not supported by this frontend yet");}s_next();
+fn s_file(index) {let f=s_files+index*48;ir_source=load64(f);ir_source_size=load64(f+8);ir_path=load64(f+16);return f;}
+fn seta_add_file(text,size,path) {
+    if s_file_count>=256 {s_fail("too many SetaScript files (maximum 256 including entry)");}
+    let f=s_files+s_file_count*48;store64(f,text);store64(f+8,size);store64(f+16,path);s_file_count=s_file_count+1;return s_file_count-1;
+}
+fn seta_include(index) {store64(s_order+s_order_count*8,index);s_order_count=s_order_count+1;return 0;}
+// A quoted path follows import: no escapes, newlines or empty paths.
+fn s_import_path() {
+    while s_pos<ir_source_size && (load8(ir_source+s_pos)==32 || load8(ir_source+s_pos)==9 || load8(ir_source+s_pos)==10 || load8(ir_source+s_pos)==13) {s_pos=s_pos+1;}
+    s_start=s_pos;if s_pos==ir_source_size || load8(ir_source+s_pos)!=34 {s_fail("expected quoted SetaScript import path");}
+    let open=s_pos;s_pos=s_pos+1;
+    while s_pos<ir_source_size && load8(ir_source+s_pos)!=34 {
+        let c=load8(ir_source+s_pos);if c==10 || c==13 || c==0 || c==92 {s_start=s_pos;s_fail("invalid character in SetaScript import path");}s_pos=s_pos+1;
+    }
+    if s_pos==ir_source_size {s_fail("unterminated SetaScript import path");}
+    let n=s_pos-open-1;if n<1 {s_fail("SetaScript import path cannot be empty");}if n>4095 {s_fail("SetaScript import path exceeds 4095 bytes");}
+    let path=alloc(n+1);if path<0 {s_fail("frontend allocation failed");}
+    let i=0;while i<n {store8(path+i,load8(ir_source+open+1+i));i=i+1;}s_pos=s_pos+1;return path;
+}
+// Parse the entry plugin header (imported files have none) and leading imports.
+// Returns the import count; resolution belongs to the bundled compiler host.
+fn seta_scan(index) {
+    let f=s_file(index);s_pos=0;s_next();
+    if index==0 {
+        if !s_is("plugin") {s_fail("expected plugin header");}s_next();s_name();s_next();
+        while s_token==46 {s_next();s_name();s_next();}
+        if !s_is("v1") {s_fail("expected plugin version v1");}s_next();s_expect(123);
+        if s_token!=125 {s_fail("plugin configuration is not supported by this frontend yet");}s_next();
+    }else if s_is("plugin") {s_fail("imported SetaScript files cannot declare a plugin header");}
+    let list=0;let count=0;
+    while s_token==256 && s_is("import") {
+        if !list {list=alloc(256*16);if list<0 {s_fail("frontend allocation failed");}}
+        if count>=256 {s_fail("too many imports in one SetaScript file (maximum 256)");}
+        let path=s_import_path();store64(list+count*16,path);store64(list+count*16+8,s_start);count=count+1;
+        s_next();s_semicolon();
+    }
+    store64(f+24,s_start);store64(f+32,list);store64(f+40,count);return count;
+}
+fn s_signatures(index) {
+    s_file(index);s_pos=load64(s_files+index*48+24);s_next();
     if s_is("state") {s_state_definition();}
     while s_token {
+        if s_is("import") {s_fail("SetaScript imports must precede state and functions");}
         if s_is("cosmetic") {s_next();}if !s_is("fn") {s_fail("only pure function declarations are supported yet");}s_next();s_name();
         if s_count>=s_function_capacity {s_fail("too many SetaScript functions (maximum 4096)");}
         let name=ir_source+s_start;let size=s_size;if s_find_function(name,size)>=0 {s_fail("duplicate SetaScript function");}
@@ -280,7 +323,7 @@ fn s_signatures() {
             s_next();s_expect(58);store64(args+count*32+16,s_type());count=count+1;
             if s_token==44 {s_next();}else {more=0;}
         }}
-        s_expect(41);let saved=alloc((count+1)*32);if saved<0 {s_fail("frontend allocation failed");}let at=0;while at<count*32 {store8(saved+at,load8(args+at));at=at+1;}store64(f+16,saved);store64(f+24,count);s_expect(270);store64(f+32,s_type());store64(f+40,s_start);s_expect(123);
+        s_expect(41);let saved=alloc((count+1)*32);if saved<0 {s_fail("frontend allocation failed");}let at=0;while at<count*32 {store8(saved+at,load8(args+at));at=at+1;}store64(f+16,saved);store64(f+24,count);s_expect(270);store64(f+32,s_type());store64(f+40,s_start);store64(f+48,index);s_expect(123);
         let braces=1;while braces {if !s_token {s_fail("unterminated SetaScript function");}if s_token==123 {braces=braces+1;if braces>128 {s_fail("SetaScript block nesting limit exceeded");}}else if s_token==125 {braces=braces-1;}s_next();}
         s_count=s_count+1;
     }return 0;
@@ -294,21 +337,33 @@ fn s_no_recursion() {
         }i=i+1;}
     }if removed!=s_count {s_fail("SetaScript recursion is not allowed");}return 0;
 }
-fn seta_frontend(text,size,version,path) {
+fn seta_begin(text,size,version,path) {
     ir_init(text,size,path,version);s_shader_mode=0;s_pos=0;s_count=0;s_nesting=0;s_state_count=0;
     s_functions=alloc(s_function_capacity*64);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);s_edges=alloc(s_function_capacity*s_function_capacity);
-    s_state_fields=alloc(2048*40);
-    if s_functions<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_edges<0 || s_state_fields<0 {s_fail("frontend allocation failed");}
-    s_signatures();s_current=0;
+    s_state_fields=alloc(2048*40);s_files=alloc(256*48);s_order=alloc(256*8);s_file_count=0;s_order_count=0;
+    if s_functions<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_edges<0 || s_state_fields<0 || s_files<0 || s_order<0 {s_fail("frontend allocation failed");}
+    seta_add_file(text,size,path);return 0;
+}
+// Files are compiled in include order: each import's files precede the importer.
+fn seta_finish() {
+    let k=0;while k<s_order_count {s_signatures(load64(s_order+k*8));k=k+1;}s_current=0;
     while s_current<s_count {
-        let f=s_functions+s_current*64;s_local_count=0;s_slots=0;s_depth=1;
+        let f=s_functions+s_current*64;s_file(load64(f+48));s_local_count=0;s_slots=0;s_depth=1;
         ir_begin(load64(f),load64(f+8),load64(f+24));let args=load64(f+16);let i=0;
         while i<load64(f+24) {let a=args+i*32;s_declare(load64(a),load64(a+8),load64(a+16),0);i=i+1;}
         s_pos=load64(f+40);s_next();s_depth=0;
         if !s_block() {s_fail("SetaScript function must return on every path");}
         ir_emit(1,0);ir_emit(9,0);ir_end(s_slots);s_current=s_current+1;
     }
+    if ir_source!=load64(s_files) {s_file(0);s_start=ir_source_size;}
     s_no_recursion();let main=s_find_function("main",4);
-    if main<0 {s_fail("missing main function");}if load64(s_functions+main*64+24) || load64(s_functions+main*64+32)!=1 {s_fail("SetaScript main must take no parameters and return i32");}
+    if main<0 {s_fail("missing main function");}let m=s_functions+main*64;
+    if load64(m+24) || load64(m+32)!=1 {s_file(load64(m+48));s_start=load64(m)-ir_source;s_fail("SetaScript main must take no parameters and return i32");}
     return ir_finish();
+}
+// Single-buffer entry point, shared by the restricted external frontend route.
+fn seta_frontend(text,size,version,path) {
+    seta_begin(text,size,version,path);
+    if seta_scan(0) {s_start=load64(load64(s_files+32)+8);s_fail("SetaScript imports require the bundled compiler frontend");}
+    seta_include(0);return seta_finish();
 }

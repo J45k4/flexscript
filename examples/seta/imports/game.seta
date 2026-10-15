@@ -1,0 +1,14 @@
+// Entry file: the only plugin header. Imports follow it and precede state and
+// functions. Paths are relative to this file; each file is included once.
+plugin flex.imports v1 {}
+
+import "rules/score.seta"
+import "rules/modes.seta"
+
+state { bonus: i32 = 4 }
+
+fn main() -> i32 {
+    // Imported functions and state fields share one module namespace.
+    state.rounds += 1
+    return score(7) + mode(false, true, false) + state.bonus - state.rounds - 4
+}

@@ -225,7 +225,9 @@ the water. Appearance lives in the material configuration and SetaScript shader.
 
 This is a general shader compiler target with an initial typed subset. It does
 not yet provide a material DSL or automatically replace Setaworld's handwritten
-shaders. Shader files currently cannot import CPU modules. User arrays,
+shaders. Shader files currently cannot import CPU modules or other shader
+files; the CPU frontend's [SetaScript imports](frontend-extensions.md#setascript-imports)
+are future work for shader targets. User arrays,
 atomics, barriers, dynamic loops, shifts, swizzle assignments, `discard` and
 conditional `?:` expressions are not implemented. Use `if`/`else` for conditional
 values; WGSL's eager `select` is not used to approximate lazy expressions.

@@ -188,6 +188,26 @@ fn suite(compiler) {
     h_elf(native,1);h_ok(h_args("chmod","+x",native,0,0,0));h_check(h_run(h_args(native,0,0,0,0,0)),42,"");t_checks=t_checks+1;
     h_save_bytes(t_binary,h_read(child),h_file_size,420);result=tw_run(j_object());tw_success(result);
     t_assert(h_equal(j_s(result,"result"),"42"),"FIR5 application compiled inside WASM executes");
+    // SetaScript imports use the same loader inside the Wasm-hosted compiler:
+    // relative paths, deduplication and a cycle back to the entry file.
+    h_save_bytes(t_binary,h_read(wasm_compiler),h_file_size,420);
+    request=j_object();files=j_object();
+    j_set(files,"app/main.seta",j_string("plugin test v1 {}\nimport \"lib/a.seta\"\nimport \"lib/common.seta\"\nfn main()->i32{return a()+common()}\n"));
+    j_set(files,"app/lib/a.seta",j_string("import \"common.seta\"\nimport \"../main.seta\"\nfn a()->i32{return common()*5}\n"));
+    j_set(files,"app/lib/common.seta",j_string("state {seven:i32=7}\nfn common()->i32{return state.seven}\n"));j_set(request,"files",files);
+    argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("--target"));j_push(argv,j_string("wasm32"));j_push(argv,j_string("app/main.seta"));j_push(argv,j_string("-o"));j_push(argv,j_string("imports.wasm"));j_set(request,"argv",argv);
+    j_set(request,"output",j_string("imports.wasm"));j_set(request,"save",j_string(child));
+    result=tw_run(request);tw_success(result);t_assert(h_equal(j_s(result,"result"),"0"),"WASM compiler resolves SetaScript imports");
+    argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("app/main.seta"));j_push(argv,j_string("-o"));j_push(argv,j_string("imports.elf"));j_set(request,"argv",argv);
+    j_set(request,"output",j_string("imports.elf"));j_set(request,"save",j_string(native));
+    result=tw_run(request);tw_success(result);t_assert(h_equal(j_s(result,"result"),"0"),"WASM compiler lowers imported SetaScript to native ELF");
+    h_elf(native,1);h_ok(h_args("chmod","+x",native,0,0,0));h_check(h_run(h_args(native,0,0,0,0,0)),42,"");t_checks=t_checks+1;
+    h_save_bytes(t_binary,h_read(child),h_file_size,420);result=tw_run(j_object());tw_success(result);
+    t_assert(h_equal(j_s(result,"result"),"42"),"imported SetaScript compiled inside WASM executes");
+    h_save_bytes(t_binary,h_read(wasm_compiler),h_file_size,420);
+    request=j_object();files=j_object();j_set(files,"app/main.seta",j_string("plugin test v1 {}\nimport \"lib/absent.seta\"\nfn main()->i32{return 0}\n"));j_set(request,"files",files);
+    argv=j_array();j_push(argv,j_string("flex"));j_push(argv,j_string("app/main.seta"));j_push(argv,j_string("-o"));j_push(argv,j_string("absent.elf"));j_set(request,"argv",argv);
+    result=tw_run(request);t_assert(h_equal(j_s(result,"result"),"1") && h_has(j_s(result,"stderr"),"main.seta:2:8: error: cannot find SetaScript import \"lib/absent.seta\""),"WASM compiler reports a missing SetaScript import");
     return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}

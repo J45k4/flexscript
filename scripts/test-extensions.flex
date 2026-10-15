@@ -280,6 +280,69 @@ fn te_large_source() {
     h_save_bytes(path,large,67108864,420);
     te_bad(path,"SetaScript source must be smaller than 64 MiB");return 0;
 }
+// SetaScript imports: relative, named (FLEXSCRIPT_LIB), nested, diamond and
+// cyclic graphs compile once each, in deterministic dependency-first order.
+fn te_import_bad(path,message,location) {
+    let before=h_sha(t_binary);let p=h_run(h_args(t_compiler,"--language","seta",path,"-o",t_binary));h_check(p,1,0);
+    t_assert(h_has(h_err(p),message) && h_has(h_err(p),location),h_err(p));
+    t_assert(h_equal(before,h_sha(t_binary)),"rejected SetaScript import changed output");return 0;
+}
+fn te_imports() {
+    te_frontend=0;let root=h_join(t_work,"imports");let lib=h_join(root,"lib");let named=h_join(t_work,"seta-libs");
+    h_mkdir(lib);h_mkdir(h_join(named,"shapes"));let original=h_getenv("FLEXSCRIPT_LIB");
+    let main=h_join(root,"main.seta");
+    h_save(main,"plugin test v1 {}\nimport \"lib/a.seta\"\nimport \"lib/b.seta\";\nimport \"shapes/area\"\nstate {base:i32=2}\nfn main()->i32{return a()+b()+area(state.base)+5}\n");
+    h_save(h_join(lib,"a.seta"),"import \"common.seta\"\nimport \"b.seta\"\nimport \"../main.seta\"\nfn a()->i32{return common()+10}\n");
+    h_save(h_join(lib,"b.seta"),"import \"./common.seta\"\nfn b()->i32{return common()*2}\n");
+    h_save(h_join(lib,"common.seta"),"state {counter:i32=5}\nfn common()->i32{return state.counter}\n");
+    h_save(h_join(named,"shapes/area.seta"),"fn area(x:i32)->i32{return x*6}\n");
+    h_setenv("FLEXSCRIPT_LIB",named);te_routes(main,42);
+    // Dependency-first include order equals one hand-concatenated file.
+    let joined=h_join(t_work,"joined.seta");
+    h_save(joined,"plugin test v1 {}\nstate {counter:i32=5 base:i32=2}\nfn common()->i32{return state.counter}\nfn b()->i32{return common()*2}\nfn a()->i32{return common()+10}\nfn area(x:i32)->i32{return x*6}\nfn main()->i32{return a()+b()+area(state.base)+5}\n");
+    let imported=h_join(t_work,"imported.fir");let concatenated=h_join(t_work,"joined.fir");
+    te_compile(main,"ir",imported);te_compile(joined,"ir",concatenated);
+    t_assert(h_equal(h_sha(imported),h_sha(concatenated)),"SetaScript import graph IR equals its concatenation");
+    // Local files win over a library of the same name.
+    h_mkdir(h_join(named,"lib"));h_save(h_join(named,"lib/a.seta"),"fn a()->i32{return 0}\n");te_compile(main,"ir",imported);
+    t_assert(h_equal(h_sha(imported),h_sha(concatenated)),"relative SetaScript import wins over a library");
+    h_setenv("FLEXSCRIPT_LIB",h_join(t_work,"empty-libs"));
+    te_import_bad(main,"cannot find SetaScript import \"shapes/area\"","main.seta:4:8: error");
+    h_setenv("FLEXSCRIPT_LIB",named);
+    h_save(h_join(lib,"missing.seta"),"plugin test v1 {}\nimport \"absent/file.seta\"\nfn main()->i32{return 0}\n");
+    te_import_bad(h_join(lib,"missing.seta"),"cannot find SetaScript import \"absent/file.seta\"","missing.seta:2:8: error");
+    h_save(h_join(lib,"broken.seta"),"fn helper()->i32{return 1}\nfn broken()->i32{\n    while true {}\n    return 0\n}\n");
+    h_save(h_join(root,"uses-broken.seta"),"plugin test v1 {}\nimport \"lib/broken.seta\"\nfn main()->i32{return broken()}\n");
+    te_import_bad(h_join(root,"uses-broken.seta"),"unbounded while loops","lib/broken.seta:3:5: error");
+    h_save(h_join(lib,"header.seta"),"plugin other v1 {}\nfn other()->i32{return 1}\n");
+    h_save(h_join(root,"uses-header.seta"),"plugin test v1 {}\nimport \"lib/header.seta\"\nfn main()->i32{return other()}\n");
+    te_import_bad(h_join(root,"uses-header.seta"),"cannot declare a plugin header","lib/header.seta:1:1: error");
+    h_save(h_join(root,"late.seta"),"plugin test v1 {}\nfn main()->i32{return 0}\nimport \"lib/b.seta\"\n");
+    te_import_bad(h_join(root,"late.seta"),"imports must precede state and functions","late.seta:3:1: error");
+    h_save(h_join(root,"duplicate.seta"),"plugin test v1 {}\nimport \"lib/common.seta\"\nfn common()->i32{return 1}\nfn main()->i32{return common()}\n");
+    te_import_bad(h_join(root,"duplicate.seta"),"duplicate SetaScript function","duplicate.seta:3:4: error");
+    h_save(h_join(root,"unquoted.seta"),"plugin test v1 {}\nimport lib\nfn main()->i32{return 0}\n");
+    te_import_bad(h_join(root,"unquoted.seta"),"expected quoted SetaScript import path","unquoted.seta:2:8: error");
+    // An invalid imported main is reported at its own definition.
+    h_save(h_join(lib,"bad-main.seta"),"\n\nfn main(x:i32)->i32{return x}\n");h_save(h_join(lib,"bool-main.seta"),"\n\nfn main()->bool{return true}\n");
+    h_save(h_join(root,"uses-bad-main.seta"),"plugin test v1 {}\nimport \"lib/bad-main.seta\"\n");h_save(h_join(root,"uses-bool-main.seta"),"plugin test v1 {}\nimport \"lib/bool-main.seta\"\n");
+    te_import_bad(h_join(root,"uses-bad-main.seta"),"main must take no parameters and return i32",h_cat(lib,"/bad-main.seta:3:4: error"));
+    te_import_bad(h_join(root,"uses-bool-main.seta"),"main must take no parameters and return i32",h_cat(lib,"/bool-main.seta:3:4: error"));
+    // The restricted external frontend has no file access and says so.
+    te_frontend="examples/extensions/seta.flex";te_bad(main,"imports require the bundled compiler frontend");te_frontend=0;
+    // The 4,096-function bound covers every imported file.
+    let many="";let k=0;while k<4096 {many=h_cat3(many,"fn g",h_cat3(h_int(k),"()->i32{return 1} ",""));k=k+1;}
+    h_save(h_join(lib,"many.seta"),many);h_save(h_join(root,"many.seta"),"plugin test v1 {}\nimport \"lib/many.seta\"\nfn main()->i32{return 0}\n");
+    te_import_bad(h_join(root,"many.seta"),"too many SetaScript functions","many.seta:3:4: error");
+    // The 64 MiB SetaScript source bound is shared by the entry and its imports.
+    let count=34603008;let padding=alloc(count+1);let i=0;while i<count {store8(padding+i,32);i=i+1;}store8(padding+count,0);
+    h_save(h_join(lib,"pad1.seta"),h_cat("fn p1()->i32{return 1}\n",padding));h_save(h_join(lib,"pad2.seta"),h_cat("fn p2()->i32{return 2}\n",padding));
+    h_save(h_join(root,"large.seta"),"plugin test v1 {}\nimport \"lib/pad1.seta\"\nimport \"lib/pad2.seta\"\nfn main()->i32{return p1()+p2()}\n");
+    te_import_bad(h_join(root,"large.seta"),"SetaScript source must be smaller than 64 MiB","large.seta:3:8: error");
+    h_save(h_join(lib,"pad2.seta"),"fn p2()->i32{return 41}\n");te_routes(h_join(root,"large.seta"),42);
+    te_routes("examples/seta/imports/game.seta",42);
+    h_setenv("FLEXSCRIPT_LIB",original);return 0;
+}
 fn suite(compiler) {
     // Let the frontend's 60-second guest deadline report its own failure.
     h_timeout=120000;
@@ -359,7 +422,7 @@ fn suite(compiler) {
     let p=h_run(h_args(t_compiler,"--frontend",te_frontend,"examples/extensions/answer.postfix","-o",alias));h_check(p,1,0);
     t_assert(h_has(h_err(p),"frontend source file") && h_equal(hash,h_sha(alias)),"output must preserve extension inputs");
     te_frontend=0;te_state_io();te_arrays();te_world_tables();te_complete_scene_tables();
-    te_function_graphs();te_large_code();te_large_source();
+    te_function_graphs();te_large_code();te_large_source();te_imports();
     return t_done();
 }
 fn main(argc,argv) {return t_entry(argc,argv);}

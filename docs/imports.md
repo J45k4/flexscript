@@ -46,6 +46,10 @@ import chain including the entry, less than 16 MiB of combined source, and
 4095 bytes per resolved import path. Existing global, function, local, call,
 and output limits apply across the entire program.
 
+SetaScript has its own `import "path"` form, using the same loader, file
+identity and library roots; see
+[SetaScript imports](frontend-extensions.md#setascript-imports).
+
 ## HTTP and HTTPS imports
 
 The current compiler can fetch source directly from an HTTP or HTTPS URL:

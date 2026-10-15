@@ -1,4 +1,5 @@
 import "frontends/seta.flex";
+import "frontends/seta-imports.flex";
 import "frontends/shader.flex";
 global frontend_language=0;
 global frontend_selected=0;
@@ -93,7 +94,7 @@ fn frontend_source_accept(blob,size) {
 }
 fn frontend_compile_modules() {
     select_module(0);
-    if frontend_language==1 {let blob=seta_frontend(source,source_size,1,source_path);ir_accept(blob,load64(blob+8));}
+    if frontend_language==1 {let blob=seta_frontend_modules();ir_accept(blob,load64(blob+8));}
     else if frontend_language==2 {frontend_run();}
     else {ir_accept(source,source_size);}
     return 0;

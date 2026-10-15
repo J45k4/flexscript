@@ -1,0 +1,13 @@
+// An imported file has no plugin header. It may import further files and
+// declare its own state block before its functions.
+import "../util/clamp.seta"
+
+state { rounds: i32 = 0 }
+
+fn score(count: i32) -> i32 {
+    let total = 0
+    for i in 0..8 {
+        if i < clamp(count, 0, 8) { total += i * 2 }
+    }
+    return total
+}

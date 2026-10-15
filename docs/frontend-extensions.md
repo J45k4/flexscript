@@ -132,7 +132,8 @@ AOT output are not fuel-metered; the embedding host controls their execution.
 
 Supported:
 
-- One empty `plugin name[.name...] v1 {}` header.
+- One empty `plugin name[.name...] v1 {}` header in the entry file, followed
+  by optional `import "path"` declarations.
 - `fn` and `cosmetic fn`, typed `i32`/`bool` parameters and return values,
   forward calls and return-type checks. `main() -> i32` is required.
 - Inferred or annotated `let`, mutable locals, lexical scopes, assignment and
@@ -152,10 +153,82 @@ Decimal integer literals are supported; hexadecimal, floats and unit-bearing
 literals are not supported yet.
 
 Floats/fixed point, vectors, records, collections, replicated actors, handlers,
-assets, host calls, imports and nonempty plugin configuration currently produce
-errors. Typed floating-point/aggregate IR and host-service interfaces are the
+assets, host calls and nonempty plugin configuration currently produce
+errors. Source files can be split with [imports](#setascript-imports). Typed floating-point/aggregate IR and host-service interfaces are the
 next steps before compiling the actual Setaworld engine and content. Supported
 syntax is parsed and type-checked, rather than silently skipping other features.
+
+## SetaScript imports
+
+A SetaScript program can span several files. Imports follow the entry file's
+plugin header and precede its `state` block and functions:
+
+```seta
+plugin flex.imports v1 {}
+
+import "rules/score.seta"
+import "rules/modes.seta"
+
+state { bonus: i32 = 4 }
+
+fn main() -> i32 {
+    state.rounds += 1
+    return score(7) + mode(false, true, false) + state.bonus - state.rounds - 4
+}
+```
+
+```sh
+build/stage2 run examples/seta/imports/game.seta
+build/stage2 --target wasm32 examples/seta/imports/game.seta -o build/game.wasm
+```
+
+[`examples/seta/imports`](../examples/seta/imports) returns 42 on every route.
+
+- **Syntax.** `import "path"`, with an optional `;`. The path is a plain quoted
+  string: no escapes, newlines or empty paths, at most 4,095 bytes. Imports are
+  top-level only. An `import` after a `state` block or function is an error.
+- **Imported files** have no plugin header; the entry file is the only plugin.
+  Each may import further files, then declare an optional `state` block and
+  functions. A plugin header in an imported file is an error.
+- **Resolution.** A path is resolved against the importing file's directory;
+  absolute paths are accepted. If that file does not exist and the path is a
+  library name (no leading `.` or `/` and no dot segments), the compiler
+  searches the same roots as Flexscript's
+  [named imports](monolith.md#install-source-libraries): `FLEXSCRIPT_LIB` if set,
+  otherwise the compiler executable's `../share/flexscript/libs`, `../libs` and
+  `libs`. `.seta` is optional for library names, so `import "shapes/area"`
+  finds `shapes/area.seta`; a library file must end in `.seta`. Imports inside a
+  library resolve relative to that library file. URL imports are not supported.
+- **Identity and order.** Files are identified by device and inode, as for
+  Flexscript imports, so repeated imports, diamonds, alternate spellings and
+  symlinks include a file once. Files are compiled depth-first in import
+  statement order, each file after the files it imports, with the entry file
+  last. A cycle is not an error: the back edge is skipped, because every
+  function and state field is visible from every file. Function indices and
+  state words follow this order, so an import graph produces the same FIR as
+  the files concatenated in that order. A source without imports produces
+  byte-identical FIR to earlier compilers.
+- **Namespace.** All files share one namespace for functions and `state`
+  fields. Duplicate functions or fields are errors located at the second
+  definition. Forward calls work across files; recursion is still rejected.
+- **Diagnostics** name the file, line and column where the error occurs,
+  including type errors inside imported files. A missing import reports the
+  importing file and the quoted path:
+  `main.seta:4:8: error: cannot find SetaScript import "shapes/area"`.
+- **Limits.** The 4,096-function bound, 256 distinct files (including the entry
+  file) and the 64 MiB SetaScript source bound apply to the whole import graph.
+  The source loader enforces them, and also prevents the output from replacing
+  any loaded source file. Every function in every imported file is compiled;
+  unreachable library functions are not removed.
+
+Imports are resolved by the compiler's own source loader, so they work for
+`run` (interpreter and JIT), native, Wasm and `--target ir` output, including in
+the compiler's own Wasm build (whose in-memory host has relative paths but no
+library roots). The restricted external route
+(`--frontend examples/extensions/seta.flex`) receives only one source buffer and
+no file access; it reports `SetaScript imports require the bundled compiler
+frontend`. The typed shader targets (`--target glsl|glsl-es|wgsl`) do not accept
+imports yet.
 
 ## FIR1 and the builder API
 

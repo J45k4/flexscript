@@ -1,0 +1,6 @@
+// Imports clamp.seta again: the shared file is compiled only once.
+import "../util/clamp.seta"
+
+cosmetic fn mode(plane: bool, car: bool, train: bool) -> i32 {
+    return clamp(plane ? 0 : car ? 1 : train ? 2 : 3, 0, 3)
+}
