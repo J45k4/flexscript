@@ -2,6 +2,7 @@ import "../lib/http.flex";
 import "../lib/signature.flex";
 import "../vm/runtime.flex";
 import "baremetal.flex";
+import "esp32.flex";
 import "wasm.flex";
 import "gpu-intrinsics.flex";
 import "ptx.flex";
@@ -443,6 +444,11 @@ fn binary(op) {
 
 fn call(name, size) {
     if equal(name,size,"native_callback",15) {return baremetal_callback();}
+    if esp32_target && equal(name,size,"esp32_callback",14) {return esp_callback(23,1);}
+    if esp32_target && equal(name,size,"esp32_callback32",16) {return esp_callback(24,8);}
+    if esp32_target && equal(name,size,"esp32_iram_callback32",21) {return esp_callback(26,8);}
+    if esp32_target && equal(name,size,"esp32_iram_callback",19) {return esp_callback(27,1);}
+    if esp32_target && equal(name,size,"esp32_external",14) {return esp_external();}
     expect(40);
     let count = 0;
     if token != 41 {
@@ -470,11 +476,32 @@ fn call(name, size) {
     else if equal(name, size, "port_out16", 10) { builtin = 11; arity = 2; }
     else if equal(name, size, "port_in32", 9) { builtin = 12; arity = 1; }
     else if equal(name, size, "port_out32", 10) { builtin = 13; arity = 2; }
+    if esp32_target {
+        if equal(name,size,"esp32_load32",12) {builtin=30;arity=1;}
+        else if equal(name,size,"esp32_store32",13) {builtin=31;arity=2;}
+        else if equal(name,size,"esp32_cycles",12) {builtin=32;arity=0;}
+        else if equal(name,size,"esp32_halt",10) {builtin=33;arity=0;}
+        else if equal(name,size,"esp32_call",10) {builtin=35;arity=2;}
+        else if equal(name,size,"esp32_irq_save",14) {builtin=36;arity=0;}
+        else if equal(name,size,"esp32_irq_restore",17) {builtin=37;arity=1;}
+        else if equal(name,size,"esp32_irq_pending",17) {builtin=38;arity=0;}
+        else if equal(name,size,"esp32_irq_mask",14) {builtin=39;arity=1;}
+        else if equal(name,size,"esp32_wait",10) {builtin=40;arity=0;}
+        else if equal(name,size,"esp32_irq_raise",15) {builtin=41;arity=1;}
+        else if equal(name,size,"esp32_irq_clear",15) {builtin=42;arity=1;}
+        else if equal(name,size,"esp32_irq_enabled",17) {builtin=43;arity=0;}
+        else if equal(name,size,"esp32_call32",12) {builtin=44;arity=9;}
+        else if equal(name,size,"esp32_call64",12) {builtin=45;arity=9;}
+        else if equal(name,size,"esp32_switch",12) {builtin=46;arity=2;}
+        else if equal(name,size,"esp32_state",11) {builtin=47;arity=0;}
+        else if equal(name,size,"esp32_irq_pc",12) {builtin=48;arity=0;}
+    }
     if builtin {
         if count != arity { fail("wrong builtin argument count"); }
         if baremetal_target && (builtin == 5 || builtin == 6) {
             fail("alloc and syscall require Linux; use a bare-metal platform adapter");
         }
+        if builtin>=30 {vm_emit(17,builtin);return 0;}
         if builtin >= 7 {
             if !baremetal_target { fail("hardware builtins require --target baremetal-x86_64"); }
             baremetal_builtin(builtin);return 0;
@@ -530,7 +557,7 @@ fn prefix() {
     } else if token == 258 {
         if tx_recording {store64(tx_literal_flags+(function_count-1)*8,128);}
         if ptx_target || sass_target || hip_target {fail("GPU targets do not support string literals");}
-        if vm_mode {immediate(vm_string_literal());next();return 0;}
+        if vm_mode {let address=vm_string_literal();if esp32_target {address=address+esp_data_base;}immediate(address);next();return 0;}
         let start = token_start + 1;
         let end = token_start + token_size - 1;
         let skip = jump(233);
@@ -1210,7 +1237,7 @@ fn load_module(path) {
     if fd >= 0 { syscall(3, fd, 0, 0, 0, 0, 0); }
     store64(module + 16, size);
     select_module(index);
-    if frontend_language {store64(module+40,2);return index;}
+    if frontend_language && !frontend_platform_loading {store64(module+40,2);return index;}
     next();
     import_depth = import_depth + 1;
     while token == 256 && (is("import") || is("extend")) {
@@ -1247,10 +1274,12 @@ fn skip_function() {
     return 0;
 }
 
-fn compile_modules() {
+fn compile_modules() {return compile_module_range(0);}
+fn compile_module_range(first) {
+    let prior=function_count;function_count=0;
     // All globals exist before any function is emitted, even across files.
     // Each individual file still requires globals before functions.
-    let i = 0;
+    let i = first;
     while i < module_count {
         let module = modules + i * 64;
         select_module(i); pos = load64(module + 48); next();
@@ -1268,7 +1297,10 @@ fn compile_modules() {
         }
         i = i + 1;
     }
-    i = 0;
+    function_count=prior;
+    // Native adapter globals share the function namespace with FIR entries.
+    i=0;while i<global_count {let g=globals+i*32;if find(functions,prior,load64(g),load64(g+8))>=0 {locate_name(load64(g));fail("duplicate global");}i=i+1;}
+    i = first;
     while i < module_count {
         let module = modules + i * 64;
         select_module(i); pos = load64(module + 56); next();
@@ -1864,7 +1896,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|ir|baremetal-x86_64] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--esp32-platform <adapter.flex>] <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1875,6 +1907,8 @@ fn main(argc, argv) {
         if up_text(arg,"--target") {
             if target_seen {print(2,"choose only one compiler target\n");return 1;}target_seen=1;
             if up_text(value,"baremetal-x86_64") {baremetal_target=1;}
+            else if up_text(value,"esp32") || up_text(value,"esp32-elf") || up_text(value,"esp32-radio-elf") || up_text(value,"esp32-xip-elf") || up_text(value,"esp32-btdm-elf") {esp_btdm=up_text(value,"esp32-btdm-elf");esp_flash=up_text(value,"esp32-xip-elf") || esp_btdm;esp_elf=up_text(value,"esp32-elf") || up_text(value,"esp32-radio-elf") || esp_flash;esp32_target=2;vm_mode=1;vm_restricted=1;esp_code_base=0x40080000;esp_data_base=0x3ffb0000;esp_stack_floor=0x3ffd0000;esp_stack_top=0x3ffd8000;if up_text(value,"esp32-radio-elf") || esp_flash {esp_radio=1;esp_stack_floor=0x3ffe8000;esp_stack_top=0x3fff0000;}if esp_btdm {esp_data_base=0x3ffc0000;}}
+            else if up_text(value,"esp32s3") || up_text(value,"esp32s3-elf") {esp_elf=up_text(value,"esp32s3-elf");esp32_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"wasm32") {wasm_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"glsl") {shader_target=1;}
             else if up_text(value,"wgsl") {shader_target=2;}
@@ -1887,6 +1921,7 @@ fn main(argc, argv) {
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}
         else if up_text(arg,"--frontend") {frontend_external(value);}
+        else if up_text(arg,"--esp32-platform") {if esp_platform_path {fail("choose only one ESP32 platform input");}esp_platform_path=value;}
         else if up_text(arg,"--word-io") {
             if up_text(value,"buffered") {word_io_buffered=1;}
             else if up_text(value,"unbuffered") {word_io_buffered=0;}
@@ -1903,15 +1938,16 @@ fn main(argc, argv) {
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
     if shader_target && frontend_language!=1 {fail("shader targets require SetaScript source");}
-    if word_io_buffered && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || frontend_ir_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
+    if word_io_buffered && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
     if (ptx_target || sass_target || hip_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
+    if esp_platform_path && (!esp32_target || !frontend_language) {fail("--esp32-platform requires ESP32 frontend input");}
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=134217728;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
     }
     compiler_initialize();
-    if wasm_target || ptx_target || sass_target || hip_target {wasm_initialize();}
+    if wasm_target || ptx_target || sass_target || hip_target || esp32_target {wasm_initialize();if esp32_target {vm_heap_used=24;}}
     load_module(source_path);
     if shader_target {
         select_module(0);output=seta_shader_frontend(source,source_size,source_path);output_size=sg_output_size;
@@ -1919,10 +1955,12 @@ fn main(argc, argv) {
         tx_expand();
         initialize_output();
         if frontend_language {frontend_compile_modules();}else {compile_modules();}
+        if esp_platform_path {frontend_compile_platform();}
         select_module(0);
         token_start = source_size;
         resolve();
         if frontend_ir_target {output=frontend_blob;output_size=frontend_blob_size;}
+        else if esp32_target {esp32_finish();}
         else if wasm_target {wasm_finish();}
         else if ptx_target {ptx_finish();}
         else if sass_target {sass_finish();}
@@ -1954,7 +1992,7 @@ fn main(argc, argv) {
     }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
-    let mode=493;if wasm_target || shader_target || ptx_target || sass_target || hip_target || frontend_ir_target {mode=420;}
+    let mode=493;if wasm_target || shader_target || ptx_target || sass_target || hip_target || esp32_target || frontend_ir_target {mode=420;}
     if syscall(91, fd, mode, 0, 0, 0, 0) < 0 { fail("cannot set output permissions"); }
     if syscall(3, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot close output"); }
     return 0;
@@ -1965,7 +2003,7 @@ fn compiler_initialize() {
     source = source_arena;
     output = alloc(67108864);
     globals = alloc(2048 * 32);
-    functions = alloc(2048 * 32);
+    functions = alloc(4096 * 32);
     locals = alloc(4096 * 32);
     calls = alloc(65536 * 32);
     ffi_entries = alloc(40);

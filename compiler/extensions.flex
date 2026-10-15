@@ -9,6 +9,7 @@ global frontend_blob=0;
 global frontend_blob_size=0;
 global frontend_ir_target=0;
 global frontend_source_vm=0;
+global frontend_platform_loading=0;
 fn frontend_select(language) {
     if frontend_selected {fail("choose only one frontend");}frontend_selected=1;
     if up_text(language,"flex") {frontend_language=0;}
@@ -29,7 +30,7 @@ fn frontend_child(fd,text,size,path) {
     // bounded memory, fuel and time, and no file, network or raw FFI grants.
     source_path=frontend_path;module_count=0;arena_size=0;import_depth=0;source_deadline=0;tx_inside=1;
     function_count=0;global_count=0;call_count=0;output_size=0;frontend_language=0;
-    vm_mode=1;vm_restricted=1;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;vm_heap_limit=268435456;vm_heap_used=16;
+    vm_mode=1;vm_restricted=1;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;esp32_target=0;esp_platform_path=0;frontend_platform_loading=0;esp_elf=0;esp_radio=0;esp_btdm=0;esp_flash=0;vm_heap_limit=268435456;vm_heap_used=16;
     vm_sp=0;vm_depth=0;vm_local_base=0;vm_local_top=0;vm_finished=0;vm_error=0;vm_steps=0;
     vm_fuel=1000000000;vm_timeout=60000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
     vm_jit_enabled=1;vm_jit_explicit=0;vm_jit_threshold=1;
@@ -87,7 +88,7 @@ fn frontend_source_accept(blob,size) {
     let text=alloc(size-63);if text<0 {fail("cannot allocate generated source");}net_copy(text,blob+64,size-64);
     store64(modules+8,text);store64(modules+16,size-64);store64(modules+48,0);
     frontend_language=0;function_count=0;global_count=0;call_count=0;output_size=0;
-    vm_mode=frontend_source_vm || wasm_target || ptx_target || sass_target || hip_target;
+    vm_mode=frontend_source_vm || wasm_target || ptx_target || sass_target || hip_target || esp32_target;
     initialize_output();compile_modules();return 0;
 }
 fn frontend_compile_modules() {
@@ -96,4 +97,12 @@ fn frontend_compile_modules() {
     else if frontend_language==2 {frontend_run();}
     else {ir_accept(source,source_size);}
     return 0;
+}
+
+// Compile explicit trusted native adapters after validated frontend IR. Their
+// globals extend the same static image; their calls can bind FIR functions.
+fn frontend_compile_platform() {
+    let code=output;output=alloc(output_limit);if output<0 {fail("cannot allocate native platform IR");}net_copy(output,code,output_size);
+    let first=module_count;frontend_platform_loading=1;load_module(esp_platform_path);frontend_platform_loading=0;
+    compile_module_range(first);return 0;
 }

@@ -1,0 +1,4 @@
+plugin esp32.adapter v1 {}
+state { initialized:i32=5 }
+fn startup(value:i32)->i32 {state.initialized+=value return state.initialized}
+fn main()->i32 {return state.initialized==42 ? 0 : 1}

@@ -1,0 +1,16 @@
+plugin esp32.messages v1 {}
+state { values:i32[3]=[7,9,11] calls:i32=0 guard:i32=1234567890123 ticks:i32=0 }
+fn on_timer(source:i32)->i32 {state.ticks+=1 return 0}
+fn index()->i32 {state.calls+=1 return 1}
+fn main()->i32 {
+    let tag=write_word(3544420083172723782)
+    let first=read_word()
+    let second=read_word()
+    state.values[index()]+=first
+    let value=state.values[1]
+    let sent=write_word(value)
+    write_word(second ^ -1)
+    let passed=tag==3544420083172723782 and sent==value and state.calls==1 and state.values[0]==7 and state.values[2]==11 and state.guard==1234567890123 and state.ticks>0
+    write_word(passed ? 6004214541549128774 : 5496996590566853702)
+    return passed ? 0 : 1
+}

@@ -205,7 +205,7 @@ fn te_large_code() {
     te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,"ir",copy);te_frontend=0;
     t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR6 bundled and restricted external frontend agree");
     let profile=0;while profile<5 {te_ir_bad(original,0,0x31524946+profile*16777216);profile=profile+1;}
-    te_ir_bad(original,32,4194320);te_ir_bad(original,56,8388609);
+    te_ir_bad(original,32,16777232);te_ir_bad(original,56,8388609);
     let code=load64(original+24);te_ir_bad(original,code+32,17);
     te_ir_bad(original,code+32,10);let branch=h_read(artifact);store64(branch+code+32,10);te_ir_bad(branch,code+40,load64(original+32));
     te_memory="--memory=32m";
@@ -213,9 +213,9 @@ fn te_large_code() {
     let state_artifact=h_join(t_work,"large-state.fir");te_compile(t_fixture,"ir",state_artifact);let state_blob=h_read(state_artifact);
     t_assert(load64(state_blob)==0x36524946 && load64(state_blob+32)<1048576 && load64(state_blob+56)==2097153,"FIR6 selects larger state independently of larger code");
     te_ir_bad(state_blob,0,0x35524946);te_memory=0;
-    // The SDK admits exactly4MiB and rejects the very next instruction before
+    // The SDK admits exactly16MiB and rejects the very next instruction before
     // a write. Append state after code to ensure profile6 cannot become5 again.
-    te_frontend=te_extension("ir_begin(\"answer\",6,0);ir_emit(1,8388607);ir_emit(21,8388608<<32);ir_emit(9,0);ir_end(0);ir_begin(\"main\",4,0);while ir_code_size<4194272 {ir_emit(1,0);}ir_emit(8,0);ir_emit(9,0);ir_end(0);let i=0;while i<8388608 {let value=0;if i==8388607 {value=42;}ir_state_word(value);i=i+1;}return ir_finish();");
+    te_frontend=te_extension("ir_begin(\"answer\",6,0);ir_emit(1,8388607);ir_emit(21,8388608<<32);ir_emit(9,0);ir_end(0);ir_begin(\"main\",4,0);while ir_code_size<16777184 {ir_emit(1,0);}ir_emit(8,0);ir_emit(9,0);ir_end(0);let i=0;while i<8388608 {let value=0;if i==8388607 {value=42;}ir_state_word(value);i=i+1;}return ir_finish();");
     // Generate the maximum SDK artifact natively: an external frontend may
     // legitimately exhaust its unchanged60s/fuel quota before filling64MiB.
     let generator=te_frontend;te_frontend=0;
@@ -223,18 +223,18 @@ fn te_large_code() {
     let generator_binary=h_join(t_work,"sdk-generator");te_compile(generator,0,generator_binary);
     let maximum=h_join(t_work,"maximum-code.fir");h_ok(h_args(generator_binary,maximum,0,0,0,0));
     original=te_ir_read(maximum);
-    t_assert(load64(original)==0x36524946 && load64(original+32)==4194304 && load64(original+56)==8388608 && load64(original+8)<134217728,"FIR6 exact code and state boundaries fit the bounded artifact budget");
+    t_assert(load64(original)==0x36524946 && load64(original+32)==16777216 && load64(original+56)==8388608 && load64(original+8)<134217728,"FIR6 exact code and state boundaries fit the bounded artifact budget");
     te_memory="--memory=128m";te_language="ir";te_routes(maximum,42);te_language=0;te_memory=0;
     let p=h_run(h_args(t_compiler,"run","--interpret","--restricted","--language=ir",maximum));h_check(p,1,0);
     t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR6 preserves the default16MiB application budget");
     // Keep a small valid output as the rejection sentinel instead of hashing
     // the64MiB application repeatedly through the text/file helper.
     te_compile("examples/seta/policy.seta",0,t_binary);
-    te_ir_bad(original,32,4194320);te_ir_bad(original,56,8388609);te_ir_bad(original,8,134217729);
+    te_ir_bad(original,32,16777232);te_ir_bad(original,56,8388609);te_ir_bad(original,8,134217729);
     let access=load64(original+24)+48;
     te_ir_bad(original,access+8,0);te_ir_bad(original,access+8,(8388609<<32));te_ir_bad(original,access+8,(3<<32)|8388607);
-    te_frontend=te_extension("ir_begin(\"main\",4,0);while ir_code_size<4194304 {ir_emit(1,0);}ir_emit(1,0);return ir_finish();");
-    te_bad("examples/extensions/answer.postfix","frontend IR exceeds 4 MiB");te_frontend=0;
+    te_frontend=te_extension("ir_begin(\"main\",4,0);while ir_code_size<16777216 {ir_emit(1,0);}ir_emit(1,0);return ir_finish();");
+    te_bad("examples/extensions/answer.postfix","frontend IR exceeds 16 MiB");te_frontend=0;
     return 0;
 }
 fn te_function_graphs() {
@@ -256,7 +256,7 @@ fn te_function_graphs() {
     te_language="ir";te_routes(artifact,42);te_language=0;
     te_frontend="examples/extensions/seta.flex";te_routes(t_fixture,42);te_compile(t_fixture,"ir",copy);te_frontend=0;
     t_assert(h_equal(h_sha(artifact),h_sha(copy)),"maximum-depth bundled/external IR equality");
-    let extra="";k=0;while k<1025 {extra=h_cat3(extra,"fn extra",h_cat3(h_int(k),"()->i32{return 1} ",""));k=k+1;}
+    let extra="";k=0;while k<3073 {extra=h_cat3(extra,"fn extra",h_cat3(h_int(k),"()->i32{return 1} ",""));k=k+1;}
     let overflow=h_cat3(funcs,extra,"fn main()->i32{return 0}");
     te_reject(overflow,"too many SetaScript functions");
     te_frontend="examples/extensions/seta.flex";te_reject(overflow,"too many SetaScript functions");te_frontend=0;
@@ -331,7 +331,7 @@ fn suite(compiler) {
     // Full-width word arithmetic matches the pre-existing SetaScript runtime.
     te_program("plugin test v1 {} fn main()->i32{let n=9223372036854775807+1 return n<0 ? 42 : 0}",42);
     // Malformed artifacts never reach native lowering, the VM or Wasm emission.
-    te_ir_bad(original,0,0);te_ir_bad(original,8,63);te_ir_bad(original,16,2049);
+    te_ir_bad(original,0,0);te_ir_bad(original,8,63);te_ir_bad(original,16,4097);
     te_ir_bad(original,24,64);te_ir_bad(original,32,-1);te_ir_bad(original,40,0);
     te_ir_bad(original,48,-1);te_ir_bad(original,56,1);te_ir_bad(original,64,-1);
     te_ir_bad(original,72,256);te_ir_bad(original,80,16);te_ir_bad(original,88,4097);

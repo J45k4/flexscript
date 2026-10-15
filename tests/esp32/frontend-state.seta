@@ -1,0 +1,11 @@
+plugin esp32.frontend v1 {}
+state { values:i32[4]=[7,9,11,13] count:i32=0 ready:bool=false }
+fn bump(i:i32)->i32 {state.values[i]+=4294967297 state.count+=1 return state.values[i]}
+fn main()->i32 {
+    state.ready=true
+    let sum=0
+    for i in 0..4 {sum+=bump(i)}
+    let arithmetic=(-17/5 == -3) and (-17%5 == -2) and (3<<65 == 6) and (-8>>65 == -4)
+    let guarded=(false and 1/0==0) or (true or 1/0==0)
+    return state.ready and state.count==4 and sum==17179869228 and arithmetic and guarded ? 0 : 1
+}

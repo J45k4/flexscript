@@ -175,8 +175,9 @@ syntax is parsed and type-checked, rather than silently skipping other features.
 Functions appear in declaration order; calls use their zero-based indices.
 `ir_begin` inserts a frame header and zero accumulator initialization; emit a
 return before `ir_end`. Source parameters occupy the first local slots in order.
-All remaining slots start at zero. The SDK allows 2048 functions, 4096 slots per
-function, 255-byte names and a 1 MiB instruction stream.
+All remaining slots start at zero. The SDK allows 4096 functions, 4096 slots per
+function and 255-byte names. FIR1 through FIR5 permit 1 MiB of instructions;
+FIR6 permits 16 MiB.
 
 Save and replay a frontend result independently:
 
@@ -372,12 +373,11 @@ the self-built compiler running inside Wasm, then executes both outputs.
 
 ## FIR6: larger engine instruction streams
 
-FIR6 (`0x36524946`) permits 4 MiB of instruction code, 8,388,608 state words
-(64 MiB), and a 128 MiB serialized artifact. Function, local-slot, checked-array,
-execution-fuel and application-memory limits remain
-unchanged. FIR1 through FIR5 still reject instruction streams above 1 MiB.
+FIR6 (`0x36524946`) permits 16 MiB of instruction code, 8,388,608 state words
+(64 MiB), and a 128 MiB serialized artifact. Local-slot, checked-array,
+execution-fuel and application-memory limits remain unchanged. FIR1 through FIR5 still reject instruction streams above 1 MiB.
 
-The SDK allocates a bounded 4 MiB instruction buffer and selects FIR6 as soon
+The SDK allocates a bounded 16 MiB instruction buffer and selects FIR6 as soon
 as code exceeds 1 MiB, state exceeds 2,097,152 words, or the serialized artifact
 exceeds 32 MiB. Appending state after code preserves that selection.
 Smaller programs continue to serialize with their existing profile tags.
@@ -397,27 +397,37 @@ code bound. It does not change native or Wasm output formats.
 
 The extension suite exercises a large Seta source through bundled and
 restricted external frontends; interpreter, JIT, native and Wasm execution;
-byte-identical saved-IR replay; a native SDK fixture with exact 4 MiB code
+byte-identical saved-IR replay; a native SDK fixture with exact 16 MiB code
 combined with maximum state;
 overflow and malformed-instruction rejection; and the unchanged guest-memory
 budget. Compiler stage2 and stage3 must remain byte-identical.
 
 ## Bounded Seta function graphs
 
-The Seta frontend accepts at most 1,024 functions, including `main`. Its fixed
-call-graph matrix uses 1,048,576 bytes and rejects direct or mutual recursion
+The Seta frontend accepts at most 4,096 functions, including `main`. Its fixed
+call-graph matrix uses 16,777,216 bytes and rejects direct or mutual recursion
 before producing output, including edges between the highest function indices.
-The SDK and FIR validator retain their 2,048-function bound; no IR version,
-state, source, local-slot or instruction limits change.
+The SDK and FIR validator share this 4,096-function bound.
 
 Interpreter and JIT permit 1,024 simultaneous frames, so a nonrecursive chain
-through every Seta function executes consistently with native and Wasm output.
+of that depth executes consistently with native and Wasm output.
 The VM still limits all active locals to 8 MiB, individual frames to 4,096 local
 slots, and the operand stack to 65,536 words. A graph within the function limit
 can therefore exceed other explicit runtime budgets. Flexscript recursion is
 still supported; entering a 1,025th VM frame traps with a stack-limit error.
 
-The extension suite checks the maximum-width graph and maximum-depth chain,
+The extension suite checks a 1,024-function graph and maximum-depth chain,
 both bundled and external frontend routes, saved IR on all four backends,
-1,025-function rejection without replacing existing output, and high-index
+4,097-function rejection without replacing existing output, and high-index
 direct/mutual recursion. The VM suite checks the frame boundary independently.
+
+## ESP32 native output
+
+The original ESP32 and ESP32-S3 Xtensa targets also accept bundled SetaScript,
+portable FIR1..6 and external FIR/FSX1 frontends. Checked scalar/array state and
+word messages lower directly to machine code; UART0 supplies the eight-byte
+message transport. `--esp32-platform` adds explicit trusted native adapters,
+including the existing cached-flash startup for XIP profiles. The host extension
+VM keeps its normal budgets and capability restrictions. Target memory/code
+bounds remain in force. See [ESP32 frontend compilation](esp32-frontends.md)
+for flags, platform initialization, callback ownership and verification.

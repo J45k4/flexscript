@@ -1,0 +1,13 @@
+plugin esp32.messages v1 {}
+state { values:i32[3]=[7,9,11] calls:i32=0 guard:i32=1234567890123 }
+fn index()->i32 {state.calls+=1 return 1}
+fn main()->i32 {
+    let tag=write_word(3544420083172723782)
+    let first=read_word()
+    let second=read_word()
+    state.values[index()]+=first
+    let value=state.values[1]
+    let sent=write_word(value)
+    write_word(second ^ -1)
+    return tag==3544420083172723782 and sent==value and state.calls==1 and state.values[0]==7 and state.values[2]==11 and state.guard==1234567890123 ? 0 : 1
+}

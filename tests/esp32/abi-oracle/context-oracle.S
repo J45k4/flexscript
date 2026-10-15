@@ -1,0 +1,22 @@
+.text
+.begin no-transform
+rsr a2,cpenable
+wsr a2,cpenable
+rsr a2,windowbase
+wsr a2,windowbase
+rsr a2,windowstart
+wsr a2,windowstart
+rotw 4
+rsr a0,excsave4
+wsr a8,excsave4
+rsr a0,excsave5
+rfr a2,f0
+rfr a2,f15
+wfr f0,a2
+wfr f15,a2
+rur a2,fcr
+rur a2,fsr
+wur a2,fcr
+wur a2,fsr
+jx a8
+.end no-transform

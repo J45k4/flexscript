@@ -11,7 +11,7 @@ global s_value=0;
 global s_shader_mode=0;
 global s_functions=0;
 // Match the shared IR function bound, including the call-graph row stride.
-global s_function_capacity=2048;
+global s_function_capacity=4096;
 global s_count=0;
 global s_current=0;
 global s_locals=0;
@@ -272,7 +272,7 @@ fn s_signatures() {
     if s_is("state") {s_state_definition();}
     while s_token {
         if s_is("cosmetic") {s_next();}if !s_is("fn") {s_fail("only pure function declarations are supported yet");}s_next();s_name();
-        if s_count>=s_function_capacity {s_fail("too many SetaScript functions (maximum 2048)");}
+        if s_count>=s_function_capacity {s_fail("too many SetaScript functions (maximum 4096)");}
         let name=ir_source+s_start;let size=s_size;if s_find_function(name,size)>=0 {s_fail("duplicate SetaScript function");}
         let f=s_functions+s_count*64;store64(f,name);store64(f+8,size);let args=s_locals;s_next();s_expect(40);
         let count=0;if s_token!=41 {let more=1;while more {

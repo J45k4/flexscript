@@ -1,0 +1,13 @@
+import "lib/esp32-test.flex";
+fn main(argc,argv) {
+    h_environment(argc,argv);let compiler=b_option(argc,argv,"--compiler",0);h_assert(compiler,"requires --compiler PATH --ld PATH --rom ROM_DIRECTORY [--qemu PATH]");te_init(compiler);te_qemu=h_real(h_executable(b_option(argc,argv,"--qemu","qemu-system-xtensa")));te_legacy=1;
+    h_compile(te_compiler,"tests/esp32/http-runtime.flex",te_fixture);h_check(h_run(h_args(te_fixture,0,0,0,0,0)),0,"");te_checks=te_checks+1;
+    let oracle=h_join(te_work,"http-oracle");h_compile(te_compiler,"tests/esp32/http-wire-oracle.flex",oracle);let a=h_args("python3","tests/esp32/http-wire-vectors.py","--oracle",oracle,"--report",h_join(te_work,"http-wire-reference.json"));h_print(1,h_out(h_ok(a)));te_checks=te_checks+1;
+    let link=h_join(te_work,"link");h_compile(te_compiler,"scripts/esp32-link.flex",link);h_ok(h_args(te_compiler,"--target","esp32-xip-elf","tests/esp32/http-xip.flex","-o",te_fixture));a=h_args(link,"--firmware",te_fixture,"--output",h_join(te_work,"linked.elf"),"--xip");h_add(a,"--ld");h_add(a,b_option(argc,argv,"--ld","xtensa-esp32-elf-ld"));h_add(a,"--rom");h_add(a,h_join(b_option(argc,argv,"--rom","."),"esp32.rom.ld"));h_add(a,"--image");h_add(a,te_binary);h_ok(a);te_xip=1;te_run(te_binary,0,0);let vendor=b_option(argc,argv,"--vendor",0);let tls=b_option(argc,argv,"--tls",0);
+    if vendor || tls {
+        h_assert(vendor && tls,"HTTP/TLS tests require both --vendor and --tls");let prefix=b_option(argc,argv,"--prefix","xtensa-esp32-elf-");let builder=h_join(te_work,"radio-builder");h_compile(te_compiler,"scripts/build-esp32-radio.flex",builder);let certificates=h_join(te_work,"certificates");h_ok(h_args("python3","tests/esp32/tls-certificates.py",certificates,0,0,0));
+        let cases=h_args("transactions","bad-length","early-response","timeout","cancel",0);let i=0;
+        while i<h_count(cases) {let name=h_at(cases,i);a=h_args("python3","tests/esp32/http-tls-interop.py","--case",name,"--compiler",te_compiler);h_add(a,"--builder");h_add(a,builder);h_add(a,"--qemu");h_add(a,te_qemu);h_add(a,"--prefix");h_add(a,prefix);h_add(a,"--vendor");h_add(a,h_absolute(vendor));h_add(a,"--rom");h_add(a,h_absolute(b_option(argc,argv,"--rom",".")));h_add(a,"--tls");h_add(a,h_absolute(tls));h_add(a,"--work");h_add(a,h_join(te_work,"http-interop"));h_add(a,"--certificates");h_add(a,certificates);let result=h_ok(a);te_assert(h_has(h_out(result),h_cat("PASS: HTTP/TLS ",name)),h_out(result));h_print(1,h_cat3("HTTP/OpenSSL ",name,": passed\n"));i=i+1;}
+    }
+    h_print(1,"HTTP request construction, response framing, backpressure and reference checks passed\n");te_done();return 0;
+}

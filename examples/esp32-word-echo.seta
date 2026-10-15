@@ -1,0 +1,10 @@
+plugin esp32.echo v1 {}
+
+state { count:i32=0 }
+
+fn main()->i32 {
+    let value=read_word()
+    state.count+=1
+    let sent=write_word(value)
+    return sent==value and state.count==1 ? 0 : 1
+}

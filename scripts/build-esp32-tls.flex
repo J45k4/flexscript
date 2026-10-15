@@ -1,0 +1,18 @@
+import "lib/build.flex";
+// Explicit local upstream source archive + installed GNU cross compiler.
+// Compiles vendor code only. Platform hooks and firmware stay Flexscript.
+fn bt_quote(value) {let out=h_buffer();h_text(out,"'");let i=0;while load8(value+i) {let c=load8(value+i);if c==36 {h_text(out,"$$");}else if c==39 {h_text(out,"'\\''");}else {h_append(out,value+i,1);}i=i+1;}h_text(out,"'");return h_data(out);}
+fn bt_alias(a,b) {if h_equal(h_absolute(a),h_absolute(b)) {return 1;}let x=h_take(144);let y=h_take(144);if !syscall(4,a,x,0,0,0,0) && !syscall(4,b,y,0,0,0,0) {return load64(x)==load64(y) && load64(x+8)==load64(y+8);}return 0;}
+fn main(argc,argv) {
+    h_environment(argc,argv);let source=b_option(argc,argv,"--archive",0);let output=b_option(argc,argv,"--output",0);let prefix=b_option(argc,argv,"--prefix","xtensa-esp32-elf-");
+    h_assert(source && output,"requires --archive mbedtls-3.6.7.tar.bz2 --output DIRECTORY [--prefix XTENSA_GNU_PREFIX]");source=h_real(source);let pin="a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6";
+    h_assert(h_equal(h_sha(source),pin),"Mbed TLS source archive does not match the official 3.6.7 release checksum");let gcc=h_real(h_executable(h_cat(prefix,"gcc")));let ar=h_real(h_executable(h_cat(prefix,"ar")));output=h_absolute(output);let targets=h_args("libmbedtls.a","libmbedx509.a","libmbedcrypto.a","LICENSE","flexscript-tls.json",0);let inputs=h_args(source,gcc,ar,h_real("lib/platform/esp32-mbedtls-config.h"),h_real("tests/esp32/abi-oracle/tls-profile.c"),0);let index=0;
+    while index<h_count(targets) {let path=h_join(output,h_at(targets,index));let k=0;while k<h_count(inputs) {h_assert(!bt_alias(path,h_at(inputs,k)),"TLS build output aliases an input");k=k+1;}k=0;while k<index {h_assert(!bt_alias(path,h_join(output,h_at(targets,k))),"TLS build outputs alias each other");k=k+1;}index=index+1;}let work=h_temp();
+    h_ok(h_args("tar","-xjf",source,"-C",work,0));let root=h_join(work,"mbedtls-3.6.7");h_assert(h_isdir(root),"unexpected pinned archive layout");let header=h_real("lib/platform/esp32-mbedtls-config.h");h_save(h_join(root,"include/mbedtls/mbedtls_config.h"),h_read(header));
+    let a=h_args(gcc,"-std=c11","-fsyntax-only","-I",h_join(root,"include"),h_real("tests/esp32/abi-oracle/tls-profile.c"));h_ok(a);
+    let flags="-Os -fno-builtin -fno-strict-aliasing -fno-strict-overflow -mlongcalls -mtext-section-literals -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables";
+    a=h_args("make","-C",h_join(root,"library"),"-j2",h_cat("CC=",bt_quote(gcc)),h_cat("AR=",bt_quote(ar)));h_add(a,h_cat("CFLAGS=",flags));h_print(1,h_out(h_ok(a)));
+    output=h_absolute(output);h_mkdir(output);let files=j_object();let names=h_args("libmbedtls.a","libmbedx509.a","libmbedcrypto.a",0,0,0);let i=0;
+    while i<h_count(names) {let name=h_at(names,i);let p=h_read(h_join(root,h_cat("library/",name)));let size=h_file_size;h_save_bytes(h_join(output,name),p,size,420);j_set(files,name,j_string(h_sha(h_join(output,name))));i=i+1;}
+    h_save(h_join(output,"LICENSE"),h_read(h_join(root,"LICENSE")));let report=j_object();j_set(report,"version",j_string("3.6.7"));j_set(report,"source_sha256",j_string(pin));j_set(report,"profile_sha256",j_string(h_sha(header)));j_set(report,"target",j_string("xtensa-esp32"));j_set(report,"compiler",j_string(h_trim(h_out(h_ok(h_args(gcc,"--version",0,0,0,0))))));j_set(report,"archives",files);h_save(h_join(output,"flexscript-tls.json"),h_cat(j_dump(report),"\n"));h_remove(work);h_print(1,h_cat3("Built pinned TLS vendor archives: ",output,"\n"));return 0;
+}

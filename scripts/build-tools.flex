@@ -14,6 +14,13 @@ fn main(argc,argv) {
     h_add(names,"test-network");
     h_add(names,"test-vm");
     h_add(names,"test-wasm");
+    h_add(names,"test-esp32");
+    h_add(names,"test-esp32-frontends");
+    h_add(names,"esp32-link");
+    h_add(names,"esp32-data-object");
+    h_add(names,"build-esp32-radio");
+    h_add(names,"test-esp32-link");
+    h_add(names,"test-esp32-network");
     h_add(names,"test-gpu");
     h_add(names,"gpu-run");
     h_add(names,"test-sass");

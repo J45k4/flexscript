@@ -24,7 +24,7 @@ fn ir_error(message,offset) {
 fn ir_init(text,size,path,version) {
     ir_source=text;ir_source_size=size;ir_path=path;
     if version!=1 {ir_error("unsupported frontend API version",0);}
-    ir_code=alloc(4194304);ir_functions=alloc(2048*64);ir_names=alloc(524288);
+    ir_code=alloc(16777216);ir_functions=alloc(4096*64);ir_names=alloc(524288);
     if ir_code<0 || ir_functions<0 || ir_names<0 {ir_error("frontend allocation failed",0);}
     ir_code_size=0;ir_count=0;ir_names_size=0;ir_current=-1;
     ir_profile=1;ir_state=alloc(8388608*8);ir_state_count=0;
@@ -37,7 +37,7 @@ fn ir_state_word(value) {
 fn ir_emit(op,arg) {
     if (op==19 || op==20) && ir_profile<2 {ir_profile=2;}
     if (op==21 || op==22) && ir_profile<3 {ir_profile=3;}
-    if ir_code_size>=4194304 {ir_error("frontend IR exceeds 4 MiB",0);}
+    if ir_code_size>=16777216 {ir_error("frontend IR exceeds 16 MiB",0);}
     let at=ir_code_size;store64(ir_code+at,op);store64(ir_code+at+8,arg);ir_code_size=at+16;if ir_code_size>1048576 {ir_profile=6;}return at;
 }
 fn ir_patch(at,value) {
@@ -45,7 +45,7 @@ fn ir_patch(at,value) {
     store64(ir_code+at+8,value);return 0;
 }
 fn ir_begin(name,size,arity) {
-    if ir_current>=0 || ir_count>=2048 || size<1 || size>255 || arity<0 || arity>4096 {ir_error("invalid IR function",0);}
+    if ir_current>=0 || ir_count>=4096 || size<1 || size>255 || arity<0 || arity>4096 {ir_error("invalid IR function",0);}
     ir_current=ir_count;ir_count=ir_count+1;let f=ir_functions+ir_current*64;
     store64(f,ir_names_size);store64(f+8,size);store64(f+16,ir_code_size);store64(f+24,arity);
     let i=0;while i<size {store8(ir_names+ir_names_size+i,load8(name+i));i=i+1;}
