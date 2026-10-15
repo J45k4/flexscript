@@ -34,6 +34,10 @@ fn tw_reject(source,message) {
 }
 fn suite(compiler) {
     t_init(compiler);tw_bun=h_executable("bun");
+    // Library lookup uses native argv/envp layout and path-based stat.
+    tw_program("fn main(argc,argv){let p=alloc(8);store64(p,99);return load64(argv+(argc+1)*8);}",0);
+    t_program("fn main(){let p=alloc(144);if syscall(4,\"missing.flex\",p,0,0,0,0)!= -2{return 1;}if syscall(4,\"sample.flex\",p,0,0,0,0){return 2;}if (load64(p+24)&61440)!=32768 || load64(p+48)!=3{return 3;}return 0;}");tw_compile(t_fixture);
+    let stat_request=j_object();let stat_files=j_object();j_set(stat_files,"sample.flex",j_string("abc"));j_set(stat_request,"files",stat_files);let stat_result=tw_run(stat_request);tw_success(stat_result);t_assert(h_equal(j_s(stat_result,"result"),"0"),"virtual path stat and missing-file result");
     let cases=j_parse(h_read("tests/cases.json"));let valid=j_need(cases,"valid");let i=0;
     while i<j_count(valid) {
         let mark=h_mark();let item=j_at(valid,i);tw_compile(h_join("tests",j_s(item,"source")));

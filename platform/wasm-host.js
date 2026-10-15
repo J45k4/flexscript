@@ -54,10 +54,12 @@ export async function instantiateFlexscript(bytes, host = {}) {
 		try {
 			if (api.exports.main.length === 0) return api.exports.main()
 			const pointers = argv.map(api.string)
-			const address = api.alloc((pointers.length + 1) * 8)
+			// argv NULL is followed by an empty envp, matching the native entry layout.
+			const address = api.alloc((pointers.length + 2) * 8)
 			const view = new DataView(api.memory.buffer)
 			pointers.forEach((pointer, i) => view.setBigUint64(Number(address) + i * 8, pointer, true))
 			view.setBigUint64(Number(address) + pointers.length * 8, 0n, true)
+			view.setBigUint64(Number(address) + (pointers.length + 1) * 8, 0n, true)
 			return api.exports.main(BigInt(pointers.length), address)
 		} catch (error) {
 			if (error instanceof FlexExit) return error.code

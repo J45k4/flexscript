@@ -35,6 +35,18 @@ export function createMemoryHost(initial = {}, io = {}) {
 				if (end < 0) throw new RangeError('Unterminated Flexscript file path')
 				return pathOf(decoder.decode(bytes.subarray(0, end)))
 			}
+			if (number === 4n) {
+				const file = files.get(path(a))
+				if (!file) return -2n
+				const bytes = span(b, 144n)
+				bytes.fill(0)
+				const stat = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+				stat.setBigUint64(0, 1n, true)
+				stat.setBigUint64(8, file.inode, true)
+				stat.setBigUint64(24, file.mode, true)
+				stat.setBigUint64(48, BigInt(file.data.length), true)
+				return 0n
+			}
 			if (number === 2n) {
 				const name = path(a)
 				const access = b & 3n
