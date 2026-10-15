@@ -513,3 +513,63 @@ including the existing cached-flash startup for XIP profiles. The host extension
 VM keeps its normal budgets and capability restrictions. Target memory/code
 bounds remain in force. See [ESP32 frontend compilation](esp32-frontends.md)
 for flags, platform initialization, callback ownership and verification.
+
+## Trusted platform modules and `extern fn`
+
+`--platform module.flex` links a trusted Flexscript module, and its imports,
+after frontend lowering. The option is repeatable and works for bundled
+SetaScript, saved FIR and external frontends on native, `flexscript run`
+(interpreter and JIT) and Wasm output. `--esp32-platform` is an alias for it.
+Platform modules cannot be used with `--target ir`, shader, GPU or bare-metal
+output, or with ordinary Flexscript input.
+
+SetaScript declares a platform function without a body:
+
+```seta
+plugin demo v1 {}
+extern fn f64_mul(a: i32, b: i32) -> i32;
+extern fn is_ready(x: i32) -> bool
+fn main() -> i32 { return is_ready(f64_mul(3, 4)) ? 42 : 0 }
+```
+
+```flex
+// platform.flex
+fn f64_mul(a,b) {return a*b;}
+fn is_ready(x) {return x>0;}
+```
+
+```sh
+flexscript --platform platform.flex demo.seta -o demo
+flexscript run --restricted --platform platform.flex demo.seta
+flexscript --platform platform.flex --target wasm32 demo.seta -o demo.wasm
+```
+
+Calls into an `extern fn` are type-checked like any other SetaScript call. A
+`bool` result is normalized to 0/1 after the call. Extern calls add no edges to
+the recursion check. The declaring program keeps every SetaScript rule. It
+cannot reach any other host call, and it can call only functions whose names
+it declares. `main` cannot be extern.
+
+FIR carries an import as a function whose header word 40 is 1. Its body must
+be the canonical 48-byte stub (frame, zero, return); all other header words
+stay reserved. The SDK's `ir_import()` marks the open function, so any
+frontend can declare imports. Saving IR keeps the imports. Compiling FIR with
+imports but no `--platform` fails, and so does an import that has no
+same-named platform function with the same parameter count.
+
+Linking happens after FIR validation. Platform functions share the function
+table, globals and static image with the FIR program. FIR call sites are
+retargeted to the platform function: by index for VM IR (VM, JIT, Wasm and
+ESP32), or by name after native lowering. The unused stub is renamed
+`extern.<name>`. Platform code can call SetaScript functions by name. A
+platform definition that reuses a non-extern FIR name is a duplicate. The
+FIR program stays limited to 4,096 functions. Platform modules may add up to
+2,048 functions on top of that.
+
+The compiler does not sandbox platform code. It is ordinary Flexscript, so it
+can use loops, recursion, globals, `alloc`, raw `load`/`store` and, on native
+output, syscalls and FFI. On VM and Wasm output it runs under the same memory
+limit, fuel and capability grants as the program (`--restricted` still denies
+host calls), but it can read and write the whole guest heap, including
+SetaScript state. Link only modules you trust as much as the host. Untrusted
+mods should stay SetaScript.

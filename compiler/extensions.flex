@@ -11,6 +11,12 @@ global frontend_blob_size=0;
 global frontend_ir_target=0;
 global frontend_source_vm=0;
 global frontend_platform_loading=0;
+// Trusted --platform modules (repeatable) and FIR platform-import bindings.
+global frontend_platforms=0;
+global frontend_platform_count=0;
+global frontend_imports=0;
+global frontend_import_count=0;
+global frontend_fir_functions=0;
 fn frontend_select(language) {
     if frontend_selected {fail("choose only one frontend");}frontend_selected=1;
     if up_text(language,"flex") {frontend_language=0;}
@@ -31,7 +37,7 @@ fn frontend_child(fd,text,size,path) {
     // bounded memory, fuel and time, and no file, network or raw FFI grants.
     source_path=frontend_path;module_count=0;arena_size=0;import_depth=0;source_deadline=0;tx_inside=1;
     function_count=0;global_count=0;call_count=0;output_size=0;frontend_language=0;
-    vm_mode=1;vm_restricted=1;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;esp32_target=0;esp_platform_path=0;frontend_platform_loading=0;esp_elf=0;esp_radio=0;esp_btdm=0;esp_flash=0;vm_heap_limit=268435456;vm_heap_used=16;
+    vm_mode=1;vm_restricted=1;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;esp32_target=0;esp_platform_path=0;frontend_platform_loading=0;frontend_platform_count=0;esp_elf=0;esp_radio=0;esp_btdm=0;esp_flash=0;vm_heap_limit=268435456;vm_heap_used=16;
     vm_sp=0;vm_depth=0;vm_local_base=0;vm_local_top=0;vm_finished=0;vm_error=0;vm_steps=0;
     vm_fuel=1000000000;vm_timeout=60000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
     vm_jit_enabled=1;vm_jit_explicit=0;vm_jit_threshold=1;
@@ -100,10 +106,60 @@ fn frontend_compile_modules() {
     return 0;
 }
 
-// Compile explicit trusted native adapters after validated frontend IR. Their
-// globals extend the same static image; their calls can bind FIR functions.
+fn frontend_platform_add(path) {
+    if !frontend_platforms {frontend_platforms=alloc(64*8);if frontend_platforms<0 {fail("cannot allocate platform inputs");}}
+    if frontend_platform_count>=64 {fail("too many --platform inputs (maximum 64)");}
+    store64(frontend_platforms+frontend_platform_count*8,path);frontend_platform_count=frontend_platform_count+1;
+    if !esp_platform_path {esp_platform_path=path;}return 0;
+}
+fn frontend_platform_check() {
+    if !frontend_platform_count {return 0;}
+    if !frontend_language {fail("--platform requires SetaScript, FIR or frontend input");}
+    if frontend_ir_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target {fail("--platform supports native, VM, Wasm and ESP32 output");}
+    return 0;
+}
+fn frontend_import_fail(f,n,reason) {
+    let name=alloc(n+1);if name>=0 {net_copy(name,load64(f),n);store8(name+n,0);}
+    select_module(0);token_start=0;fail(up_join("extern function ",name,reason));return 0;
+}
+// VM-IR targets link here; native FIR links inside ir_native after lowering.
+fn frontend_link_platform() {
+    if frontend_platform_count && (wasm_target || esp32_target || !frontend_language) {frontend_compile_platform();}return 0;
+}
+// Compile explicit trusted platform modules after validated frontend IR. Their
+// globals extend the same static image; their calls can bind FIR functions, and
+// FIR platform imports (SetaScript `extern fn`) bind to their functions by name.
+// Trusted code is not sandboxed by the compiler: on VM/Wasm targets it runs
+// under the same VM/Wasm memory and capability policy as the FIR program;
+// native output runs it as ordinary native Flexscript.
 fn frontend_compile_platform() {
-    let code=output;output=alloc(output_limit);if output<0 {fail("cannot allocate native platform IR");}net_copy(output,code,output_size);
-    let first=module_count;frontend_platform_loading=1;load_module(esp_platform_path);frontend_platform_loading=0;
-    compile_module_range(first);return 0;
+    if !frontend_platform_count {return 0;}
+    let fir=function_count;let fir_size=output_size;let i=0;
+    // Hide import stubs so platform functions can define the bound names.
+    while i<fir && frontend_import_count {if load64(frontend_imports+i*8) {store64(functions+i*32+8,0);}i=i+1;}
+    if vm_mode {let code=output;output=alloc(output_limit);if output<0 {fail("cannot allocate native platform IR");}net_copy(output,code,output_size);}
+    let first=module_count;frontend_platform_loading=1;i=0;
+    while i<frontend_platform_count {load_module(load64(frontend_platforms+i*8));i=i+1;}frontend_platform_loading=0;
+    frontend_fir_functions=fir;compile_module_range(first);frontend_fir_functions=0;
+    if !frontend_import_count {return 0;}
+    let bound=alloc(fir*8);if bound<0 {fail("cannot allocate platform imports");}i=0;
+    while i<fir {
+        let n=load64(frontend_imports+i*8);
+        if n {
+            let f=functions+i*32;let p=find(functions,function_count,load64(f),n);
+            if p<fir {frontend_import_fail(f,n," has no --platform definition");}
+            if load64(functions+p*32+24)!=load64(f+24) {frontend_import_fail(f,n," has a different parameter count in its --platform definition");}
+            store64(bound+i*8,p+1);
+            // Keep the dead stub under a name no Flexscript definition or
+            // Wasm export can collide with.
+            let renamed=alloc(n+8);if renamed<0 {fail("cannot allocate platform imports");}
+            net_copy(renamed,"extern.",7);net_copy(renamed+7,load64(f),n);store64(f,renamed);store64(f+8,n+7);
+        }
+        i=i+1;
+    }
+    // Native call sites bind by name in resolve(); VM IR calls use indices.
+    if vm_mode {
+        let pc=0;while pc<fir_size {if load64(output+pc)==8 {let p=load64(bound+load64(output+pc+8)*8);if p {store64(output+pc+8,p-1);}}pc=pc+16;}
+    }
+    return 0;
 }

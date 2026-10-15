@@ -425,12 +425,13 @@ fn vm_help(fd) {
     print(fd,"  --interpret          bytecode interpreter only\n  --jit                compile eligible functions on first call\n  --stats              report interpreter/JIT counters\n");
     print(fd,"  --fuel=N             instruction budget (default 10000000)\n  --memory=N           guest heap bytes; k/m suffixes accepted (default 16m)\n  --timeout-ms=N       execution deadline (default 5000)\n");
     print(fd,"  --restricted        use isolated guest memory and capability-limited host calls\n");
+    print(fd,"  --platform PATH      link a trusted Flexscript module for frontend extern functions (repeatable)\n");
     print(fd,"  --allow-read=DIR     grant read-only files in restricted mode\n  --allow-stdin        grant standard input in restricted mode\n  --allow-url-imports  enable source downloads in restricted mode\n  --no-url-imports     disable HTTP/HTTPS source downloads\n");return 0;
 }
 fn vm_initialize() {
     vm_heap=alloc(vm_heap_limit);vm_stack=alloc(524288);vm_local_memory=alloc(8388608);
     vm_frames=alloc(1024*40);vm_time=alloc(16);vm_path=alloc(4096);vm_open_how=alloc(24);
-    vm_fds=alloc(67*8);vm_jit_cache=alloc(4096*32);vm_jit_context=alloc(64);
+    vm_fds=alloc(67*8);vm_jit_cache=alloc(8192*32);vm_jit_context=alloc(64);
     vm_poll_records=alloc(67*8);
     vm_file_stat=alloc(144);
     if vm_heap<0 || vm_stack<0 || vm_local_memory<0 || vm_frames<0 || vm_time<0
@@ -474,6 +475,8 @@ fn vm_main(argc,argv) {
             first=first+1;if first>=argc {vm_help(2);return 1;}
             if up_text(arg,"--language") {frontend_select(load64(argv+first*8));}else {frontend_external(load64(argv+first*8));}
         }
+        else if up_text(arg,"--platform") {first=first+1;if first>=argc {vm_help(2);return 1;}frontend_platform_add(load64(argv+first*8));}
+        else if vm_prefix(arg,"--platform=") {frontend_platform_add(arg+11);}
         else if vm_prefix(arg,"--language=") {frontend_select(arg+11);}
         else if vm_prefix(arg,"--frontend=") {frontend_external(arg+11);}
         else if vm_prefix(arg,"--allow-read=") {root=arg+13;if !length(root) {vm_help(2);return 1;}}
@@ -494,8 +497,8 @@ fn vm_main(argc,argv) {
         let n=syscall(89,path,vm_root_name,4095,0,0,0);
         if n<0 {return 70;}store8(vm_root_name+n,0);
     }
-    source_path=load64(argv+first*8);frontend_auto(source_path);vm_mode=1;compiler_initialize();load_module(source_path);
-    tx_expand();initialize_output();if frontend_language {frontend_source_vm=1;frontend_compile_modules();}else {compile_modules();}
+    source_path=load64(argv+first*8);frontend_auto(source_path);frontend_platform_check();vm_mode=1;compiler_initialize();load_module(source_path);
+    tx_expand();initialize_output();if frontend_language {frontend_source_vm=1;frontend_compile_modules();frontend_compile_platform();}else {compile_modules();}
     select_module(0);token_start=source_size;resolve();
     let main_index=find(functions,function_count,"main",4);let count=load64(functions+main_index*32+24);
     if count==2 {

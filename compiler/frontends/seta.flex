@@ -90,7 +90,7 @@ fn s_keyword() {
     return s_is("fn") || s_is("cosmetic") || s_is("gen") || s_is("plugin") || s_is("let") || s_is("return")
         || s_is("if") || s_is("else") || s_is("for") || s_is("in") || s_is("repeat") || s_is("while")
         || s_is("true") || s_is("false") || s_is("i32") || s_is("bool") || s_is("state")
-        || s_is("read_word") || s_is("write_word");
+        || s_is("read_word") || s_is("write_word") || s_is("extern");
 }
 fn s_name() {if s_token!=256 || s_keyword() {s_fail("expected SetaScript name");}return 0;}
 fn s_type() {
@@ -142,7 +142,9 @@ fn s_prefix() {
                 if s_token==44 {s_next();}else {more=0;}
             }}
             s_expect(41);if count!=load64(f+24) {s_fail("wrong SetaScript argument count");}
-            store8(s_edges+s_current*s_function_capacity+target,1);ir_emit(8,target);return load64(f+32);
+            store8(s_edges+s_current*s_function_capacity+target,1);ir_emit(8,target);
+            // Trusted platform code returns raw words; keep SetaScript bools 0/1.
+            if load64(f+56) && load64(f+32)==2 {ir_emit(13,0);}return load64(f+32);
         }
         let local=s_find_local(name,size);if local<0 {s_fail("unknown SetaScript local");}
         let slot=load64(s_locals+local*32+16);ir_emit(3,slot);return load64(s_types+slot*8);
@@ -314,7 +316,9 @@ fn s_signatures(index) {
     if s_is("state") {s_state_definition();}
     while s_token {
         if s_is("import") {s_fail("SetaScript imports must precede state and functions");}
-        if s_is("cosmetic") {s_next();}if !s_is("fn") {s_fail("only pure function declarations are supported yet");}s_next();s_name();
+        // `extern fn` declares a body supplied by a trusted --platform module.
+        let platform=0;if s_is("extern") {platform=1;s_next();}else if s_is("cosmetic") {s_next();}
+        if !s_is("fn") {s_fail("only pure function declarations are supported yet");}s_next();s_name();
         if s_count>=s_function_capacity {s_fail("too many SetaScript functions (maximum 4096)");}
         let name=ir_source+s_start;let size=s_size;if s_find_function(name,size)>=0 {s_fail("duplicate SetaScript function");}
         let f=s_functions+s_count*64;store64(f,name);store64(f+8,size);let args=s_locals;s_next();s_expect(40);
@@ -323,9 +327,11 @@ fn s_signatures(index) {
             s_next();s_expect(58);store64(args+count*32+16,s_type());count=count+1;
             if s_token==44 {s_next();}else {more=0;}
         }}
-        s_expect(41);let saved=alloc((count+1)*32);if saved<0 {s_fail("frontend allocation failed");}let at=0;while at<count*32 {store8(saved+at,load8(args+at));at=at+1;}store64(f+16,saved);store64(f+24,count);s_expect(270);store64(f+32,s_type());store64(f+40,s_start);store64(f+48,index);s_expect(123);
+        s_expect(41);let saved=alloc((count+1)*32);if saved<0 {s_fail("frontend allocation failed");}let at=0;while at<count*32 {store8(saved+at,load8(args+at));at=at+1;}store64(f+16,saved);store64(f+24,count);s_expect(270);store64(f+32,s_type());store64(f+40,s_start);store64(f+48,index);store64(f+56,platform);
+        if platform {if s_equal(name,size,"main",4) {s_fail("SetaScript main cannot be extern");}s_semicolon();}else {
+        s_expect(123);
         let braces=1;while braces {if !s_token {s_fail("unterminated SetaScript function");}if s_token==123 {braces=braces+1;if braces>128 {s_fail("SetaScript block nesting limit exceeded");}}else if s_token==125 {braces=braces-1;}s_next();}
-        s_count=s_count+1;
+        }s_count=s_count+1;
     }return 0;
 }
 fn s_no_recursion() {
@@ -351,9 +357,10 @@ fn seta_finish() {
         let f=s_functions+s_current*64;s_file(load64(f+48));s_local_count=0;s_slots=0;s_depth=1;
         ir_begin(load64(f),load64(f+8),load64(f+24));let args=load64(f+16);let i=0;
         while i<load64(f+24) {let a=args+i*32;s_declare(load64(a),load64(a+8),load64(a+16),0);i=i+1;}
+        if load64(f+56) {ir_import();ir_emit(9,0);}else {
         s_pos=load64(f+40);s_next();s_depth=0;
         if !s_block() {s_fail("SetaScript function must return on every path");}
-        ir_emit(1,0);ir_emit(9,0);ir_end(s_slots);s_current=s_current+1;
+        ir_emit(1,0);ir_emit(9,0);}ir_end(s_slots);s_current=s_current+1;
     }
     if ir_source!=load64(s_files) {s_file(0);s_start=ir_source_size;}
     s_no_recursion();let main=s_find_function("main",4);

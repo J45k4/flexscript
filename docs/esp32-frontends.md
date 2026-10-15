@@ -54,8 +54,10 @@ Large portable IR profiles do not expand physical MCU memory. The existing
 ## Explicit native platform adapters
 
 `--esp32-platform adapter.flex` adds a trusted Flexscript module and its normal
-imports after frontend lowering. It is available only for frontend ESP32
-compilation. Native functions and globals share the same linked program and
+imports after frontend lowering. It is an alias of the general, repeatable
+`--platform` option, which also links native, VM and Wasm frontend output and
+binds SetaScript `extern fn` declarations; see
+[trusted platform modules](frontend-extensions.md#trusted-platform-modules-and-extern-fn). Native functions and globals share the same linked program and
 static image with FIR functions/state. Duplicate function/global names and
 output aliases into app/platform/frontend inputs are rejected.
 
