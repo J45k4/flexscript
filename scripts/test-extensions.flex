@@ -50,7 +50,7 @@ fn te_ir_bad(original,offset,value) {
 fn te_ir_read(path) {
     let fd=syscall(2,path,0x80000,0,0,0,0);h_assert(fd>=0,"cannot read large IR");
     let stat=alloc(144);h_assert(syscall(5,fd,stat,0,0,0,0)==0,"cannot stat large IR");
-    let size=load64(stat+48);h_assert(size>=64 && size<=134217728,"large IR read bound");
+    let size=load64(stat+48);h_assert(size>=64 && size<=268435456,"large IR read bound");
     let blob=alloc(size);h_assert(blob>=0,"cannot allocate large IR");let used=0;
     while used<size {let n=syscall(0,fd,blob+used,size-used,0,0,0);if n!=-4 {h_assert(n>0,"short large IR read");used=used+n;}}
     h_close(fd);return blob;
@@ -132,7 +132,7 @@ fn te_arrays() {
     let path=h_join(t_work,"isolation.json");j_save(path,request);let result=j_parse(h_out(h_ok(h_args(te_bun,"scripts/wasm-runner.js",path,0,0,0))));
     let values=j_get(result,"values");t_assert(h_equal(j_value(j_at(values,0)),"6") && h_equal(j_value(j_at(values,1)),"7") && h_equal(j_value(j_at(values,2)),"6"),"Wasm initialized table state is isolated");
     te_reject("state {a:i32[0]=0} fn main()->i32{return 0}","array span");
-    te_reject("state {a:i32[8388609]=0} fn main()->i32{return 0}","array span");
+    te_reject("state {a:i32[16777217]=0} fn main()->i32{return 0}","array span");
     te_reject("state {a:i32[2]=[1]} fn main()->i32{return 0}","unexpected SetaScript token");
     te_reject("state {a:i32[2]=[1,2,3]} fn main()->i32{return 0}","unexpected SetaScript token");
     te_reject("state {a:bool[2]=[true,1]} fn main()->i32{return 0}","boolean state initializer");
@@ -162,7 +162,7 @@ fn te_world_tables() {
     t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR4 bundled and isolated external frontend agree");
     let args=h_args(t_compiler,"run","--interpret","--restricted","--memory=4m",t_fixture);
     let p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR4 respects explicit guest memory budget");
-    te_reject("state {a:i32[8388608]=0 b:i32=1} fn main()->i32{return 0}","too many IR state words");
+    te_reject("state {a:i32[16777216]=0 b:i32=1} fn main()->i32{return 0}","too many IR state words");
     return 0;
 }
 fn te_complete_scene_tables() {
@@ -184,7 +184,7 @@ fn te_complete_scene_tables() {
     let p=h_run(h_args(t_compiler,"run","--interpret","--restricted",t_fixture,0));h_check(p,1,0);
     t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR5 preserves default16MiB application budget");
     te_memory=0;
-    te_reject("state {a:i32[8388609]=0} fn main()->i32{return 0}","invalid state array span");
+    te_reject("state {a:i32[16777217]=0} fn main()->i32{return 0}","invalid state array span");
     let source=h_cat(h_repeat(" ",16777216),"plugin test v1 {} fn main()->i32{return 42}");
     t_program(source);te_compile(t_fixture,0,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),42,"");t_checks=t_checks+1;
     te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,0,t_binary);te_frontend=0;h_check(h_run(h_args(t_binary,0,0,0,0,0)),42,"");t_checks=t_checks+1;
@@ -205,7 +205,7 @@ fn te_large_code() {
     te_frontend="examples/extensions/seta.flex";te_compile(t_fixture,"ir",copy);te_frontend=0;
     t_assert(h_equal(h_sha(artifact),h_sha(copy)),"FIR6 bundled and restricted external frontend agree");
     let profile=0;while profile<5 {te_ir_bad(original,0,0x31524946+profile*16777216);profile=profile+1;}
-    te_ir_bad(original,32,16777232);te_ir_bad(original,56,8388609);
+    te_ir_bad(original,32,16777232);te_ir_bad(original,56,16777217);
     let code=load64(original+24);te_ir_bad(original,code+32,17);
     te_ir_bad(original,code+32,10);let branch=h_read(artifact);store64(branch+code+32,10);te_ir_bad(branch,code+40,load64(original+32));
     te_memory="--memory=32m";
@@ -215,7 +215,7 @@ fn te_large_code() {
     te_ir_bad(state_blob,0,0x35524946);te_memory=0;
     // The SDK admits exactly16MiB and rejects the very next instruction before
     // a write. Append state after code to ensure profile6 cannot become5 again.
-    te_frontend=te_extension("ir_begin(\"answer\",6,0);ir_emit(1,8388607);ir_emit(21,8388608<<32);ir_emit(9,0);ir_end(0);ir_begin(\"main\",4,0);while ir_code_size<16777184 {ir_emit(1,0);}ir_emit(8,0);ir_emit(9,0);ir_end(0);let i=0;while i<8388608 {let value=0;if i==8388607 {value=42;}ir_state_word(value);i=i+1;}return ir_finish();");
+    te_frontend=te_extension("ir_begin(\"answer\",6,0);ir_emit(1,16777215);ir_emit(21,16777216<<32);ir_emit(9,0);ir_end(0);ir_begin(\"main\",4,0);while ir_code_size<16777184 {ir_emit(1,0);}ir_emit(8,0);ir_emit(9,0);ir_end(0);let i=0;while i<16777216 {let value=0;if i==16777215 {value=42;}ir_state_word(value);i=i+1;}return ir_finish();");
     // Generate the maximum SDK artifact natively: an external frontend may
     // legitimately exhaust its unchanged60s/fuel quota before filling64MiB.
     let generator=te_frontend;te_frontend=0;
@@ -223,19 +223,32 @@ fn te_large_code() {
     let generator_binary=h_join(t_work,"sdk-generator");te_compile(generator,0,generator_binary);
     let maximum=h_join(t_work,"maximum-code.fir");h_ok(h_args(generator_binary,maximum,0,0,0,0));
     original=te_ir_read(maximum);
-    t_assert(load64(original)==0x36524946 && load64(original+32)==16777216 && load64(original+56)==8388608 && load64(original+8)<134217728,"FIR6 exact code and state boundaries fit the bounded artifact budget");
-    te_memory="--memory=128m";te_language="ir";te_routes(maximum,42);te_language=0;te_memory=0;
+    t_assert(load64(original)==0x36524946 && load64(original+32)==16777216 && load64(original+56)==16777216 && load64(original+8)<268435456,"FIR6 exact code and state boundaries fit the bounded artifact budget");
+    te_memory="--memory=256m";te_language="ir";te_routes(maximum,42);te_language=0;te_memory=0;
     let p=h_run(h_args(t_compiler,"run","--interpret","--restricted","--language=ir",maximum));h_check(p,1,0);
     t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"FIR6 preserves the default16MiB application budget");
     // Keep a small valid output as the rejection sentinel instead of hashing
     // the64MiB application repeatedly through the text/file helper.
     te_compile("examples/seta/policy.seta",0,t_binary);
-    te_ir_bad(original,32,16777232);te_ir_bad(original,56,8388609);te_ir_bad(original,8,134217729);
+    te_ir_bad(original,32,16777232);te_ir_bad(original,56,16777217);te_ir_bad(original,8,268435457);
     let access=load64(original+24)+48;
-    te_ir_bad(original,access+8,0);te_ir_bad(original,access+8,(8388609<<32));te_ir_bad(original,access+8,(3<<32)|8388607);
+    te_ir_bad(original,access+8,0);te_ir_bad(original,access+8,(16777217<<32));te_ir_bad(original,access+8,(3<<32)|16777215);
     te_frontend=te_extension("ir_begin(\"main\",4,0);while ir_code_size<16777216 {ir_emit(1,0);}ir_emit(1,0);return ir_finish();");
     te_bad("examples/extensions/answer.postfix","frontend IR exceeds 16 MiB");te_frontend=0;
-    return 0;
+    return te_large_world_state();
+}
+// Setaworld-sized state (about nine million words) exceeds the former
+// 8,388,608-word cap and runs on every route; the image scales with use.
+fn te_large_world_state() {
+    te_frontend=0;te_memory="--memory=80m";
+    te_program("plugin test v1 {} state {a:i32[9000000]=0 b:i32[3]=[4,5,6] guard:i32=99} fn main()->i32{state.a[8999999]=state.b[1]*8+2 return state.guard==99 ? state.a[8999999] : 1}",42);
+    te_compile(t_fixture,0,t_binary);let stat=alloc(144);t_assert(syscall(4,t_binary,stat,0,0,0,0)==0 && load64(stat+48)>72000000 && load64(stat+48)<80000000,"native image follows the declared state, not the cap");
+    let artifact=h_join(t_work,"world-state.fir");te_compile(t_fixture,"ir",artifact);let original=te_ir_read(artifact);
+    t_assert(load64(original)==0x36524946 && load64(original+56)==9000004,"FIR6 nine-million-word state");
+    te_language="ir";te_routes(artifact,42);te_language=0;
+    let p=h_run(h_args(t_compiler,"run","--interpret","--restricted","--memory=64m",t_fixture));h_check(p,1,0);
+    t_assert(h_has(h_err(p),"IR state exceeds VM memory"),"large state still respects the application memory budget");
+    te_memory=0;return 0;
 }
 fn te_function_graphs() {
     te_frontend=0;

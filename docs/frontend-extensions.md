@@ -446,8 +446,8 @@ the self-built compiler running inside Wasm, then executes both outputs.
 
 ## FIR6: larger engine instruction streams
 
-FIR6 (`0x36524946`) permits 16 MiB of instruction code, 8,388,608 state words
-(64 MiB), and a 128 MiB serialized artifact. Local-slot, checked-array,
+FIR6 (`0x36524946`) permits 16 MiB of instruction code, 16,777,216 state words
+(128 MiB), and a 256 MiB serialized artifact. Local-slot, checked-array,
 execution-fuel and application-memory limits remain unchanged. FIR1 through FIR5 still reject instruction streams above 1 MiB.
 
 The SDK allocates a bounded 16 MiB instruction buffer and selects FIR6 as soon
@@ -455,11 +455,20 @@ as code exceeds 1 MiB, state exceeds 2,097,152 words, or the serialized artifact
 exceeds 32 MiB. Appending state after code preserves that selection.
 Smaller programs continue to serialize with their existing profile tags.
 The restricted external-frontend heap is bounded at 256 MiB, with the same
-one-billion-instruction and 60-second limits. Compilation uses a 128 MiB
+one-billion-instruction and 60-second limits. Compilation uses a 256 MiB
 state-image budget and FIR6 native/Wasm output bound; earlier profiles keep
 their 64 MiB output bound. Application execution retains its default 16 MiB budget.
-Maximum-state FIR6 programs require `flexscript run --memory=128m ...`. Frontend source
-is smaller than 64 MiB for the bundled SetaScript frontend (32 MiB for external frontend source); saved IR input may be smaller than 128 MiB.
+Maximum-state FIR6 programs require `flexscript run --memory=256m ...`. Frontend source
+is smaller than 64 MiB for the bundled SetaScript frontend (32 MiB for external frontend source); saved IR input may be smaller than 256 MiB.
+
+FIR6 originally allowed 8,388,608 state words (64 MiB) and a 128 MiB artifact.
+The cap was doubled when Setaworld's cities and rail exceeded it; every earlier
+FIR6 artifact remains valid. Compilers and runtimes size state from the
+artifact's own state count, never from the cap: the VM heap image, the native
+ELF data and the Wasm data segment and initial memory all scale with the
+declared words (a 9,000,004-word program produces a 72 MB native binary and
+needs `--memory=80m` under the VM). The compiler reserves its 128 MiB state
+builder and 256 MiB state-image budget as lazily committed virtual memory.
 
 Artifacts are validated before relocation or execution on every backend;
 changing a larger artifact's tag to an older profile is rejected.
