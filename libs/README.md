@@ -7,6 +7,8 @@ low-level adapters in `lib/` remain available and can be imported directly.
   optimizers and optional CUDA kernels, implemented in ordinary Flexscript.
 - [`db`](db/README.md): FlexDB, an experimental single-file relational database
   with typed rows, transactions and programmatic queries.
+- [`physics`](physics/README.md): a portable rigid-body engine with shared native,
+  WebAssembly, HIP and direct AMD RDNA solver source.
 - [`monolith`](monolith/README.md): native web apps with keyed HTML/SSE updates,
   bundled browser assets, and optional SQLite persistence and schema tooling.
 

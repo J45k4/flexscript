@@ -52,7 +52,13 @@ fn rd_elf(registers) {
     rd_align(8);let symbols=output_size;rd_zero(72);rd_align(4);let hash=output_size;
     emit32(1);emit32(3);emit32(1);emit32(0);emit32(2);emit32(0);
     rd_align(64);let descriptor=output_size;rd_zero(64);rd_align(256);let text=output_size;
-    i=0;while i<bytes {emit(load8(code+i));i=i+1;}rd_align(8);let dynamic=output_size;
+    i=0;while i<bytes {emit(load8(code+i));i=i+1;}
+    // The instruction cache can fetch beyond s_endpgm. Keep its lookahead
+    // mapped, including when a code object ends at a page boundary. Match
+    // LLVM's gfx12 tail: 128-byte alignment and 96 s_code_end words.
+    while (output_size-text)%128 {emit32(0xbf9f0000);}
+    i=0;while i<96 {emit32(0xbf9f0000);i=i+1;}
+    let text_bytes=output_size-text;rd_align(8);let dynamic=output_size;
     emit64(5);emit64(names);emit64(10);emit64(names_bytes);emit64(6);emit64(symbols);
     emit64(11);emit64(24);emit64(4);emit64(hash);emit64(0);emit64(0);let load_bytes=output_size;
     store64(output+descriptor+8,344);store64(output+descriptor+16,text-descriptor);
@@ -72,7 +78,7 @@ fn rd_elf(registers) {
     rd_section(sections+192,load64(section_offsets+24),11,2,symbols,72,2,1,8,24);
     rd_section(sections+256,load64(section_offsets+32),5,2,hash,24,3,0,4,4);
     rd_section(sections+320,load64(section_offsets+40),1,2,descriptor,64,0,0,64,0);
-    rd_section(sections+384,load64(section_offsets+48),1,6,text,bytes,0,0,256,0);
+    rd_section(sections+384,load64(section_offsets+48),1,6,text,text_bytes,0,0,256,0);
     rd_section(sections+448,load64(section_offsets+56),6,3,dynamic,96,2,0,8,16);
     rd_section(sections+512,load64(section_offsets+64),3,0,section_names,section_name_bytes,0,0,1,0);
     // HIP's loader also requires the conventional static symbol/string sections.

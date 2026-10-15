@@ -11,6 +11,56 @@ global rw_lds_pending_count=0;
 // Proven-zero registers for the current EXEC region. Drop facts at control
 // joins, loop headers, mask changes and primitives with raw register writes.
 global rw_zeros=0;
+// Word-IR regions can span more than the SOPP signed 16-bit range after
+// helper inlining. Reserve a six-instruction slot so patching never moves code.
+// s30:s31 are backend scratch; allocated execution masks start at s32.
+// The shared F32/int64 reference conversions are integer-only word code.
+// Inline them until a native instruction sequence covers the full 64-bit range.
+// No host calls or FP64 instructions are emitted by these reference bodies.
+fn rw_intrinsic_kind(index) {
+    let kind=gpu_intrinsic(index);
+    if kind==36 || kind==37 {return 0;}
+    return kind;
+}
+fn rw_branch(op) {
+    let at=rd_branch(op);
+    let i=0;
+    while i<5 {
+        emit32(0xbf800000);
+        i=i+1;
+    }
+    return at;
+}
+fn rw_patch(at,target) {
+    let delta=(target-at-4)/4;
+    if delta>=-32768 && delta<=32767 {
+        return rd_patch(at,target);
+    }
+    let saved=output_size;
+    let op=load64(output+at)&4294901760;
+    output_size=at;
+    if op==0xbfa00000 {
+        emit32(0xbf800000);
+    }
+    else {
+        if op!=0xbfa20000 && op!=0xbfa50000 {
+            fail("unsupported long RDNA word branch condition");
+        }
+        emit32((op^196608)|5);
+    }
+    emit32(0xbe9e4700);
+    emit32(0x801eff1e);
+    delta=target-at-8;
+    emit32(delta);
+    let sign=128;
+    if delta<0 {
+        sign=193;
+    }
+    emit32(0x821f001f|(sign<<8));
+    emit32(0xbe80481e);
+    output_size=saved;
+    return 0;
+}
 fn rw_forget_zeros() {if rw_zeros {let i=0;while i<256 {store8(rw_zeros+i,0);i=i+1;}}return 0;}
 fn rw_is_zero(source) {return source==128 || (rw_zeros && source>=256 && source<512 && load8(rw_zeros+source-256));}
 // Track outstanding global/LDS loads by physical VGPR. Independent loads may run
@@ -238,7 +288,14 @@ fn rw_intrinsic(kind,to,first) {
         else if kind==13 {rw_vop(0x36000000,to,159,0);}else {rw_mov32(to,126);}
         rw_zero_high(to);return 0;
     }
-    if kind==15 || kind==71 {emit32(0xbfc10000);emit32(0xbfc60000);emit32(0xbe804ec1);emit32(0xbf94ffff);rw_imm(to,0);return 0;}
+    if kind==15 || kind==71 {
+        emit32(0xbfc10000);emit32(0xbfc60000);emit32(0xbe804ec1);emit32(0xbf94ffff);
+        // Rendezvous alone does not invalidate another wave's cached global
+        // loads. Match the full workgroup memory ordering of __syncthreads;
+        // the shared-only barrier intentionally needs no global acquire.
+        if kind==15 {emit32(0xbfc00000);rw_scope_cache(0xee0ac07c,0x00040000);}
+        rw_imm(to,0);return 0;
+    }
     if kind==16 || kind==52 {emit32(0xbfc10000);emit32(0xbfc60000);rw_imm(to,0);return 0;}
     if kind==17 {return rw_shared_load(to,first);}
     if kind==18 {rw_shared_store(first,first+2);rw_move(to,first+2);return 0;}
@@ -297,7 +354,7 @@ fn rw_scratch(index) {
     let need=4;let pc=load64(functions+index*32+16)+16;let end=p_end(index);
     while pc<end {let op=load64(p_code+pc);let arg=load64(p_code+pc+8);let size=0;
         if op==7 && (arg==47 || arg==37) {size=14;}
-        else if op==8 {let kind=gpu_intrinsic(arg);
+        else if op==8 {let kind=rw_intrinsic_kind(arg);
             if !kind {size=p_arity(op,arg)*2;}
             else if kind==70 {size=20;}
             else if kind==94 {size=16;}
@@ -319,7 +376,7 @@ fn rw_frame(index) {
             if pc<load64(ranges+arg*16) {store64(ranges+arg*16,pc);}store64(ranges+arg*16+8,pc);}
         if op==2 {depth=depth+1;if depth>maximum {maximum=depth;}}
         else if op==7 {depth=depth-1;}else if op==8 || op==17 {depth=depth-p_arity(op,arg);
-            if op==8 && !gpu_intrinsic(arg) {let n=rw_frame(arg);if n>child {child=n;}}}
+            if op==8 && !rw_intrinsic_kind(arg) {let n=rw_frame(arg);if n>child {child=n;}}}
         if depth<0 {fail("invalid direct RDNA expression stack");}pc=pc+16;
     }
     if depth {fail("unbalanced direct RDNA expression stack");}
@@ -335,9 +392,19 @@ fn rw_frame(index) {
     let own=colors+maximum+1;store64(f,colors);store64(f+8,maximum);store64(f+24,map);store64(f+32,own);store64(f+40,ranges);
     let total=own+rw_scratch(index);depth=0;pc=start;while pc<end {let op=load64(p_code+pc);let arg=load64(p_code+pc+8);
         if op==2 {depth=depth+1;}else if op==7 {depth=depth-1;}else if op==8 || op==17 {depth=depth-p_arity(op,arg);
-            if op==8 && !gpu_intrinsic(arg) {let needed=rw_callbase(index,pc,depth)+rw_frame(arg);if needed>total {total=needed;}}}
+            if op==8 && !rw_intrinsic_kind(arg) {let needed=rw_callbase(index,pc,depth)+rw_frame(arg);if needed>total {total=needed;}}}
         pc=pc+16;
     }store64(f+16,total);return total;
+}
+// Inlined callees can reuse parent masks belonging to regions which have
+// already reconverged or have not started. Alive/saved masks remain protected.
+fn rw_maskbase(scalar_base,straight,regions,count,pc) {
+    let next=scalar_base;if !straight {next=next+2;}
+    let i=0;while i<count {let region=regions+i*48;
+        if load64(region)<=pc && pc<load64(region+24) {
+            let needed=scalar_base+2+load64(region+32)+2;if needed>next {next=needed;}
+        }i=i+1;
+    }return next;
 }
 fn rw_function(index,base,result) {
     let f=rw_frames+index*48;let colors=load64(f);let maximum=load64(f+8);let map=load64(f+24);
@@ -372,7 +439,7 @@ fn rw_function(index,base,result) {
         store64(back_labels+(pc-start)/2,output_size);
         let op=load64(p_code+pc);let arg=load64(p_code+pc+8);
         if op>=9 && op<=12 {rw_wait();if op!=9 || !straight {rw_forget_zeros();}}
-        if op==1 && pc+32<end && load64(p_code+pc+16)==2 && load64(p_code+pc+32)==8 && gpu_intrinsic(load64(p_code+pc+40))==64 {
+        if op==1 && pc+32<end && load64(p_code+pc+16)==2 && load64(p_code+pc+32)==8 && rw_intrinsic_kind(load64(p_code+pc+40))==64 {
             let safe=!load64(targets+(pc+16-start)/2) && !load64(targets+(pc+32-start)/2);
             if safe {rw_mov32(acc,8+(arg&7)*2);rw_mov32(acc+1,9+(arg&7)*2);pc=pc+32;op=0;}
         }
@@ -386,7 +453,7 @@ fn rw_function(index,base,result) {
             }
         }
         if op==1 || op==3 || op==8 {
-            let fold=op!=8 || gpu_intrinsic(arg);
+            let fold=op!=8 || rw_intrinsic_kind(arg);
             if fold && pc+16<end && !load64(targets+(pc+16-start)/2) {let next=load64(p_code+pc+16);
                 if next==4 {destination=rw_reg(base+load64(map+load64(p_code+pc+24)*8));}
                 else if next==2 {destination=rw_reg(base+colors+1+depth);if op==8 {destination=rw_reg(base+colors+1+depth-p_arity(op,arg));}}
@@ -401,7 +468,7 @@ fn rw_function(index,base,result) {
         else if op==8 || op==17 {
             let n=p_arity(op,arg);depth=depth-n;let first=rw_reg(base+colors+1+depth);
             if op==17 {if arg<=2 {rw_load(arg,acc,first);}else {rw_store(arg,first,first+2);rw_move(acc,first+2);}}
-            else if gpu_intrinsic(arg) {rw_intrinsic(gpu_intrinsic(arg),destination,first);}
+            else if rw_intrinsic_kind(arg) {rw_intrinsic(rw_intrinsic_kind(arg),destination,first);}
             else {let childmap=load64(rw_frames+arg*48+24);child=base+rw_callbase(index,pc,depth);
                 if n>10 {fail("direct RDNA helper exceeds argument scratch budget");}
                 // Copy directly when no destination destroys an argument that
@@ -411,17 +478,18 @@ fn rw_function(index,base,result) {
                 if direct {i=0;while i<n {rw_move(rw_reg(child+load64(childmap+i*8)),first+i*2);i=i+1;}}
                 else {i=0;while i<n {rw_move(rw_temp+i*2,first+i*2);i=i+1;}
                     i=0;while i<n {rw_move(rw_reg(child+load64(childmap+i*8)),rw_temp+i*2);i=i+1;}}
-                rw_function(arg,child,acc);}
+                let parent_snext=rw_snext;rw_snext=rw_maskbase(scalar_base,straight,regions,region_count,pc);
+                rw_function(arg,child,acc);rw_snext=parent_snext;}
         }else if op==9 {if result>=0 {rw_move(result,acc);}if straight {pc=end-16;}else {rd_sop(0x91000000,alive,alive,126);rd_sop(0xbe800000,126,128,0);
-                emit32(0xbf068000|alive);let leave=rd_branch(0xbfa20000);store64(jumps+jumps_count*16,leave);store64(jumps+jumps_count*16+8,end);jumps_count=jumps_count+1;}}
+                emit32(0xbf068000|alive);let leave=rw_branch(0xbfa20000);store64(jumps+jumps_count*16,leave);store64(jumps+jumps_count*16+8,end);jumps_count=jumps_count+1;}}
         else if op==11 || op==12 {
             i=0;let r=0;while i<region_count {let entry=regions+i*48;if load64(entry+8)==pc {r=entry;}i=i+1;}
             let reg=scalar_base+2+load64(r+32);rw_test(acc,op==12);
             if load64(r+40) {rd_sop(0x8b000000,126,126,106);}else {rd_sop(0xbe802000,reg,106,0);}
             if load64(r+16) {rd_sop(0x91000000,reg+1,reg,126);}
-            let skip=rd_branch(0xbfa50000);store64(jumps+jumps_count*16,skip);store64(jumps+jumps_count*16+8,arg);jumps_count=jumps_count+1;
+            let skip=rw_branch(0xbfa50000);store64(jumps+jumps_count*16,skip);store64(jumps+jumps_count*16+8,arg);jumps_count=jumps_count+1;
         }else if op==10 {let ignore=0;i=0;while i<region_count {let r=regions+i*48;if load64(r+16)==pc+16 && load64(r+24)==arg {ignore=1;}i=i+1;}
-            if !ignore {let jump=rd_branch(0xbfa00000);store64(jumps+jumps_count*16,jump);let edge=arg;if arg<pc {edge=-arg-1;}store64(jumps+jumps_count*16+8,edge);jumps_count=jumps_count+1;}
+            if !ignore {let jump=rw_branch(0xbfa00000);store64(jumps+jumps_count*16,jump);let edge=arg;if arg<pc {edge=-arg-1;}store64(jumps+jumps_count*16+8,edge);jumps_count=jumps_count+1;}
         }else if op!=0 {fail("unsupported direct RDNA word instruction");}
         if destination!=acc && (op==1 || op==3 || op==8) {if load64(p_code+pc+16)==2 {depth=depth+1;}pc=pc+16;}
         pc=pc+16;
@@ -429,7 +497,7 @@ fn rw_function(index,base,result) {
     rw_wait();store64(labels+(end-start)/2,output_size);
     let i=0;while i<jumps_count {let target=load64(jumps+i*16+8);let table=labels;if target<0 {target=-target-1;table=back_labels;}
         if target<start || target>end || (target-start)%16 {fail("invalid direct RDNA branch target");}
-        rd_patch(load64(jumps+i*16),load64(table+(target-start)/2));i=i+1;}
+        rw_patch(load64(jumps+i*16),load64(table+(target-start)/2));i=i+1;}
     if !straight {rd_sop(0xbe800000,126,saved,0);rw_forget_zeros();}rw_snext=scalar_base;rw_temp=parent_temp;return 0;
 }
 fn rw_lower(kernel) {
@@ -451,8 +519,8 @@ fn rw_lower(kernel) {
     rw_vop3(0xd72c0000,7,259,262,0);rw_vop(0x4a000000,7,258,7);rw_vop3(0xd72c0000,7,263,261,0);rw_vop(0x4a000000,7,257,7);rw_vop(0x4a000000,4,263,4);
     rw_zero_high(4);rw_mov32(rw_temp,6);rw_mov32(rw_temp+1,7);rw_vop(0x7cb20000,0,260,rw_temp);
     rd_sop(0x8b000000,126,126,106);
-    let done=rd_branch(0xbfa50000);let map=load64(rw_frames+kernel*48+24);rw_move(rw_reg(load64(map)),4);
+    let done=rw_branch(0xbfa50000);let map=load64(rw_frames+kernel*48+24);rw_move(rw_reg(load64(map)),4);
     let i=1;while i<4 {let scalar=2+(i-1)*2;let reg=rw_reg(load64(map+i*8));rw_mov32(reg,scalar);rw_mov32(reg+1,scalar+1);i=i+1;}
-    rw_function(kernel,0,-1);emit32(0xbfc10000);rd_patch(done,output_size);emit32(0xbfb00000);
+    rw_function(kernel,0,-1);emit32(0xbfc10000);rw_patch(done,output_size);emit32(0xbfb00000);
     rd_sgprs=rw_smax;if rr_sgprs>rd_sgprs {rd_sgprs=rr_sgprs;}rd_elf(rw_reg(frame));return 0;
 }
