@@ -51,6 +51,12 @@ fn ir_begin(name,size,arity) {
     let i=0;while i<size {store8(ir_names+ir_names_size+i,load8(name+i));i=i+1;}
     ir_names_size=ir_names_size+size;ir_emit(18,0);ir_emit(1,0);return ir_current;
 }
+// Mark the open function as a platform import. Its body stays the canonical
+// stub (frame, zero, return); a trusted --platform module supplies the code.
+fn ir_import() {
+    if ir_current<0 || ir_code_size!=load64(ir_functions+ir_current*64+16)+32 {ir_error("platform import must have an empty IR body",0);}
+    store64(ir_functions+ir_current*64+40,1);return 0;
+}
 fn ir_end(slots) {
     if ir_current<0 || slots<load64(ir_functions+ir_current*64+24) || slots>4096 {ir_error("invalid IR local count",0);}
     let f=ir_functions+ir_current*64;store64(f+32,slots);ir_patch(load64(f+16),slots);ir_current=-1;return 0;

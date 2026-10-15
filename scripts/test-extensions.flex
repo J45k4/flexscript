@@ -4,9 +4,11 @@ global te_bun=0;
 global te_frontend=0;
 global te_language=0;
 global te_memory=0;
+global te_platform=0;
 fn te_compile(source,target,out) {
     let args=h_args(t_compiler,0,0,0,0,0);
     if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}
+    if te_platform && !h_equal(target,"ir") {h_add(args,"--platform");h_add(args,te_platform);}
     if target {h_add(args,"--target");h_add(args,target);}
     h_add(args,source);h_add(args,"-o");h_add(args,out);h_ok(args);return 0;
 }
@@ -19,10 +21,12 @@ fn te_wasm(module,expected) {
 }
 fn te_routes(source,expected) {
     let args=h_args(t_compiler,"run","--interpret","--restricted",0,0);
-    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}if te_memory {h_add(args,te_memory);}h_add(args,source);
+    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}if te_memory {h_add(args,te_memory);}
+    if te_platform {h_add(args,"--platform");h_add(args,te_platform);}h_add(args,source);
     h_check(h_run(args),expected,"");t_checks=t_checks+1;
     args=h_args(t_compiler,"run","--jit","--stats",0,0);
-    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}if te_memory {h_add(args,te_memory);}h_add(args,source);
+    if te_frontend {h_add(args,"--frontend");h_add(args,te_frontend);}if te_language {h_add(args,"--language");h_add(args,te_language);}if te_memory {h_add(args,te_memory);}
+    if te_platform {h_add(args,h_cat("--platform=",te_platform));}h_add(args,source);
     let jit=h_run(args);h_check(jit,expected,"");
     t_assert(!h_has(h_err(jit),"JIT compilations: 0;"),"extension IR uses the existing JIT");
     te_compile(source,0,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),expected,"");t_checks=t_checks+1;
@@ -282,6 +286,60 @@ fn te_function_graphs() {
     te_frontend="examples/extensions/seta.flex";te_reject(direct,"recursion");te_reject(mutual,"recursion");te_reject(last,"recursion");te_reject(wrong,"type mismatch");te_frontend=0;
     return 0;
 }
+// SetaScript `extern fn` bodies come from trusted --platform Flexscript modules
+// on native, interpreter, JIT, Wasm and saved-FIR routes.
+fn te_platform_bad(source,platform,message) {
+    let before=h_sha(t_binary);let args=h_args(t_compiler,0,0,0,0,0);
+    if platform {h_add(args,"--platform");h_add(args,platform);}h_add(args,source);h_add(args,"-o");h_add(args,t_binary);
+    let p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),message),h_err(p));
+    t_assert(h_equal(before,h_sha(t_binary)),"rejected platform link changed output");return 0;
+}
+fn te_platform_link() {
+    te_frontend=0;let platform=h_join(t_work,"platform.flex");let helper=h_join(t_work,"platform-helper.flex");
+    // Imports, globals, alloc/load/store and calls back into SetaScript.
+    h_save(helper,"global calls=0;\nfn helper_scale(x){calls=calls+1;let p=alloc(16);store64(p,x);store64(p+8,calls);return load64(p)*10+load64(p+8);}\n");
+    h_save(platform,h_cat3("import \"",helper,"\";\nfn mix(a,b){return helper_scale(a)+b+twice(calls);}\nfn odd(a){return (a&1)*7;}\nfn wide(){return 9223372036854775807;}\n"));
+    // mix(3,4)=37; odd() returns 7 and is normalized to true; 5+10137-10096=46.
+    let program="plugin test v1 {}\nstate {count:i32=5}\nextern fn mix(a:i32,b:i32)->i32;\nextern fn odd(a:i32)->bool\nextern fn wide()->i32\nfn twice(x:i32)->i32{return x*2}\nfn main()->i32{let total=mix(3,4) if odd(7) {total+=100} if odd(8) {total+=1000} if odd(7)==true {total+=10000} if wide()+1>=0 {return 1} state.count+=total return state.count-10096}\n";
+    h_save(t_fixture,program);te_platform=platform;te_routes(t_fixture,46);
+    let artifact=h_join(t_work,"platform.fir");te_compile(t_fixture,"ir",artifact);
+    let original=h_read(artifact);t_assert(load64(original+64+64*2+40)==1 && !load64(original+64+64*3+40),"FIR header marks platform imports");
+    te_language="ir";te_routes(artifact,46);te_language=0;
+    let external=h_join(t_work,"platform-external.fir");te_frontend="examples/extensions/seta.flex";te_routes(t_fixture,46);te_compile(t_fixture,"ir",external);te_frontend=0;
+    t_assert(h_equal(h_sha(artifact),h_sha(external)),"bundled/external platform-import IR identity");
+    te_platform=0;
+    // An import stub must stay canonical; other header words remain reserved.
+    te_ir_bad(original,64+64*2+40,2);te_ir_bad(original,64+64*3+40,1);
+    // The SetaScript restrictions stay; the trusted module supplies the rest.
+    te_platform_bad(t_fixture,0,"extern functions require a --platform module");
+    let p=h_run(h_args(t_compiler,"--language","ir",artifact,"-o",t_binary));h_check(p,1,0);t_assert(h_has(h_err(p),"extern functions require a --platform module"),h_err(p));
+    let partial=h_join(t_work,"partial.flex");h_save(partial,"fn mix(a,b){return a+b;}\nfn odd(a){return 0;}\n");
+    te_platform_bad(t_fixture,partial,"extern function wide has no --platform definition");
+    h_save(partial,"fn mix(a){return a;}\nfn odd(a){return 0;}\nfn wide(){return 0;}\n");
+    te_platform_bad(t_fixture,partial,"extern function mix has a different parameter count");
+    h_save(partial,"fn mix(a,b){return a+b;}\nfn odd(a){return 0;}\nfn wide(){return 0;}\nfn twice(x){return x;}\n");
+    te_platform_bad(t_fixture,partial,"duplicate function");
+    let args=h_args(t_compiler,"--platform",partial,"--target","wasm32",t_fixture);h_add(args,"-o");h_add(args,t_binary);
+    p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"duplicate function"),h_err(p));
+    let flex=h_join(t_work,"plain.flex");h_save(flex,"fn main(){return 0;}\n");
+    te_platform_bad(flex,partial,"--platform requires SetaScript, FIR or frontend input");
+    args=h_args(t_compiler,"--platform",platform,"--target","ir",t_fixture);h_add(args,"-o");h_add(args,t_binary);
+    p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"--platform supports native, VM, Wasm and ESP32 output"),h_err(p));
+    te_reject("extern fn main()->i32;","main cannot be extern");
+    te_reject("extern fn f()->i32 {return 1} fn main()->i32{return 0}","only pure function declarations");
+    te_reject("fn main()->i32{return syscall(60,0,0,0,0,0,0)}","host calls are not supported");
+    // Trusted code still runs under the VM capability policy it is linked into.
+    h_save(partial,"fn mix(a,b){return syscall(39,0,0,0,0,0,0);}\nfn odd(a){return 0;}\nfn wide(){return 0;}\n");
+    h_save(t_fixture,program);p=h_run(h_args(t_compiler,"run","--restricted","--platform",partial,t_fixture));h_check(p,70,0);t_assert(h_has(h_err(p),"capability denied"),h_err(p));
+    // Platform functions extend the shared table past FIR's 4,096-function
+    // bound: 4,000 SetaScript functions plus 2,001 platform functions.
+    let funcs="";let k=0;while k<4000 {funcs=h_cat3(funcs,"fn s",h_cat3(h_int(k),"()->i32{return 1} ",""));k=k+1;}
+    let natives="";k=0;while k<2000 {natives=h_cat3(natives,"fn p",h_cat3(h_int(k),"(x){return x+1;}\n",""));k=k+1;}
+    h_save(platform,h_cat(natives,"fn last(x){return p1999(x)+s3999();}\n"));
+    h_save(t_fixture,h_cat3("plugin test v1 {} extern fn last(x:i32)->i32 ",funcs,"fn main()->i32{return last(39)+s0()}"));
+    te_platform=platform;te_routes(t_fixture,42);te_platform=0;
+    return 0;
+}
 // Bundled SetaScript source can carry generated model tables beyond32MiB,
 // while the64MiB transport boundary still rejects without replacing output.
 fn te_large_source() {
@@ -370,6 +428,7 @@ fn suite(compiler) {
     te_program("plugin test v1 {} fn main()->i32{let n=84 n/=2 n*=3 n-=84 return n}",42);
     te_program("plugin test v1 {} fn main()->i32{return ((-17/5 == -3) and (-17%5 == -2) and (3<<65 == 6) and (-8>>65 == -4) and ((((7&3)^2)|1) == 1)) ? 42 : 0}",42);
     te_program("plugin test v1 {} fn main()->i32{return (false and 1/0==0) or (true or 1/0==0) ? 42 : 0}",42);
+    te_platform_link();
     let artifact=h_join(t_work,"policy.fir");te_compile("examples/seta/policy.seta","ir",artifact);
     let original=h_read(artifact);t_assert(load64(original)==0x31524946,"FIR1 artifact magic");
     t_assert(syscall(21,artifact,1,0,0,0,0)!=0,"IR artifact is not executable");

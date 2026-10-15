@@ -23,7 +23,14 @@ fn ir_accept(blob,size) {
         if i+1<count {end=load64(f+80);}
         if name<0 || n<1 || n>255 || name>names_size-n || start<0 || start>code_size-48 || start%16 || end%16
             || end>code_size || end<start+48 || (i==0 && start!=0) || arity<0 || arity>slots || slots>4096
-            || load64(f+40) || load64(f+48) || load64(f+56) {ir_bad();}
+            || load64(f+40)<0 || load64(f+40)>1 || load64(f+48) || load64(f+56) {ir_bad();}
+        // Header word 40 = 1 marks a platform import: a canonical stub whose
+        // body a trusted --platform module supplies at link time.
+        if load64(f+40) {
+            if end!=start+48 || load64(code+start+32)!=9 || load64(code+start+40) {ir_bad();}
+            if !frontend_imports {frontend_imports=alloc(4096*8);if frontend_imports<0 {fail("cannot allocate platform imports");}}
+            store64(frontend_imports+i*8,n);frontend_import_count=frontend_import_count+1;
+        }
         let k=0;while k<n {let c=load8(blob+names_at+name+k);if (!letter(c) && (k==0 || !digit(c))) {ir_bad();}k=k+1;}
         if find(functions,i,blob+names_at+name,n)>=0 {ir_bad();}
         let entry=functions+i*32;store64(entry,blob+names_at+name);store64(entry+8,n);store64(entry+16,start);store64(entry+24,arity);
@@ -79,6 +86,8 @@ fn ir_accept(blob,size) {
         i=0;while i<code_size {let op=load64(output+i);if op==5 || op==6 {store64(output+i+8,address+load64(output+i+8)*8);}else if op==21 || op==22 {let arg=load64(output+i+8);store64(output+i+8,(arg& -4294967296)|(state_base+(arg&4294967295)*8));}i=i+16;}
     }
     let main=find(functions,count,"main",4);if main<0 {fail("missing main function");}
+    if frontend_import_count && load64(frontend_imports+main*8) {ir_bad();}
+    if frontend_import_count && !frontend_platform_count && !frontend_ir_target {fail("extern functions require a --platform module");}
     if load64(functions+main*32+24) {fail("portable IR main must take zero parameters");}
     return 0;
 }
@@ -126,7 +135,7 @@ fn ir_native() {
         }i=i+1;
     }
     i=0;while i<used {let at=load64(branches+i*16);patch32(at,load64(map+load64(branches+i*16+8)/2)-at-4);i=i+1;}
-    resolve();return 0;
+    frontend_compile_platform();resolve();return 0;
 }
 fn ir_native_word_io(reading) {
     if word_io_buffered {

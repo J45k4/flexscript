@@ -737,7 +737,7 @@ fn global_definition() {
 
 fn function_definition() {
     let definition_start=token_start;
-    if function_count >= 2048 { fail("too many functions"); }
+    if function_count >= 2048 + frontend_fir_functions { fail("too many functions"); }
     next();
     if token != 256 { fail("expected function name"); }
     let name = source + token_start;
@@ -1896,7 +1896,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--esp32-platform <adapter.flex>] <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1921,7 +1921,7 @@ fn main(argc, argv) {
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}
         else if up_text(arg,"--frontend") {frontend_external(value);}
-        else if up_text(arg,"--esp32-platform") {if esp_platform_path {fail("choose only one ESP32 platform input");}esp_platform_path=value;}
+        else if up_text(arg,"--platform") || up_text(arg,"--esp32-platform") {frontend_platform_add(value);}
         else if up_text(arg,"--word-io") {
             if up_text(value,"buffered") {word_io_buffered=1;}
             else if up_text(value,"unbuffered") {word_io_buffered=0;}
@@ -1940,7 +1940,7 @@ fn main(argc, argv) {
     if shader_target && frontend_language!=1 {fail("shader targets require SetaScript source");}
     if word_io_buffered && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
     if (ptx_target || sass_target || hip_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
-    if esp_platform_path && (!esp32_target || !frontend_language) {fail("--esp32-platform requires ESP32 frontend input");}
+    frontend_platform_check();
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=268435456;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
@@ -1955,7 +1955,7 @@ fn main(argc, argv) {
         tx_expand();
         initialize_output();
         if frontend_language {frontend_compile_modules();}else {compile_modules();}
-        if esp_platform_path {frontend_compile_platform();}
+        frontend_link_platform();
         select_module(0);
         token_start = source_size;
         resolve();
@@ -2003,7 +2003,7 @@ fn compiler_initialize() {
     source = source_arena;
     output = alloc(67108864);
     globals = alloc(2048 * 32);
-    functions = alloc(4096 * 32);
+    functions = alloc(8192 * 32);
     locals = alloc(4096 * 32);
     calls = alloc(65536 * 32);
     ffi_entries = alloc(40);
