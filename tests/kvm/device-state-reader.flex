@@ -1,5 +1,5 @@
-import "../../lib/pc-virtio-gpu-state.flex";
-import "../../lib/pc-virtio-net-state.flex";
+import "../../emulator/pc/virtio-gpu-state.flex";
+import "../../emulator/pc/virtio-net-state.flex";
 fn expect(ok) {if !ok {syscall(1,2,"device dump reader assertion failed\n",36,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn read(path,p,n) {let fd=syscall(2,path,0,0,0,0,0);expect(fd>=0);let at=0;while at<n {let bytes=syscall(0,fd,p+at,n-at,0,0,0);expect(bytes>0);at=at+bytes;}syscall(3,fd,0,0,0,0,0);return 0;}
 fn main(argc,argv) {

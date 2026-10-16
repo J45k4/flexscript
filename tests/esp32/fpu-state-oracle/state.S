@@ -1,0 +1,265 @@
+// Independent GNU assembler reference; no Flexscript opcode emitter.
+.text
+.align 4
+.global c_fpu_state
+.type c_fpu_state,@function
+c_fpu_state:
+ entry a1,128
+ rsr a3,cpenable
+ s32i a3,a1,96
+ movi a3,1
+ wsr a3,cpenable
+ rsync
+ rfr a3,f0
+ s32i a3,a1,0
+ rfr a3,f1
+ s32i a3,a1,4
+ rfr a3,f2
+ s32i a3,a1,8
+ rfr a3,f3
+ s32i a3,a1,12
+ rfr a3,f4
+ s32i a3,a1,16
+ rfr a3,f5
+ s32i a3,a1,20
+ rfr a3,f6
+ s32i a3,a1,24
+ rfr a3,f7
+ s32i a3,a1,28
+ rfr a3,f8
+ s32i a3,a1,32
+ rfr a3,f9
+ s32i a3,a1,36
+ rfr a3,f10
+ s32i a3,a1,40
+ rfr a3,f11
+ s32i a3,a1,44
+ rfr a3,f12
+ s32i a3,a1,48
+ rfr a3,f13
+ s32i a3,a1,52
+ rfr a3,f14
+ s32i a3,a1,56
+ rfr a3,f15
+ s32i a3,a1,60
+ rur.fcr a3
+ s32i a3,a1,64
+ rur.fsr a3
+ s32i a3,a1,68
+ rur.expstate a3
+ s32i a3,a1,72
+ rur.threadptr a3
+ s32i a3,a1,76
+ l32i a6,a2,0
+ addi a4,a2,4
+ addi a5,a2,192
+1:
+ l32i a3,a4,0
+ wur.fcr a3
+ rsync
+ rur.fcr a7
+ s32i a7,a5,0
+ wur.fsr a3
+ rsync
+ rur.fsr a7
+ s32i a7,a5,4
+ wur.expstate a3
+ rur.expstate a7
+ s32i a7,a5,8
+ wur.threadptr a3
+ rur.threadptr a7
+ s32i a7,a5,12
+ movi a7,0
+ xor a7,a7,a3
+ wfr f0,a7
+ movi a7,1
+ xor a7,a7,a3
+ wfr f1,a7
+ movi a7,2
+ xor a7,a7,a3
+ wfr f2,a7
+ movi a7,3
+ xor a7,a7,a3
+ wfr f3,a7
+ movi a7,4
+ xor a7,a7,a3
+ wfr f4,a7
+ movi a7,5
+ xor a7,a7,a3
+ wfr f5,a7
+ movi a7,6
+ xor a7,a7,a3
+ wfr f6,a7
+ movi a7,7
+ xor a7,a7,a3
+ wfr f7,a7
+ movi a7,8
+ xor a7,a7,a3
+ wfr f8,a7
+ movi a7,9
+ xor a7,a7,a3
+ wfr f9,a7
+ movi a7,10
+ xor a7,a7,a3
+ wfr f10,a7
+ movi a7,11
+ xor a7,a7,a3
+ wfr f11,a7
+ movi a7,12
+ xor a7,a7,a3
+ wfr f12,a7
+ movi a7,13
+ xor a7,a7,a3
+ wfr f13,a7
+ movi a7,14
+ xor a7,a7,a3
+ wfr f14,a7
+ movi a7,15
+ xor a7,a7,a3
+ wfr f15,a7
+ rfr a7,f0
+ s32i a7,a5,16
+ rfr a7,f1
+ s32i a7,a5,20
+ rfr a7,f2
+ s32i a7,a5,24
+ rfr a7,f3
+ s32i a7,a5,28
+ rfr a7,f4
+ s32i a7,a5,32
+ rfr a7,f5
+ s32i a7,a5,36
+ rfr a7,f6
+ s32i a7,a5,40
+ rfr a7,f7
+ s32i a7,a5,44
+ rfr a7,f8
+ s32i a7,a5,48
+ rfr a7,f9
+ s32i a7,a5,52
+ rfr a7,f10
+ s32i a7,a5,56
+ rfr a7,f11
+ s32i a7,a5,60
+ rfr a7,f12
+ s32i a7,a5,64
+ rfr a7,f13
+ s32i a7,a5,68
+ rfr a7,f14
+ s32i a7,a5,72
+ rfr a7,f15
+ s32i a7,a5,76
+ rur.fcr a7
+ s32i a7,a5,80
+ rur.fsr a7
+ s32i a7,a5,84
+ addi a4,a4,4
+ addi a5,a5,88
+ addi a6,a6,-1
+ bnez a6,1b
+ rsr a3,ps
+ s32i a3,a1,80
+ rsr a3,vecbase
+ s32i a3,a1,84
+ movi a3,0
+ wsr a3,cpenable
+ movi a3,fpu_vectors
+ wsr a3,vecbase
+ rsr a3,ps
+ movi a7,-49
+ and a3,a3,a7
+ wsr a3,ps
+ rsync
+ movi a7,-1
+ rur.fcr a3
+ s32i a7,a5,0
+ addi a5,a5,4
+ movi a7,-1
+ rur.fsr a3
+ s32i a7,a5,0
+ addi a5,a5,4
+ movi a7,-1
+ wur.fcr a3
+ s32i a7,a5,0
+ addi a5,a5,4
+ movi a7,-1
+ wur.fsr a3
+ s32i a7,a5,0
+ addi a5,a5,4
+ movi a7,-1
+ rfr a3,f15
+ s32i a7,a5,0
+ addi a5,a5,4
+ movi a7,-1
+ wfr f15,a3
+ s32i a7,a5,0
+ addi a5,a5,4
+ movi a3,1
+ wsr a3,cpenable
+ l32i a3,a1,84
+ wsr a3,vecbase
+ l32i a3,a1,80
+ wsr a3,ps
+ rsync
+ l32i a3,a1,0
+ wfr f0,a3
+ l32i a3,a1,4
+ wfr f1,a3
+ l32i a3,a1,8
+ wfr f2,a3
+ l32i a3,a1,12
+ wfr f3,a3
+ l32i a3,a1,16
+ wfr f4,a3
+ l32i a3,a1,20
+ wfr f5,a3
+ l32i a3,a1,24
+ wfr f6,a3
+ l32i a3,a1,28
+ wfr f7,a3
+ l32i a3,a1,32
+ wfr f8,a3
+ l32i a3,a1,36
+ wfr f9,a3
+ l32i a3,a1,40
+ wfr f10,a3
+ l32i a3,a1,44
+ wfr f11,a3
+ l32i a3,a1,48
+ wfr f12,a3
+ l32i a3,a1,52
+ wfr f13,a3
+ l32i a3,a1,56
+ wfr f14,a3
+ l32i a3,a1,60
+ wfr f15,a3
+ l32i a3,a1,64
+ wur.fcr a3
+ l32i a3,a1,68
+ wur.fsr a3
+ l32i a3,a1,72
+ wur.expstate a3
+ l32i a3,a1,76
+ wur.threadptr a3
+ l32i a3,a1,96
+ wsr a3,cpenable
+ rsync
+ movi a2,0
+ movi a3,0
+ retw.n
+.section .text.fpuvectors,"ax"
+.balign 1024
+fpu_vectors:
+.space 0x300
+.macro handler
+ rsr a7,exccause
+ rsr a8,epc1
+ addi a8,a8,3
+ wsr a8,epc1
+ rfe
+.endm
+handler
+.space 0x340-(.-fpu_vectors)
+handler
+.space 0x3c0-(.-fpu_vectors)
+handler

@@ -1,4 +1,4 @@
-import "../../lib/pc-virtio-net-state.flex";
+import "../../emulator/pc/virtio-net-state.flex";
 fn expect(ok) {if !ok {syscall(1,2,"network state assertion failed\n",31,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn be16(p,n) {store8(p,n>>8);store8(p+1,n);return 0;}
 fn setup(q,base) {store64(q+8,1);store64(q+16,base);store64(q+24,base+0x1000);store64(q+32,base+0x2000);return 0;}

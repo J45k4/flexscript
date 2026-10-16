@@ -1,4 +1,4 @@
-import "../../lib/pc-pit.flex";
+import "../../emulator/pc/pit.flex";
 fn expect(value) {if !value {syscall(60,1,0,0,0,0,0);}return 0;}
 fn wr(s,p,v,t) {let d=alloc(8);store8(d,v);let r=pc_pit_io(s,p,1,1,d,1,t);syscall(11,d,8,0,0,0,0);return r;}
 fn rd(s,p,t) {let d=alloc(8);expect(pc_pit_io(s,p,1,0,d,1,t)==1);let v=load8(d);syscall(11,d,8,0,0,0,0);return v;}

@@ -1,4 +1,4 @@
-import "../../lib/x86.flex";
+import "../../emulator/x86/cpu.flex";
 fn expect(v) {if !v {syscall(1,2,"MMX assertion failed\n",21,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn reset(c) {expect(x86_start(c,0x1000,32,0,0));store64(c+144,64);return 0;}
 fn main(argc,argv) {

@@ -1,0 +1,92 @@
+[
+  {
+    "path": "hal/esp32/include/hal/i2s_ll.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/hal/esp32/include/hal/i2s_ll.h",
+    "sha256": "84e89210bd8827bac817e460603922b9aeb4b894b6283bdc04c2df044476d985",
+    "size": 29842
+  },
+  {
+    "path": "hal/i2s_hal.c",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/hal/i2s_hal.c",
+    "sha256": "756755366ccd7638609f8ecb89427ee9eb87395a8d14bd9b6ed95a4cc773101a",
+    "size": 19009
+  },
+  {
+    "path": "soc/esp32/register/soc/i2s_struct.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/i2s_struct.h",
+    "sha256": "2ff255ef90b4703c8ace1ff2930e513f3f37fd51045b35e9de96fccbea496ab6",
+    "size": 13966
+  },
+  {
+    "path": "soc/esp32/register/soc/i2s_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/i2s_reg.h",
+    "sha256": "65f2b2b98da1d93408161de8bab616314a251701c3f3a9d9f91bb3a714275ed9",
+    "size": 59023
+  },
+  {
+    "path": "soc/esp32/i2s_periph.c",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/i2s_periph.c",
+    "sha256": "500d9e6f198e99af29bdecff137052c214a0cc84b0000bd58c86bcf71a7f3c75",
+    "size": 1492
+  },
+  {
+    "path": "esp_rom/esp32/include/esp32/rom/lldesc.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/esp_rom/esp32/include/esp32/rom/lldesc.h",
+    "sha256": "c6e8493155a87b822188b001be44912c1ee6fbe3e2730267ec122b2c317b7286",
+    "size": 4193
+  },
+  {
+    "path": "esp_rom/include/esp_rom_lldesc.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/esp_rom/include/esp_rom_lldesc.h",
+    "sha256": "7274ca9a33a64561a8eaa100d486ca7bb8f20f02db720678d2ec1d57aca04054",
+    "size": 1296
+  },
+  {
+    "path": "soc/esp32/register/soc/dport_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/dport_reg.h",
+    "sha256": "b56337324208a6cbb0a014a8cf98e880cb3ba55e4fe9a66475c777cd4efc1acb",
+    "size": 206728
+  },
+  {
+    "path": "soc/esp32/include/soc/gpio_sig_map.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/include/soc/gpio_sig_map.h",
+    "sha256": "40d374f73e03922ac13f4a9d7b6fa780f54e5afde7178ac5369bef4a41cc7c49",
+    "size": 12574
+  },
+  {
+    "path": "soc/esp32/include/soc/reg_base.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/include/soc/reg_base.h",
+    "sha256": "ae2fca720aed27ba11b2ed95e687e0f652da1067d9597afe62f09e6514fc9353",
+    "size": 3360
+  },
+  {
+    "path": "soc/esp32/register/soc/io_mux_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/io_mux_reg.h",
+    "sha256": "9e6189760a7dac469075221d073b81b600d98b02370aaf1e373879f1b6b60e22",
+    "size": 16885
+  },
+  {
+    "path": "soc/esp32/include/soc/interrupts.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/include/soc/interrupts.h",
+    "sha256": "11808d14e31035c44eeaee3f957d1079e8cb0d6f7a363b4b402d4c3c82747dac",
+    "size": 6893
+  },
+  {
+    "path": "soc/esp32/register/soc/gpio_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/gpio_reg.h",
+    "sha256": "c6b6aa65a6fce099d54de276f4e3d9cb99b1c8d8c3cb7536dcad274051ff0d24",
+    "size": 393209
+  },
+  {
+    "path": "esp_driver_i2s/include/driver/i2s_std.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/esp_driver_i2s/include/driver/i2s_std.h",
+    "sha256": "d1cfb91d33f08c1dcc9280a2aee65e6fc37d43fff71d95dfe7afeb02e7843b03",
+    "size": 16211
+  },
+  {
+    "path": "soc/esp32/register/soc/rtc_cntl_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/rtc_cntl_reg.h",
+    "sha256": "b45536f21715a3e2f505936ad8bbed7d8de0d2f2f36418c81f6c70e6714d710b",
+    "size": 97274
+  }
+]

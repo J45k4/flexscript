@@ -1,4 +1,4 @@
-import "../../lib/x86.flex";
+import "../../emulator/x86/cpu.flex";
 global check=0;
 // Each expect advances the check number, so CI failures name the failing step.
 fn expect(v) {

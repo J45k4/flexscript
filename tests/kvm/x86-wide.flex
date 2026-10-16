@@ -1,4 +1,4 @@
-import "../../lib/softvm.flex";
+import "../../emulator/backends/software.flex";
 fn expect(value) {if !value {syscall(1,2,"x86 wide arithmetic assertion failed\n",37,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main(argc,argv) {
     expect(argc==2 || argc==3);if argc==3 {x86_jit_enabled=1;x86_jit_min_fuel=0;x86_jit_threshold=1;}else {x86_jit_enabled=0;}let fd=syscall(2,load64(argv+8),0,0,0,0,0);expect(fd>=0);

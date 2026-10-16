@@ -1,0 +1,10 @@
+// Virtual GPIO21->GPIO19 wire. Runs real emitted driver and native ISR code.
+global sp_seen=0;
+global sp_bad=0;
+global sp_bus=0;
+fn sp_interrupt(source){let base=esp_spi_base(sp_bus);if source!=sp_source(sp_bus) || !(esp32_load32(base+sp_raw())&sp_done()){sp_bad=sp_bad+1;}else{sp_seen=sp_seen+1;sp_ack(base);}return 0;}
+fn sp_transfer(bus,tx,rx,count,seed){let i=0;while i<count{store8(tx+i,(i*37+seed)&255);store8(rx+i,0);i=i+1;}if esp_spi_transfer(bus,tx,rx,count,100000000)!=count{return 1;}i=0;while i<count{if load8(rx+i)!=((i*37+seed)&255){return 2;}i=i+1;}return 0;}
+fn main(){let tx=alloc(256);let rx=alloc(256);let bus=2;let total=0;while bus<=3{let mode=0;while mode<4{let step=0;let hz=100000;while step<4{let actual=esp_spi_init(bus,18,21,19,hz,mode);if actual<=0 || actual>hz{return 1;}if sp_transfer(bus,tx,rx,1,mode+bus) || sp_transfer(bus,tx,rx,63,mode+7) || sp_transfer(bus,tx,rx,64,mode+13) || sp_transfer(bus,tx,rx,65,mode+29) || sp_transfer(bus,tx,rx,130,mode+31){return 2;}total=total+5;
+ if esp_spi_transfer(bus,tx,0,17,100000000)!=17 || esp_spi_transfer(bus,0,rx,17,100000000)!=17{return 3;}let i=0;while i<17{if load8(rx+i){return 4;}i=i+1;}if sp_deinit(bus){return 5;}step=step+1;if step==1{hz=1000000;}else if step==2{hz=5000000;}else{hz=20000000;}}
+ let irq_rate=esp_spi_init(bus,18,21,19,100000,mode);if irq_rate<=0 || irq_rate>100000{return 6;}sp_bus=bus;let base=esp_spi_base(bus);if esp_irq_attach(sp_source(bus),esp32_callback(sp_interrupt)){return 7;}let old=sp_seen;esp32_store32(base+sp_fifo(),0x12345696);sp_length(base,7);sp_apply(base);let ps=esp32_irq_save();sp_arm(base);esp32_store32(base,sp_usr());while sp_seen==old{esp32_wait();esp32_irq_save();}esp32_irq_restore(ps);if sp_seen!=old+1 || sp_bad || esp32_load32(base+sp_fifo())!=0x12345696{return 8;}sp_disarm(base);esp_irq_detach(sp_source(bus));if sp_deinit(bus){return 9;}mode=mode+1;}bus=bus+1;}
+ if total!=160 || sp_seen!=8 || sp_bad{return 10;}esp_uart_write("PASS: SPI2/3 modes, FIFO chunks, TX/RX and8 native WAITI completion callbacks\r\n");esp_uart_flush();return 0;}

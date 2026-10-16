@@ -1,4 +1,4 @@
-import "../lib/softvm.flex";
+import "../emulator/backends/software.flex";
 // Execution-only nanoseconds for a 200,000-iteration PADDQ/PSRLDQ/SUB/JNE loop.
 // This is not a whole-boot or hardware KVM benchmark.
 fn now(p) {syscall(228,1,p,0,0,0,0);return load64(p)*1000000000+load64(p+8);}

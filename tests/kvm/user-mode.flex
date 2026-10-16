@@ -1,4 +1,4 @@
-import "../../lib/x86.flex";
+import "../../emulator/x86/cpu.flex";
 fn expect(v) {if !v {syscall(1,2,"user mode assertion failed\n",27,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn digit(v) {if v>=97 {return v-87;}return v-48;}
 fn code(p,text) {let i=0;while load8(text+i*2) {store8(p+i,digit(load8(text+i*2))*16+digit(load8(text+i*2+1)));i=i+1;}return i;}

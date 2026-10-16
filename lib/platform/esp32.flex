@@ -26,10 +26,14 @@ fn esp_gpio_mux_address(pin) {
     return 0x3ff49000+(a<<4)+b;
 }
 fn esp_gpio_hex(text,offset) {let a=load8(text+offset)-48;let b=load8(text+offset+1)-48;if a>9 {a=a-39;}if b>9 {b=b-39;}return (a<<4)|b;}
+fn esp_gpio_rtc_descriptor(pin) {
+    let pads="981300009c13000094130000000000000000000000000000a813a413ac13a01300000000000000000000000000000000000084118811b01300000000000000008c118c12801d801c7c1b7c1a7c197c18";
+    return esp_gpio_hex(pads,pin*4)|(esp_gpio_hex(pads,pin*4+2)<<8);
+}
 fn esp_gpio_mux(pin) {
     let mux=esp_gpio_mux_address(pin);if mux<0 {return mux;}
-    let pads="981300009c13000094130000000000000000000000000000a813a413ac13a01300000000000000000000000000000000000084118811b01300000000000000008c118c12801d801c7c1b7c1a7c197c18";let reg=esp_gpio_hex(pads,pin*4);
-    if reg {let address=0x3ff48400+reg;let mask=1<<esp_gpio_hex(pads,pin*4+2);esp32_store32(address,esp32_load32(address)&~mask);}
+    let descriptor=esp_gpio_rtc_descriptor(pin);let reg=descriptor&255;
+    if reg {let address=0x3ff48400+reg;let mask=1<<(descriptor>>8);esp32_store32(address,esp32_load32(address)&~mask);}
     esp32_store32(mux,(esp32_load32(mux)&~0x7000)|0x2000|0x200);return 0;
 }
 fn esp_gpio_output(pin) {
@@ -45,8 +49,12 @@ fn esp_gpio_input(pin,pull) {
     let off=0x3ff44028;if pin>=32 {off=0x3ff44034;}esp32_store32(off,1<<(pin&31));return esp_gpio_pull(pin,pull);
 }
 fn esp_gpio_pull(pin,pull) {
-    if !esp_gpio_valid(pin) || pull<0 || pull>2 {return -22;}if pin>=34 && pull {return -22;}let address=esp_gpio_mux_address(pin);let mask=0;if pull==1 {mask=256;}else if pull==2 {mask=128;}
-    esp32_store32(address,(esp32_load32(address)&~384)|mask);return 0;
+    if !esp_gpio_valid(pin) || pull<0 || pull>2 {return -22;}if pin>=34 {if pull {return -22;}return 0;}let address=esp_gpio_mux_address(pin);let mask=0;if pull==1 {mask=256;}else if pull==2 {mask=128;}
+    // RTC-capable ESP32 pads share their pull circuitry with RTC IO, even in
+    // digital mode. GPIO32/33 share a register and have different pull fields.
+    let reg=esp_gpio_rtc_descriptor(pin)&255;let bits=384;
+    if reg {address=0x3ff48400+reg;let shift=27;if pin==32 {shift=22;}bits=3<<shift;mask=0;if pull==1 {mask=1<<shift;}else if pull==2 {mask=2<<shift;}}
+    let ps=esp32_irq_save();esp32_store32(address,(esp32_load32(address)&~bits)|mask);esp32_irq_restore(ps);return 0;
 }
 fn esp_gpio_read(pin) {if !esp_gpio_valid(pin) {return -22;}let address=0x3ff4403c;if pin>=32 {address=address+4;}return (esp32_load32(address)>>(pin&31))&1;}
 fn esp_gpio_open_drain(pin,enable) {

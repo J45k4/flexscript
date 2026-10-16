@@ -1,4 +1,4 @@
-import "../../lib/pc-pic.flex";
+import "../../emulator/pc/pic.flex";
 fn expect(v) {if !v {syscall(60,1,0,0,0,0,0);}return 0;}
 fn wr(s,p,v) {let d=alloc(8);store8(d,v);let r=pc_pic_io(s,p,1,1,d,1);syscall(11,d,8,0,0,0,0);return r;}
 fn rd(s,p) {let d=alloc(8);expect(pc_pic_io(s,p,1,0,d,1)==1);let v=load8(d);syscall(11,d,8,0,0,0,0);return v;}

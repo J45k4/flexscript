@@ -1,4 +1,4 @@
-import "../../lib/softvm.flex";
+import "../../emulator/backends/software.flex";
 global vr_case=0;global vr_point=0;
 fn number(n) {let p=alloc(32);let i=31;store8(p+i,10);while n || i==31 {i=i-1;store8(p+i,48+n%10);n=n/10;}syscall(1,2,p+i,32-i,0,0,0);return 0;}
 fn expect(ok) {if !ok {number(vr_case);number(vr_point);syscall(1,2,"vector register assertion failed\n",33,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}

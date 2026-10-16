@@ -1,4 +1,4 @@
-import "../../lib/pc-virtio-gpu-state.flex";
+import "../../emulator/pc/virtio-gpu-state.flex";
 global stage=0;
 fn expect(ok) {if !ok {syscall(1,2,"GPU state assertion failed\n",27,0,0,0);let p=alloc(8);store8(p,48+stage);store8(p+1,10);syscall(1,2,p,2,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn header(p,kind) {kvm_zero(p,1024);kvm_put32(p,kind);return 0;}

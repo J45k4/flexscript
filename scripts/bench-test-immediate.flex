@@ -1,4 +1,4 @@
-import "../lib/softvm.flex";
+import "../emulator/backends/software.flex";
 // Three execution-only wall-time samples (nanoseconds), each running the same
 // 200,000-iteration TEST/SUB/JNE loop. Not a full-system or KVM benchmark.
 fn now(p) {syscall(228,1,p,0,0,0,0);return load64(p)*1000000000+load64(p+8);}

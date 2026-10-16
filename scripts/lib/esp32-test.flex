@@ -7,6 +7,7 @@ global te_work=0;
 global te_fixture=0;
 global te_binary=0;
 global te_qemu=0;
+global te_bios=0;
 global te_runs=0;
 global te_sd=0;
 global te_psram=0;
@@ -47,6 +48,7 @@ fn te_run(image,trapped,expected) {
     let machine="esp32s3";if te_legacy {machine="esp32";}let args=h_args(te_qemu,"-M",machine,"-display","none","-monitor");h_add(args,"none");
     h_add(args,"-qmp");h_add(args,"stdio");h_add(args,"-serial");h_add(args,h_cat("file:",uart));
     h_add(args,"-drive");h_add(args,h_cat3("file=",flash,",if=mtd,format=raw"));h_add(args,"-nic");h_add(args,"none");h_add(args,"-no-reboot");
+    if te_bios {h_add(args,"-L");h_add(args,te_bios);}
     if te_sd {h_add(args,"-drive");h_add(args,h_cat3("file=",te_sd,",if=sd,format=raw"));}
     if te_psram {h_add(args,"-m");h_add(args,"8M");}
     let process=h_spawn(args,0,0);h_until(process,"\"QMP\"",5000);

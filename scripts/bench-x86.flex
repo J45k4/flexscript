@@ -1,5 +1,5 @@
 import "lib/build.flex";
-import "../lib/softvm.flex";
+import "../emulator/backends/software.flex";
 fn bx_now() {let t=h_take(16);h_assert(syscall(228,1,t,0,0,0,0)==0,"clock_gettime");return load64(t)*1000000000+load64(t+8);}
 fn bx_median(a,b,c) {if (a<=b && b<=c) || (c<=b && b<=a) {return b;}if (a<=c && c<=b) || (b<=c && c<=a) {return c;}return a;}
 // Pin this benchmark process to one permitted CPU so native and emulated

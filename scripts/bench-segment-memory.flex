@@ -1,4 +1,4 @@
-import "../lib/softvm.flex";
+import "../emulator/backends/software.flex";
 // Execution-only nanoseconds for 200,000 TLS loads and additions.
 // The measured path is FS-relative ADD/SUB/JNE, not a full-system boot.
 fn now(p) {syscall(228,1,p,0,0,0,0);return load64(p)*1000000000+load64(p+8);}

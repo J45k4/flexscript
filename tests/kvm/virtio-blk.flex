@@ -1,5 +1,5 @@
-import "../../lib/pc-virtio-blk.flex";
-import "../../lib/pc-pci.flex";
+import "../../emulator/pc/virtio-blk.flex";
+import "../../emulator/pc/pci.flex";
 fn expect(v) {if !v {syscall(1,2,"virtio block assertion failed\n",30,0,0,0);if vb_message {let n=0;while load8(vb_message+n) {n=n+1;}syscall(1,2,vb_message,n,0,0,0);}syscall(60,1,0,0,0,0,0);}return 0;}
 fn reg(s,off,width,value) {let p=alloc(8);store64(p,value);let r=vb_io(s,load64(s+32)+off,width,1,p,1);syscall(11,p,8,0,0,0,0);return r;}
 fn desc(ram,index,address,length,flags,next) {let d=ram+0x1000+index*16;store64(d,address);kvm_put32(d+8,length);vb_put16(d+12,flags);vb_put16(d+14,next);return 0;}

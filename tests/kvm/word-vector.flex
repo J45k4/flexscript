@@ -1,4 +1,4 @@
-import "../../lib/x86.flex";
+import "../../emulator/x86/cpu.flex";
 fn expect(v) {if !v {syscall(1,2,"vector word assertion failed\n",29,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn reset(c,ram,text) {expect(x86_start(c,0x1000,32,0,0));store64(c+144,64);store64(c+168,512);store64(c+136,0x8d7);xf_hex(ram+0x1000,text);return 0;}
 fn main(argc,argv) {

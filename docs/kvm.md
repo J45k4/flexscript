@@ -1,6 +1,6 @@
 # Linux KVM virtual machines
 
-`lib/kvm.flex` implements a Linux x86-64 virtual machine monitor interface in
+`emulator/backends/kvm.flex` implements a Linux x86-64 virtual machine monitor interface in
 Flexscript, using `/dev/kvm` directly. Linux KVM executes guest CPU instructions;
 Flexscript owns RAM, CPU setup, image loading and userspace device emulation.
 The monitor does not launch or link QEMU. No compiler changes or new language

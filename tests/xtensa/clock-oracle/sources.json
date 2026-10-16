@@ -1,0 +1,56 @@
+[
+  {
+    "name": "sdk-rtc-clk.c",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/esp_hw_support/port/esp32/rtc_clk.c",
+    "bytes": 23095,
+    "sha256": "f5acad2a257c0b1abb5ff63890c4ae1c8579bb919da7ed30d24e40a02e41facb"
+  },
+  {
+    "name": "sdk-apb-ctrl-reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/apb_ctrl_reg.h",
+    "bytes": 14542,
+    "sha256": "04ad69fee18c0a93bf8966ed1a28f7f7e28b8efbb6014c3687a5883ef3d69a67"
+  },
+  {
+    "name": "sdk-dport-reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/dport_reg.h",
+    "bytes": 206728,
+    "sha256": "b56337324208a6cbb0a014a8cf98e880cb3ba55e4fe9a66475c777cd4efc1acb"
+  },
+  {
+    "name": "qemu-rtc-cntl.c",
+    "url": "https://raw.githubusercontent.com/espressif/qemu/esp-develop-9.2.2-20260417/hw/misc/esp32_rtc_cntl.c",
+    "bytes": 8366,
+    "sha256": "a839d0e6ca47fa46431d36f3b1a1776737581930d0ee6980336001235038bf72"
+  },
+  {
+    "name": "sdk-clk-tree-ll.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/hal/esp32/include/hal/clk_tree_ll.h",
+    "bytes": 29766,
+    "sha256": "24b9013e4188f0a0e0fb54088ef33ddea74cfd58f34fac35c4ce206ea07f7981"
+  },
+  {
+    "name": "sdk-regi2c-bbpll.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/include/soc/regi2c_bbpll.h",
+    "bytes": 5711,
+    "sha256": "eec2777f56f0e51d93f690e5e7889af7c73f95c002c7c50fe9f0e5fa74bd9063"
+  },
+  {
+    "name": "qemu-reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/qemu/esp-develop-9.2.2-20260417/include/hw/misc/esp32_reg.h",
+    "bytes": 10731,
+    "sha256": "ca5a2a24a070d9548910082ae4f6445728356b6d1f0169e21c34d8f866f9a398"
+  },
+  {
+    "name": "soc-rtc-cntl-reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/rtc_cntl_reg.h",
+    "bytes": 97274,
+    "sha256": "b45536f21715a3e2f505936ad8bbed7d8de0d2f2f36418c81f6c70e6714d710b"
+  },
+  {
+    "name": "soc-reg-base.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/reg_base.h",
+    "bytes": 3360,
+    "sha256": "ae2fca720aed27ba11b2ed95e687e0f652da1067d9597afe62f09e6514fc9353"
+  }
+]

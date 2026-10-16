@@ -1,4 +1,4 @@
-import "../../lib/pc-virtio-net.flex";
+import "../../emulator/pc/virtio-net.flex";
 global stage=0;
 fn expect(ok) {if !ok {syscall(1,2,"virtio-net assertion failed at stage ",36,0,0,0);let p=alloc(8);store8(p,48+stage);store8(p+1,10);syscall(1,2,p,2,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn reg(s,off,width,value) {let p=alloc(8);store64(p,value);let r=vn_io(s,load64(s+16)+off,width,1,p,1);syscall(11,p,8,0,0,0,0);return r;}

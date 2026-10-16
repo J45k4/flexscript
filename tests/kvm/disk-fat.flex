@@ -1,4 +1,4 @@
-import "../../lib/disk-fat.flex";
+import "../../emulator/pc/disk-fat.flex";
 global phase=0;
 fn expect(v) {if !v {syscall(1,2,"FAT32 assertion failed in phase ",32,0,0,0);let p=alloc(2);store8(p,48+phase);store8(p+1,10);syscall(1,2,p,2,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn put16(p,n) {store8(p,n);store8(p+1,n>>8);return 0;}

@@ -1,5 +1,5 @@
-import "../../lib/pc-uart.flex";
-import "../../lib/pc-pic.flex";
+import "../../emulator/pc/uart.flex";
+import "../../emulator/pc/pic.flex";
 fn expect(v) {if !v {syscall(60,1,0,0,0,0,0);}return 0;}
 fn main() {
     let s=alloc(96);let pic=alloc(256);pc_uart_init(s);pc_pic_init(pic);

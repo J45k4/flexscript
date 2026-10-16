@@ -1,4 +1,4 @@
-import "../../lib/softvm.flex";
+import "../../emulator/backends/software.flex";
 global tj_seed=0x145624734;
 global tj_p=0;
 fn tj_expect(ok) {if !ok {syscall(1,2,"x86 JIT differential assertion failed\n",38,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}

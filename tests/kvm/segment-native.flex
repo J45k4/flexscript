@@ -1,4 +1,4 @@
-import "../../lib/softvm.flex";
+import "../../emulator/backends/software.flex";
 global sn_case=0;
 fn expect(v) {if !v {let p=alloc(32);let n=sn_case;let i=31;store8(p+i,10);while n || i==31 {i=i-1;store8(p+i,48+n%10);n=n/10;}syscall(1,2,p+i,32-i,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn program(k) {

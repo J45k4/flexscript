@@ -1,0 +1,80 @@
+[
+  {
+    "path": "hal/esp32/include/hal/ledc_ll.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/hal/esp32/include/hal/ledc_ll.h",
+    "sha256": "97afd8472c561a279e1d76f8504d51bcc83a357dfeaa1ec1316280570e408803",
+    "size": 20980
+  },
+  {
+    "path": "hal/esp32/include/hal/rmt_ll.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/hal/esp32/include/hal/rmt_ll.h",
+    "sha256": "8d8d0a7841664c7e0b4df60427a97ca60ef2e3bc0bca492a88bd7889b1be5be6",
+    "size": 21911
+  },
+  {
+    "path": "soc/esp32/register/soc/ledc_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/ledc_reg.h",
+    "sha256": "bfbc482cf5025725690f3482533cb46313f332cedd5274c9676bfb346164f444",
+    "size": 135333
+  },
+  {
+    "path": "soc/esp32/register/soc/ledc_struct.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/ledc_struct.h",
+    "sha256": "1111977ea876acebb6064b84381c401dbfd90219fb4f5914731c4c42eab7dfa0",
+    "size": 19911
+  },
+  {
+    "path": "soc/esp32/register/soc/rmt_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/rmt_reg.h",
+    "sha256": "e2d59e88b642ce202593a359a2a3a5b1a186db0a546e8047291917f457bb0308",
+    "size": 129520
+  },
+  {
+    "path": "soc/esp32/register/soc/rmt_struct.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/rmt_struct.h",
+    "sha256": "38c2b4bf5999a9ed96136d9fd42a87d5987ed20ca3d1d8752988e5069a9f532e",
+    "size": 24166
+  },
+  {
+    "path": "soc/esp32/register/soc/reg_base.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/reg_base.h",
+    "sha256": "ae2fca720aed27ba11b2ed95e687e0f652da1067d9597afe62f09e6514fc9353",
+    "size": 3360
+  },
+  {
+    "path": "soc/esp32/include/soc/gpio_sig_map.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/include/soc/gpio_sig_map.h",
+    "sha256": "40d374f73e03922ac13f4a9d7b6fa780f54e5afde7178ac5369bef4a41cc7c49",
+    "size": 12574
+  },
+  {
+    "path": "soc/esp32/ld/esp32.peripherals.ld",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/ld/esp32.peripherals.ld",
+    "sha256": "66872fcfebd015b6d297fafa6741d5aaba68683f654804d95ca29245f8c157db",
+    "size": 1272
+  },
+  {
+    "path": "soc/esp32/register/soc/dport_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/dport_reg.h",
+    "sha256": "b56337324208a6cbb0a014a8cf98e880cb3ba55e4fe9a66475c777cd4efc1acb",
+    "size": 206728
+  },
+  {
+    "path": "hal/include/hal/rmt_types.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/hal/include/hal/rmt_types.h",
+    "sha256": "4fe998b7b6ef338843fb25cd66ef089ffc3b9fe77d2df94c822275550821d18e",
+    "size": 1017
+  },
+  {
+    "path": "driver/deprecated/rmt_legacy.c",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/driver/deprecated/rmt_legacy.c",
+    "sha256": "8c3537df24f0e3f09d1fcc4d72ad32885139539c81eb13b0698dfeb2d8653555",
+    "size": 58944
+  },
+  {
+    "path": "esp_driver_ledc/src/ledc.c",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/esp_driver_ledc/src/ledc.c",
+    "sha256": "aeeacb0baeca388595b8ca8e04c4d131d854d43c989492b382d466ff42ffa596",
+    "size": 85216
+  }
+]

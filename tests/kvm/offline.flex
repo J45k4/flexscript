@@ -1,4 +1,4 @@
-import "../../lib/kvm-boot.flex";
+import "../../emulator/pc/multiboot.flex";
 fn expect(condition) {if !condition {syscall(1,2,"KVM offline assertion failed\n",29,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main() {
     let ram=alloc(67108864);let image=alloc(4096);expect(ram>0 && image>0);
