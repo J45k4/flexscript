@@ -1,0 +1,13 @@
+plugin visuals.atmosphere_vertex v1 {}
+shader vertex {
+    input index: u32 builtin(vertex_index)
+    output position: vec4f builtin(position)
+    output uv: vec2f location(0)
+    fn main() -> void {
+        let p = vec2f(-1.0, -1.0)
+        if index == 1u { p = vec2f(3.0, -1.0) }
+        if index == 2u { p = vec2f(-1.0, 3.0) }
+        uv = p * 0.5 + vec2f(0.5)
+        position = vec4f(p, 1.0, 1.0)
+    }
+}

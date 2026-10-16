@@ -1,0 +1,120 @@
+plugin visuals.atmosphere_fragment v1 {}
+shader fragment {
+    input uv: vec2f location(0)
+    output pixel: vec4f location(0)
+    // Columns: camera right + aspect, up + tan(FOV/2), forward + seconds,
+    // engine sky tint + reserved. Reflection views supply mirrored axes.
+    uniform camera: mat4f binding(0)
+    // Viewer planetary up (xyz) and altitude in metres (w), command 33.
+    uniform environment: vec4f binding(1)
+    // Command 34: chart-frame sun direction scaled by direct-light strength
+    // (xyz) and planet radius in metres (w).
+    uniform sun: vec4f binding(2)
+    fn sky_ease(low: f32, high: f32, value: f32) -> f32 {
+        let u = clamp((value - low) / (high - low), 0.0, 1.0)
+        return u * u * (3.0 - 2.0 * u)
+    }
+    fn cloud_hash(p: vec2f) -> f32 {
+        let q = fract(vec3f(p.x, p.y, p.x) * 0.1031)
+        q = q + vec3f(dot(q, q.yzx + vec3f(33.33)))
+        return fract((q.x + q.y) * q.z)
+    }
+    fn cloud_noise(p: vec2f) -> f32 {
+        let i = floor(p)
+        let f = fract(p)
+        let w = f * f * (vec2f(3.0) - 2.0 * f)
+        return mix(mix(cloud_hash(i), cloud_hash(i + vec2f(1.0, 0.0)), w.x),
+            mix(cloud_hash(i + vec2f(0.0, 1.0)), cloud_hash(i + vec2f(1.0)), w.x), w.y)
+    }
+    // Angular cloud-layer coordinates of a world ray (fixed in the world).
+    fn cloud_point(ray: vec3f, up: vec3f, seconds: f32) -> vec2f {
+        let vertical = dot(ray, up)
+        return ray.xz * (2.1 / max(vertical, 0.04)) + vec2f(seconds * 0.006, seconds * 0.002)
+    }
+    fn main() -> void {
+        let right = camera * vec4f(1.0, 0.0, 0.0, 0.0)
+        let up = camera * vec4f(0.0, 1.0, 0.0, 0.0)
+        let forward = camera * vec4f(0.0, 0.0, 1.0, 0.0)
+        let tint = camera * vec4f(0.0, 0.0, 0.0, 1.0)
+        let screen = (uv * 2.0 - vec2f(1.0)) * up.w
+        let ray = normalize(forward.xyz + right.xyz * screen.x * right.w + up.xyz * screen.y)
+        let zenith = environment.xyz
+        let light = normalize(sun.xyz + vec3f(0.0, 0.000001, 0.0))
+        let strength = length(sun.xyz)
+        let vertical = dot(ray, zenith)
+        let height = clamp(vertical, 0.0, 1.0)
+        // Sun elevation at the viewer decides day, golden hour, twilight, night.
+        let elevation = dot(light, zenith)
+        let high = max(elevation, 0.0)
+        let air = 1.0 / (high + 0.025 * pow(2.718281828, -11.0 * high))
+        let transmit = pow(vec3f(2.718281828), vec3f(-0.034, -0.062, -0.125) * air)
+        let sun_tint = transmit * (1.0 / max(transmit.x, 0.001))
+        let day = sqrt(sky_ease(-0.18, 0.22, elevation))
+        let dusk = 1.0 - sky_ease(-0.04, 0.22, elevation)
+        let alignment = max(dot(ray, light), 0.0)
+        // Day gradient, sunset palette (warm toward the sun's azimuth, pink
+        // and violet away from it), and the dark night sky.
+        let sky = mix(vec3f(0.83, 0.85, 0.80), vec3f(0.37, 0.64, 0.86), sky_ease(0.0, 0.40, height))
+        sky = mix(sky, vec3f(0.17, 0.39, 0.68), sky_ease(0.20, 1.0, height))
+        let level = normalize(ray - zenith * vertical + vec3f(0.00001))
+        let azimuth = normalize(light - zenith * elevation + vec3f(0.00001))
+        let toward = dot(level, azimuth) * 0.5 + 0.5
+        let sunset = mix(mix(vec3f(0.42, 0.36, 0.48), vec3f(1.0, 0.50, 0.20), toward * toward), vec3f(0.10, 0.17, 0.36), clamp(height * 3.2, 0.0, 1.0))
+        let night = mix(vec3f(0.035, 0.045, 0.075), vec3f(0.008, 0.012, 0.03), sky_ease(0.0, 0.5, height))
+        sky = mix(night, mix(sky, sunset, dusk), day)
+        // Mie halo, widened and reddened by a low sun; it lingers in twilight.
+        let twilight = clamp((elevation + 0.10) * 10.0, 0.0, 1.0)
+        let halo = (pow(alignment, 12.0) * 0.22 + pow(alignment, 96.0) * 0.22) * (1.0 + dusk * 0.8) * twilight * strength
+        sky = sky + vec3f(1.0, 0.78, 0.46) * sun_tint * halo
+        // Sun disc with limb darkening and a horizon cut-off.
+        let above = sky_ease(-0.012, 0.0, vertical)
+        let disc = sky_ease(0.99965, 0.99988, alignment) * above
+        let limb = 0.78 + 0.22 * sky_ease(0.99975, 0.99996, alignment)
+        sky = mix(sky, min(vec3f(1.0, 0.97, 0.85) * sun_tint * (1.6 * limb), vec3f(1.0)), disc * mix(0.35, 1.0, strength))
+        // Full moon opposite the sun, and stars once the sky is dark.
+        let lunar = max(-dot(ray, light), 0.0)
+        let moon_up = clamp((-elevation - 0.02) * 10.0, 0.0, 1.0)
+        sky = sky + vec3f(0.10, 0.11, 0.14) * pow(lunar, 220.0) * moon_up
+        sky = mix(sky, vec3f(0.86, 0.88, 0.93), sky_ease(0.99978, 0.99992, lunar) * above * moon_up)
+        let star_cell = floor(ray.xz * (260.0 / (abs(ray.y) + 1.0)))
+        let star = clamp((cloud_hash(star_cell) - 0.9965) * 300.0, 0.0, 1.0) * (1.0 - day) * (1.0 - day) * (1.0 - day) * above
+        sky = sky + vec3f(0.75, 0.78, 0.85) * star * (0.5 + 0.5 * cloud_hash(star_cell + vec2f(7.0)))
+        // Three fixed octaves; no ray march, texture upload or extra draw pass.
+        // Angular coordinates stay fixed in the world as the camera turns.
+        let p = cloud_point(ray, zenith, forward.w)
+        let low = cloud_noise(p)
+        let cloud = low * 0.62 + cloud_noise(p * 2.03 + vec2f(5.7)) * 0.28 + cloud_noise(p * 4.11) * 0.10
+        let mask = sky_ease(0.48, 0.69, cloud) * sky_ease(0.09, 0.25, vertical) * 0.88
+        // Cloud base lit by the sky; tops lit by the (coloured) sun or moon.
+        let ambient = mix(vec3f(0.05, 0.06, 0.085), mix(vec3f(0.57, 0.66, 0.76), vec3f(0.45, 0.40, 0.50), dusk), day)
+        let cloud_tint = mix(sun_tint, vec3f(1.0), sky_ease(0.05, 0.5, elevation) * 0.75)
+        let lit = mix(ambient * 1.1 + vec3f(0.18, 0.20, 0.25) * moon_up, vec3f(0.99, 0.97, 0.91) * cloud_tint, clamp((elevation + 0.06) * 12.0, 0.0, 1.0) * mix(0.55, 1.0, strength))
+        let vapor = mix(ambient, lit, clamp(low * 1.4 + alignment * 0.12 + alignment * alignment * dusk * 0.5, 0.0, 1.0) * mix(1.0, 0.3 + 0.7 * toward, dusk))
+        sky = mix(sky, vapor, mask)
+        // Crepuscular rays (analytic, single pass): angular shafts around a
+        // low sun, broken where clouds lie between the ray and the sun.
+        let beam = dusk * twilight * pow(alignment, 3.0) * strength
+        if beam > 0.002 {
+            let side = normalize(cross(light, zenith) + vec3f(0.00001, 0.0, 0.0))
+            let across = ray - light * dot(ray, light)
+            let angle = normalize(vec2f(dot(across, side), dot(across, cross(light, side))) + vec2f(0.00001))
+            let shafts = 0.55 + 0.45 * sin(dot(angle, vec2f(17.0, 5.0)) + sin(dot(angle, vec2f(-7.0, 13.0)) + forward.w * 0.05) * 1.7)
+            let open = 0.0
+            for k in 1..5 {
+                let step_ray = normalize(mix(ray, light, f32(k) * 0.16))
+                let shade = sky_ease(0.48, 0.69, cloud_noise(cloud_point(step_ray, zenith, forward.w)) * 0.9 + 0.05) * sky_ease(0.09, 0.25, dot(step_ray, zenith))
+                open = open + (1.0 - shade) * 0.25
+            }
+            sky = sky + vec3f(1.0, 0.80, 0.52) * sun_tint * beam * (0.035 + 0.16 * shafts * open)
+        }
+        // Under the sea (T67; negative viewer altitude on the planet) the
+        // background is water: the bright surface overhead (its underside
+        // is not drawn), fading to the dark depths below.
+        if environment.w < 0.0 and sun.w > 0.0 {
+            let fill = mix(vec3f(0.02, 0.03, 0.05), vec3f(0.55, 0.70, 0.80), day) * pow(2.718281828, environment.w * 0.04)
+            let window = sky_ease(-0.3, 0.9, vertical)
+            sky = mix(vec3f(0.01, 0.05, 0.07), vec3f(0.16, 0.42, 0.46) + vec3f(0.5, 0.45, 0.3) * pow(alignment, 24.0) * strength, window) * fill
+        }
+        pixel = vec4f(clamp(sky, vec3f(0.0), vec3f(1.0)) * tint.xyz, 1.0)
+    }
+}

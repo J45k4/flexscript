@@ -1,0 +1,2 @@
+plugin demo.depth_fragment v1 {}
+shader fragment { fn main() -> void {} }

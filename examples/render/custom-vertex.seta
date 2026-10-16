@@ -1,0 +1,19 @@
+plugin demo.custom_vertex v1 {}
+shader vertex {
+    output clip_position: vec4f builtin(position)
+    input position: vec3f location(0)
+    input normal: vec3f location(1)
+    output world: vec3f location(0)
+    output surface_normal: vec3f location(1)
+    output shadow_position: vec4f location(2)
+    uniform camera: mat4f binding(0)
+    uniform model: mat4f binding(1)
+    uniform light_camera: mat4f binding(2)
+    fn main() -> void {
+        let p = model * vec4f(position, 1.0)
+        world = p.xyz
+        surface_normal = (model * vec4f(normal, 0.0)).xyz
+        shadow_position = light_camera * p
+        clip_position = camera * p
+    }
+}

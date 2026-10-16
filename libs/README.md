@@ -9,6 +9,8 @@ low-level adapters in `lib/` remain available and can be imported directly.
   with typed rows, transactions and programmatic queries.
 - [`physics`](physics/README.md): a portable rigid-body engine with shared native,
   WebAssembly, HIP and direct AMD RDNA solver source.
+- [`render`](render/README.md): native meshes, cameras, custom shader materials,
+  depth passes, textures and shared SetaScript water/atmosphere shaders.
 - [`monolith`](monolith/README.md): native web apps with keyed HTML/SSE updates,
   bundled browser assets, and optional SQLite persistence and schema tooling.
 
