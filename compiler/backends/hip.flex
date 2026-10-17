@@ -1,6 +1,6 @@
 // Word IR -> HIP source or gfx1201 HSA machine code through HIPRTC/LLVM.
 // GPU kernels use the same launch ABI and explicit intrinsics as PTX/SASS.
-import "../lib/hip-rtc.flex";
+import "../../lib/hip-rtc.flex";
 import "hip-builtins.flex";
 global hip_target=0;
 global hp_machine=0;

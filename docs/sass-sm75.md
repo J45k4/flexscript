@@ -12,7 +12,7 @@ build/sass-run build/direct.cubin
 
 No PTX, `ptxas`, `nvcc`, CUDA toolkit, external assembler/linker, instruction
 database or precompiled cubin template is used during compilation. The backend
-and container writer are implemented in `compiler/sass.flex`. Compiling needs
+and container writer are implemented in `compiler/backends/sass.flex`. Compiling needs
 no GPU or CUDA library. The existing CUDA Driver API adapter loads the resulting
 native instructions and dispatches them; execution still needs a compatible
 NVIDIA GPU and driver with `libcuda.so.1`. There is no PTX JIT step for this

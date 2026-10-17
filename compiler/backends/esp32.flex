@@ -4,6 +4,9 @@
 // Private call0 ABI: a2:a3 accumulator, a14 frame, a1 descending stack.
 // Code and data occupy disjoint physical SRAM despite the IRAM/DRAM aliases.
 global esp32_target=0;
+// Larger S3 RAM-only SDK profile; physical alias boundary remains explicit.
+global esp_s3_sdk=0;
+global esp_s3_xip=0;
 global esp_platform_path=0;
 global esp_platform_entry=-1;
 global esp_code_base=0x40380000;
@@ -19,6 +22,7 @@ global esp_fixups=0;
 global esp_fixup_count=0;
 global esp_trap=1024;
 global esp_dispatch=-1;
+global esp_irq_tail_index=-1;
 global esp_irq_entry=0;
 global esp_c_thunks=0;
 global esp_param_masks=0;
@@ -35,7 +39,15 @@ global esp_import_used=0;
 global esp_elf_names=0;
 global esp_elf_name_size=0;
 
-fn esp_ins(n) {if esp_flash && output_size+3>0x350000 {fail("ESP32 flash code exceeds 3 MiB");}if output_size+3>131072 && !esp_flash {fail("ESP32 machine code exceeds 128 KiB IRAM region");}emit(n);emit(n>>8);emit(n>>16);return 0;}
+fn esp_code_capacity() {if esp_s3_xip {return 98304;}if esp_s3_sdk {return 196608;}return 131072;}
+fn esp_native_heap_begin() {if esp_s3_xip {return 0x3fcb0000;}if esp_s3_sdk {return 0x3fcc4000;}if esp_btdm {return 0x3ffb6400;}return esp_data_base+65536;}
+fn esp_native_heap_end() {if esp_s3_xip {return 0x3fcb2000;}if esp_s3_sdk {return 0x3fcc6000;}if esp_btdm {return 0x3ffb8000;}return esp_data_base+98304;}
+
+// Logical output keeps its existing sparse flash offset; physical S3 IROM
+// is not a linear continuation of IRAM. Every materialized PC uses this map.
+fn esp_irom_base() {if esp_s3_xip {return 0x42000000;}return 0x400d0000;}
+fn esp_code_address(offset) {if esp_flash && offset>=0x50000 {return esp_irom_base()+offset-0x50000;}return esp_code_base+offset;}
+fn esp_ins(n) {if esp_flash && output_size+3>0x350000 {fail("ESP32 flash code exceeds 3 MiB");}if output_size+3>esp_code_capacity() && !esp_flash {if esp_s3_sdk {fail("ESP32-S3 SDK machine code exceeds 192 KiB IRAM region");}fail("ESP32 machine code exceeds 128 KiB IRAM region");}emit(n);emit(n>>8);emit(n>>16);return 0;}
 fn esp_rrr(op,d,s,t) {esp_ins(op|(d<<12)|(s<<8)|(t<<4));return 0;}
 fn esp_mov(d,s) {esp_rrr(0x200000,d,s,s);return 0;}
 fn esp_movi(r,n) {
@@ -71,15 +83,15 @@ fn esp_load(r,base,offset) {return esp_mem(0x2002,r,base,offset);}
 fn esp_store(r,base,offset) {return esp_mem(0x6002,r,base,offset);}
 fn esp_jump() {let at=output_size;esp_ins(6);return at;}
 fn esp_patch_jump(at,to) {
-    let delta=to-at-4;if delta< -131072 || delta>131071 {fail("Xtensa jump out of range");}
+    let delta=esp_code_address(to)-esp_code_address(at)-4;if delta< -131072 || delta>131071 {fail("Xtensa jump out of range");}
     let old=output_size;output_size=at;esp_ins(6|((delta&262143)<<6));output_size=old;return 0;
 }
-fn esp_j(to) {let delta=to-output_size-4;if delta< -131072 || delta>131071 {esp_const(13,esp_code_base+to);esp_ins(0x0000a0|(13<<8));return 0;}let at=esp_jump();esp_patch_jump(at,to);return 0;}
+fn esp_j(to) {let delta=esp_code_address(to)-esp_code_address(output_size)-4;if delta< -131072 || delta>131071 {esp_const(13,esp_code_address(to));esp_ins(0x0000a0|(13<<8));return 0;}let at=esp_jump();esp_patch_jump(at,to);return 0;}
 // Register comparison branches use signed 8-bit byte displacements.
 // 1=eq,9=ne,2=lt,10=ge,3=ltu,11=geu.
 fn esp_branch(kind,s,t) {let at=output_size;esp_ins(7|(s<<8)|(t<<4)|(kind<<12));return at;}
 fn esp_patch_branch(at,to) {
-    let delta=to-at-4;if delta< -128 || delta>127 {fail("Xtensa branch out of range");}
+    let delta=esp_code_address(to)-esp_code_address(at)-4;if delta< -128 || delta>127 {fail("Xtensa branch out of range");}
     store8(output+at+2,delta);return 0;
 }
 fn esp_cjump(kind,s,t) {let skip=esp_branch(kind^8,s,t);let at=esp_jump();esp_patch_branch(skip,output_size);return at;}
@@ -177,6 +189,7 @@ fn esp_binary(op) {
 }
 fn esp_pointer() {esp_movi(7,0);esp_guard(1,5,7);return 0;}
 fn esp_builtin(kind) {
+    if kind==49 {esp_movi(2,1);esp_movi(3,0);return 0;}
     if kind==48 {esp_sr_read(2,177);esp_movi(3,0);return 0;}
     if kind==47 {esp_imm(2,esp_data_base);esp_movi(3,0);return 0;}
     if kind==46 {return esp_context_switch();}
@@ -197,7 +210,7 @@ fn esp_builtin(kind) {
         esp_imm(8,esp_data_base+16);esp_load(9,8,0);esp_movi(7,0);esp_guard(1,9,7);
         esp_pop(2,3);esp_movi(7,0);let badhi=esp_cjump(9,3,7);let zero=esp_cjump(1,2,7);
         esp_imm(8,32768);let large=esp_cjump(3,8,2);esp_addi(6,2,7);esp_imm(8,-8);esp_rrr(0x100000,6,6,8);
-        esp_imm(8,esp_data_base);esp_load(4,8,0);esp_rrr(0x800000,6,4,6);let limit=esp_data_base+98304;if esp_btdm {limit=0x3ffb8000;}esp_imm(9,limit);
+        esp_imm(8,esp_data_base);esp_load(4,8,0);esp_rrr(0x800000,6,4,6);let limit=esp_native_heap_end();esp_imm(9,limit);
         let full=esp_cjump(3,9,6);esp_store(6,8,0);esp_mov(2,4);esp_movi(3,0);esp_movi(7,0);
         let loop=output_size;let done=esp_branch(11,4,6);esp_ins(0x4002|(7<<4)|(4<<8));esp_addi(4,4,1);esp_j(loop);
         esp_patch_branch(done,output_size);let finish=esp_jump();
@@ -234,7 +247,7 @@ fn esp_reachable(main_index) {
                     if op==26 || op==27 {store64(esp_iram_functions+arg*8,1);}
                     if op==25 {store64(esp_import_used+arg*8,1);}
                     if op==8 || op==23 || op==24 || op==26 || op==27 {if !load64(esp_seen+arg*8) {store64(esp_seen+arg*8,1);}}
-                    else if op==17 {if arg>=44 && arg<=46 {esp_c_enabled=1;}if arg!=1 && arg!=2 && arg!=3 && arg!=4 && arg!=5 && (arg<30 || arg>48) {fail("ESP32 has no Linux syscalls or dynamic FFI; use a bare-metal platform adapter");}}
+                    else if op==17 {if arg>=44 && arg<=46 {esp_c_enabled=1;}if arg!=1 && arg!=2 && arg!=3 && arg!=4 && arg!=5 && (arg<30 || arg>49) {fail("ESP32 has no Linux syscalls or dynamic FFI; use a bare-metal platform adapter");}}
                     else if (op<1 || op>16) && (op<19 || op>22) && op!=23 && op!=24 && op!=25 && op!=26 && op!=27 {fail("unsupported ESP32 IR instruction");}
                     pc=pc+16;
                 }
@@ -367,7 +380,7 @@ fn esp_interrupt_entry() {
     i=0;while i<3 {esp_sr_read(2,i);esp_store(2,1,76+i*4);i=i+1;}
     if esp_c_enabled {
         esp_sr_read(2,224);esp_store(2,1,88);esp_movi(2,1);esp_sr_write(2,224);esp_ins(0x002010);
-        esp_user_read(2,232);esp_store(2,1,92);esp_user_read(2,233);esp_store(2,1,96);
+        esp_user_read(2,232);esp_store(2,1,92);esp_user_read(2,233);esp_store(2,1,96);esp_user_read(2,231);esp_store(2,1,100);
         i=0;while i<16 {esp_rfr(2,i);esp_store(2,1,104+i*4);i=i+1;}
     }
     // Preserve the interrupted C frame's 16-byte base-save area above us.
@@ -377,9 +390,17 @@ fn esp_interrupt_entry() {
     esp_sr_read(2,232);esp_movi(3,4);esp_guard(1,2,3);esp_stack_check();
     esp_sr_read(2,226);esp_sr_read(3,228);esp_rrr(0x100000,2,2,3);esp_movi(3,0);esp_push();esp_call(esp_dispatch);esp_addi(1,1,8);
     esp_imm(8,esp_data_base+16);esp_load(2,8,0);esp_addi(2,2,-1);esp_store(2,8,0);
+    // Optional scheduling tail: ISR callbacks have returned and this task's
+    // complete exception frame is still on its own stack. The private ABI
+    // preserves it across a full context switch; RFE happens on resumption.
+    // Mask every interrupt before dropping into ordinary task scheduling.
+    if esp_irq_tail_index>=0 {
+        esp_ins(0x006f20);esp_ins(0x002010);esp_load(2,1,68);esp_movi(3,0);esp_push();esp_call(esp_irq_tail_index);esp_addi(1,1,8);
+        esp_ins(0x006f20);esp_ins(0x002010);
+    }
     if esp_c_enabled {
         i=0;while i<16 {esp_load(2,1,104+i*4);esp_wfr(i,2);i=i+1;}
-        esp_load(2,1,92);esp_user_write(2,232);esp_load(2,1,96);esp_user_write(2,233);esp_load(2,1,88);esp_sr_write(2,224);esp_ins(0x002010);
+        esp_load(2,1,92);esp_user_write(2,232);esp_load(2,1,96);esp_user_write(2,233);esp_load(2,1,100);esp_user_write(2,231);esp_load(2,1,88);esp_sr_write(2,224);esp_ins(0x002010);
     }
     esp_load(2,1,64);esp_sr_write(2,177);esp_load(2,1,72);esp_sr_write(2,3);
     i=0;while i<3 {esp_load(2,1,76+i*4);esp_sr_write(2,i);i=i+1;}
@@ -492,7 +513,7 @@ fn esp_start(main_index) {
     esp_write_register(0x6001f064,0x50d83aa1);esp_write_register(0x6001f048,0);esp_write_register(0x6001f064,0);
     esp_write_register(0x60020064,0x50d83aa1);esp_write_register(0x60020048,0);esp_write_register(0x60020064,0);
     }
-    esp_write_register(esp_data_base+20,esp_stack_floor);let native_heap=esp_data_base+65536;if esp_btdm {native_heap=0x3ffb6400;}esp_write_register(esp_data_base,native_heap);if esp_flash {esp_call(find(functions,function_count,"esp_xip_enable",14));esp_rrr(0x200000,6,2,3);esp_movi(7,0);esp_guard(1,6,7);}if esp_platform_entry>=0 {esp_call(esp_platform_entry);esp_rrr(0x200000,6,2,3);esp_movi(7,0);esp_guard(1,6,7);}esp_call(main_index);
+    esp_write_register(esp_data_base+20,esp_stack_floor);let native_heap=esp_native_heap_begin();esp_write_register(esp_data_base,native_heap);if esp_flash {esp_call(find(functions,function_count,"esp_xip_enable",14));esp_rrr(0x200000,6,2,3);esp_movi(7,0);esp_guard(1,6,7);}if esp_platform_entry>=0 {esp_call(esp_platform_entry);esp_rrr(0x200000,6,2,3);esp_movi(7,0);esp_guard(1,6,7);}esp_call(main_index);
     esp_imm(8,esp_data_base+8);esp_store(2,8,0);esp_store(3,8,4);
     esp_write_register(esp_data_base+4,0x444f4e45);esp_j(output_size);
     let i=0;while i<1024 {esp_patch_jump(i,esp_trap);i=i+64;}esp_window_vectors();return entry;
@@ -500,14 +521,20 @@ fn esp_start(main_index) {
 fn esp32_finish() {
     let main_index=find(functions,function_count,"main",4);
     if main_index<0 || load64(functions+main_index*32+24) {fail("ESP32 requires main() with no parameters");}
-    if vm_heap_used>65536 {fail("ESP32 static data exceeds 64 KiB");}if esp_radio && vm_heap_used>32768 {fail("ESP32 radio static data overlaps reserved ROM SRAM");}
+    if esp_s3_sdk && vm_heap_used>16384 {fail("ESP32-S3 SDK static data exceeds 16 KiB");}if vm_heap_used>65536 {fail("ESP32 static data exceeds 64 KiB");}if esp_radio && vm_heap_used>32768 {fail("ESP32 radio static data overlaps reserved ROM SRAM");}
     esp_ir=output;esp_ir_size=output_size;esp_seen=alloc(function_count*8);esp_c_thunks=alloc(function_count*8);esp_param_masks=alloc(function_count*8);esp_iram_functions=alloc(function_count*8);esp_map=alloc(esp_ir_size/2);
     esp_functions=alloc(function_count*8);esp_fixups=alloc(65536*16);esp_fixup_count=0;
     if esp_iram_functions<0 || esp_param_masks<0 || esp_c_thunks<0 || esp_seen<0 || esp_map<0 || esp_functions<0 || esp_fixups<0 {fail("cannot allocate ESP32 backend tables");}
     esp_import_used=alloc(esp_import_count*8+8);if esp_import_used<0 {fail("cannot allocate ESP32 import table");}
     if esp_platform_path {esp_platform_entry=find(functions,function_count,"esp_platform_init",17);if esp_platform_entry>=0 {if load64(functions+esp_platform_entry*32+24) {fail("esp_platform_init must take no parameters");}esp_reachable(esp_platform_entry);}}
-    esp_reachable(main_index);if esp_flash {let map=find(functions,function_count,"esp_xip_enable",14);if map<0 || load64(functions+map*32+24) {fail("esp32-xip-elf requires esp_xip_enable() from platform/esp32-xip.flex");}esp_reachable(map);}esp_dispatch=find(functions,function_count,"esp_irq_dispatch",16);
+    esp_reachable(main_index);if esp_flash {let map=find(functions,function_count,"esp_xip_enable",14);if map<0 || load64(functions+map*32+24) {if esp_s3_xip {fail("esp32s3-xip-elf requires esp_xip_enable() from platform/esp32s3-xip.flex");}fail("esp32-xip-elf requires esp_xip_enable() from platform/esp32-xip.flex");}esp_reachable(map);}esp_dispatch=find(functions,function_count,"esp_irq_dispatch",16);
     if esp_dispatch>=0 {if load64(functions+esp_dispatch*32+24)!=1 {fail("esp_irq_dispatch must take one parameter");}esp_reachable(esp_dispatch);}
+    esp_irq_tail_index=find(functions,function_count,"esp_irq_epilogue",16);
+    if esp_irq_tail_index>=0 {
+        if esp_dispatch<0 {fail("esp_irq_epilogue requires esp_irq_dispatch");}
+        if load64(functions+esp_irq_tail_index*32+24)!=1 {fail("esp_irq_epilogue must take one parameter");}
+        esp_reachable(esp_irq_tail_index);store64(esp_iram_functions+esp_irq_tail_index*8,1);
+    }
     esp_iram_closure();
     output=alloc(output_limit);if output<0 {fail("cannot allocate ESP32 machine code");}output_size=0;
     let entry=esp_start(main_index);if esp_dispatch>=0 {esp_interrupt_entry();esp_patch_jump(0x300,esp_irq_entry);esp_patch_jump(0x340,esp_irq_entry);}
@@ -515,12 +542,12 @@ fn esp32_finish() {
         flash_init=find(functions,function_count,"esp_xip_enable",14);esp_function(flash_init);
         i=0;while i<function_count {if load64(esp_seen+i*8) && load64(esp_iram_functions+i*8) && i!=flash_init {esp_function(i);}i=i+1;}
         i=0;while i<function_count {if load64(esp_c_thunks+i*8) && load64(esp_iram_functions+i*8) {esp_c_callback(i);}i=i+1;}
-        while output_size%4 {emit(0);}esp_iram_size=output_size;if esp_iram_size>131072 {fail("ESP32 SRAM callbacks exceed 128 KiB IRAM region");}while output_size<0x50000 {emit(0);}
+        while output_size%4 {emit(0);}esp_iram_size=output_size;if esp_iram_size>esp_code_capacity() {if esp_s3_xip {fail("ESP32-S3 cached SRAM callbacks exceed 96 KiB IRAM region");}fail("ESP32 SRAM callbacks exceed 128 KiB IRAM region");}while output_size<0x50000 {emit(0);}
     }
     i=0;while i<function_count {if load64(esp_seen+i*8) && i!=flash_init && (!esp_flash || !load64(esp_iram_functions+i*8)) {esp_function(i);}i=i+1;}
     i=0;while i<function_count {if load64(esp_c_thunks+i*8) && (!esp_flash || !load64(esp_iram_functions+i*8)) {esp_c_callback(i);}i=i+1;}
-    let code_size=output_size;if code_size>131072 && !esp_flash {fail("ESP32 machine code exceeds 128 KiB IRAM region");}
-    i=0;while i<esp_fixup_count {let site=esp_fixups+i*16;let encoded=load64(site);output_size=encoded&4294967295;let reg=(encoded>>32)&15;let table=esp_functions;if encoded>>40 {table=esp_c_thunks;}esp_const(reg,esp_code_base+load64(table+load64(site+8)*8));i=i+1;}
+    let code_size=output_size;if code_size>esp_code_capacity() && !esp_flash {if esp_s3_sdk {fail("ESP32-S3 SDK machine code exceeds 192 KiB IRAM region");}fail("ESP32 machine code exceeds 128 KiB IRAM region");}
+    i=0;while i<esp_fixup_count {let site=esp_fixups+i*16;let encoded=load64(site);output_size=encoded&4294967295;let reg=(encoded>>32)&15;let table=esp_functions;if encoded>>40 {table=esp_c_thunks;}esp_const(reg,esp_code_address(load64(table+load64(site+8)*8)));i=i+1;}
     output_size=code_size;i=0;
     while i<function_count {
         if load64(esp_seen+i*8) {
@@ -577,15 +604,15 @@ fn esp_elf_image(code,code_size,entry) {
     emit(127);emit(69);emit(76);emit(70);emit(1);emit(1);emit(1);while output_size<16 {emit(0);}
     esp_elf16(2);esp_elf16(94);emit32(1);emit32(esp_code_base+entry);emit32(52);emit32(sections_at);emit32(0);
     esp_elf16(52);esp_elf16(32);esp_elf16(nloads);esp_elf16(40);esp_elf16(nsections);esp_elf16(7);
-    i=0;while i<nloads {let base=esp_code_base;let offset=headers;let size=iram;let flags=5;if i==1 {base=esp_data_base;offset=data_at;size=vm_heap_used;flags=6;}if i==2 {base=0x400d0000;offset=flash_at;size=flash_size;}
+    i=0;while i<nloads {let base=esp_code_base;let offset=headers;let size=iram;let flags=5;if i==1 {base=esp_data_base;offset=data_at;size=vm_heap_used;flags=6;}if i==2 {base=esp_irom_base();offset=flash_at;size=flash_size;}
         emit32(1);emit32(offset);emit32(base);emit32(base);emit32(size);emit32(size);emit32(flags);emit32(4);i=i+1;}
     i=0;while i<iram {emit(load8(code+i));i=i+1;}i=0;while i<flash_size {emit(load8(code+0x50000+i));i=i+1;}i=0;while i<vm_heap_used {emit(load8(vm_heap+i));i=i+1;}
     // Record import symbol-name offsets and the in-DRAM pointer slots to patch.
     let import_offsets=alloc(esp_import_count*8+8);if import_offsets<0 {fail("cannot allocate ESP32 ELF import offsets");}
     i=0;while i<esp_import_count {if load64(esp_import_used+i*8) {let at=esp_elf_name(load64(esp_imports+i*24),load64(esp_imports+i*24+8));store64(import_offsets+i*8,at);emit32(at);emit32(esp_data_base+load64(esp_imports+i*24+16));}i=i+1;}
-    emit32(1);let chip=9;if esp32_target==2 {chip=0;}emit32(chip);emit32(esp_code_base);emit32(esp_data_base);emit32(esp_stack_floor);emit32(esp_stack_top);let hb=esp_data_base+65536;let he=esp_data_base+98304;if esp_btdm {hb=0x3ffb6400;he=0x3ffb8000;}emit32(hb);emit32(he);
+    emit32(1);let chip=9;if esp32_target==2 {chip=0;}emit32(chip);emit32(esp_code_base);emit32(esp_data_base);emit32(esp_stack_floor);emit32(esp_stack_top);let hb=esp_native_heap_begin();let he=esp_native_heap_end();emit32(hb);emit32(he);
     i=0;while i<16 {emit(0);i=i+1;}
-    i=0;while i<function_count {if load64(esp_c_thunks+i*8) {let section=1;if esp_flash && load64(esp_c_thunks+i*8)>=0x50000 {section=8;}esp_elf_symbol(load64(functions+i*32),load64(functions+i*32+8),esp_code_base+load64(esp_c_thunks+i*8),0,18,section);}i=i+1;}
+    i=0;while i<function_count {if load64(esp_c_thunks+i*8) {let section=1;if esp_flash && load64(esp_c_thunks+i*8)>=0x50000 {section=8;}esp_elf_symbol(load64(functions+i*32),load64(functions+i*32+8),esp_code_address(load64(esp_c_thunks+i*8)),0,18,section);}i=i+1;}
     i=0;while i<global_count {esp_elf_symbol(load64(globals+i*32),load64(globals+i*32+8),esp_data_base+load64(globals+i*32+16),8,17,2);i=i+1;}
     i=0;while i<esp_import_count {if load64(esp_import_used+i*8) {emit32(load64(import_offsets+i*8));emit32(0);emit32(0);emit(16);emit(0);esp_elf16(0);}i=i+1;}
     if esp_elf_name_size!=string_capacity || output_size!=strings_at {fail("internal ESP32 ELF layout mismatch");}
@@ -594,7 +621,7 @@ fn esp_elf_image(code,code_size,entry) {
     esp_elf_section(1,1,6,esp_code_base,headers,iram,0,0,4,0);esp_elf_section(7,1,3,esp_data_base,data_at,vm_heap_used,0,0,8,0);
     esp_elf_section(13,1,0,0,imports_at,imports*8,0,0,4,8);esp_elf_section(27,1,0,0,info_at,32,0,0,4,0);
     esp_elf_section(38,2,0,0,symbols_at,symbols*16,6,1,4,16);esp_elf_section(46,3,0,0,strings_at,string_capacity,0,0,1,0);
-    esp_elf_section(54,3,0,0,names_at,names_size,0,0,1,0);if esp_flash {esp_elf_section(64,1,6,0x400d0000,flash_at,flash_size,0,0,4,0);}return 0;
+    esp_elf_section(54,3,0,0,names_at,names_size,0,0,1,0);if esp_flash {esp_elf_section(64,1,6,esp_irom_base(),flash_at,flash_size,0,0,4,0);}return 0;
 }
 
 fn esp_user_read(reg,sr) {esp_ins(0xe30000|(reg<<12)|(sr<<4));return 0;}
@@ -638,5 +665,5 @@ fn esp_context_switch() {
     esp_load(2,0,304);esp_imm(4,esp_data_base+20);esp_store(2,4,0);
     esp_load(2,0,272);esp_sr_write(2,211);i=1;while i<16 {esp_load(i,0,i*4);i=i+1;}
     esp_load(8,0,256);esp_sr_read(2,211);esp_sr_write(2,230);esp_ins(0x002010);esp_ins(0x0008a0);
-    let end=output_size;output_size=resume;esp_const(2,esp_code_base+end);output_size=end;esp_movi(2,0);esp_movi(3,0);return 0;
+    let end=output_size;output_size=resume;esp_const(2,esp_code_address(end));output_size=end;esp_movi(2,0);esp_movi(3,0);return 0;
 }
