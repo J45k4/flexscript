@@ -12,4 +12,4 @@ fn esp_wait_mask(address,mask,value,cycles) {
         if ((esp32_cycles()-start)&4294967295)>=cycles {return -110;}
     }return 0;
 }
-fn esp_buffer_valid(pointer,size) {return size>=0 && pointer>=0x3fcb0010 && pointer<=0x3fcd0000 && size<=0x3fcd0000-pointer;}
+fn esp_buffer_valid(pointer,size) {let state=esp32_state();if state!=0x3fcb0000 && state!=0x3fcc0000 && state!=0x3fca8000 {return 0;}return size>=0 && pointer>=state+24 && pointer<=0x3fcd0000 && size<=0x3fcd0000-pointer;}

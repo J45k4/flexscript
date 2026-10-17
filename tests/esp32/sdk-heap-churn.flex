@@ -16,6 +16,7 @@ fn sh_validate(slots) {
     }return 0;
 }
 fn sh_churn() {
+    let initial_free=esp_sdk_heap_free();
     let slots=alloc(768);let i=0;while i<768 {store8(slots+i,0);i=i+1;}let seed=0x12345678;i=0;
     while i<512 {
         seed=(seed*1664525+1013904223)&4294967295;let slot=slots+(seed&31)*24;let p=load64(slot);let old_size=load64(slot+8);let tag=load64(slot+16);let size=1+((seed>>16)%512);let action=(seed>>5)&3;
@@ -32,6 +33,6 @@ fn sh_churn() {
     let a=esp_sdk_malloc(128);let b=esp_sdk_malloc(128);let c=esp_sdk_malloc(128);let tail=esp_sdk_malloc(esp_sdk_heap_free()-16);if !a || !b || !c || !tail || esp_sdk_malloc(1) {return 32;}
     store64(b,0x123456789abcdef0);store64(tail,0x1020304050607080);if esp_sdk_free(a) || esp_sdk_free(c) {return 33;}
     let x=esp_sdk_malloc(64);let y=esp_sdk_malloc(64);if !x || !y || x==y || load64(b)!=0x123456789abcdef0 || load64(tail)!=0x1020304050607080 {return 34;}
-    if esp_sdk_free(x) || esp_sdk_free(y) || esp_sdk_free(b) || esp_sdk_free(tail) || esp_sdk_allocated || esp_sdk_heap_free()!=98304-16 {return 35;}
+    if esp_sdk_free(x) || esp_sdk_free(y) || esp_sdk_free(b) || esp_sdk_free(tail) || esp_sdk_allocated || esp_sdk_heap_free()!=initial_free {return 35;}
     return 0;
 }

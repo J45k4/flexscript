@@ -1,0 +1,10 @@
+import "../../lib/platform/esp32-radio-clock.flex";
+fn ct_line(key,value){esp_uart_write(key);esp_uart_hex(value);return 0;}
+fn ct_fail(code){ct_line("CCMP FAIL ",code);esp_uart_write("\r\n");esp_uart_flush();esp32_halt();return 0;}
+fn main(){let old=esp32_irq_save();esp32_irq_mask(0);if ct_clock()==160{esp_radio_clock_init();esp_radio_cpu160();}
+ ct_line("CCMP START CLOCK ",ct_clock());ct_line(" SOURCE ",(esp32_load32(0x3ff48070)>>27)&3);ct_line(" PERIOD ",esp32_load32(0x3ff0003c)&3);ct_line(" DIV ",esp32_load32(0x3ff66000)&1023);ct_line(" ROMTICKS ",esp32_load32(0x3ffe01e0));esp_uart_write("\r\n");esp_uart_flush();
+ let state=alloc(64);let records=alloc(24*64);if state<=0 || records<=0{ct_fail(1);}let row=0;let selector=0;
+ while selector<12{let repeat=0;while repeat<2{let i=0;while i<16{esp32_store32(state+i*4,0);i=i+1;}if esp32_call32(esp32_external("ct_measure"),state,selector,0,0,0,0,0,0){ct_fail(2);}i=0;while i<16{esp32_store32(records+row*64+i*4,esp32_load32(state+i*4));i=i+1;}row=row+1;repeat=repeat+1;}selector=selector+1;}
+ if esp32_call32(esp32_external("ct_ready"),records,row,0,0,0,0,0,0){ct_fail(3);}row=0;while row<24{let p=records+row*64;ct_line("CCMP TIMER ",row/8);ct_line(" MODE ",(row/2)%4);ct_line(" REPEAT ",row&1);
+ ct_line(" CC0 ",esp32_load32(p));ct_line(" C0 ",esp32_load32(p+4));ct_line(" C1 ",esp32_load32(p+8));ct_line(" C2 ",esp32_load32(p+12));ct_line(" P0 ",esp32_load32(p+16));ct_line(" PCLEAN ",esp32_load32(p+20));ct_line(" TARGET ",esp32_load32(p+24));ct_line(" CCPRE ",esp32_load32(p+28));ct_line(" PPRE ",esp32_load32(p+32));ct_line(" CCPOST ",esp32_load32(p+36));ct_line(" PPOST ",esp32_load32(p+40));ct_line(" PINTCLR ",esp32_load32(p+44));ct_line(" PREWRITE ",esp32_load32(p+48));ct_line(" PALLCLR ",esp32_load32(p+52));ct_line(" CCEND ",esp32_load32(p+56));ct_line(" READBACK ",esp32_load32(p+60));esp_uart_write("\r\n");row=row+1;}
+ ct_line("CCMP COMPLETE CLOCK ",ct_clock());esp_uart_write("\r\n");esp_uart_flush();esp32_irq_restore(old);return 0;}

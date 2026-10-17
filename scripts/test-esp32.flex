@@ -11,6 +11,7 @@ fn main(argc,argv) {
     te_program(h_cat3("import \"",h_absolute("tests/esp32/word-vectors.flex"),"\";fn main(){return word_vectors()!=0;}"));
     h_compile(te_compiler,te_fixture,te_binary);h_check(h_run(h_args(te_binary,0,0,0,0,0)),0,"");te_checks=te_checks+1;
     te_compile("tests/esp32/interrupts.flex",te_binary);te_run(te_binary,0,"PASS: real Xtensa software and timer interrupts");
+    te_compile("tests/esp32/irq-software-replace-s3.flex",te_binary);te_run(te_binary,0,"PASS:64 software IRQ replacements");
     te_compile("tests/esp32/dma.flex",te_binary);te_run(te_binary,0,"PASS: GDMA transferred SHA256 block and verified digest");
     te_compile("tests/esp32/flash.flex",te_binary);te_run(te_binary,0,"PASS: SPI NOR erase, unaligned page-boundary program and readback");
     te_psram=1;te_compile("tests/esp32/psram.flex",te_binary);te_run(te_binary,0,"PASS: quad PSRAM ID, burst-boundary writes and readback");te_psram=0;
@@ -46,6 +47,7 @@ fn main(argc,argv) {
     te_compile("examples/esp32s3-blink.flex",te_binary);te_run(te_binary,-1,"LED off");
     // The original ESP32 has a distinct ROM/header/layout and adapters.
     te_legacy=1;te_compile("tests/esp32/legacy-interrupts.flex",te_binary);te_run(te_binary,0,"PASS: real Xtensa software and timer interrupts");
+    te_compile("tests/esp32/irq-software-replace.flex",te_binary);te_run(te_binary,0,"PASS:64 software IRQ replacements");
     te_program(h_cat3("import \"",h_absolute("tests/esp32/word-vectors.flex"),"\";fn main(){return word_vectors()!=0;}"));te_compile(te_fixture,te_binary);te_run(te_binary,0,0);te_legacy=0;
     h_compile(te_compiler,"tests/esp32/legacy-register-model.flex",te_binary);h_check(h_run(h_args(te_binary,0,0,0,0,0)),0,"");te_checks=te_checks+1;
     let report=b_option(argc,argv,"--report",0);if report {

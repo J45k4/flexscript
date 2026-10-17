@@ -1,0 +1,8 @@
+// GPIO21 drives the selected ADC input through one externally confirmed wire.
+import "../../lib/platform/esp32-adc.flex";
+fn avalue(text,value){esp_uart_write(text);esp_uart_hex(value);esp_uart_write("\r\n");return 0;}
+fn ack(ok,id){if !ok{avalue("ADC FAIL ",id);esp_uart_flush();esp32_halt();}return 0;}
+fn adc_rail_probe(unit,channel){esp_uart_write("ADC WIRED PROBE\r\n");esp_gpio_write(21,0);esp_gpio_output(21);let shared=esp32_load32(0x3ff4880c);let hall=esp32_load32(0x3ff48478);let mux=esp32_load32(0x3ff66010);let samples=0;let attenuation=0;
+ while attenuation<4{ack(esp_adc_init(unit,channel,attenuation)==0,1);let i=0;let low=4095;let high=0;while i<64{let level=i&1;esp_gpio_write(21,level);esp_delay_cycles(100000);let value=esp_adc_read(unit,channel,1000000);if value<0{avalue("READ ERROR ",value);}ack(value>=0 && value<=4095,2);if level{if value>high{high=value;}if value<3800{avalue("HIGH RAW ",value);}ack(value>=3800,3);}else{if value<low{low=value;}if value>150{avalue("LOW RAW ",value);}ack(value<=150,4);}ack(esp32_load32(0x3ff4880c)==shared && esp32_load32(0x3ff48478)==hall && esp32_load32(0x3ff66010)==mux,5);i=i+1;samples=samples+1;}
+ avalue("ADC ATTENUATION ",attenuation);avalue("MIN LOW ",low);avalue("MAX HIGH ",high);ack(esp_adc_read(unit,channel,1)== -110,6);esp_gpio_write(21,0);esp_delay_cycles(100000);ack(esp_adc_read(unit,channel,1000000)<=150,7);ack(esp_adc_deinit(unit,channel)==0 && esp_adc_deinit(unit,channel)==0 && esp_adc_read(unit,channel,1000000)== -19,8);attenuation=attenuation+1;}
+ ack(samples==256,9);esp_gpio_input(21,0);avalue("ADC RAIL SAMPLES ",samples);esp_uart_write("PEER PASS\r\n");esp_uart_flush();return 0;}

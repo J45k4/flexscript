@@ -24,6 +24,10 @@ global model_i2c_count=0;
 global model_rx_at=0;
 global model_spi_calls=0;
 global model_failed=0;
+global model_ps=0;
+fn esp32_irq_save() {let ps=model_ps;model_ps=15;return ps;}
+fn esp32_irq_restore(ps) {model_ps=ps;return 0;}
+fn esp32_state() {return 0x3fcb0000;}
 fn model_index(address) {let i=0;while i<model_count {if load64(model_regs+i*16)==address {return i;}i=i+1;}store64(model_regs+i*16,address);model_count=model_count+1;return i;}
 fn model_get(address) {return load64(model_regs+model_index(address)*16+8);}
 fn model_set(address,value) {store64(model_regs+model_index(address)*16+8,value&4294967295);return 0;}
@@ -87,7 +91,7 @@ fn main() {
     check(esp_pwm_channel(2,0,10)==0 && (model_get(0x6000457c)&511)==75,42);
     check(esp_pwm_duty(2,512)==0 && model_get(0x60019030)==8192,43);
     check(esp_pwm_duty(2,1024)== -22 && esp_pwm_timer(0,20000000,14)== -22,44);
-    check(esp_adc_init(1,0,3)==0 && (model_get(0x60008814)&3)==3,45);
+    check(esp_adc_init(1,0,3)==0 && load64(s3a_state+8)==3,45);
     check(esp_adc_read(1,0,100)==2047,46);model_stall=1;model_set(0x6000880c,0);check(esp_adc_read(1,0,20)== -110,47);model_stall=0;
     check(esp_rmt_symbol(1,20,0,30)==0x001e8014 && esp_rmt_symbol(0,0,0,1)== -22,50);
     check(esp_rmt_tx_init(0,11,40,0)==0,51);store64(tx,0x001e8014);

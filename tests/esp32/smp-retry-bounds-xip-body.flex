@@ -1,0 +1,1 @@
+fn main() {let r=rb_run();if r {esp_uart_write("SMP RETRY32 FAIL ");esp_uart_hex(r);}else {esp_uart_write("PASS: SMP retry32 ");}esp_uart_hex(rb_checks);esp_uart_write("\r\n");esp_uart_flush();return r;}

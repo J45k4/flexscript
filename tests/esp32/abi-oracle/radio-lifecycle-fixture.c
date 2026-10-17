@@ -6,7 +6,7 @@ const char *WIFI_EVENT;
 uint32_t s_wifi_api_lock,g_wifi_global_lock,eloop_data_lock;
 volatile uint32_t wifi_lifecycle_oracle[32];
 static uint32_t osi(unsigned offset,uint32_t a,uint32_t b,uint32_t c,uint32_t d,uint32_t e,uint32_t f,uint32_t g) {return ((callback_t)(uintptr_t)g_wifi_osi_funcs[offset/4])(a,b,c,d,e,f,g,0);}
-static int step(unsigned n) {wifi_lifecycle_oracle[n+8]++;return (wifi_lifecycle_oracle[0]==n||wifi_lifecycle_oracle[1]==n)?(int)(700+n):0;}
+static int step(unsigned n) {uint32_t ps;__asm__ volatile("rsr.ps %0":"=a"(ps));if(ps&15)return 995;wifi_lifecycle_oracle[n+8]++;return (wifi_lifecycle_oracle[0]==n||wifi_lifecycle_oracle[1]==n)?(int)(700+n):0;}
 static void irq(void *p) {(void)p;}
 static void worker(void *p) {(void)p;}
 static uint32_t task;

@@ -8,7 +8,9 @@ software tested. Physical connection events have been observed, while complete
 independent-peer connection/data exchanges remain open under T137 in
 [the backlog](../esp32_todo.md).
 The [ATT/GATT server](esp32-gatt.md) is integrated and software tested.
-Pairing and bonding remain separate work. Wi-Fi and Bluetooth still use
+Pairing and bonding remain separate work. The [pairing crypto toolbox](esp32-ble-security.md)
+now supplies native CMAC/key derivations and both-chip vendor AES checks; the SMP
+state machine and saved bonds are still pending. Wi-Fi and Bluetooth still use
 separate firmware images; coexistence is not implemented.
 
 ## Host core

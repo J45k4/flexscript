@@ -26,11 +26,15 @@ global esp_bt_rx=0;
 global esp_bt_rx_size=0;
 global esp_bt_tx_ready=0;
 global esp_bt_tx_inflight=0;
+// Submission lease spans check/copy/vendor return, even if ready fires early.
+global esp_bt_tx_active=0;
 global esp_bt_tx=0;
 global esp_bt_cmd=0;
 global esp_bt_cmd_size=0;
 global esp_bt_cmd_opcode=0;
 global esp_bt_cmd_busy=0;
+global esp_bt_cmd_pending=0;
+global esp_bt_cmd_stale=0;
 global esp_bt_cmd_credits=1;
 global esp_bt_event_ring=0;
 global esp_bt_event_head=0;
@@ -56,19 +60,32 @@ fn esp_bt_irq(source) {
     esp_bt_count5=esp_bt_count5+1;let f=esp_bt_irq5;let arg=esp_bt_arg5;if source==4 {esp_bt_count8=esp_bt_count8+1;f=esp_bt_irq8;arg=esp_bt_arg8;}if f {esp32_call32(f,arg,0,0,0,0,0,0,0);}return 0;
 }
 fn esp_bt_set_isr(a,b,c,d,e,f,g,h) {
-    if a==5 {let r=esp_radio_irq_claim(6);if r {return r;}r=esp_radio_irq_claim(7);if r {return r;}esp_bt_irq5=b;esp_bt_arg5=c;esp_irq_attach(6,esp32_iram_callback(esp_bt_irq));esp_irq_attach(7,esp32_iram_callback(esp_bt_irq));}
-    else if a==7 {if esp_irq_soft_handler && esp_irq_soft_handler!=esp32_iram_callback(esp_bt_irq) {return -16;}esp_radio_soft_owned=1;esp_bt_irq7=b;esp_bt_arg7=c;esp_irq_software(esp32_iram_callback(esp_bt_irq));}
-    else if a==8 {let r=esp_radio_irq_claim(4);if r {return r;}esp_bt_irq8=b;esp_bt_arg8=c;esp_irq_attach(4,esp32_iram_callback(esp_bt_irq));}
-    else {return esp_radio_fail(0x3000+a);}return 0;
+    if a!=5 && a!=7 && a!=8 {return esp_radio_fail(0x3000+a);}let ps=esp32_irq_save();if !esp_radio_owner {esp32_irq_restore(ps);return -22;}
+    let handler=esp32_iram_callback(esp_bt_irq);let r=0;
+    if a==5 {
+        r=esp_radio_irq_can_claim(6,handler);if !r {r=esp_radio_irq_can_claim(7,handler);}if r {esp32_irq_restore(ps);return r;}
+        let needed=!esp_irq_handler(6)+!esp_irq_handler(7);r=esp_irq_reserve(needed);if r {esp32_irq_restore(ps);return r;}
+        esp_radio_irq_claim(6);esp_radio_irq_claim(7);esp_bt_irq5=b;esp_bt_arg5=c;esp_irq_attach(6,handler);esp_irq_attach(7,handler);
+    }
+    else if a==7 {
+        if esp_irq_soft_handler && (!esp_radio_soft_owned || esp_irq_soft_handler!=handler) {esp32_irq_restore(ps);return -16;}
+        esp_radio_soft_owned=1;esp_bt_irq7=b;esp_bt_arg7=c;esp_irq_software(handler);
+    }
+    else {
+        r=esp_radio_irq_can_claim(4,handler);if r {esp32_irq_restore(ps);return r;}r=esp_irq_reserve(!esp_irq_handler(4));if r {esp32_irq_restore(ps);return r;}
+        esp_radio_irq_claim(4);esp_bt_irq8=b;esp_bt_arg8=c;esp_irq_attach(4,handler);
+    }
+    esp32_irq_restore(ps);return 0;
 }
-fn esp_bt_ints_on(a,b,c,d,e,f,g,h) {esp32_irq_mask(esp32_irq_enabled()|2|128);return 0;}
+fn esp_bt_ints_on(a,b,c,d,e,f,g,h) {let ps=esp32_irq_save();esp32_irq_mask(esp32_irq_enabled()|2|128);esp32_irq_restore(ps);return 0;}
+
 fn esp_bt_disable(a,b,c,d,e,f,g,h) {let ps=esp32_irq_save();if !esp_bt_critical_depth {esp_bt_critical_ps=ps;}esp_bt_critical_depth=esp_bt_critical_depth+1;return 0;}
 fn esp_bt_restore(a,b,c,d,e,f,g,h) {if !esp_bt_critical_depth {return esp_radio_fail(0x3100);}esp_bt_critical_depth=esp_bt_critical_depth-1;if !esp_bt_critical_depth {esp32_irq_restore(esp_bt_critical_ps);}return 0;}
 fn esp_bt_yield(a,b,c,d,e,f,g,h) {return esp_sdk_yield();}
 fn esp_bt_sw_intr(a,b,c,d,e,f,g,h) {if a!=0 {return -1;}esp32_irq_raise(128);return 0;}
-fn esp_bt_sem_take_isr(a,b,c,d,e,f,g,h) {if b {store8(b,0);}return esp_sdk_sem_take(a,0);}
-fn esp_bt_sem_give_isr(a,b,c,d,e,f,g,h) {if b {store8(b,0);}return esp_sdk_sem_give(a);}
-fn esp_bt_recv_isr(a,b,c,d,e,f,g,h) {if c {store8(c,0);}return esp_sdk_queue_op(a,b,0,0);}
+fn esp_bt_sem_take_isr(a,b,c,d,e,f,g,h) {return esp_sdk_sem_try(a);}
+fn esp_bt_sem_give_isr(a,b,c,d,e,f,g,h) {return esp_sdk_sem_give_isr(a,b);}
+fn esp_bt_recv_isr(a,b,c,d,e,f,g,h) {return esp_sdk_queue_isr(a,b,0,c);}
 fn esp_bt_mac(a,b,c,d,e,f,g,h) {return esp_radio_cb_read_mac(a,2,0,0,0,0,0,0);}
 fn esp_bt_srand(a,b,c,d,e,f,g,h) {return 0; // Hardware RNG does not have a software seed.
 }
@@ -82,30 +99,36 @@ fn esp_bt_no_coex(a,b,c,d,e,f,g,h) {return 0; // Standalone controller, Wi-Fi is
 fn esp_bt_no_channel(a,b,c,d,e,f,g,h) {return -1;}
 fn esp_bt_sleep_phase(a,b,c,d,e,f,g,h) {return esp_radio_fail(0x3200);}
 fn esp_bt_patch(a,b,c,d,e,f,g,h) {esp32_call32(esp32_external("config_btdm_funcs_reset"),0,0,0,0,0,0,0,0);esp32_call32(esp32_external("config_ble_funcs_reset"),0,0,0,0,0,0,0,0);return 0;}
-fn esp_bt_send_ready(a,b,c,d,e,f,g,h) {esp_bt_tx_ready=1;esp_bt_tx_inflight=0;return 0;}
+fn esp_bt_send_ready(a,b,c,d,e,f,g,h) {let ps=esp32_irq_save();if esp_bt_tx {esp_bt_tx_ready=1;esp_bt_tx_inflight=0;}esp32_irq_restore(ps);return 0;}
 fn esp_bt_transport_init() {
-    if esp_bt_rx {return -16;}
+    let ps=esp32_irq_save();if esp_bt_rx || esp_bt_tx || esp_bt_cmd || esp_bt_event_ring || esp_bt_acl_ring || esp32_load32(esp32_state()+16) || (esp_bt_lifecycle_busy && esp_bt_control_task!=esp_sdk_current) {esp32_irq_restore(ps);return -16;}
     let rx=esp_sdk_calloc(1,1032);let cmd=esp_sdk_calloc(1,512);let tx=esp_sdk_calloc(1,1032);let events=esp_sdk_calloc(8,528);let acl=esp_sdk_calloc(4,1048);
-    if !rx || !cmd || !tx || !events || !acl {esp_sdk_free(rx);esp_sdk_free(cmd);esp_sdk_free(tx);esp_sdk_free(events);esp_sdk_free(acl);return -12;}
-    esp_bt_rx=rx;esp_bt_cmd=cmd;esp_bt_tx=tx;esp_bt_event_ring=events;esp_bt_acl_ring=acl;return 0;
+    if !rx || !cmd || !tx || !events || !acl {esp_sdk_free(rx);esp_sdk_free(cmd);esp_sdk_free(tx);esp_sdk_free(events);esp_sdk_free(acl);esp32_irq_restore(ps);return -12;}
+    esp_bt_rx=rx;esp_bt_cmd=cmd;esp_bt_tx=tx;esp_bt_event_ring=events;esp_bt_acl_ring=acl;esp32_irq_restore(ps);return 0;
 }
+
 // VHCI has handed us the packet: consume it even when the bounded application
 // queue is full. Rejecting it keeps the controller's delivery path congested.
 fn esp_bt_recv(a,b,c,d,e,f,g,h) {
-    if !a || !esp_bt_cmd || !esp_bt_event_ring || !esp_bt_acl_ring || b<1 || b>1032 {esp_bt_event_dropped=esp_bt_event_dropped+1;return 0;}
-    let type=load8(a);if type==2 {if b<5 || b>1029 || (load8(a+3)|(load8(a+4)<<8))!=b-5 {esp_bt_acl_dropped=esp_bt_acl_dropped+1;return 0;}}
-    else if type!=4 || b<3 || b>258 || load8(a+2)+3!=b {esp_bt_event_dropped=esp_bt_event_dropped+1;return 0;}
-    let ps=esp32_irq_save();esp_bt_receive_sequence=esp_bt_receive_sequence+1;let sequence=esp_bt_receive_sequence;let opcode= -1;
-    if type==4 {if load8(a+1)==14 && b>=6 {opcode=load8(a+4)|(load8(a+5)<<8);if opcode!=0x0c35 {esp_bt_cmd_credits=load8(a+3);}}else if load8(a+1)==15 && b==7 {opcode=load8(a+5)|(load8(a+6)<<8);esp_bt_cmd_credits=load8(a+4);}}
+    let ps=esp32_irq_save();if !esp_bt_cmd || !esp_bt_event_ring || !esp_bt_acl_ring {esp32_irq_restore(ps);return 0;}
+    if !a || b<1 || b>1032 {esp_bt_event_dropped=esp_bt_event_dropped+1;esp32_irq_restore(ps);return 0;}
+    let type=load8(a);if type==2 {if b<5 || b>1029 || (load8(a+3)|(load8(a+4)<<8))!=b-5 {esp_bt_acl_dropped=esp_bt_acl_dropped+1;esp32_irq_restore(ps);return 0;}}
+    else if type!=4 || b<3 || b>258 || load8(a+2)+3!=b {esp_bt_event_dropped=esp_bt_event_dropped+1;esp32_irq_restore(ps);return 0;}
+    esp_bt_receive_sequence=esp_bt_receive_sequence+1;let sequence=esp_bt_receive_sequence;let opcode= -1;
+    if type==4 {if load8(a+1)==14 && b>=6 {opcode=load8(a+4)|(load8(a+5)<<8);if opcode!=0x0c35 {esp_bt_cmd_credits=load8(a+3);}}else if load8(a+1)==15 && b==7 {opcode=load8(a+5)|(load8(a+6)<<8);if opcode!=0x0c35 {esp_bt_cmd_credits=load8(a+4);}}}
+    let response=0;if opcode==esp_bt_cmd_opcode && esp_bt_cmd_pending {
+        if esp_bt_cmd_stale {esp_bt_cmd_pending=0;esp_bt_cmd_stale=0;}
+        else if esp_bt_cmd_busy && !esp_bt_cmd_size {response=1;esp_bt_cmd_pending=0;}
+    }
     let out=0;
     if type==2 {if esp_bt_acl_count<4 {let slot=(esp_bt_acl_head+esp_bt_acl_count)%4;out=esp_bt_acl_ring+slot*1048+16;}}
-    else if esp_bt_cmd_busy && opcode==esp_bt_cmd_opcode && !esp_bt_cmd_size {out=esp_bt_cmd;}
+    else if response {out=esp_bt_cmd;}
     else if esp_bt_event_count<8 {let slot=esp_bt_event_head+esp_bt_event_count;if slot>=8 {slot=slot-8;}out=esp_bt_event_ring+slot*528+16;}
     if out {let i=0;while i<b {store8(out+i,load8(a+i));i=i+1;}
         if type==2 {store64(out-16,b);store64(out-8,sequence);esp_bt_acl_count=esp_bt_acl_count+1;}else if out==esp_bt_cmd {esp_bt_cmd_sequence=sequence;esp_bt_cmd_size=b;}else {store64(out-16,b);store64(out-8,sequence);esp_bt_event_count=esp_bt_event_count+1;}
     }else if type==2 {esp_bt_acl_dropped=esp_bt_acl_dropped+1;}else {esp_bt_event_dropped=esp_bt_event_dropped+1;}
     esp32_irq_restore(ps);
-    // The scheduler is cooperative. Give the application a chance to drain
+    // Give the application a chance to drain
     // reports when this callback runs in a task with interrupts unmasked.
     if !esp_bt_critical_depth && !(ps&15) && !esp32_load32(esp32_state()+16) {esp_sdk_yield();}return 0;
 }
@@ -140,13 +163,33 @@ fn esp_bt_hci_consume_packet() {
 }
 // Raw ACL and Host Number Of Completed Packets only. The latter has no
 // Command Complete event and consumes no ordinary HCI command credit.
-fn esp_bt_hci_send_packet(packet,size) {
-    if !esp_bt_tx {return -19;}if packet<=0 || size<1 || size>1032 {return -22;}let type=load8(packet);
+// These helpers never hold the interrupt mask across a VHCI vendor call.
+// kind0=ACL,1=ordinary command,2=Host Number Of Completed Packets.
+fn esp_bt_tx_claim(kind) {
+    let ps=esp32_irq_save();if !esp_bt_tx {esp32_irq_restore(ps);return -19;}
+    if esp_bt_lifecycle_busy || esp32_load32(esp32_state()+16) || (ps&15) {esp32_irq_restore(ps);return -16;}
+    if esp_bt_tx_active || esp_bt_tx_inflight || (!kind && esp_bt_cmd_busy) || (kind==1 && !esp_bt_cmd_credits) {esp32_irq_restore(ps);return -11;}
+    esp_bt_tx_active=1;esp32_irq_restore(ps);
+    if !esp32_call32(esp32_external("API_vhci_host_check_send_available"),0,0,0,0,0,0,0,0) {ps=esp32_irq_save();esp_bt_tx_active=0;esp32_irq_restore(ps);return -11;}return 0;
+}
+fn esp_bt_tx_submit(size,command) {
+    let ps=esp32_irq_save();if command && !esp_bt_cmd_credits {esp_bt_tx_active=0;esp32_irq_restore(ps);return -11;}
+    if command {esp_bt_cmd_credits=esp_bt_cmd_credits-1;esp_bt_cmd_pending=1;esp_bt_cmd_stale=0;}esp_bt_tx_inflight=1;esp_bt_tx_ready=0;esp32_irq_restore(ps);
+    esp32_call32(esp32_external("API_vhci_host_send_packet"),esp_bt_tx,size,0,0,0,0,0,0);
+    ps=esp32_irq_save();esp_bt_tx_active=0;esp32_irq_restore(ps);return 0;
+}
+fn esp_bt_packet_validate(packet,size) {
+    if packet<=0 || size<1 || size>1032 {return -22;}let type=load8(packet);
     if type==2 {if size<5 || size>1029 || (load8(packet+3)|(load8(packet+4)<<8))!=size-5 {return -22;}let flags=load8(packet+1)|(load8(packet+2)<<8);if (flags&4095)>0x0eff || flags&0xc000 || ((flags>>12)&3)>1 {return -22;}}
     else if type==1 {if size<9 || load8(packet+1)!=0x35 || load8(packet+2)!=0x0c || size!=load8(packet+3)+4 || !load8(packet+4) || size!=5+load8(packet+4)*4 {return -22;}let i=0;while i<load8(packet+4) {let at=5+i*4;let handle=load8(packet+at)|(load8(packet+at+1)<<8);if handle>0x0eff {return -22;}i=i+1;}}
-    else {return -22;}if (esp_bt_cmd_busy && type!=1) || esp_bt_tx_inflight || !esp32_call32(esp32_external("API_vhci_host_check_send_available"),0,0,0,0,0,0,0,0) {return -11;}
-    let i=0;while i<size {store8(esp_bt_tx+i,load8(packet+i));i=i+1;}esp_bt_tx_inflight=1;esp_bt_tx_ready=0;esp32_call32(esp32_external("API_vhci_host_send_packet"),esp_bt_tx,size,0,0,0,0,0,0);return 0;
+    else {return -22;}return 0;
 }
+fn esp_bt_hci_send_packet(packet,size) {
+    let ps=esp32_irq_save();if !esp_bt_tx {esp32_irq_restore(ps);return -19;}let r=esp_bt_packet_validate(packet,size);esp32_irq_restore(ps);if r {return r;}
+    let kind=0;if load8(packet)==1 {kind=2;}r=esp_bt_tx_claim(kind);if r {return r;}
+    let i=0;while i<size {store8(esp_bt_tx+i,load8(packet+i));i=i+1;}return esp_bt_tx_submit(size,0);
+}
+
 fn esp_bt_rom_memory() {
     if esp32_state()!=0x3ffc0000 {return -22;}
     let src=esp32_load32(0x4000d4f4);let i=0;while i<0x1830 {esp32_store32(0x3ffae6e0+i,esp32_load32(src+i));i=i+4;}
@@ -233,26 +276,38 @@ fn esp_bt_controller_setup() {
     if !esp32_call32(esp32_external("btdm_lpclk_select_src"),0,0,0,0,0,0,0,0) || !esp32_call32(esp32_external("btdm_lpclk_set_div"),79,0,0,0,0,0,0,0) {esp_sdk_free(cfg);return -22;}
     esp32_call32(esp32_external("btdm_controller_set_sleep_mode"),0,0,0,0,0,0,0,0);
     r=esp32_call32(esp32_external("btdm_controller_init"),24,cfg,0,0,0,0,0,0);esp_sdk_free(cfg);if r {return r;}esp_bt_vendor_initialized=1;
-    esp_radio_phy_enable();esp_bt_phy_owned=1;esp32_call32(esp32_external("btdm_rf_bb_init_phase2"),0,0,0,0,0,0,0,0);esp32_call32(esp32_external("coex_bt_high_prio"),0,0,0,0,0,0,0,0);
+    r=esp_radio_phy_enable();if r {return r;}esp_bt_phy_owned=1;esp32_call32(esp32_external("btdm_rf_bb_init_phase2"),0,0,0,0,0,0,0,0);esp32_call32(esp32_external("coex_bt_high_prio"),0,0,0,0,0,0,0,0);
     esp32_call32(esp32_external("btdm_controller_enable"),1,0,0,0,0,0,0,0);
     if esp_bt_transport_init() {return -12;}let callbacks=esp_sdk_calloc(1,8);if !callbacks {return -12;}esp_bt_callbacks=callbacks;
     esp32_store32(callbacks,esp32_iram_callback32(esp_bt_send_ready));esp32_store32(callbacks+4,esp32_callback32(esp_bt_recv));
     return esp32_call32(esp32_external("API_vhci_host_register_callback"),callbacks,0,0,0,0,0,0,0);
 }
+fn esp_bt_command_timeout() {
+    let ps=esp32_irq_save();if esp_bt_cmd_size {esp32_irq_restore(ps);return 0;}
+    if esp_bt_cmd_pending {esp_bt_cmd_stale=1;}esp_bt_cmd_busy=0;esp32_irq_restore(ps);return -110;
+}
 fn esp_bt_hci_command(opcode,params,size) {
-    if opcode<0 || opcode>65535 || size<0 || size>255 || (size && !params) || !esp_bt_tx {return -22;}if esp_bt_cmd_busy {return -16;}
-    esp_bt_cmd_busy=1;esp_bt_cmd_opcode=opcode;esp_bt_cmd_size=0;let deadline=esp_sdk_now()+2000000;
-    while !esp_bt_cmd_credits || esp_bt_tx_inflight || !esp32_call32(esp32_external("API_vhci_host_check_send_available"),0,0,0,0,0,0,0,0) {if esp_sdk_now()>=deadline {esp_bt_cmd_busy=0;return -110;}esp_sdk_delay(1);}
-    let packet=esp_bt_tx;store8(packet,1);store8(packet+1,opcode);store8(packet+2,opcode>>8);store8(packet+3,size);let i=0;while i<size {store8(packet+4+i,load8(params+i));i=i+1;}
-    esp_bt_cmd_credits=esp_bt_cmd_credits-1;esp_bt_tx_inflight=1;esp_bt_tx_ready=0;esp32_call32(esp32_external("API_vhci_host_send_packet"),packet,size+4,0,0,0,0,0,0);
-    while !esp_bt_cmd_size {if esp_sdk_now()>=deadline {esp_bt_cmd_busy=0;return -110;}esp_sdk_delay(1);}
-    let ps=esp32_irq_save();esp_bt_rx_size=esp_bt_cmd_size;i=0;while i<esp_bt_rx_size {store8(esp_bt_rx+i,load8(esp_bt_cmd+i));i=i+1;}esp_bt_cmd_busy=0;esp32_irq_restore(ps);
-    if esp_bt_rx_size<7 || load8(esp_bt_rx)!=4 {return -71;}if load8(esp_bt_rx+1)==15 {return load8(esp_bt_rx+3);}return load8(esp_bt_rx+6);
+    let ps=esp32_irq_save();if opcode<0 || opcode>65535 || opcode==0x0c35 || size<0 || size>255 || (size && !params) || !esp_bt_tx {esp32_irq_restore(ps);return -22;}
+    if esp_bt_lifecycle_busy || esp_bt_cmd_busy || esp_bt_cmd_pending || !esp_sdk_current || esp32_load32(esp32_state()+16) || (ps&15) {esp32_irq_restore(ps);return -16;}
+    esp_bt_cmd_busy=1;esp_bt_cmd_opcode=opcode;esp_bt_cmd_size=0;esp_bt_cmd_stale=0;esp32_irq_restore(ps);let deadline=esp_sdk_now()+2000000;let sent=0;
+    while !sent {
+        let r=esp_bt_tx_claim(1);if !r {
+            let packet=esp_bt_tx;store8(packet,1);store8(packet+1,opcode);store8(packet+2,opcode>>8);store8(packet+3,size);let i=0;while i<size {store8(packet+4+i,load8(params+i));i=i+1;}
+            r=esp_bt_tx_submit(size+4,1);if !r {sent=1;}
+        }
+        if r && r!= -11 {ps=esp32_irq_save();esp_bt_cmd_busy=0;esp32_irq_restore(ps);return r;}
+        if !sent {if esp_sdk_now()>=deadline {return esp_bt_command_timeout();}esp_sdk_delay(1);}
+    }
+    while !esp_bt_cmd_size {if esp_sdk_now()>=deadline {let r=esp_bt_command_timeout();if r {return r;}}if !esp_bt_cmd_size {esp_sdk_delay(1);}}
+    ps=esp32_irq_save();esp_bt_rx_size=esp_bt_cmd_size;let i=0;while i<esp_bt_rx_size {store8(esp_bt_rx+i,load8(esp_bt_cmd+i));i=i+1;}
+    let result= -71;if esp_bt_rx_size>=7 && load8(esp_bt_rx)==4 {if load8(esp_bt_rx+1)==15 {result=load8(esp_bt_rx+3);}else {result=load8(esp_bt_rx+6);}}
+    esp_bt_cmd_busy=0;esp32_irq_restore(ps);return result;
 }
 
 fn esp_bt_transport_release() {
+    let ps=esp32_irq_save();if esp_bt_tx_active || esp_bt_tx_inflight || esp_bt_cmd_busy || esp_bt_cmd_pending || esp_bt_host_active || esp32_load32(esp32_state()+16) || (esp_bt_lifecycle_busy && esp_bt_control_task!=esp_sdk_current) {esp32_irq_restore(ps);return -16;}
     esp_sdk_free(esp_bt_rx);esp_sdk_free(esp_bt_cmd);esp_sdk_free(esp_bt_tx);esp_sdk_free(esp_bt_event_ring);esp_sdk_free(esp_bt_acl_ring);
-    esp_bt_rx=0;esp_bt_rx_size=0;esp_bt_tx_ready=0;esp_bt_tx_inflight=0;esp_bt_tx=0;esp_bt_cmd=0;esp_bt_cmd_size=0;esp_bt_cmd_opcode=0;esp_bt_cmd_busy=0;esp_bt_cmd_credits=1;esp_bt_event_ring=0;esp_bt_event_head=0;esp_bt_event_count=0;esp_bt_event_dropped=0;esp_bt_acl_ring=0;esp_bt_acl_head=0;esp_bt_acl_count=0;esp_bt_acl_dropped=0;esp_bt_acl_packet=0;esp_bt_acl_size=0;esp_bt_receive_sequence=0;esp_bt_cmd_sequence=0;esp_bt_event_sequence=0;esp_bt_acl_sequence=0;esp_bt_packet=0;esp_bt_packet_size=0;esp_bt_packet_sequence=0;esp_bt_packet_kind=0;return 0;
+    esp_bt_rx=0;esp_bt_rx_size=0;esp_bt_tx_ready=0;esp_bt_tx_inflight=0;esp_bt_tx_active=0;esp_bt_tx=0;esp_bt_cmd=0;esp_bt_cmd_size=0;esp_bt_cmd_opcode=0;esp_bt_cmd_busy=0;esp_bt_cmd_pending=0;esp_bt_cmd_stale=0;esp_bt_cmd_credits=1;esp_bt_event_ring=0;esp_bt_event_head=0;esp_bt_event_count=0;esp_bt_event_dropped=0;esp_bt_acl_ring=0;esp_bt_acl_head=0;esp_bt_acl_count=0;esp_bt_acl_dropped=0;esp_bt_acl_packet=0;esp_bt_acl_size=0;esp_bt_receive_sequence=0;esp_bt_cmd_sequence=0;esp_bt_event_sequence=0;esp_bt_acl_sequence=0;esp_bt_packet=0;esp_bt_packet_size=0;esp_bt_packet_sequence=0;esp_bt_packet_kind=0;esp32_irq_restore(ps);return 0;
 }
 
 fn esp_bt_teardown() {
@@ -262,21 +317,23 @@ fn esp_bt_teardown() {
     let deadline=esp_sdk_now()+100000;let r=esp_radio_resources_ready();while r && esp_sdk_now()<deadline {esp_sdk_delay(1);r=esp_radio_resources_ready();}if r {return r;}
     if esp_bt_phy_owned {esp_radio_phy_disable();esp_bt_phy_owned=0;}r=esp_radio_phy_release_buffers();if r {return r;}
     r=esp_radio_resources_end(esp32_iram_callback(esp_bt_irq));if r {return r;}
-    esp_bt_transport_release();esp_sdk_free(esp_bt_callbacks);esp_sdk_free(esp_bt_osi);esp_bt_callbacks=0;esp_bt_osi=0;esp_bt_initialized=0;esp_bt_control_task=0;
+    let ps=esp32_irq_save();if esp_bt_tx_active || esp_bt_cmd_busy {esp32_irq_restore(ps);return -16;}esp_bt_tx_inflight=0;esp_bt_cmd_pending=0;esp_bt_cmd_stale=0;r=esp_bt_transport_release();esp32_irq_restore(ps);if r {return r;}esp_sdk_free(esp_bt_callbacks);esp_sdk_free(esp_bt_osi);esp_bt_callbacks=0;esp_bt_osi=0;esp_bt_initialized=0;esp_bt_control_task=0;
     esp_bt_irq5=0;esp_bt_arg5=0;esp_bt_irq7=0;esp_bt_arg7=0;esp_bt_irq8=0;esp_bt_arg8=0;esp_bt_critical_depth=0;esp_bt_critical_ps=0;return 0;
 }
 fn esp_bt_controller_deinit() {
-    if esp_bt_lifecycle_busy || esp_bt_host_active || esp_bt_cmd_busy || esp32_load32(esp32_state()+16) || esp_sdk_timer_active || (esp_radio_owner && esp_radio_owner!=2) || (esp_bt_control_task && esp_bt_control_task!=esp_sdk_current) {return -16;}
-    if !esp_radio_owner && !esp_bt_osi && !esp_bt_rx {return 0;}esp_bt_lifecycle_busy=1;let r=esp_bt_teardown();esp_bt_lifecycle_busy=0;esp_bt_cleanup_error=r;return r;
+    let ps=esp32_irq_save();
+    if (ps&15) || esp_bt_lifecycle_busy || esp_bt_host_active || esp_bt_tx_active || esp_bt_cmd_busy || esp32_load32(esp32_state()+16) || esp_sdk_timer_active || (esp_radio_owner && esp_radio_owner!=2) || (esp_bt_control_task && esp_bt_control_task!=esp_sdk_current) {esp32_irq_restore(ps);return -16;}
+    if !esp_radio_owner && !esp_bt_osi && !esp_bt_rx {esp32_irq_restore(ps);return 0;}let previous_control=esp_bt_control_task;if !esp_bt_control_task {esp_bt_control_task=esp_sdk_current;}esp_bt_lifecycle_busy=1;esp32_irq_restore(ps);let r=esp_bt_teardown();ps=esp32_irq_save();if r && !previous_control {esp_bt_control_task=0;}esp_bt_lifecycle_busy=0;esp_bt_cleanup_error=r;esp32_irq_restore(ps);return r;
 }
 fn esp_bt_controller_init() {
+    let ps=esp32_irq_save();
     // Check before copying/zeroing ROM RAM: a repeated init must never erase
     // an already running controller's data.
-    if esp_bt_lifecycle_busy || esp_bt_osi || esp_bt_rx || esp_radio_owner || esp_bt_initialized || esp_bt_host_active {return -16;}
-    if !esp_sdk_current {return -19;}if esp32_load32(esp32_state()+16) || esp_sdk_timer_active {return -16;}
-    if esp_bt_max_connections<1 || esp_bt_max_connections>4 || esp32_state()!=0x3ffc0000 {return -22;}
-    if esp_irq_handler(4) || esp_irq_handler(6) || esp_irq_handler(7) || esp_irq_soft_handler {return -16;}
-    esp_bt_lifecycle_busy=1;esp_bt_cleanup_error=0;let r=esp_radio_resources_begin(2);
-    if !r {esp_bt_control_task=esp_sdk_current;r=esp_bt_controller_setup();if r {esp_bt_cleanup_error=esp_bt_teardown();}else {esp_bt_initialized=1;}}
+    if (ps&15) || esp_bt_lifecycle_busy || esp_bt_osi || esp_bt_rx || esp_radio_owner || esp_bt_initialized || esp_bt_host_active {esp32_irq_restore(ps);return -16;}
+    if !esp_sdk_current {esp32_irq_restore(ps);return -19;}if esp32_load32(esp32_state()+16) || esp_sdk_timer_active {esp32_irq_restore(ps);return -16;}
+    if esp_bt_max_connections<1 || esp_bt_max_connections>4 || esp32_state()!=0x3ffc0000 {esp32_irq_restore(ps);return -22;}
+    if esp_irq_handler(4) || esp_irq_handler(6) || esp_irq_handler(7) || esp_irq_soft_handler {esp32_irq_restore(ps);return -16;}
+    esp_bt_lifecycle_busy=1;esp_bt_cleanup_error=0;let r=esp_radio_resources_begin(2);if !r {esp_bt_control_task=esp_sdk_current;}esp32_irq_restore(ps);
+    if !r {r=esp_bt_controller_setup();if r {esp_bt_cleanup_error=esp_bt_teardown();}else {esp_bt_initialized=1;}}
     esp_bt_lifecycle_busy=0;return r;
 }

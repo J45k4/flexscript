@@ -6,7 +6,7 @@ fn reap_child(a,b,c,d,e,f,g,h) {
     if !first || first!=second || !esp_sdk_sem_give(first) || !esp_sdk_sem_take(first,0) {reap_child_error=1;}return 0;
 }
 fn main() {
-    if esp_sdk_heap_init(0x3ffc8000,98304) || esp_sdk_task_init() {return 1;}
+    if esp_sdk_heap_init(0x3ffc8000,98304) || esp_sdk_task_init() {return 1;}esp32_irq_restore(0);
     let application=esp_sdk_sem_create(1,1);let guard=esp_sdk_malloc(80);if !application || !guard {return 2;}let i=0;while i<80 {store8(guard+i,(i*29+7)&255);i=i+1;}let baseline=esp_sdk_heap_free();let round=0;
     while round<8 {reap_child_error=0;reap_child_sem=0;let task=esp_sdk_task_create(esp32_callback32(reap_child),0,4096,3);if !task {return 3;}while load64(task+544)!=2 {esp_sdk_yield();}
         if reap_child_error || !reap_child_sem || load64(task+568)!=reap_child_sem {return 4;}if esp_sdk_task_reap(task) {return 5;}

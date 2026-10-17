@@ -13,7 +13,7 @@ fn main() {
     store8(a,29);let c=esp_sdk_realloc(a,4096);if !c || load8(c)!=29 {return 3;}if esp_sdk_realloc(c,98304) || load8(c)!=29 {return 4;}
     if esp_sdk_free(c) || esp_sdk_free(b) || esp_sdk_heap_free()!=before || esp_sdk_free(c)!=-22 {return 5;}
     let all=esp_sdk_calloc(1,before-16);if !all || esp_sdk_malloc(16) || load8(all+before-17) {return 6;}esp_sdk_free(all);
-    if esp_sdk_task_init() {return 7;}let free=esp_sdk_heap_free();let task=esp_sdk_task_create(esp32_callback32(c_task),42,8192,1);if !task {return 8;}
+    if esp_sdk_task_init() {return 7;}esp32_irq_restore(0);let free=esp_sdk_heap_free();let task=esp_sdk_task_create(esp32_callback32(c_task),42,8192,1);if !task {return 8;}
     while sdk_stage!=2 || load64(task+544)!=2 {esp_sdk_yield();}if esp_sdk_task_reap(task) || esp_sdk_heap_free()!=free {return 9;}
     let sem=esp_sdk_sem_create(2,1);if !esp_sdk_sem_take(sem,0) || esp_sdk_sem_take(sem,1) || !esp_sdk_sem_give(sem) || !esp_sdk_sem_give(sem) || esp_sdk_sem_give(sem) {return 10;}esp_sdk_free(sem);
     let mutex=esp_sdk_mutex_create(1);if !esp_sdk_mutex_lock(mutex) || !esp_sdk_mutex_lock(mutex) || !esp_sdk_mutex_unlock(mutex) || !esp_sdk_mutex_unlock(mutex) || esp_sdk_mutex_unlock(mutex) {return 11;}esp_sdk_free(mutex);

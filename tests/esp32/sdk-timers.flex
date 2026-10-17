@@ -12,7 +12,7 @@ fn timer_cb(a,b,c,d,e,f,g,h) {
 }
 fn timer_once(a,b,c,d,e,f,g,h) {timer_cb(a,b,c,d,e,f,g,h);esp_sdk_sem_give(timer_sem);return 0;}
 fn main() {
-    if esp_sdk_heap_init(0x3ffc8000,98304) || esp_sdk_task_init() || esp_sdk_timer_init() {return 1;}
+    if esp_sdk_heap_init(0x3ffc8000,98304) || esp_sdk_task_init() || esp_sdk_timer_init() {return 1;}esp32_irq_restore(0);
     timer_key=esp_sdk_calloc(1,20);timer_sem=esp_sdk_sem_create(1,0);let before=esp_sdk_heap_free();
     if esp_sdk_timer_setfn(timer_key,esp32_callback32(timer_cb),42) || esp_sdk_timer_arm(timer_key,1000,1) {return 2;}
     if !esp_sdk_sem_take(timer_sem,100) || timer_count!=3 || timer_bad_context || esp_sdk_heap_free()!=before {return 3;}

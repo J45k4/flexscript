@@ -2,6 +2,7 @@ import "../../lib/platform/esp32-xip.flex";
 import "../../lib/platform/esp32-bluetooth.flex";
 import "../../lib/net/ble-host.flex";
 global test_last_sequence=0;
+fn test_wait_command(opcode) {esp_bt_cmd_busy=1;esp_bt_cmd_pending=1;esp_bt_cmd_stale=0;esp_bt_cmd_opcode=opcode;esp_bt_cmd_size=0;return 0;}
 fn test_receive(packet,text) {let n=0;while load8(text+n*2) {store8(packet+n,(nb_hex(load8(text+n*2))<<4)|nb_hex(load8(text+n*2+1)));n=n+1;}return esp32_call32(esp32_callback32(esp_bt_recv),packet,n,0,0,0,0,0,0);}
 fn test_drain() {
     let count=0;while esp_bt_hci_peek_packet() {
@@ -20,12 +21,12 @@ fn main() {
     let i=0;while i<16 {store8(packet,4);store8(packet+1,0x3e);store8(packet+2,1);store8(packet+3,i);if esp32_call32(callback,packet,4,0,0,0,0,0,0) {return 2;}i=i+1;}
     if esp_bt_event_count!=8 || esp_bt_event_dropped!=8 || esp_sdk_heap_free()!=before {return 3;}
     // A full async ring must not prevent the in-flight command from completing.
-    esp_bt_cmd_busy=1;esp_bt_cmd_opcode=0x1001;store8(packet,4);store8(packet+1,14);store8(packet+2,4);store8(packet+3,1);store8(packet+4,1);store8(packet+5,16);store8(packet+6,0);
+    test_wait_command(0x1001);store8(packet,4);store8(packet+1,14);store8(packet+2,4);store8(packet+3,1);store8(packet+4,1);store8(packet+5,16);store8(packet+6,0);
     if esp32_call32(callback,packet,7,0,0,0,0,0,0) || esp_bt_cmd_size!=7 || load8(esp_bt_cmd+4)!=1 || esp_bt_event_count!=8 || esp_bt_hci_next_event() {return 4;}
     esp_bt_cmd_busy=0;i=0;while i<8 {if esp_bt_hci_next_event()!=4 || load8(esp_bt_rx+3)!=i {return 5;}i=i+1;}if esp_bt_hci_next_event() {return 6;}
     // Exercise wrap and ensure unrelated command events do not steal a response.
     i=0;while i<24 {store8(packet+1,0x3e);store8(packet+2,1);store8(packet+3,i);if esp32_call32(callback,packet,4,0,0,0,0,0,0) || esp_bt_hci_next_event()!=4 || load8(esp_bt_rx+3)!=i {return 7;}i=i+1;}
-    esp_bt_cmd_busy=1;esp_bt_cmd_size=0;store8(packet+1,14);store8(packet+2,4);store8(packet+4,2);if esp32_call32(callback,packet,7,0,0,0,0,0,0) || esp_bt_cmd_size || esp_bt_event_count!=1 {return 8;}
+    test_wait_command(0x1001);store8(packet+1,14);store8(packet+2,4);store8(packet+4,2);if esp32_call32(callback,packet,7,0,0,0,0,0,0) || esp_bt_cmd_size || esp_bt_event_count!=1 {return 8;}
     store8(packet+1,15);store8(packet+3,0);store8(packet+4,1);store8(packet+5,1);store8(packet+6,16);if esp32_call32(callback,packet,7,0,0,0,0,0,0) || esp_bt_cmd_size!=7 {return 9;}
     esp_bt_cmd_busy=0;if esp_bt_hci_next_event()!=7 || load8(esp_bt_rx+4)!=2 {return 10;}
     if esp32_call32(callback,0,513,0,0,0,0,0,0) || esp32_call32(callback,0,4,0,0,0,0,0,0) || esp_bt_event_dropped!=10 || esp_sdk_heap_free()!=before {return 11;}
@@ -34,7 +35,7 @@ fn main() {
     i=0;while i<5 {if esp32_call32(callback,packet,1029,0,0,0,0,0,0) {return 15;}i=i+1;}if esp_bt_acl_count!=4 || esp_bt_acl_dropped!=1 || esp_bt_event_count {return 16;}
     if esp_bt_hci_peek_acl()!=1029 || load8(esp_bt_acl_packet+1028)!=255 {return 17;}let held=esp_bt_acl_packet;
     store8(packet,4);store8(packet+1,62);store8(packet+2,1);store8(packet+3,170);esp32_call32(callback,packet,4,0,0,0,0,0,0);
-    esp_bt_cmd_busy=1;esp_bt_cmd_opcode=0x1001;esp_bt_cmd_size=0;store8(packet+1,14);store8(packet+2,4);store8(packet+3,1);store8(packet+4,1);store8(packet+5,16);store8(packet+6,0);esp32_call32(callback,packet,7,0,0,0,0,0,0);
+    test_wait_command(0x1001);esp_bt_cmd_size=0;store8(packet+1,14);store8(packet+2,4);store8(packet+3,1);store8(packet+4,1);store8(packet+5,16);store8(packet+6,0);esp32_call32(callback,packet,7,0,0,0,0,0,0);
     if esp_bt_cmd_size!=7 || esp_bt_event_count!=1 || esp_bt_acl_count!=4 || esp_bt_hci_next_event() {return 18;}esp_bt_cmd_busy=0;
     if esp_bt_hci_next_event()!=4 || load8(esp_bt_rx+3)!=170 || esp_bt_acl_packet!=held || load8(held+1028)!=255 {return 19;}
     i=0;while i<4 {if esp_bt_hci_peek_acl()!=1029 || load8(esp_bt_acl_packet+5)!=0 || load8(esp_bt_acl_packet+1028)!=255 || esp_bt_hci_consume_acl() {return 20;}i=i+1;}if esp_bt_hci_peek_acl() || esp_bt_hci_consume_acl()!= -11 {return 21;}
@@ -50,7 +51,7 @@ fn main() {
     esp_bt_send_ready(0,0,0,0,0,0,0,0);esp32_store32(available,0);if esp_bt_hci_send_packet(packet,1029)!= -11 || esp32_load32(count)!=1 || load8(esp_bt_tx+5)!=0 {return 28;}esp32_store32(available,1);esp_bt_cmd_busy=1;if esp_bt_hci_send_packet(packet,1029)!= -11 {return 29;}esp_bt_cmd_busy=0;
     if esp_bt_hci_send_packet(packet,1029) || esp32_load32(count)!=2 || load8(esp_bt_tx+5)!=42 {return 30;}esp_bt_send_ready(0,0,0,0,0,0,0,0);
     store8(packet,1);store8(packet+1,0x35);store8(packet+2,0x0c);store8(packet+3,5);store8(packet+4,1);store8(packet+5,64);store8(packet+6,0);store8(packet+7,2);store8(packet+8,0);
-    esp_bt_cmd_credits=0;esp_bt_cmd_busy=1;esp_bt_cmd_opcode=0x1001;esp_bt_cmd_size=0;if esp_bt_hci_send_packet(packet,9) || esp32_load32(count)!=3 || esp32_load32(size)!=9 || !esp_bt_cmd_busy || esp_bt_cmd_size || esp_bt_cmd_credits {return 31;}store8(packet,4);store8(packet+1,14);store8(packet+2,4);store8(packet+3,1);store8(packet+4,1);store8(packet+5,16);store8(packet+6,0);if esp32_call32(callback,packet,7,0,0,0,0,0,0) || esp_bt_cmd_size!=7 || esp_bt_event_count {return 33;}esp_bt_cmd_busy=0;esp_bt_send_ready(0,0,0,0,0,0,0,0);store8(packet,1);store8(packet+2,0x0c);store8(packet+3,5);store8(packet+4,1);
+    esp_bt_cmd_credits=0;test_wait_command(0x1001);esp_bt_cmd_size=0;if esp_bt_hci_send_packet(packet,9) || esp32_load32(count)!=3 || esp32_load32(size)!=9 || !esp_bt_cmd_busy || esp_bt_cmd_size || esp_bt_cmd_credits {return 31;}store8(packet,4);store8(packet+1,14);store8(packet+2,4);store8(packet+3,1);store8(packet+4,1);store8(packet+5,16);store8(packet+6,0);if esp32_call32(callback,packet,7,0,0,0,0,0,0) || esp_bt_cmd_size!=7 || esp_bt_event_count {return 33;}esp_bt_cmd_busy=0;esp_bt_send_ready(0,0,0,0,0,0,0,0);store8(packet,1);store8(packet+2,0x0c);store8(packet+3,5);store8(packet+4,1);
     store8(packet+1,3);if esp_bt_hci_send_packet(packet,9)!= -22 || esp32_load32(count)!=3 || esp_bt_hci_send_packet(0,9)!= -22 || esp_bt_hci_command(65536,0,0)!= -22 || esp_sdk_heap_free()!=before {return 32;}
 
     // Cross-queue order is semantic: an encryption event cannot overtake the
@@ -68,11 +69,11 @@ fn main() {
     if esp_bt_hci_consume_packet()!= -16 || esp_bt_event_count!=1 || esp_bt_hci_peek_packet()!=5 || esp_bt_packet_sequence<=sequence || esp_bt_hci_consume_packet() || esp_bt_hci_peek_packet() || esp_bt_packet || esp_bt_packet_kind {return 43;}
     // Command responses retain their receipt sequence without stealing a
     // queued control or ACL slot, even when both async rings are occupied.
-    test_receive(packet,"043e0202aa");test_receive(packet,"024020040000000400");esp_bt_cmd_busy=1;esp_bt_cmd_size=0;esp_bt_cmd_opcode=0x1001;test_receive(packet,"040e0401011000");
+    test_receive(packet,"043e0202aa");test_receive(packet,"024020040000000400");test_wait_command(0x1001);esp_bt_cmd_opcode=0x1001;test_receive(packet,"040e0401011000");
     if esp_bt_cmd_size!=7 || esp_bt_event_count!=1 || esp_bt_acl_count!=1 || esp_bt_hci_peek_packet()!=5 || esp_bt_packet_kind!=4 || esp_bt_packet_sequence>=esp_bt_cmd_sequence || esp_bt_hci_consume_packet() || esp_bt_hci_peek_packet()!=9 || esp_bt_packet_kind!=2 || esp_bt_packet_sequence>=esp_bt_cmd_sequence || esp_bt_hci_consume_packet() {return 44;}esp_bt_cmd_busy=0;
     // An error response to the special host-completed command is asynchronous;
     // its ncmd field neither steals a response nor changes ordinary credits.
-    esp_bt_cmd_credits=2;esp_bt_cmd_busy=1;esp_bt_cmd_opcode=0x1001;esp_bt_cmd_size=0;test_receive(packet,"040e0400350c12");if esp_bt_cmd_credits!=2 || esp_bt_cmd_size || esp_bt_event_count!=1 || esp_bt_hci_next_event() {return 46;}esp_bt_cmd_busy=0;if esp_bt_hci_next_event()!=7 || load8(esp_bt_rx+6)!=0x12 {return 47;}
+    esp_bt_cmd_credits=2;test_wait_command(0x1001);esp_bt_cmd_size=0;test_receive(packet,"040e0400350c12");if esp_bt_cmd_credits!=2 || esp_bt_cmd_size || esp_bt_event_count!=1 || esp_bt_hci_next_event() {return 46;}esp_bt_cmd_busy=0;if esp_bt_hci_next_event()!=7 || load8(esp_bt_rx+6)!=0x12 {return 47;}
     esp_sdk_free(work);if esp_sdk_heap_free()!=before {return 45;}
     esp_uart_write("PASS: bounded ordered VHCI control/ACL, retained TX ownership, encryption snapshots and recycled handles\r\n");return 0;
 }

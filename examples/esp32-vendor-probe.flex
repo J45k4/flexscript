@@ -8,7 +8,7 @@ global probe_stage=0;
 fn probe_task(a,b,c,d,e,f,g,h) {if a==42 {probe_stage=1;esp_sdk_delay(2);probe_stage=2;}return 0;}
 fn main() {
     esp_uart_write("START: native Flexscript vendor/flash probe\r\n");
-    if esp_sdk_heap_init(0x3ffc8000,98304) || esp_sdk_task_init() {return 1;}
+    if esp_sdk_heap_init(0x3ffc8000,98304) || esp_sdk_task_init() {return 1;}esp32_irq_restore(0);
     let before=esp_sdk_heap_free();let buffer=esp_sdk_malloc(8);if !buffer {return 2;}
     let r=esp32_call32(esp32_external("hexstr2bin"),"deadbeef01234567",buffer,8,0,0,0,0,0);
     if r || load64(buffer)!=0x67452301efbeadde {return 3;}esp_sdk_free(buffer);

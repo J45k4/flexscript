@@ -4,9 +4,13 @@ global esp_sdk_begin=0;
 global esp_sdk_end=0;
 global esp_sdk_allocated=0;
 global esp_sdk_rover=0;
+// Profiles keep their SDK arena after the native bump heap. The main-stack
+// floor is also checked before initialization writes, including smaller ELFs.
+fn esp_sdk_heap_min() {let state=esp32_state();if state==0x3fca8000 {return 0x3fcb2000;}if state==0x3fcc0000 {return 0x3fcc6000;}if state==0x3fcb0000 {return 0x3fcc8000;}if state==0x3ffb0000 || state==0x3ffc0000 {return 0x3ffc8000;}return 0;}
+fn esp_sdk_heap_max() {if esp32_state()==0x3fca8000 || esp32_state()==0x3fcb0000 || esp32_state()==0x3fcc0000 {return 0x3fcd0000;}return 0x3ffe0000;}
 fn esp_sdk_heap_init(base,size) {
-    if base<0x3ffc8000 || (base&15) || size<64 || (size&15) || base+size>0x3ffe0000 {return -22;}
-    if esp_sdk_begin {return -16;}esp_sdk_begin=base;esp_sdk_end=base+size;esp_sdk_allocated=0;esp_sdk_rover=base;
+    let lower=esp_sdk_heap_min();if !lower {return -95;}let upper=esp_sdk_heap_max();if base<lower || base>=upper || (base&15) || size<64 || (size&15) || size>upper-base {return -22;}
+    if esp_sdk_begin {return -16;}if base+size>esp32_load32(esp32_state()+20) {return -22;}esp_sdk_begin=base;esp_sdk_end=base+size;esp_sdk_allocated=0;esp_sdk_rover=base;
     esp32_store32(base,size-16);esp32_store32(base+4,0);esp32_store32(base+8,0);esp32_store32(base+12,0x48454150);
     let end=base+size-16;esp32_store32(end,17);esp32_store32(end+4,size-16);esp32_store32(end+8,0);esp32_store32(end+12,0x48454150);return 0;
 }
@@ -15,7 +19,7 @@ fn esp_sdk_header(p) {
     if esp32_load32(h+12)!=0x48454150 || !(esp32_load32(h)&1) {return 0;}return h;
 }
 fn esp_sdk_malloc(size) {
-    if size<=0 || size>0x18000 || !esp_sdk_begin {return 0;}let need=(size+31)&~15;let ps=esp32_irq_save();let h=esp_sdk_rover;let start=h;
+    if size<=0 || !esp_sdk_begin || size>esp_sdk_end-esp_sdk_begin-32 {return 0;}let need=(size+31)&~15;let ps=esp32_irq_save();let h=esp_sdk_rover;let start=h;
     // The cursor always names a block header. Free resets it to the final
     // coalesced block, so no operation can leave it inside a merged extent.
     let searched=0;while !searched || h!=start {searched=1;
@@ -35,7 +39,7 @@ fn esp_sdk_free(p) {
     esp_sdk_rover=h;esp32_irq_restore(ps);return 0;
 }
 fn esp_sdk_calloc(n,size) {
-    if n<=0 || size<=0 || n>0x18000/size {return 0;}let total=n*size;let p=esp_sdk_malloc(total);if p {let i=0;while i<total {store8(p+i,0);i=i+1;}}return p;
+    if n<=0 || size<=0 || !esp_sdk_begin || n>(esp_sdk_end-esp_sdk_begin-32)/size {return 0;}let total=n*size;let p=esp_sdk_malloc(total);if p {let i=0;while i<total {store8(p+i,0);i=i+1;}}return p;
 }
 fn esp_sdk_realloc(p,size) {
     if !p {return esp_sdk_malloc(size);}if !size {esp_sdk_free(p);return 0;}let h=esp_sdk_header(p);if !h {return 0;}let count=esp32_load32(h+8);let out=esp_sdk_malloc(size);if !out {return 0;}esp_sdk_heap_tag(out,(esp32_load32(h)>>1)&7);if count>size {count=size;}let i=0;while i<count {store8(out+i,load8(p+i));i=i+1;}esp_sdk_free(p);return out;
