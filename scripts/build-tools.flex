@@ -37,6 +37,8 @@ fn main(argc,argv) {
     h_add(names,"test-ml");
     h_add(names,"test-pup");
     h_add(names,"mnist-infer");
+    h_add(names,"test-lowering");
+    h_add(names,"test-cpu-cxx");
     h_add(names,"test-f64");
     h_add(names,"test-f64-math");
     h_add(names,"test-tetris");

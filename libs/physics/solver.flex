@@ -383,12 +383,9 @@ fn ph_step(w) {
     }
     else {
         while warm_color<colors {
-            i=0;
-            while i<load64(w+232) {
-                let group=ph_contact(w,i);
-                if load64(group+216)==warm_color {
-                    ph_group_warm_at(w,group,ph_scratch(w)+2048);
-                }
+            i=ph_color_begin(w,warm_color);
+            while i<ph_color_end(w,warm_color) {
+                ph_group_warm_at(w,ph_color_group(w,i),ph_scratch(w)+2048);
                 i=i+1;
             }
             warm_color=warm_color+1;
@@ -406,12 +403,9 @@ fn ph_step(w) {
         else {
             let color=0;
             while color<colors {
-                i=0;
-                while i<load64(w+232) {
-                    let group=ph_contact(w,i);
-                    if load64(group+216)==color {
-                        ph_group_solve_at(w,group,ph_scratch(w)+2048);
-                    }
+                i=ph_color_begin(w,color);
+                while i<ph_color_end(w,color) {
+                    ph_group_solve_at(w,ph_color_group(w,i),ph_scratch(w)+2048);
                     i=i+1;
                 }
                 color=color+1;

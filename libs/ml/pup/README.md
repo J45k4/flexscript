@@ -69,7 +69,7 @@ other elementwise operations and views inline into their consumers. The MNIST
 plan has four stages and a 1,361,496-byte workspace, without allocating either
 broadcast product tensor.
 
-This first frontend supports static inference. It does not yet implement
+The primitive GPU frontend supports static inference. It does not yet implement
 Puppygrad's full language, `def`, loops, comparisons, integer tensors, exp/log,
 graph `grad`, training or dynamic shapes. Unsupported syntax is rejected with
 a located diagnostic. The existing eager `libs/ml` autodiff library remains
@@ -196,3 +196,92 @@ on both PTX and direct SASS. No dataset or checkpoint is needed by the suite.
 The GPU suite also constructs a known-class MNIST checkpoint and 129 synthetic
 images to exercise loading and padded batches, then checks accuracy-threshold,
 bad-shape, nonfinite-logit and truncated-IDX rejection.
+
+## Named CNN training graphs
+
+`pup_parse_network(text,size,path)` selects an additional, platform-free network
+frontend. It uses the same lexer, bindings and expression parser, preserving the
+original primitive/CUDA/SASS path through `pup_parse`. The network backend emits
+a native Flexscript model factory with `pn_lower_host(function_name)`. The host
+provides the differentiable execution backend; this is not a CNN extension to
+the original `pup_gpu_open` CUDA runtime.
+
+```pup
+batch = config("batch",4)
+size = config("image_size",256)
+images = input("images",[batch,3,size,size])
+targets = input("targets",[batch,1,size/2,size/2])
+c = conv2d(images,"stem",64,7,2,3,0)
+b = batchnorm(c,"stem_bn")
+p = maxpool2d(relu(b),3,2,1)
+logits = conv_transpose2d(p,"heatmap",1,4,2,1,1)
+objective = spatial_balanced_bce(logits,targets)
+optimizer = adam(objective,config("learning_rate",0.0001))
+output logits,objective,optimizer
+```
+
+The named layer prefix is the checkpoint namespace. A backend creates the
+corresponding weights/biases and BatchNorm affine/running state. Each layer name
+must be unique. Shapes, NCHW ranks, convolution groups, residual compatibility,
+heatmap targets and optimizer objective/rates are checked before source emission.
+Malformed models retain located diagnostics and do not replace an existing
+artifact. Static input dimension expressions support integer arithmetic;
+`config` values can be specialized by the backend at model construction.
+
+| Network expression | Semantics |
+| --- | --- |
+| `config("name",number)` | Scalar default overridden by the host backend. |
+| `conv2d(x,"name",channels,kernel,stride,padding,bias[,groups])` | Named square-kernel NCHW convolution; bias is 0 or 1. |
+| `conv_transpose2d(...)` | Corresponding transpose, without output padding. |
+| `batchnorm(x,"name")` | Named affine BatchNorm and tracked running state. |
+| `maxpool2d(x,kernel,stride,padding)` | Explicit zero-padded square pooling. |
+| `relu(x)`, `a+b` | ReLU and same-shape residual addition. |
+| `hardswish(x)`, `hardsigmoid(x)` | Hard activations with differentiable backend execution. |
+| `global_avgpool2d(x)` | Spatial mean retaining singleton H/W axes. |
+| `linear4d(x,"name",width)` | Named linear projection of N,C,1,1; checkpoint weights remain rank two. |
+| `x*gate` | NCHW multiplication by a matching N,C,1,1 channel gate. |
+| `checkpoint_alias(optimizer,"source.","alias.")` | Additional checkpoint names sharing parameter storage; no duplicate optimizer updates. |
+| `spatial_balanced_bce(logits,targets)` | Scalar spatial-balanced heatmap BCE. |
+| `adam(objective,lr[,head_lr])` | Adam training policy, optionally a separate head rate. |
+
+Generated factories call `pup_input`, `pup_config_f32`, `pup_i64`,
+`pup_conv2d`, `pup_batchnorm`, `pup_maxpool2d`, `pup_relu`, `pup_add`,
+`pup_hardswish`, `pup_hardsigmoid`, `pup_global_avgpool2d`, `pup_linear4d`,
+`pup_channel_mul`, `pup_checkpoint_alias`, `pup_spatial_balanced_bce`,
+`pup_adam` and `pup_finish`. A runtime supplies
+those functions and owns values, gradients, optimizer buffers and serialization.
+`pup_finish` receives named input pairs and ordered output handles. The frontend
+stores metadata and does not allocate the primitive interpreter's material
+workspace for network graphs. The network graph depth bound is 256; primitive
+graphs retain 64.
+
+The Roboband native HIP backend uses this source of truth for the exact current
+ResNet-18 backbone/four-stage heatmap head and its objective/Adam policy. Its
+forward and reverse-mode kernels, BatchNorm updates, gradients and Adam moments
+match the original Tinygrad reference within documented FP32 tolerances;
+same-input checkpoint resume is byte-identical. The whole model retains all
+146 state names and 13,962,785 trainable scalars. Changing a `.pup` layer width
+changes the executing native model, rather than annotating a hardcoded builder.
+
+The MobileNetV4 heatmap graph additionally uses grouped/depthwise convolutions,
+hard activations, linear squeeze-and-excitation gates and checkpoint aliases.
+It preserves the existing 630 state entries, including both block namespaces.
+Full-model logits/loss and selected gradients are verified against Tinygrad.
+
+Current limitations: the Roboband adapter supports 3×3/stride-2/pad-1
+pooling, spatial-balanced BCE and Adam. It has no general graph `grad` expression,
+layer sharing, loops, dynamic ranks, mixed precision or automatic CNN lowering
+to the primitive CUDA/SASS runtime. Other backends must implement the stated
+contracts and verify their gradients. The scalar loss in the current Roboband
+backend is computed on the host; forward/backward/Adam run on the GPU.
+
+Device-free network checks:
+
+```sh
+build/flex libs/ml/pup/tests/network.flex -o build/pup-network-tests
+build/pup-network-tests
+```
+
+The device-free Pup suite also executes the named network checks.
+Actual ResNet training and malformed/modified-model checks live in Roboband's
+`flex/tests/test_training.py` and `flex/tests/test_pup.py`.

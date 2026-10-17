@@ -29,7 +29,7 @@ jobs:
       - name: Install verification dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -141,6 +141,12 @@ jobs:
 
       - name: Test Pup graphs and source frontend kernel compilation
         run: build/tools/test-pup --compiler build/stage2 --report build/pup-tests.json
+
+      - name: Test optimizing CPU kernels and word semantics
+        run: build/tools/test-cpu-cxx build/stage2 --report build/cpu-cxx-tests.json
+
+      - name: Test explicit lowering hooks and native floating point
+        run: build/tools/test-lowering build/stage2 --report build/lowering-tests.json
 
       - name: Test portable binary64 arithmetic against preserved Rust bit patterns
         run: build/tools/test-f64 build/stage2 --report build/f64-tests.json

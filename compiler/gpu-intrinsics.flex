@@ -2,6 +2,7 @@
 // Backends replace calls by instructions and never compile the host fallback.
 fn gpu_intrinsic(index) {
     let f=functions+index*32;let name=load64(f);let size=load64(f+8);
+    let registered=lowering_lookup(name,size,1);if registered {return registered;}
     if equal(name,size,"gpu_thread_x",12) {return 1;}
     if equal(name,size,"gpu_thread_y",12) {return 2;}
     if equal(name,size,"gpu_thread_z",12) {return 3;}

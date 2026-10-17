@@ -5,6 +5,8 @@ import "baremetal.flex";
 import "esp32.flex";
 import "wasm.flex";
 import "gpu-intrinsics.flex";
+import "lowering.flex";
+import "cpu-cxx.flex";
 import "ptx.flex";
 import "hip.flex";
 import "rdna.flex";
@@ -176,7 +178,7 @@ fn reserved(name, size) {
         || equal(name, size, "port_in16", 9) || equal(name, size, "port_out16", 10)
         || equal(name, size, "port_in32", 9) || equal(name, size, "port_out32", 10)
         || equal(name, size, "cpu_halt", 8)
-        || equal(name, size, "native_callback", 15);
+        || equal(name, size, "native_callback", 15) || equal(name,size,"lowering",8);
 }
 
 fn next() {
@@ -537,6 +539,13 @@ fn call(name, size) {
             store64(site,name);store64(site+8,size);store64(site+16,vm_emit(8,0)+8);
             store64(site+24,count);call_count=call_count+1;return 0;
         }
+        let op=lowering_lookup(name,size,0);
+        if op {
+            if count!=lowering_arity(op) {fail("wrong lowering function arity");}
+            let site=calls+call_count*32;call_count=call_count+1;
+            store64(site,name);store64(site+8,size);store64(site+16,-1);store64(site+24,count);
+            lowering_native(op);return 0;
+        }
         emit(232);
         let entry = calls + call_count * 32;
         store64(entry, name);
@@ -557,6 +566,7 @@ fn prefix() {
     } else if token == 258 {
         if tx_recording {store64(tx_literal_flags+(function_count-1)*8,128);}
         if ptx_target || sass_target || hip_target {fail("GPU targets do not support string literals");}
+        if cpu_cxx_target {fail("CPU kernels do not support string literals");}
         if vm_mode {let address=vm_string_literal();if esp32_target {address=address+esp_data_base;}immediate(address);next();return 0;}
         let start = token_start + 1;
         let end = token_start + token_size - 1;
@@ -785,6 +795,7 @@ fn function_definition() {
     block();
     immediate(0); epilogue();
     patch32(frame, ((slots * 8 + 15) / 16) * 16);
+    lowering_entry(entry);
     return 0;
 }
 
@@ -803,9 +814,11 @@ fn initialize_output() {
     patch32(64, 1); patch32(68, 7);
     store64(output + 80, 4194304); store64(output + 88, 4194304);
     store64(output + 112, 4096);
+    // Establish round-to-nearest, gradual underflow and masked FP exceptions.
+    emit(104);emit32(8064);emit(15);emit(174);emit(20);emit(36);emit(72);emit(131);emit(196);emit(8);
     emit(72); emit(139); emit(4); emit(36); emit(80);
     emit(72); emit(141); emit(68); emit(36); emit(16); emit(80);
-    emit(232); emit32(0);
+    emit(232); native_main_call=output_size; emit32(0);
     emit(72); emit(131); emit(196); emit(16);
     word_io_exit();
     emit(72); emit(137); emit(199);
@@ -814,7 +827,8 @@ fn initialize_output() {
 }
 
 fn resolve() {
-    if ptx_target || sass_target || hip_target {vm_resolve();return 0;}
+    lowering_validate();
+    if ptx_target || sass_target || hip_target || cpu_cxx_target {vm_resolve();return 0;}
     let main_index = find(functions, function_count, "main", 4);
     if main_index < 0 { fail("missing main function"); }
     let entry = functions + main_index * 32;
@@ -839,7 +853,7 @@ fn resolve() {
             target=load64(function+16);
         }
         let at = load64(site + 16);
-        patch32(at, target - at - 4);
+        if at>=0 {patch32(at, target - at - 4);}
         i = i + 1;
     }
     if ffi_dynamic { ffi_finish(load64(entry+16)); }
@@ -1276,6 +1290,7 @@ fn skip_function() {
 
 fn compile_modules() {return compile_module_range(0);}
 fn compile_module_range(first) {
+    if first==0 {lowering_count=0;}
     let prior=function_count;function_count=0;
     // All globals exist before any function is emitted, even across files.
     // Each individual file still requires globals before functions.
@@ -1289,11 +1304,14 @@ fn compile_module_range(first) {
             if is("global") {
                 if seen_function { fail("globals must precede functions"); }
                 global_definition();
+            } else if is("lowering") {
+                if seen_function {fail("lowerings must precede functions");}
+                lowering_declaration();
             } else if is("fn") {
                 if !seen_function { store64(module + 56, token_start); }
                 seen_function = 1; skip_function();
             } else if is("import") { fail("imports must precede declarations"); }
-            else { fail("expected global or function definition"); }
+            else { fail("expected global, lowering or function definition"); }
         }
         i = i + 1;
     }
@@ -1896,11 +1914,11 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
-    let target_seen=0;
+    let target_seen=0;let lowering_mode_seen=0;
     while first<argc && load8(load64(argv+first*8))==45 {
         let arg=load64(argv+first*8);if first+1>=argc {print(2,"compiler option needs a value\n");return 1;}
         let value=load64(argv+(first+1)*8);
@@ -1917,11 +1935,18 @@ fn main(argc, argv) {
             else if up_text(value,"sass-sm75") {sass_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"hip") {hip_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"rdna-gfx1201") {hip_target=1;hp_machine=2;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"cpu-cxx") {cpu_cxx_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"ir") {frontend_ir_target=1;}
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}
         else if up_text(arg,"--frontend") {frontend_external(value);}
         else if up_text(arg,"--platform") || up_text(arg,"--esp32-platform") {frontend_platform_add(value);}
+        else if up_text(arg,"--lowering-mode") {
+            if lowering_mode_seen {fail("choose only one lowering mode");}lowering_mode_seen=1;
+            if up_text(value,"hardware") {lowering_reference=0;}
+            else if up_text(value,"reference") {lowering_reference=1;}
+            else {print(2,"expected hardware or reference lowering mode\n");return 1;}
+        }
         else if up_text(arg,"--word-io") {
             if up_text(value,"buffered") {word_io_buffered=1;}
             else if up_text(value,"unbuffered") {word_io_buffered=0;}
@@ -1938,8 +1963,10 @@ fn main(argc, argv) {
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
     if shader_target && frontend_language!=1 {fail("shader targets require SetaScript source");}
-    if word_io_buffered && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
+    if word_io_buffered && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || cpu_cxx_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
     if (ptx_target || sass_target || hip_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
+    if lowering_mode_seen && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || cpu_cxx_target) {fail("lowering mode requires native Linux x86-64 output");}
+    if cpu_cxx_target && frontend_language {fail("CPU kernel backend currently requires Flexscript source");}
     frontend_platform_check();
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=268435456;}
     let destination = load64(argv + (first+2)*8);
@@ -1947,7 +1974,7 @@ fn main(argc, argv) {
         fail("source and output paths must differ");
     }
     compiler_initialize();
-    if wasm_target || ptx_target || sass_target || hip_target || esp32_target {wasm_initialize();if esp32_target {vm_heap_used=24;}}
+    if wasm_target || ptx_target || sass_target || hip_target || cpu_cxx_target || esp32_target {wasm_initialize();if esp32_target {vm_heap_used=24;}}
     load_module(source_path);
     if shader_target {
         select_module(0);output=seta_shader_frontend(source,source_size,source_path);output_size=sg_output_size;
@@ -1965,6 +1992,7 @@ fn main(argc, argv) {
         else if ptx_target {ptx_finish();}
         else if sass_target {sass_finish();}
         else if hip_target {hip_finish();}
+        else if cpu_cxx_target {cpu_cxx_finish();}
         else if frontend_language {ir_native();}
     }
     let stat = input_stat;
@@ -1992,7 +2020,7 @@ fn main(argc, argv) {
     }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
-    let mode=493;if wasm_target || shader_target || ptx_target || sass_target || hip_target || esp32_target || frontend_ir_target {mode=420;}
+    let mode=493;if wasm_target || shader_target || ptx_target || sass_target || hip_target || esp32_target || frontend_ir_target || cpu_cxx_target {mode=420;}
     if syscall(91, fd, mode, 0, 0, 0, 0) < 0 { fail("cannot set output permissions"); }
     if syscall(3, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot close output"); }
     return 0;
@@ -2006,6 +2034,7 @@ fn compiler_initialize() {
     functions = alloc(8192 * 32);
     locals = alloc(4096 * 32);
     calls = alloc(65536 * 32);
+    lowering_entries=alloc(2048*32);lowering_count=0;
     ffi_entries = alloc(40);
     ffi_fixups = alloc(64);
     modules = alloc(256 * 64);
@@ -2013,7 +2042,7 @@ fn compiler_initialize() {
     input_stat = alloc(144);
     tx_sites=alloc(2048*24);tx_literal_flags=alloc(2048*8);tx_requests=alloc(16*48);tx_inputs=alloc(8192*16);
     if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0
-        || calls < 0 || modules < 0 || module_urls < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0
+        || lowering_entries<0 || calls < 0 || modules < 0 || module_urls < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0
         || tx_sites<0 || tx_literal_flags<0 || tx_requests<0 || tx_inputs<0 { fail("memory allocation failed"); }
     return 0;
 }

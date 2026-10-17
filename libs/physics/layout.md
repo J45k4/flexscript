@@ -2,7 +2,7 @@
 
 All slots are little-endian 64-bit words. Float slots contain binary32 bits in
 the low 32 bits; the upper 32 bits are zero, except for the explicitly packed
-contact matrix cache fields below. All IDs and offsets are signed
+contact matrix and color-permutation cache fields below. All IDs and offsets are signed
 integer words. There are **no pointers inside the world**, so copying one arena
 to CPU, Wasm linear memory or VRAM preserves its layout. Separate worlds own
 separate scratch regions. Concurrent stepping of the same arena is forbidden.
@@ -57,8 +57,11 @@ normal impulse, 80 accumulated tangent impulse, 104/128 body-relative arms,
 152 inverse effective normal mass, 160 accumulated position-repair impulse,
 168 position-repair target velocity and 176 restitution target normal velocity. Vector fields occupy three float words. Offset 192 in the
 contact slots stores a sorted index permutation; offsets 200/208/216 in the
-first manifold-count slots store sorted range start/end and color. These
-indices do not move the underlying contact records. Offset 224 stores a fixed
+first manifold-count slots store sorted contact range start/end and packed
+color/permutation metadata. Offset 216 has the group color in its low 32 bits;
+its high 32 bits, indexed by bucket position, map to a manifold descriptor.
+`ph_color_group` resolves this mapping. These indices do not move the underlying
+contact records or change canonical order within each color. Offset 224 stores a fixed
 unit tangent (three float words). The other tangent is normal cross tangent.
 Offset 184 packs tangent effective masses Kxx/Kyy into low/high binary32 halves;
 offset 248 similarly packs Kxy and the inverse determinant. Preparation rebuilds
@@ -80,7 +83,12 @@ Changing settings through `ph_settings` invalidates previous contacts/caches.
 
 The CPU arena scratch region is 16384 bytes. The GPU adapter additionally owns
 64 × 16384 bytes of device scratch per world and frees it with the handle. The solver uses it for bounded MPR/EPA convex contact refinement, polygon clipping,
-contact preparation and temporary vectors. Bytes 0–16351 are transient. The
+contact preparation and temporary vectors. Bytes 0–16351 are transient. During GPU collision generation, bytes 0–8191
+hold at most 1,024 packed candidate pairs, 8192 holds their count, and 8200
+holds the completed step's candidate total. Narrow phase uses the separate
+lane scratch, so it cannot overwrite this queue. After collision generation,
+CPU/GPU coloring uses bytes 14848–15359 for 64 range starts and 15360–15871
+for range ends; contact solving does not use narrow-phase scratch. The
 final 32 bytes of the arena scratch are persistent per-world options, not lane
 scratch: offset 16352 stores the support-patch angular tolerance (binary32
 squared sine). Zero selects the conservative geometric defaults. Set it through
@@ -98,3 +106,11 @@ cylinder/sphere or MPR degeneracy/iteration failures; EPA reasons are 21 no
 witness, 22 invalid seed, 23 no active face, 24 vertex limit, 25 horizon limit,
 26 empty horizon, 27 face limit and 28 iteration limit. Diagnostics are not
 valid on a successful step and are cleared when rebuilding the world.
+
+The optional staged collision adapter owns a separate complete pair queue and
+16 KiB private scratch per collision worker (for example, 32 MiB for 2,048
+workers). This does not change the relocatable arena layout or checkpoint ABI.
+The workgroup bitonic sort uses contact index word 192 in valid and padded
+slots up to the next power of two, bounded by contact capacity. All other
+contact data and unused slots beyond that padding are preserved. CPU sorting
+and GPU insufficient-padding-capacity cases use the existing heap order.

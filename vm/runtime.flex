@@ -148,6 +148,7 @@ fn vm_ffi_kind(name,size) {
     return 0;
 }
 fn vm_resolve() {
+    lowering_validate();
     let i=0;
     while i<call_count {
         let site=calls+i*32;let index=find(functions,function_count,load64(site),load64(site+8));

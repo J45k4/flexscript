@@ -1,4 +1,5 @@
 import "nn.flex";
+import "network.flex";
 global pp_pos=0;
 global pp_start=0;
 global pp_token=0;
@@ -61,9 +62,11 @@ fn pp_arg(args,index) {return load64(args+index*8);}
 fn pp_shape(value) {
     if load64(value)!=100 {pg_error("expected a shape/axis list");}
     let count=load64(value+48);if count>8 {pg_error("rank exceeds eight");}let shape=alloc(count*8+8);let i=0;
-    while i<count {store64(shape+i*8,pg_integer(load64(load64(value+56)+i*8)));i=i+1;}return shape;
+    while i<count {store64(shape+i*8,pp_static_integer(load64(load64(value+56)+i*8)));i=i+1;}return shape;
 }
+fn pp_static_integer(value) {if pg_network_mode {return pn_integer(value);}return pg_integer(value);}
 fn pp_call(name,args,count) {
+    if pg_network_mode {let layer=pn_call(name,args,count);if layer {return layer;}}
     if pg_eq(name,"param") && count==3 {
         if load64(pp_arg(args,1))!=101 {pg_error("only f32 parameters are supported");}
         let slot=pg_integer(pp_arg(args,0));let shape=alloc(8);store64(shape,pg_integer(pp_arg(args,2)));
@@ -71,7 +74,7 @@ fn pp_call(name,args,count) {
     }
     if pg_eq(name,"input") && count==2 {
         let name_value=pp_arg(args,0);let dims=pp_arg(args,1);if load64(name_value)!=103 {pg_error("input name must be a string");}
-        return pg_parameter(pg_param_count,load64(name_value+80),load64(dims+48),pp_shape(dims));
+        let node=pg_parameter(pg_param_count,load64(name_value+80),load64(dims+48),pp_shape(dims));if pg_network_mode {store64(node+96,dims);}return node;
     }
     if pg_eq(name,"const") && count==1 {if load64(pp_arg(args,0))!=2 {pg_error("const requires a literal");}return pp_arg(args,0);}
     if pg_eq(name,"stack") {let list=pg_node(100,0,0,0,0,count,args);return list;}
@@ -119,7 +122,7 @@ fn pp_expression() {
     pp_depth=pp_depth+1;if pp_depth>64 {pg_error("expression nesting exceeds 64");}let v=pp_product();
     while pp_token==43 || pp_token==45 {let op=3;if pp_token==45 {op=4;}pp_next();v=pg_binary(op,v,pp_product());}pp_depth=pp_depth-1;return v;
 }
-fn pup_parse(text,size,path) {
+fn pp_parse(text,size,path) {
     pg_init(text,size,path);pp_pos=0;pp_depth=0;pp_bindings=alloc(2048*16);pp_binding_count=0;pp_next();let outputs=0;
     while pp_token {
         if pp_token==10 {pp_next();}else if pp_name("output") {
@@ -130,5 +133,8 @@ fn pup_parse(text,size,path) {
             let name=pp_text;pp_next();pp_expect(61);let value=pp_expression();pp_bind(name,value);
             if pp_token && pp_token!=10 {pg_error("expressions must occupy one line");}
         }
-    }pg_plan();return 0;
+    }if pg_network_mode {pn_plan();}else {pg_plan();}return 0;
 }
+
+fn pup_parse(text,size,path) {pg_network_mode=0;return pp_parse(text,size,path);}
+fn pup_parse_network(text,size,path) {pg_network_mode=1;pn_names=alloc(2048*8);pn_name_count=0;return pp_parse(text,size,path);}
