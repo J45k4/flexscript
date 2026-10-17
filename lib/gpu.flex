@@ -1,6 +1,23 @@
-// GPU-only operations. Import this file in kernels; the GPU backends lower
-// these reserved names to instructions. Geometry/cooperation require a GPU.
+// GPU operations and portable floating helpers. Legacy geometry/cooperation
+// names remain reserved GPU intrinsics; explicit numeric registrations also
+// support neutral aliases and native CPU lowering.
 import "f64.flex";
+import "lowering.flex";
+lowering gpu_f32_add "f32.add";
+lowering gpu_f32_sub "f32.sub";
+lowering gpu_f32_mul "f32.mul";
+lowering gpu_f32_div "f32.div";
+lowering gpu_f32_sqrt "f32.sqrt";
+lowering gpu_f64_add "f64.add";
+lowering gpu_f64_sub "f64.sub";
+lowering gpu_f64_mul "f64.mul";
+lowering gpu_f64_div "f64.div";
+lowering gpu_f64_sqrt "f64.sqrt";
+lowering f64_add "f64.add" "native-x86_64";
+lowering f64_sub "f64.sub" "native-x86_64";
+lowering f64_mul "f64.mul" "native-x86_64";
+lowering f64_div "f64.div" "native-x86_64";
+lowering f64_sqrt "f64.sqrt" "native-x86_64";
 fn gpu_host_only() {syscall(231,78,0,0,0,0,0);return 0;}
 fn gpu_thread_x(){return gpu_host_only();}
 fn gpu_thread_y(){return gpu_host_only();}

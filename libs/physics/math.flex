@@ -1,15 +1,20 @@
 // Allocation-free binary32 math shared by native, Wasm and GPU backends.
 // Values are IEEE-754 low-word bits, as in lib/gpu.flex. Avoid GPU-only SFUs,
 // conversions and FP64 so this source also fits the direct RDNA target.
-import "../../lib/gpu.flex";
+import "../../lib/f32.flex";
+lowering ph_add "f32.add" "native-x86_64";
+lowering ph_sub "f32.sub" "native-x86_64";
+lowering ph_mul "f32.mul" "native-x86_64";
+lowering ph_dot "f32.dot3" "native-x86_64";
+lowering ph_vdot "f32.dot3.load" "native-x86_64";
 fn ph_add(a,b) {
-    return gpu_f32_add(a,b);
+    return f32_add(a,b);
 }
 fn ph_sub(a,b) {
-    return gpu_f32_sub(a,b);
+    return f32_sub(a,b);
 }
 fn ph_mul(a,b) {
-    return gpu_f32_mul(a,b);
+    return f32_mul(a,b);
 }
 fn ph_neg(a) {
     return a^2147483648;

@@ -15,9 +15,11 @@ fn initialize_output() {
     patch32(64, 1); patch32(68, 7);
     store64(output + 80, 4194304); store64(output + 88, 4194304);
     store64(output + 112, 4096);
+    // Establish round-to-nearest, gradual underflow and masked FP exceptions.
+    emit(104);emit32(8064);emit(15);emit(174);emit(20);emit(36);emit(72);emit(131);emit(196);emit(8);
     emit(72); emit(139); emit(4); emit(36); emit(80);
     emit(72); emit(141); emit(68); emit(36); emit(16); emit(80);
-    emit(232); emit32(0);
+    emit(232); native_main_call=output_size; emit32(0);
     emit(72); emit(131); emit(196); emit(16);
     word_io_exit();
     emit(72); emit(137); emit(199);
@@ -26,7 +28,8 @@ fn initialize_output() {
 }
 
 fn resolve() {
-    if ptx_target || sass_target || hip_target {vm_resolve();return 0;}
+    lowering_validate();
+    if ptx_target || sass_target || hip_target || cpu_cxx_target {vm_resolve();return 0;}
     let main_index = find(functions, function_count, "main", 4);
     if main_index < 0 { fail("missing main function"); }
     let entry = functions + main_index * 32;
@@ -51,7 +54,7 @@ fn resolve() {
             target=load64(function+16);
         }
         let at = load64(site + 16);
-        patch32(at, target - at - 4);
+        if at>=0 {patch32(at, target - at - 4);}
         i = i + 1;
     }
     if ffi_dynamic { ffi_finish(load64(entry+16)); }

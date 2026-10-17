@@ -41,7 +41,7 @@ fn tp_source_frontend() {
     tp_plugin(source,"store64(blob+24,1);");tp_bad("input","invalid source frontend result",0);
     tp_plugin(source,"store8(blob+64,0);");tp_bad("input","contains a zero byte",0);
     tp_plugin("import \"/etc/passwd\";fn main(){return 0;}","");tp_bad("input","imports must precede declarations",0);
-    tp_plugin("extend \"/etc/passwd\";fn main(){return 0;}","");tp_bad("input","expected global or function definition",0);
+    tp_plugin("extend \"/etc/passwd\";fn main(){return 0;}","");tp_bad("input","expected global, lowering or function definition",0);
     tp_plugin("fn main(){return missing();}","");tp_bad("input","undefined function",0);
     tp_plugin(source,"syscall(2,path,0,0,0,0,0);");tp_bad("input","frontend execution failed",0);
     tp_plugin(source,"");let before=h_sha(tp_frontend);let result=h_run(tp_args(t_fixture,0,tp_frontend));h_check(result,1,0);
@@ -115,6 +115,7 @@ fn tp_mnist() {
 }
 fn suite(compiler) {
     t_init(compiler);h_timeout=120000;t_checks=t_checks+pgt_suite();
+    let network=h_real("libs/ml/pup/tests/network.flex");h_compile(t_compiler,network,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),0,"");t_assert(1,"named CNN network metadata and source emission");
     let core=h_real("libs/ml/pup/tests/core.flex");h_compile(t_compiler,core,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),0,"");t_assert(1,"native primitive reference");
     let modes=h_args("--interpret","--jit",0,0,0,0);let i=0;
     while i<2 {let args=h_args(t_compiler,"run",h_at(modes,i),"--restricted","--fuel=1000000000",core);h_check(h_run(args),0,"");t_assert(1,"VM primitive reference");i=i+1;}

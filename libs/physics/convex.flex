@@ -359,7 +359,7 @@ fn ph_mpr_closest(p) {
 }
 // Return 1 contact, 0 separation, -1 bounded solver failure. The caller must
 // surface failures rather than silently treating them as an empty collision.
-fn ph_convex(a,b,p) {
+fn ph_convex_attempt(a,b,p) {
     store64(p+15984,0);
     let result=ph_mpr_discover(a,b,p);
     if result<=0 {
@@ -397,4 +397,17 @@ fn ph_convex(a,b,p) {
         return -1;
     }
     return ph_epa(a,b,p,0);
+}
+
+// A nearly grazing curved support can produce a numerically poor initial
+// portal in one order. Retry the same exact support query symmetrically;
+// reverse its normal back to the caller's order. Both attempts remain bounded
+// and a failure of both still reaches the application fault path.
+fn ph_convex(a,b,p) {
+    let result=ph_convex_attempt(a,b,p);
+    if result<0 {
+        result=ph_convex_attempt(b,a,p);
+        if result>0 {ph_scale(p+15000,p+15000,0xbf800000);}
+    }
+    return result;
 }

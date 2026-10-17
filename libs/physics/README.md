@@ -125,11 +125,12 @@ guard bytes and nonfinite fault paths are exercised on the physical GPU too. See
 
 ## Scope and limits
 
-Each GPU world owns a **64-thread workgroup**. Forces, collider transforms,
+The default `ph_device_advance` adapter assigns each GPU world a **64-thread workgroup**. Forces, collider transforms,
 broad-phase/narrow-phase pairs, contact preparation and integration run in
 parallel. Contact indices are sorted canonically and body-pair manifolds are
 greedily colored; disjoint manifolds solve concurrently, while points within
-one manifold solve serially. The CPU uses the same order and colors. Coloring
+one manifold solve serially. Stable per-color ranges avoid rescanning every
+manifold for every color/iteration. The CPU uses the same order and colors. Coloring
 and welds run in one lane; more than 64 colors uses the serial solver on the
 GPU. Each world needs an additional 1 MiB of device scratch.
 
@@ -224,3 +225,103 @@ from the physical velocity and warm-start support impulse channels. Two added
 fixtures verify overlap repair without injected kinetic motion. RoboGym's
 retained 100-band seed-1, 48-iteration containment case now passes; other dense
 seeds and 100-band detector-driven collection are not established by that test.
+
+
+## Optional stage profiling
+
+`ph_step_group_profile(world,lane_scratch,lane,profile)` preserves the ordinary
+64-lane stepping contract and accepts an optional device pointer to 128 zeroed
+bytes. Zero disables timings; `ph_step_group` retains that behavior. Each world
+must have its own buffer. Seven accumulated `gpu_clock()` durations at offsets
+0–48 measure warm-cache save, forces/shape caching, collision generation,
+contact preparation/sorting/coloring, warm start, constraint iterations and
+integration. Offset 56 counts completed steps; 64/72/80 sum contact/manifold/
+color counts; 88 tracks maximum contacts; 96 counts serial-fallback steps;
+112 sums broad-phase candidate pairs. Offset 104 is an internal cross-stage
+timestamp; 120 remains reserved. Read the buffer
+only at an explicit diagnostic boundary. Convert ticks using the target's GPU
+wall-clock calibration; these are not CPU-clock cycles. Instrumented timings
+include diagnostic overhead; compare production performance with profiling off.
+
+GPU collision scheduling tests body/AABB eligibility in bounded chunks, then
+compacts candidates into batches before running shared narrow-phase queries.
+Each lane examines at most 16 pairs per chunk, so 64 lanes cannot exceed the
+1,024-pair arena-scratch queue. Both shape indices are checked at partial-row
+boundaries. Weld exclusion and all primitive queries retain the existing shared
+implementation. This improves useful work within a workgroup; broad-phase
+complexity remains quadratic. No sleeping, relaxed tolerance, larger timestep,
+or reduced iteration count is introduced by these scheduling changes.
+
+## Staged single-world collisions
+
+`staged.flex` exposes the same numerical step with a grid-wide narrow phase:
+
+1. One 64-lane group calls `ph_step_begin_group(w,t,lane,profile)`, then
+   `ph_pair_queue_group(w,queue,lane,workers)` if the begin stage succeeds.
+2. A separate dispatch calls `ph_collide_queue_grid(w,t,queue,index)` for each
+   of `workers` threads, each with its own 16 KiB scratch slice.
+3. A final 64-lane group calls `ph_step_end_group(w,t,lane,profile)`.
+
+The caller exclusively owns the world throughout these dispatches and provides
+`32 + shapes*(shapes-1)/2*8` queue bytes. Queue words 0/8 hold the eligible-pair
+count and next job; 16/24 are caller metadata. Eligibility uses the original
+body/AABB checks, and narrow phase retains weld filtering and shape orientation.
+Dispatch boundaries provide global synchronization. There is no grid spin wait,
+CPU collision/solve fallback, or numerical state readback between stages. HIP
+graphs can record repeated stages; they are a host adapter choice, not a physics
+requirement. The original one-dispatch batch API remains available.
+
+GPU canonical contact ordering now uses a parallel bitonic index sort within
+one workgroup. Padding never reads an invalid contact; capacities too small for
+power-of-two padding retain the serial heap sort. No contact geometry is moved.
+Color assignment, warm matching, manifold sequencing, solver iterations and
+integration retain their existing semantics. Coloring, welds and the colored
+constraint solve still belong to one workgroup. Multi-block collision work
+therefore does not imply full-chip utilization throughout a step.
+
+## Optional bounded single-world working set
+
+`ph_step_end_group_spread(w,t,lane,profile,local,width)` is an opt-in final
+stage for staged worlds. The caller supplies one group of 64, 128, 256, 512 or
+1024 threads, 16 KiB private scratch per thread, and **65536 dynamic shared
+bytes when `local` is 1**. All lanes enter together. The original
+`ph_step_end_group`, `ph_step_group` and default batch adapter retain their
+original 64-thread/global-memory implementation.
+
+The optional stage keeps the same canonical order, greedy colors, warm starts,
+friction energy check, timestep and iterations. `solver-register.flex` keeps
+contact velocities in scalar locals and optionally accesses a compact
+104-byte/contact shared-memory copy. It writes solved impulses back before
+integration. Sorting, coloring and contact storage each check their shared-memory
+bound and retain global-memory methods when oversized. More than 64 colors
+keeps serial solving and disables the contact cache. Cached weld coefficients
+fit up to 124 weld slots in lane zero's private scratch; larger worlds keep the
+original weld solve. The relocatable world ABI and checkpoint bytes do not grow.
+
+The same 64 manifold workers are distributed over more waves at larger widths;
+body/contact preparation and integration use the full width. RoboGym selects
+256 threads for the final stage. This remains one workgroup, so it does not
+claim full-chip utilization or eliminate dependency barriers between colors.
+
+`ph_pair_queue_bucket(w,queue,t,lane,workers)` optionally replaces the 64-lane
+queue builder, with at least **19008 shared bytes** and the same per-lane
+16 KiB private scratch. It groups eligible pairs into 36 shape/static-body
+classes using per-lane counts and exclusive prefixes. The private pair list is
+bounded at 480 shapes; above that it calls the original queue builder. All
+eligible unordered shape pairs are preserved exactly once. Narrow phase and
+its balanced grid job cursor are unchanged.
+
+RoboGym's `flex/tests/test_gpu_workset.py` checks the optional path against the
+original GPU solver on HIP and direct RDNA, including signed float words,
+shared-memory boundaries, more than 64 colors, large sort fallback, exhaustive
+pair coverage at 480/481 shapes and scratch/queue guards. Complete saved
+pickup and 50/100-band trajectories were also bit-identical on both backends.
+
+Native CPU builds now use explicit [compiler lowering hooks](../../docs/lowering.md)
+for scalar binary32 arithmetic and ordered dot products. The same portable
+bodies remain available with `--lowering-mode reference`. See
+[measured CPU/GPU comparisons](performance.md) for settings and limitations.
+
+An isolated CPU module can import `cpu.flex` for the register contact solver
+and per-step prepared weld coefficients. The optional [optimizing CPU kernel
+backend](../../docs/cpu-kernels.md) uses the same word ABI and world layout.
