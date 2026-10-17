@@ -1,4 +1,4 @@
-import "../../lib/slirp.flex";
+import "../../emulator/backends/slirp.flex";
 fn expect(ok) {if !ok {syscall(1,2,"libslirp backend assertion failed\n",33,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn be16(p,v) {store8(p,v>>8);store8(p+1,v);return 0;}
 fn word(p) {return (load8(p)<<8)|load8(p+1);}

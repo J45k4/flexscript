@@ -1,4 +1,4 @@
-import "../../lib/linux-uki.flex";
+import "../../emulator/linux/uki.flex";
 fn expect(v) {if !v {syscall(1,2,"UKI assertion failed\n",21,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn put16(p,n) {store8(p,n);store8(p+1,n>>8);return 0;}
 fn put32(p,n) {put16(p,n);put16(p+2,n>>16);return 0;}

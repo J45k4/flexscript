@@ -1,0 +1,7 @@
+// Original ESP32, virtual GPIO21->GPIO19. Native RMT RX/TX IRQ delivery.
+import "../../lib/platform/esp32-rmt.flex";
+import "../../lib/platform/esp32-irq.flex";
+global ri_flags=0;global ri_expected=0;global ri_callbacks=0;global ri_bad=0;
+fn ri_handler(source){let raw=esp32_load32(0x3ff560a4);if source!=47 || !raw || (raw&~ri_expected){ri_bad=ri_bad+1;}ri_flags=ri_flags|raw;ri_callbacks=ri_callbacks+1;esp32_store32(0x3ff560ac,raw);return 0;}
+fn main(){let buffer=alloc(4);let ch=0;while ch<8{let peer=(ch+1)%8;if esp_rmt_tx_init(ch,21,80,0) || esp_rmt_rx_init(peer,19,80,2000,0){return 1;}if esp_irq_attach(47,esp32_callback(ri_handler)){return 2;}let mem=er_memory(ch);esp32_store32(mem,200|32768|(350<<16));esp32_store32(mem+4,0);if esp_rmt_rx_start(peer){return 3;}ri_flags=0;ri_expected=(1<<(ch*3))|(1<<(peer*3+1));let errors=(1<<(ch*3+2))|(1<<(peer*3+2));esp32_store32(0x3ff560ac,ri_expected|errors);esp32_store32(0x3ff560a8,ri_expected|errors);let ps=esp32_irq_save();esp32_store32(er_config(ch)+4,load64(er_state(ch)+32)|1);while ri_flags!=ri_expected && !ri_bad{esp32_wait();esp32_irq_save();}esp32_irq_restore(ps);if ri_bad || esp_rmt_rx_finish(peer,buffer,1,10000000)!=1 || esp32_load32(buffer)!=(32768|200){return 4;}esp32_store32(0x3ff560a8,0);if esp_irq_detach(47) || esp_rmt_deinit(ch) || esp_rmt_deinit(peer){return 5;}ch=ch+1;}
+ if ri_callbacks!=16 || ri_bad{return 6;}esp_uart_write("PASS: RMT8 channels,16 native WAITI completion callbacks\r\n");esp_uart_flush();return 0;}

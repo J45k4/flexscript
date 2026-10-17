@@ -1,5 +1,5 @@
-import "../../lib/linux-framebuffer.flex";
-import "../../lib/softvm.flex";
+import "../../emulator/linux/framebuffer.flex";
+import "../../emulator/backends/software.flex";
 fn expect(v) {if !v {syscall(1,2,"Framebuffer assertion failed\n",29,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main() {
     expect(!lnx_fb_usable(67108864) && lnx_fb_usable(134217728)==130023424);

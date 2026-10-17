@@ -1,4 +1,4 @@
-import "../../lib/pc-pci.flex";
+import "../../emulator/pc/pci.flex";
 fn expect(value) {if !value {syscall(60,1,0,0,0,0,0);}return 0;}
 fn main() {
     let state=alloc(272);let data=alloc(16);pc_pci_init(state,0);

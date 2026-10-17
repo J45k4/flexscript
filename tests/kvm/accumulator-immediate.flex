@@ -1,4 +1,4 @@
-import "../../lib/softvm.flex";
+import "../../emulator/backends/software.flex";
 fn expect(v) {if !v {let text="Accumulator immediate assertion failed\n";syscall(1,2,text,38,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn value(i) {if i==0 {return 0;}if i==1 {return 1;}if i==2 {return -1;}if i==3 {return 0x7fffffff;}if i==4 {return 0x80000000;}if i==5 {return 0x7fffffffffffffff;}if i==6 {return 0x8000000000000000;}return 0xfeedface87654321;}
 fn main() {

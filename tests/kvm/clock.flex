@@ -1,6 +1,6 @@
-import "../../lib/pc-clock.flex";
-import "../../lib/pc-pit.flex";
-import "../../lib/pc-rtc.flex";
+import "../../emulator/pc/clock.flex";
+import "../../emulator/pc/pit.flex";
+import "../../emulator/pc/rtc.flex";
 fn expect(v) {if !v {syscall(60,1,0,0,0,0,0);}return 0;}
 fn main() {
     let s=alloc(48);expect(!pc_clock_init(s,0) && !pc_clock_init(s,15) && !pc_clock_init(s,257) && !pc_clock_init(s,8192));

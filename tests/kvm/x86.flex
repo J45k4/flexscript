@@ -1,4 +1,4 @@
-import "../../lib/softvm.flex";
+import "../../emulator/backends/software.flex";
 fn expect(condition) {if !condition {syscall(1,2,"x86 emulator assertion failed\n",30,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn digit(c) {if c>=97 {return c-87;}return c-48;}
 fn reset(c,ram,text,n) {x86_start(c,0x1000,32,0,0);let i=0;while i<n {store8(ram+0x1000+i,digit(load8(text+i*2))*16+digit(load8(text+i*2+1)));i=i+1;}return 0;}

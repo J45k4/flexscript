@@ -1,5 +1,5 @@
-import "../../lib/linux-boot.flex";
-import "../../lib/softvm.flex";
+import "../../emulator/linux/boot.flex";
+import "../../emulator/backends/software.flex";
 fn expect(condition) {if !condition {syscall(1,2,"Linux boot assertion failed\n",28,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main(argc,argv) {
     let image=alloc(4096);let initrd=alloc(64);store8(initrd,0xab);store8(initrd+63,0xcd);

@@ -1,4 +1,4 @@
-import "../../lib/x86.flex";
+import "../../emulator/x86/cpu.flex";
 global checks=0;
 fn expect(v) {checks=checks+1;if !v {let p=alloc(32);let at=31;store8(p+at,10);let value=checks;while value {at=at-1;store8(p+at,48+value%10);value=value/10;}syscall(1,2,"x87 assertion failed at check ",30,0,0,0);syscall(1,2,p+at,32-at,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn reset(c,ram,text) {expect(x86_start(c,0x1000,32,0,0));store64(c+144,64);xf_hex(ram+0x1000,text);return 0;}

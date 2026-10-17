@@ -1,4 +1,4 @@
-import "../../lib/pc-virtio-gpu.flex";
+import "../../emulator/pc/virtio-gpu.flex";
 fn expect(v) {if !v {syscall(1,2,"virtio GPU assertion failed\n",28,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn command(s,p,n,out) {expect(vg_command(s,p,n,out,408,0)>0);return kvm_u32(out);}
 fn header(p,type) {kvm_zero(p,1024);kvm_put32(p,type);return 0;}

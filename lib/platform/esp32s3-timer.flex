@@ -28,3 +28,18 @@ fn esp_timer_ack(id,rearm) {
     if rearm {esp_reg_update(base,1<<10,1<<10);}return 0;
 }
 fn esp_timer_source(id) {if !esp_timer_base(id) {return -22;}return 50+(id/2)*3+(id&1);}
+// Explicit packed-word API matches original-chip signatures; S3 remains54-bit.
+fn esp_timer_set_words(id,low,high) {
+    let base=esp_timer_base(id);if !base || low<0 || low>4294967295 || high<0 || high>4194303 {return -22;}
+    esp32_store32(base+24,low);esp32_store32(base+28,high);esp32_store32(base+32,1);return 0;
+}
+fn esp_timer_read_words(id,buffer) {
+    let base=esp_timer_base(id);if !base || (buffer&3) || !esp_buffer_valid(buffer,8) {return -22;}
+    esp32_store32(base+12,1<<31);let result=esp_wait_mask(base+12,1<<31,0,1000000);if result {return result;}
+    let low=esp32_load32(base+4);let high=esp32_load32(base+8)&4194303;esp32_store32(buffer,low);esp32_store32(buffer+4,high);return 0;
+}
+fn esp_timer_alarm_words(id,low,high,repeat) {
+    let base=esp_timer_base(id);if !base || low<0 || low>4294967295 || high<0 || high>4194303 || repeat<0 || repeat>1 {return -22;}
+    esp32_store32(base+16,low);esp32_store32(base+20,high);
+    esp_reg_update(0x6001f070+(id/2)*4096,1<<(id&1),1<<(id&1));return esp_reg_update(base,(1<<29)|(1<<10),(repeat<<29)|(1<<10));
+}

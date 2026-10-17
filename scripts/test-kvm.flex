@@ -28,7 +28,7 @@ fn main(argc,argv) {
     h_ok(h_args("cc","-std=c11","-O2","tests/kvm/word-vector-oracle.c","-o",word_oracle));h_ok(h_args(word_oracle,word_words,0,0,0,0));
     h_ok(h_args(compiler,"tests/kvm/word-vector.flex","-o",word_test,0,0));h_ok(h_args(word_test,word_words,0,0,0,0));h_ok(h_args(word_test,word_words,"--jit",0,0,0));
     let memory_object=h_join(temp,"jit-memory.o");let memory_bytes=h_join(temp,"jit-memory.bin");let jit_test=h_join(temp,"jit-test");
-    h_ok(h_args("as","--64","lib/x86-jit-memory.S","-o",memory_object,0));
+    h_ok(h_args("as","--64","emulator/x86/jit-memory.S","-o",memory_object,0));
     let extract=h_args("objcopy","-O","binary","-j",".text",memory_object);h_add(extract,memory_bytes);h_ok(extract);
     h_ok(h_args(compiler,"tests/kvm/x86-jit.flex","-o",jit_test,0,0));h_ok(h_args(jit_test,memory_bytes,0,0,0,0));
     let carry_test=h_join(temp,"carry-test");h_ok(h_args(compiler,"tests/kvm/carry.flex","-o",carry_test,0,0));h_ok(h_args(carry_test,0,0,0,0,0));
@@ -59,7 +59,7 @@ fn main(argc,argv) {
     let net_tests=0;let window_tests=0;let option=1;while option<argc {if h_equal(load64(argv+option*8),"--with-user-net") {net_tests=1;}if h_equal(load64(argv+option*8),"--with-window") {window_tests=1;}option=option+1;}
     if net_tests {
         let object=h_join(temp,"slirp-callbacks.o");let bytes=h_join(temp,"slirp-callbacks.bin");let test=h_join(temp,"slirp-test");let device=h_join(temp,"virtio-net-test");
-        h_ok(h_args("as","--64","lib/slirp-callbacks.S","-o",object,0));let extract=h_args("objcopy","-O","binary","-j",".text",object);h_add(extract,bytes);h_ok(extract);
+        h_ok(h_args("as","--64","emulator/backends/slirp-callbacks.S","-o",object,0));let extract=h_args("objcopy","-O","binary","-j",".text",object);h_add(extract,bytes);h_ok(extract);
         h_ok(h_args(compiler,"tests/kvm/slirp.flex","-o",test,0,0));h_ok(h_args(test,bytes,0,0,0,0));
         h_ok(h_args(compiler,"tests/kvm/virtio-net.flex","-o",device,0,0));h_ok(h_args(device,0,0,0,0,0));
         let state=h_join(temp,"net-state-test");h_ok(h_args(compiler,"tests/kvm/virtio-net-state.flex","-o",state,0,0));h_ok(h_args(state,0,0,0,0,0));

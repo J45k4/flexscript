@@ -1,0 +1,51 @@
+plugin visuals.water_fragment v1 {}
+shader fragment {
+    input world: vec3f location(0)
+    input clip: vec4f location(1)
+    output pixel: vec4f location(0)
+    texture scene_color binding(0)
+    texture reflected_scene binding(2)
+    uniform eye_time: vec4f binding(4)
+    uniform tint_transmission: vec4f binding(5)
+    // x roughness, y distortion, z texture-Y orientation, w reflection enabled.
+    uniform surface: vec4f binding(6)
+    // Inverse scene/reflection texture dimensions, for edge-safe sampling.
+    uniform texels: vec4f binding(7)
+    // Command 34: chart-frame sun direction scaled by direct-light strength
+    // (xyz); w is the planet radius. The pool lies in the chart, so +y is up.
+    uniform sun: vec4f binding(9)
+
+    fn main() -> void {
+        let p = world.xz
+        let time = eye_time.w
+        let gradient = vec2f(
+            cos(p.x * 3.1 + time * 1.7) * 0.6 + cos((p.x + p.y) * 5.3 - time * 2.3) * 0.35,
+            cos(p.y * 2.7 - time * 1.4) * 0.6 + cos((p.x - p.y) * 4.7 + time * 2.1) * 0.35)
+        let normal = normalize(vec3f(-gradient.x * 0.07, 1.0, -gradient.y * 0.07))
+        let view = normalize(eye_time.xyz - world)
+        let facing = abs(dot(normal, view))
+        let fresnel = 0.03 + 0.97 * pow(1.0 - clamp(facing, 0.0, 1.0), 5.0)
+        let screen = clip.xy * (0.5 / clip.w) + vec2f(0.5)
+        let uv = vec2f(screen.x, screen.y * surface.z + (1.0 - surface.z) * 0.5)
+        let offset = gradient * surface.y * 0.15
+        let scene_uv = clamp(uv + offset, texels.xy, vec2f(1.0) - texels.xy)
+        let reflection_uv = clamp(uv - offset, texels.zw, vec2f(1.0) - texels.zw)
+        // Explicit LOD keeps sampling legal across all GPU implementations.
+        let beneath = sample_level(scene_color, scene_uv, 0.0).xyz
+        let reflection = sample_level(reflected_scene, reflection_uv, 0.0).xyz
+        // The authored body tint is daylight-lit; it dims through dusk to night.
+        let sun_dir = normalize(sun.xyz + vec3f(0.0, 0.000001, 0.0))
+        let elevation = sun_dir.y
+        let day_t = clamp((elevation + 0.18) * 2.5, 0.0, 1.0)
+        let day = sqrt(day_t * day_t * (3.0 - 2.0 * day_t))
+        let transmitted = mix(tint_transmission.xyz * mix(0.08, 1.0, day), beneath, tint_transmission.w)
+        let color = mix(transmitted, reflection, fresnel * surface.w)
+        let light = normalize(sun_dir + view)
+        let low = 1.0 - clamp(elevation * 2.857, 0.0, 1.0)
+        let sparkle = mix(vec3f(1.0, 0.97, 0.9), vec3f(1.0, 0.62, 0.30), low * low) * (clamp((elevation + 0.012) * 33.0, 0.0, 1.0) * length(sun.xyz))
+        let glint = pow(max(dot(normal, light), 0.0), 16.0 + (1.0 - surface.x) * 124.0) * 0.35
+        // The background is already composited from the captured scene; do not
+        // alpha-blend it a second time or write depth into the opaque capture.
+        pixel = vec4f(color + sparkle * glint, 1.0)
+    }
+}

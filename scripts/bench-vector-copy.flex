@@ -1,4 +1,4 @@
-import "../lib/softvm.flex";
+import "../emulator/backends/software.flex";
 // Execution-only samples for an SSE load/store loop; not a whole-boot benchmark.
 fn now(p) {syscall(228,1,p,0,0,0,0);return load64(p)*1000000000+load64(p+8);}
 fn num(n) {let p=alloc(32);let i=31;store8(p+i,10);while n || i==31 {i=i-1;store8(p+i,48+n%10);n=n/10;}syscall(1,1,p+i,32-i,0,0,0);syscall(11,p,32,0,0,0,0);return 0;}

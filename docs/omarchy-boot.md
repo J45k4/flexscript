@@ -104,12 +104,12 @@ our emulated KVM transport. QEMU booting the image does not satisfy this goal.
   captures a safe diagnostic state on window close; a disposable window test
   verifies the full RAM image and boundary marker. This behavior belongs to
   the development harness, not the public launcher or a supported resume API.
-- `lib/pc-virtio-pci.flex` supplies a modern virtio PCI transport for the
+- `emulator/pc/virtio-pci.flex` supplies a modern virtio PCI transport for the
   graphics device: standard capabilities in an I/O BAR, VERSION_1 negotiation,
   two independently bounded split queues, notifications and INTx. The transport
   tests are included in the emulator suite. I/O BAR capability
   mapping follows [virtio 1.2 section 4.1.4](https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html).
-- `lib/pc-virtio-gpu.flex` now implements the 2D GPU protocol, backing-page
+- `emulator/pc/virtio-gpu.flex` now implements the 2D GPU protocol, backing-page
   transfers, resources, scanout and cursor composition. `--virtio-gpu` exposes
   it at PCI slot 3, with two modern split queues and IRQ9. The window displays
   the boot framebuffer until the guest selects a GPU scanout, then displays
@@ -165,8 +165,8 @@ our emulated KVM transport. QEMU booting the image does not satisfy this goal.
   remains under verification.
   That run retained the original framebuffer, without the new GPU. Its dummy
   SDL driver provides no visible-window proof.
-- `lib/disk-fat.flex` reads FAT32 boot files directly from regular-file MBR/GPT
-  images, including long names and fragmented files. `lib/linux-uki.flex`
+- `emulator/pc/disk-fat.flex` reads FAT32 boot files directly from regular-file MBR/GPT
+  images, including long names and fragmented files. `emulator/linux/uki.flex`
   extracts the kernel, initramfs and command line from an x86-64 unified kernel
   image. Their tests cover malformed metadata, bounds and invalid chains.
   `tests/kvm/installed-boot.py` verifies extraction and private output-file
@@ -400,14 +400,14 @@ and systemd startup in the mapped host window.
 
 ## Device state and diagnostic storage
 
-`lib/pc-virtio-gpu-state.flex` encodes resource geometry, backing GPAs, pixel
+`emulator/pc/virtio-gpu-state.flex` encodes resource geometry, backing GPAs, pixel
 bytes, scanout/cursor and modern transport state with the host RAM pointer
 removed. Loads allocate fresh resources and commit only after complete
 validation. Tests cover exact framebuffer/cursor pixels, queues and interrupt
 edges, use of the restored RAM, malformed sizes/IDs/backing ranges and
 retention of the old device after rejection.
 
-`lib/pc-virtio-net-state.flex` similarly preserves transport, pending RX frames
+`emulator/pc/virtio-net-state.flex` similarly preserves transport, pending RX frames
 and libslirp's supported migration stream. DHCP state round-trips byte for
 byte. Pending ARP packets are delivered into fresh guest RAM after restoration.
 Stream callbacks enforce capacities and cursor bounds, and truncated or
@@ -816,7 +816,7 @@ values were injected during this check.
 
 ## Installed-disk fast kernel loading
 
-The ISO and installed-disk launchers now share `scripts/lib/linux-fast-boot.flex`.
+The ISO and installed-disk launchers now share `emulator/linux/fast-boot.flex`.
 Both frontends compile successfully. The shared helper extracted the actual
 official ISO kernel and produced a byte-identical ELF to the kernel used by
 the live boot (SHA-256 `e38a0ad7c8422463f537caafaf066896d0c3d7e6ef333609a54a591b2b9f7dab`).

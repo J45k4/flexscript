@@ -1,0 +1,13 @@
+plugin visuals.water_vertex v1 {}
+shader vertex {
+    input vertex: vec3f location(0)
+    output position: vec4f builtin(position)
+    output world: vec3f location(0)
+    output clip: vec4f location(1)
+    uniform view_projection: mat4f binding(8)
+    fn main() -> void {
+        world = vertex
+        clip = view_projection * vec4f(vertex, 1.0)
+        position = clip
+    }
+}

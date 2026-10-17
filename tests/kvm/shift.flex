@@ -1,4 +1,4 @@
-import "../../lib/x86.flex";
+import "../../emulator/x86/cpu.flex";
 fn expect(v) {if !v {syscall(1,2,"Double shift assertion failed\n",30,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main(argc,argv) {
     expect(argc==2 || argc==3);x86_jit_enabled=argc==3;x86_jit_min_fuel=0;x86_jit_threshold=1;

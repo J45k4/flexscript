@@ -1,5 +1,5 @@
-import "lib/linux-fast-boot.flex";
-import "../lib/linux-uki.flex";
+import "../emulator/linux/fast-boot.flex";
+import "../emulator/linux/uki.flex";
 // Direct kernel boot of payloads read from an installed VM disk's FAT32 /boot.
 // Never attaches the ISO and never mounts the image on the host. Shut down the
 // installer first. This frontend does not implement BIOS/UEFI firmware.

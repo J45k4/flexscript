@@ -1,4 +1,4 @@
-import "../../lib/softvm.flex";
+import "../../emulator/backends/software.flex";
 fn expect(ok) {if !ok {syscall(1,2,"carry instruction assertion failed\n",35,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main() {
     let v=softvm_create(1048576);expect(v);let c=load64(v+64);let ram=load64(v+24);let run=load64(v+40);

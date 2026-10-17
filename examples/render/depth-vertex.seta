@@ -1,0 +1,8 @@
+plugin demo.depth_vertex v1 {}
+shader vertex {
+    output clip_position: vec4f builtin(position)
+    input position: vec3f location(0)
+    uniform camera: mat4f binding(0)
+    uniform model: mat4f binding(1)
+    fn main() -> void { clip_position = camera * model * vec4f(position, 1.0) }
+}

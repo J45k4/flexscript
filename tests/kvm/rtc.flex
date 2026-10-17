@@ -1,4 +1,4 @@
-import "../../lib/pc-rtc.flex";
+import "../../emulator/pc/rtc.flex";
 fn expect(v) {if !v {syscall(60,1,0,0,0,0,0);}return 0;}
 fn access(s,r,v,out,t) {let d=alloc(8);store8(d,r);expect(pc_rtc_io(s,0x70,1,1,d,1,t)==1);store8(d,v);let result=pc_rtc_io(s,0x71,1,out,d,1,t);let value=load8(d);syscall(11,d,8,0,0,0,0);if result<0 {return -1;}return value;}
 fn main() {

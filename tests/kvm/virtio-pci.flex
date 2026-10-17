@@ -1,5 +1,5 @@
-import "../../lib/pc-virtio-pci.flex";
-import "../../lib/pc-pci.flex";
+import "../../emulator/pc/virtio-pci.flex";
+import "../../emulator/pc/pci.flex";
 fn expect(v) {if !v {syscall(1,2,"modern virtio PCI assertion failed\n",35,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn put(s,off,width,value) {let p=alloc(8);store64(p,value);let r=vp_io(s,load64(s+16)+off,width,1,p,1);syscall(11,p,8,0,0,0,0);return r;}
 fn get(s,off,width) {let p=alloc(8);expect(vp_io(s,load64(s+16)+off,width,0,p,1)==1);let v=load64(p);syscall(11,p,8,0,0,0,0);return v;}

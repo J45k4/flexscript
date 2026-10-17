@@ -1,4 +1,4 @@
-import "lib/linux-fast-boot.flex";
+import "../emulator/linux/fast-boot.flex";
 // Pinned upstream installer media; this is an experimental Linux boot attempt.
 // No host disks are exposed and no installation is performed on the host.
 fn main(argc,argv) {

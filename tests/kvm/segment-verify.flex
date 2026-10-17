@@ -1,4 +1,4 @@
-import "../../lib/x86.flex";
+import "../../emulator/x86/cpu.flex";
 fn expect(v) {if !v {syscall(1,2,"segment verify assertion failed\n",32,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main(argc,argv) {
     let ram=alloc(131072);let c=x86_create(ram,131072);let run=alloc(4096);let engine=0;

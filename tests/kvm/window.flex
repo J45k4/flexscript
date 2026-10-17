@@ -1,5 +1,5 @@
-import "../../lib/pc-window.flex";
-import "../../lib/softvm.flex";
+import "../../emulator/pc/window.flex";
+import "../../emulator/backends/software.flex";
 fn expect(v) {if !v {syscall(1,2,"Window assertion failed\n",24,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main(argc,argv) {
     let v=softvm_create(134217728);expect(v);let ram=load64(v+24);let ps2=alloc(512);pc_ps2_init(ps2);pc_ps2_command(ps2,0x60);pc_ps2_data(ps2,7);

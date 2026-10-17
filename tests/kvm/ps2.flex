@@ -1,5 +1,5 @@
-import "../../lib/pc-ps2.flex";
-import "../../lib/pc-pic.flex";
+import "../../emulator/pc/ps2.flex";
+import "../../emulator/pc/pic.flex";
 fn expect(v) {if !v {syscall(1,2,"PS/2 assertion failed\n",21,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 fn main() {
     let s=alloc(512);let pic=alloc(256);let data=alloc(16);pc_ps2_init(s);pc_pic_init(pic);

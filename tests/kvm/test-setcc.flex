@@ -1,4 +1,4 @@
-import "../../lib/softvm.flex";
+import "../../emulator/backends/software.flex";
 global ts_case=0;global ts_point=0;
 fn diagnostic(n) {let p=alloc(32);let i=31;store8(p+i,10);while n || i==31 {i=i-1;store8(p+i,48+n%10);n=n/10;}syscall(1,2,p+i,32-i,0,0,0);return 0;}
 fn expect(ok) {if !ok {diagnostic(ts_case);diagnostic(ts_point);syscall(1,2,"TEST/SETcc assertion failed\n",27,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}

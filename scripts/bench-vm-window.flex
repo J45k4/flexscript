@@ -1,4 +1,4 @@
-import "../lib/pc-window.flex";
+import "../emulator/pc/window.flex";
 // Isolated display benchmark: three 100-frame runs, each reporting wall and
 // process CPU nanoseconds on separate lines. --changing forces composition on
 // every frame; otherwise the image is stable. Does not measure guest CPU speed.

@@ -1,4 +1,4 @@
-import "../../lib/pc-window.flex";
+import "../../emulator/pc/window.flex";
 fn expect(v) {if !v {syscall(1,2,"GPU window assertion failed\n",28,0,0,0);syscall(60,1,0,0,0,0,0);}return 0;}
 // This SDL readback test uses controlled resource pixels. Linux driver and
 // installer verification are separate; it proves the actual upload path.

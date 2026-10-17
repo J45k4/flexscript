@@ -1,0 +1,44 @@
+[
+  {
+    "name": "sdk-spi-reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/spi_reg.h",
+    "bytes": 80180,
+    "sha256": "5cd3c19ca085b7d95fd696c7678a2badcbd8cc84654e94e16b0cabbda8e176a1"
+  },
+  {
+    "name": "sdk-efuse-reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/efuse_reg.h",
+    "bytes": 57359,
+    "sha256": "876926eee1a0e52bf5873947e876720056d4c251ec035b0e88f925b22c0eeb41"
+  },
+  {
+    "name": "sdk-efuse-defs.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/include/soc/efuse_defs.h",
+    "bytes": 2176,
+    "sha256": "c463c9ff7109cacb18f4ef8f5253bdbbd1ee687494688400e7141c0a4e276885"
+  },
+  {
+    "name": "sdk-gpio-sd-reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/gpio_sd_reg.h",
+    "bytes": 5438,
+    "sha256": "bff3a245772801093868fe33edd199ad1ed20e1d322c833e5ab85b56dcca70ef"
+  },
+  {
+    "name": "soc-reg-base.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/reg_base.h",
+    "bytes": 3360,
+    "sha256": "ae2fca720aed27ba11b2ed95e687e0f652da1067d9597afe62f09e6514fc9353"
+  },
+  {
+    "name": "qemu-spi.h",
+    "url": "https://raw.githubusercontent.com/espressif/qemu/esp-develop-9.2.2-20260417/include/hw/ssi/esp32_spi.h",
+    "bytes": 2299,
+    "sha256": "7fbdf506a5c585e2f0126088f3fe9501cf2f3365ea0ff8fc7c98ffc5531c0f47"
+  },
+  {
+    "name": "qemu-spi.c",
+    "url": "https://raw.githubusercontent.com/espressif/qemu/esp-develop-9.2.2-20260417/hw/ssi/esp32_spi.c",
+    "bytes": 9944,
+    "sha256": "c563518d0829bd656389629ea0cbd951ad5e89def13f4777e49dc6526386b797"
+  }
+]
