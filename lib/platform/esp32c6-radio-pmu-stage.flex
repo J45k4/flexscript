@@ -5,6 +5,7 @@ import "esp32c6-radio-ocode.flex";
 // not issue PMU immediate commands, calibrate clocks/bandgap or enable RF.
 // The caller must already supply the internal analog master's base clocks.
 // A prepared or uncertain transaction retains the shared radio-domain lease.
+global esp_radio_cpu_clock_active=0;
 global esp_radio_pmu_saved=0;
 global esp_radio_pmu_phase=0;
 global esp_radio_pmu_analog_count=0;
@@ -50,6 +51,7 @@ fn esp_radio_c6_pmu_stage(cycles){
 }
 fn esp_radio_c6_pmu_abort(cycles){
  if cycles<1 || cycles>2147483647{return -22;}let ps=esp32_irq_save();let result=esp_radio_c6_pmu_stage_guard();if result{esp32_irq_restore(ps);return result;}
+ if esp_radio_cpu_clock_active{esp32_irq_restore(ps);return -16;}
  if !esp_radio_pmu_active{esp32_irq_restore(ps);return 0;}
  if esp_radio_ocode_active{result=esp_radio_c6_ocode_abort(cycles);if result{esp32_irq_restore(ps);return result;}}
  if esp_radio_regi2c_active{esp_radio_pmu_internal=1;result=esp_radio_c6_regi2c_recover(cycles);esp_radio_pmu_internal=0;if result{esp_radio_pmu_phase=2;esp32_irq_restore(ps);return result;}}
@@ -70,6 +72,6 @@ fn esp_radio_c6_pmu_abort(cycles){
 // commands. This flag alone never satisfies the C6 hardware-enable gate.
 fn esp_radio_c6_pmu_commit(){
  let ps=esp32_irq_save();let result=esp_radio_c6_pmu_stage_guard();if result{esp32_irq_restore(ps);return result;}
- if !esp_radio_pmu_active || esp_radio_pmu_phase!=1 || esp_radio_pmu_analog_count!=3 || esp_radio_pmu_digital_count!=49 || esp_radio_regi2c_active || (esp_radio_ocode_active && (!esp_radio_ocode_ready || esp_radio_ocode_phase!=1)){esp32_irq_restore(ps);return -16;}
+ if !esp_radio_pmu_active || esp_radio_pmu_phase!=1 || esp_radio_pmu_analog_count!=3 || esp_radio_pmu_digital_count!=49 || esp_radio_regi2c_active || esp_radio_cpu_clock_active || (esp_radio_ocode_active && (!esp_radio_ocode_ready || esp_radio_ocode_phase!=1)){esp32_irq_restore(ps);return -16;}
  esp_radio_ocode_active=0;esp_radio_ocode_phase=0;esp_radio_ocode_count=0;esp_radio_pmu_configured=1;esp_radio_pmu_phase=0;esp_radio_pmu_active=0;esp_radio_pmu_analog_count=0;esp_radio_pmu_digital_count=0;esp32_irq_restore(ps);return 0;
 }

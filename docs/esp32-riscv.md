@@ -1100,6 +1100,38 @@ preparation/rollback, and32,768 vectors from the actual pinned vendor reset and
 fuse-policy functions. This is model verification; actual C6 trim application,
 software calibration and RF operation remain unverified.
 
+`esp32c6-radio-clock.flex` supplies the CPU-side XTAL handoff needed before
+legacy PLL-off calibration. `esp_radio_c6_clock_frequency(which)` returns
+nominal active CPU, AHB or APB frequency in Hz for selectors0,1 or2. It validates
+the C6 root/divider encodings, including the forced120MHz CPU case whose AHB
+still derives from the160MHz root.
+
+After PMU preparation, `esp_radio_c6_clock_begin(cycles)` enters an IRAM closure,
+checks DMA/REGDMA and both SPI-memory command/FSM owners, snapshots the source,
+low-speed CPU/AHB dividers and ROM delay calibration, then hands CPU/AHB to
+40MHz XTAL. It raises CPU before AHB and selects XTAL after the dividers are
+ready. A successful begin, or an error after its first mutation, retains the
+PMU clock lease **and keeps interrupts masked**. The caller must complete
+`esp_radio_c6_clock_restore(cycles)` before normal execution resumes.
+
+Restore checks for foreign clock changes and requires a stable, powered,
+ungated PLL before selecting an old PLL source. It restores the old source,
+AHB before CPU low-speed dividers, the original ROM ticks-per-microsecond value
+and finally the original interrupt state. Errors retain ownership and the
+interrupt mask for explicit recovery. PMU abort and commit return `-16` while
+the clock lease is held; restore the clocks first. Both public wrappers use
+64-bit C-ABI returns so negative native statuses remain signed.
+
+This component preserves PLL power and peripheral clock configuration. MSPI
+follows the root clock, so its frequency changes during the handoff and the
+DMA/flash-idle preconditions apply.
+PLL consumer ownership, power cycling/recalibration, legacy OCODE polling and
+the complete hardware-startup sequence remain under T561/T547. The independent
+primary-HAL oracle checks clock decoding and modeled handoff/restoration;
+real ELF packages verify IRAM placement, and optional C6 ROM checks verify
+signed refusal statuses. Actual clock switching and physical timing remain
+unverified.
+
 The analog-I2C primitive now checks both busy engines before selecting its
 160 MHz source. `esp_radio_c6_regi2c_idle()` provides a command-free preflight
 using the existing source and restores the register-clock enable bit. Refusing
