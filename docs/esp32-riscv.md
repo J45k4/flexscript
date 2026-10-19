@@ -1427,3 +1427,31 @@ branch and loop defaults across SRAM/XIP/radio profiles, with C6 ROM execution
 and explicit C3 package checks. Existing C ABI, context, IRQ and TLS probes
 check interoperability; these are compiler/firmware checks, not physical RF
 or timing measurements. The canonical RISC-V driver includes both new cohorts.
+
+
+### Atomic Wi-Fi clock and reset callbacks
+
+The RISC-V Wi-Fi clock/reset callbacks mask IRQs before checking the radio
+owner, hardware-ready state and base/analog/PMU leases. That outer critical
+section spans both updates; an inner register RMW cannot enable IRQs between
+them. The caller's original IRQ state is restored after the entire operation.
+An invalid owner/lease still fails before any MMIO. Direct
+`esp_radio_wifi_clock(enable)` accepts only0 or1 and returns `-22` otherwise.
+
+C6 clock policy is unchanged: update the11 Wi-Fi clocks in MODEM_SYSCON,
+then the coexistence clock in MODEM_LPCON, preserving the Wi-Fi power clock
+and unrelated fields. C3 keeps its clock callback policy. C3 MAC reset uses
+a fresh RMW for each edge, preserving unrelated reset fields changed after
+assertion. The pinned C6 `esp-radio` implementation explicitly leaves MAC
+reset empty; the callback retains that behavior. The generic ESP-IDF
+module-reset helper is not evidence to add a pulse to this radio callback.
+
+`riscv-radio-clock-reference.py` runs1,536 primary C clock/reset-policy
+vectors in both IRQ states,36 failing admission cases and15 defect controls,
+including interrupts between paired writes and stale reset deassertion.
+The native verifier uses the pinned OSI `void(void)` field types through
+LLVM ILP32 producers at two ISA variants and three optimization levels.
+It runs42 C6 ROM probes, including36 fail-stop guard cases, and retains6
+explicit C3 package checks. Native probes use a RAM register-update spy;
+actual clock/reset MMIO and physical RF are not inferred from those boots.
+The full vendor image still stops at the clean C6 `-95` hardware gate.

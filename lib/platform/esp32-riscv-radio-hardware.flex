@@ -24,10 +24,16 @@ fn esp_radio_cb_slowclk_cal(a,b,c,d,e,f,g,h){let address=0x60008054;if rv_hal_ch
 fn esp_radio_cb_read_mac(a,b,c,d,e,f,g,h){
  if b>2 || !esp_buffer_valid(a,6){return -1;}let address=0x60008844;if rv_hal_chip==13{address=0x600b0844;}let lo=esp32_load32(address);let hi=esp32_load32(address+4);let mac=(((hi&65535)<<32)|lo)+b;let i=0;while i<6{store8(a+i,mac>>(40-i*8));i=i+1;}return 0;
 }
-fn esp_radio_wifi_clock(enable){esp_radio_hw_require();if rv_hal_chip==13{esp_reg_update(0x600a9814,0x7ff,enable*0x7ff);esp_reg_update(0x600af018,2,enable*2);}return 0;}
+fn esp_radio_wifi_clock(enable){if enable<0 || enable>1{return -22;}let ps=esp32_irq_save();esp_radio_hw_require();if rv_hal_chip==13{esp_reg_update(0x600a9814,0x7ff,enable*0x7ff);esp_reg_update(0x600af018,2,enable*2);}esp32_irq_restore(ps);return 0;}
 fn esp_radio_cb_wifi_clock_on(a,b,c,d,e,f,g,h){return esp_radio_wifi_clock(1);}
 fn esp_radio_cb_wifi_clock_off(a,b,c,d,e,f,g,h){return esp_radio_wifi_clock(0);}
-fn esp_radio_cb_wifi_reset(a,b,c,d,e,f,g,h){esp_radio_hw_require();if rv_hal_chip==5{let ps=esp32_irq_save();let old=esp32_load32(0x60026018);esp32_store32(0x60026018,old|4);esp32_store32(0x60026018,old&~4);esp32_irq_restore(ps);}return 0;}
+fn esp_radio_cb_wifi_reset(a,b,c,d,e,f,g,h){
+ let ps=esp32_irq_save();esp_radio_hw_require();
+ // The pinned C6 radio callback is intentionally empty. C3 uses fresh RMW
+ // for each edge so unrelated reset fields changed after assertion survive.
+ if rv_hal_chip==5{esp_reg_update(0x60026018,4,4);esp_reg_update(0x60026018,4,0);}
+ esp32_irq_restore(ps);return 0;
+}
 fn esp_radio_phy_clock(enable){
  if enable<0 || enable>1{return -22;}let ps=esp32_irq_save();if esp_radio_base_active || esp_radio_regi2c_active || esp_radio_pmu_active || !esp_radio_hw_ready || esp_radio_owner!=1 || (enable && esp_adc_busy) || esp32_load32(esp32_state()+16){esp32_irq_restore(ps);return -16;}
  if enable && esp_radio_phy_clock_refs==9223372036854775807{esp32_irq_restore(ps);return -75;}let change=0;if enable{change=!esp_radio_phy_clock_refs;esp_radio_phy_clock_refs=esp_radio_phy_clock_refs+1;}else if esp_radio_phy_clock_refs{esp_radio_phy_clock_refs=esp_radio_phy_clock_refs-1;change=!esp_radio_phy_clock_refs;}
