@@ -1224,6 +1224,47 @@ cover callback placement and signed invalid-budget returns. These results
 prove the modeled sequence and packaging; actual bandgap voltage, analog
 transfers, clock switching and full hardware/RF startup remain unverified.
 
+`esp32c6-radio-calibration.flex` coordinates all three reset-aware paths on an
+already prepared PMU. Call `esp_radio_c6_calibration_prepare(cycles)` after
+`esp_radio_c6_pmu_stage(cycles)` and before the remaining modem/PHY startup.
+It selects retained calibration for non-power-on resets without reading trim
+fuses, factory trim for a nonzero eFuse block version, or legacy calibration
+for power-on/version0.0. The legacy path acquires the XTAL and PLL-off leases,
+runs calibration, restores PLL, then restores CPU/AHB clocks and ROM ticks.
+Success leaves PMU prepared and OCODE ready; the caller still owns PMU
+commit/abort and the remaining startup work.
+
+An admitted preparation failure retains the coordinator lease and IRQ mask.
+Call `esp_radio_c6_calibration_abort(cycles)` until it succeeds before calling
+PMU abort or retrying preparation. Abort recovers OCODE, PLL, then CPU clocks;
+it never replays preparation. Public PMU/clock/PLL/OCODE operations and direct
+PMU analog writes refuse while this recovery owns the lease. Repeated cleanup
+failures retain ownership and the IRQ mask. Successful cleanup restores the
+caller's original IRQ state and leaves PMU prepared with OCODE not ready.
+An inactive coordinator abort is a no-op after admission checks: it does not
+undo a successful calibration. Completed internal legacy calibration remains
+irreversible, including when subsequent clock restoration fails.
+
+The receipt globals `esp_radio_calibration_mode` identify factory1, retained2
+or legacy3. `esp_radio_calibration_phase` is idle0, preparing1 or recovery2;
+`esp_radio_calibration_step` identifies policy/trim1, XTAL2, PLL-off3, legacy4,
+PLL-restore5 or CPU-restore6. `esp_radio_calibration_error` retains the original
+preparation error; `esp_radio_calibration_cleanup_error` reports the most
+recent explicit abort. Invalid budgets, reset reasons or initial ownership
+reject before taking the coordinator lease. A new admitted preparation resets
+both error fields.
+
+The coordinator executes as an ordinary cached caller; its clock-changing
+helpers retain their IRAM callbacks. The combined host model executes actual
+clock handoff/restoration helpers with PMU/PLL/OCODE, all32,768 pinned vendor
+policy vectors, every analog-command timeout and interrupted recovery. Its
+21 deliberate defects cover selection, ordering, IRQ retention, leases,
+cleanup and error reporting. Three firmware profiles check callback placement
+and signed invalid-budget/unprepared-lease returns. This is model and package
+evidence: actual cached execution across clock changes, analog timing and
+physical RF startup remain unverified. The full C6 initializer retains its
+clean `-95` gate until modem clocks and PHY startup are implemented.
+
 The analog-I2C primitive now checks both busy engines before selecting its
 160 MHz source. `esp_radio_c6_regi2c_idle()` provides a command-free preflight
 using the existing source and restores the register-clock enable bit. Refusing

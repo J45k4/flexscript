@@ -16,7 +16,7 @@ global esp_radio_pll_settled=0;
 global esp_radio_pll_cal_pending=0;
 fn esp_radio_c6_pll_consumer(keep){
  if keep<0 || keep>1{return -22;}if !esp_riscv_ready() || rv_hal_chip!=13{return -95;}
- let ps=esp32_irq_save();if esp_radio_pll_active{esp32_irq_restore(ps);return -16;}
+ let ps=esp32_irq_save();if esp_radio_pll_active || (esp_radio_calibration_active && !esp_radio_calibration_internal){esp32_irq_restore(ps);return -16;}
  if keep{if esp_radio_pll_consumers==9223372036854775807{esp32_irq_restore(ps);return -75;}esp_radio_pll_consumers=esp_radio_pll_consumers+1;}
  else{if !esp_radio_pll_consumers{esp32_irq_restore(ps);return -22;}esp_radio_pll_consumers=esp_radio_pll_consumers-1;}
  esp32_irq_restore(ps);return 0;

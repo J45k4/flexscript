@@ -196,7 +196,7 @@ int main(void){
         ('uncertain-restore-blind-replay', 'if result!=before{', 'if 1{'),
         ('regulator-restore-omitted', 'while esp_radio_pmu_analog_count{', 'while 0{'),
         ('digital-restore-omitted', 'while esp_radio_pmu_digital_count{', 'while 0{'),
-        ('internal-admission-unmasked', 'let ps=esp32_irq_save();if !esp_radio_pmu_active', 'let ps=esp32_irq_save();esp32_irq_restore(ps);if !esp_radio_pmu_active'),
+        ('internal-admission-unmasked', 'let internal=esp_radio_pmu_internal;esp_radio_pmu_internal=1;', 'esp32_irq_restore(ps);let internal=esp_radio_pmu_internal;esp_radio_pmu_internal=1;'),
         ('commit-ignores-pending-bus', 'esp_radio_pmu_digital_count!=49 || esp_radio_regi2c_active', 'esp_radio_pmu_digital_count!=49'),
     ]
     detected = []
