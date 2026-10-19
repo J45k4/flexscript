@@ -1,4 +1,5 @@
 // Appended to the primary PMU/I2C model helpers by the independent verifier.
+global pll_master_before=0;global pll_master_writes=0;global pll_master_ignore=0;
 global pll_meta=0;global pll_consumers=0;global pll_power=0;global pll_ana=0;global pll_mspi=0;global pll_usb=0;global pll_modem0=0;global pll_modem1=0;
 global pll_root=0x28000200;global pll_cpu=0;global pll_ahb=0x300;global pll_apb=0;global pll_query=0x1e014;global pll_rom_ticks=40;
 global pll_dma=0;global pll_regdma=0;global pll_spi0=0;global pll_spi1=0;
@@ -18,7 +19,7 @@ fn esp32_call32(address,a,b,c,d,e,f,g,h){
 }
 fn esp32_load32(address){
  check(!(ps&8));if address==pcv(1){return pll_power;}
- if address==pcv(2){if pll_starts && (pll_ana&pcv(15)) && pll_committed_writes==6 && !pll_hang_done && !(pll_ana&pcv(13)){if pll_polls{pll_polls=pll_polls-1;}else{pll_ana=pll_ana|pcv(13);pll_power=pll_power|pcv(31);pll_done_tick=tick;}}return pll_ana;}
+ if address==pcv(2){if pll_starts && !pll_stop_writes{check((clock&cv(12))==cv(12));}if pll_starts && (pll_ana&pcv(15)) && pll_committed_writes==6 && !pll_hang_done && !(pll_ana&pcv(13)){if pll_polls{pll_polls=pll_polls-1;}else{pll_ana=pll_ana|pcv(13);pll_power=pll_power|pcv(31);pll_done_tick=tick;}}return pll_ana;}
  if address==pcv(3){return pll_mspi;}if address==pcv(4){return pll_usb;}if address==pcv(5){return pll_modem0;}if address==pcv(6){return pll_modem1;}
  if address==pcv(19){return pll_root;}if address==pcv(20){return pll_cpu;}if address==pcv(21){return pll_ahb;}if address==pcv(22){return pll_apb;}if address==pcv(23){return pll_query;}
  if address==pcv(24){return pll_dma;}if address==pcv(25){return pll_regdma;}if address==pcv(26){return pll_spi0;}if address==pcv(27){return pll_spi1;}
@@ -31,6 +32,7 @@ fn pll_commit(command){
  check((value&mask)==(pcf(row,4)<<pcf(row,3)) && !((value^before)&~mask));pll_committed_writes=row+1;return 0;
 }
 fn bus_write(address,value){
+ if address==cv(5){if (value^clock)&cv(12){pll_master_writes=pll_master_writes+1;if pll_master_writes==pll_master_ignore{return 0;}}if pll_starts && !pll_stop_writes{check((value&cv(12))==cv(12));}}
  if (address==cv(1)||address==cv(2)) && !(value&(1<<cv(11))){check(!esp_radio_regi2c_write_issued);}
  if (address==cv(1)||address==cv(2)) && (value&255)==pcf(0,0) && (value&(1<<cv(11))){check(pll_starts && esp_radio_regi2c_write_issued);pll_issued_writes=pll_issued_writes+1;}
  return pmu_bus_write(address,value);
@@ -49,7 +51,7 @@ fn esp32_store32(address,value){
   check(esp_radio_pll_active && esp_radio_cpu_clock_active && !(pll_root&0x30000));check(!((value^pll_ana)&~(pcv(14)|pcv(15))));pll_reg_writes=pll_reg_writes+1;if pll_reg_writes==pll_ignored_write{return 0;}
   let old=pll_ana;pll_ana=(value&~pcv(13))|(old&pcv(13));
   if !(old&pcv(15)) && (value&pcv(15)){check((pll_power&(pcv(9)|pcv(10)))==(pcv(9)|pcv(10)));pll_starts=pll_starts+1;check(pll_starts==1);pll_ana=pll_ana&~pcv(13);pll_power=pll_power&~pcv(31);pll_polls=1;}
-  if (old&pcv(15)) && !(value&pcv(15)){check(pll_committed_writes==6 && ((tick-pll_done_tick)&0xffffffff)>=400);pll_stop_writes=pll_stop_writes+1;pll_ana=pll_ana&~pcv(13);}
+  if (old&pcv(15)) && !(value&pcv(15)){check(pll_committed_writes==6 && (clock&cv(12))==cv(12) && ((tick-pll_done_tick)&0xffffffff)>=400);pll_stop_writes=pll_stop_writes+1;pll_ana=pll_ana&~pcv(13);}
   return 0;
  }
  if address==pcv(3){check(esp_radio_pll_active && !((value^pll_mspi)&~pcv(16)));pll_reg_writes=pll_reg_writes+1;if pll_reg_writes!=pll_ignored_write{pll_mspi=value;}return 0;}
@@ -64,12 +66,13 @@ fn pll_reset(seed,on,gate,mspi,retain,masked){
  pll_dma=0;pll_regdma=0;pll_spi0=0;pll_spi1=0;pll_power_writes=0;pll_reg_writes=0;pll_ignored_write=0;pll_issued_writes=0;pll_committed_writes=0;pll_starts=0;pll_polls=0;pll_hang_done=0;pll_done_tick=0;pll_preserve_coefficients=retain;pll_stop_writes=0;esp_radio_pll_consumers=0;
  let row=0;while row<15{store64(pll_consumers+row*8,0xa0801234);row=row+1;}
  row=0;while row<6{let p=memory+pcf(row,0)*256+pcf(row,1);let mask=((1<<(pcf(row,2)-pcf(row,3)+1))-1)<<pcf(row,3);store8(p,(load8(p)&~mask)|(pcf(row,4)<<pcf(row,3)));row=row+1;}store8(memory+0x66*256+5,8);store8(memory+0x66*256+9,0xa6);
- check(!esp_radio_c6_pmu_stage(1000));esp_radio_cpu_clock_active=1;esp_radio_cpu_clock_phase=2;esp_radio_cpu_clock_ps=0x1888;if masked{esp_radio_cpu_clock_ps=0x1880;}
+ check(!esp_radio_c6_pmu_stage(1000));pll_master_before=clock;pll_master_writes=0;pll_master_ignore=0;esp_radio_cpu_clock_active=1;esp_radio_cpu_clock_phase=2;esp_radio_cpu_clock_ps=0x1888;if masked{esp_radio_cpu_clock_ps=0x1880;}
  esp_radio_cpu_clock_root=pll_root;if on && gate{esp_radio_cpu_clock_root=pll_root|0x10000;}esp_radio_cpu_clock_cpu=pll_cpu;esp_radio_cpu_clock_ahb=pll_ahb;esp_radio_cpu_clock_apb=pll_apb;esp_radio_cpu_clock_ticks=40;if on && gate{esp_radio_cpu_clock_ticks=160;}ps=0x1880;return 0;
 }
 fn esp_radio_c6_pll_bus_recover_test(){let old=esp_radio_pmu_internal;esp_radio_pmu_internal=1;let result=esp_radio_c6_regi2c_recover(1000);esp_radio_pmu_internal=old;return result;}
 fn pll_finish(old_power,old_ana,old_mspi){
  check(!esp_radio_c6_pll_restore(1000) && !esp_radio_pll_active && !esp_radio_pll_phase && ps==0x1880);
+ check(clock==pll_master_before && !esp_radio_pll_master_clock_owned);
  check((pll_power&pcv(11))==(old_power&pcv(11)) && (pll_ana&12)==(old_ana&12) && pll_mspi==old_mspi);
  check(!esp_radio_c6_clock_restore(1000));let old_ps=ps;restoring=1;check(!esp_radio_c6_pmu_abort(1000) && ps==old_ps && !esp_radio_pmu_active);ps=0x1888;return 0;
 }
@@ -124,6 +127,10 @@ fn main(argc,argv){
  check(esp_radio_c6_pll_restore(1000)==-16 && esp_radio_pll_active && pll_reg_writes==count && esp_radio_c6_pll_consumer(1)==-16);pll_usb=0;pll_finish(0xf6008003,0xa5000004,0xa5a50005);
  // Settling remains bounded across the32-bit cycle-counter wrap.
  mode=0;while mode<4{pll_case=1120+mode;pll_reset(1121+mode,1,1,1,1,0);check(!esp_radio_c6_pll_begin(1000));tick=0xffffff00+mode*64;pll_finish(0xf6008003,0xa5000004,0xa5a50005);check(pll_starts==1 && pll_stop_writes==1);mode=mode+1;}
+ // Outer master-clock enable/restore readback failures retain PLL ownership.
+ phase=1;while phase<=2{pll_case=1150+phase;pll_reset(1151+phase,1,1,1,1,0);clock=clock&~cv(12);pll_master_before=clock;pll_master_ignore=phase;
+  if phase==1{check(esp_radio_c6_pll_begin(1000)==-110 && esp_radio_pll_active && !pll_power_writes);}else{check(!esp_radio_c6_pll_begin(1000));check(esp_radio_c6_pll_restore(1000)==-110 && esp_radio_pll_active && pll_stop_writes==1);}
+  pll_master_ignore=0;pll_finish(0xf6008003,0xa5000004,0xa5a50005);phase=phase+1;}
  // Consumer count errors and invalid budgets preserve state and signed words.
  pll_case=800;pll_reset(801,1,1,1,1,0);check(esp_radio_c6_pll_consumer(2)==-22 && esp_radio_c6_pll_consumer(0)==-22);esp_radio_pll_consumers=9223372036854775807;check(esp_radio_c6_pll_consumer(1)==-75 && esp_radio_pll_consumers==9223372036854775807);esp_radio_pll_consumers=0;check(!esp_radio_c6_pll_consumer(1) && esp_radio_c6_pll_begin(1000)==-16 && !esp_radio_c6_pll_consumer(0));check(esp_radio_c6_pll_begin(0)==-22 && esp_radio_c6_pll_restore(2147483648)==-22 && !pll_power_writes);pll_finish(0xf6008003,0xa5000004,0xa5a50005);
  let out=alloc(8);store64(out,checks);return syscall(1,1,out,8,0,0,0)!=8;

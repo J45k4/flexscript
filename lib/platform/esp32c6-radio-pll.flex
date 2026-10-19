@@ -3,6 +3,8 @@ import "esp32c6-radio-clock.flex";
 // leases remain held throughout; this component never restores caller IRQs.
 global esp_radio_pll_consumers=0;
 global esp_radio_pll_phase=0;
+global esp_radio_pll_old_master_clock=0;
+global esp_radio_pll_master_clock_owned=0;
 global esp_radio_pll_old_state=0;
 global esp_radio_pll_old_ana=0;
 global esp_radio_pll_old_mspi=0;
@@ -75,7 +77,11 @@ fn esp_radio_c6_pll_begin_iram(cycles,b,c,d,e,f,g,h){
  else{if state&0x62000000{return -95;}}
  let ana=esp32_load32(0x600af818);if ana&8{return -16;}if on && (ana&12)!=4{return -95;}
  esp_radio_pll_old_state=state&0x72000000;esp_radio_pll_old_ana=ana&12;esp_radio_pll_old_mspi=esp32_load32(0x60096018)&4;
- esp_radio_pll_off_intent=0;esp_radio_pll_mspi_owned=0;esp_radio_pll_cal_step=0;esp_radio_pll_cal_row=0;esp_radio_pll_settled=0;esp_radio_pll_cal_pending=0;esp_radio_pll_phase=1;esp_radio_pll_active=1;
+ esp_radio_pll_off_intent=0;esp_radio_pll_mspi_owned=0;esp_radio_pll_master_clock_owned=0;esp_radio_pll_cal_step=0;esp_radio_pll_cal_row=0;esp_radio_pll_settled=0;esp_radio_pll_cal_pending=0;esp_radio_pll_phase=1;esp_radio_pll_active=1;
+ // Hold the analog master clock across asynchronous calibration, not just
+ // individual bus commands; nested transactions restore this held state.
+ esp_radio_pll_old_master_clock=esp32_load32(0x600af018)&4;esp_radio_pll_master_clock_owned=1;
+ result=esp_radio_c6_clock_write(0x600af018,4,4,cycles);if result{return result;}
  if on{
   result=esp_radio_c6_pll_bus(6,-1,cycles);if result<0{return result;}if result{return -16;}
   let row=0;while row<6{result=esp_radio_c6_pll_bus(row,-1,cycles);if result<0{return result;}if result!=esp_radio_c6_pll_value(row){return -95;}row=row+1;}
@@ -124,5 +130,6 @@ fn esp_radio_c6_pll_restore_iram(cycles,b,c,d,e,f,g,h){
   result=esp_wait_mask(0x600b0194,mask,expected,cycles);if result{return result;}
  }
  if esp_radio_pll_mspi_owned{result=esp_radio_c6_clock_write(0x60096018,4,esp_radio_pll_old_mspi,cycles);if result{return result;}}
- esp_radio_pll_phase=0;esp_radio_pll_active=0;return 0;
+ if esp_radio_pll_master_clock_owned{result=esp_radio_c6_clock_write(0x600af018,4,esp_radio_pll_old_master_clock,cycles);if result{return result;}}
+ esp_radio_pll_master_clock_owned=0;esp_radio_pll_phase=0;esp_radio_pll_active=0;return 0;
 }

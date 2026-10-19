@@ -1093,8 +1093,9 @@ completed one with the PMU state. These component commits still require the
 remaining full clock/power startup before hardware enable.
 
 Block version0.0 still returns `-95` from the OCODE stage: those chips require
-the separate software calibration sequence, including exclusive PLL/clock
-ownership, which remains under T561/T547. The primary-header/I2C model checks
+the explicit legacy software calibration component described below. That
+component requires exclusive PLL/clock ownership; it does not complete the
+full ordered modem-clock/PHY startup tracked by T561/T547. The primary-header/I2C model checks
 all256 trim bytes and reset reasons, all32 encoded fuse versions, interrupted
 preparation/rollback, and32,768 vectors from the actual pinned vendor reset and
 fuse-policy functions. This is model verification; actual C6 trim application,
@@ -1125,8 +1126,7 @@ the clock lease is held; restore the clocks first. Both public wrappers use
 This component preserves PLL power and peripheral clock configuration. MSPI
 follows the root clock, so its frequency changes during the handoff and the
 DMA/flash-idle preconditions apply.
-Legacy OCODE polling and the complete hardware-startup sequence remain under
-T561/T547. The independent
+The complete hardware-startup integration remains under T561/T547. The independent
 primary-HAL oracle checks clock decoding and modeled handoff/restoration;
 real ELF packages verify IRAM placement, and optional C6 ROM checks verify
 signed refusal statuses. Actual clock switching and physical timing remain
@@ -1138,7 +1138,11 @@ CPU clock lease. After `esp_radio_c6_pmu_stage` and a successful
 power/gate state and the MSPI PLL route, validate an existing canonical
 40MHz/480MHz analog configuration, and power down PLL/I2C using direct PMU
 write-trigger commands. Already-off PLL states are accepted without calibration.
-The PLL lease retains the XTAL source and masked interrupts.
+The PLL lease retains the XTAL source, masked interrupts and the analog-I2C
+master root clock. That root clock stays enabled continuously across the
+asynchronous PLL calibration and settling interval, including timeout recovery.
+Nested bus calls preserve the held clock. Final restore checks and reinstates
+the original root-clock bit; a failed readback retains the lease.
 
 `esp_radio_c6_pll_consumer(1)` acquires an explicit shared-consumer reference;
 `esp_radio_c6_pll_consumer(0)` releases it. Existing references, functional
@@ -1171,9 +1175,54 @@ interrupted power/control writes, every configuration-bus timeout, settling and
 cleanup. The model injects the already-held XTAL lease; the separate clock
 oracle checks that handoff. SRAM/XIP/radio ELF checks inspect the real callback
 locations, and optional existing C6 ROM execution checks signed invalid-budget
-returns only. PLL power switching, analog calibration/timing, full legacy OCODE
+returns only. PLL power switching, analog calibration/timing, legacy OCODE
 and RF startup remain unverified on physical hardware. This component does not
 remove the production `-95` full-startup gate.
+
+`esp32c6-radio-ocode-legacy.flex` supplies software calibration for power-on
+parts with eFuse block version0.0. The existing `esp_radio_c6_ocode_stage`
+continues to handle retained trims/factory codes and returns `-95` for this
+legacy branch. To run the legacy component explicitly, prepare PMU, call
+`esp_radio_c6_clock_begin`, then `esp_radio_c6_pll_begin`, and invoke
+`esp_radio_c6_ocode_legacy_stage(cycles)`. All three outer leases must remain
+held. The stage checks actual XTAL/divider, PLL-off and analog-master-clock
+state, rejects shared consumers, and refuses non-power-on resets, newer fuse
+versions or a forced external code before pulsing calibration reset.
+
+The stage snapshots RESETB, intentionally writes zero then one even if an old
+bit matches, and reads the O_DONE/BG_O_DONE status byte until **both** flags
+are set. Polling is bounded by the smaller of the supplied cycle budget and
+400000 cycles at40MHz (nominal10ms), with32-bit wrap handling and deadline
+checks before and after each transfer. It does not depend on slow-clock
+calibration retention stores. Snapshot/reset commands separately use the
+supplied per-command budget. The public wrappers preserve signed native
+statuses and enter real IRAM closures.
+
+Success leaves RESETB=1 and the newly calibrated internal OCODE, matching
+vendor startup; the internal result cannot be restored to its prior value.
+The component marks calibration ready and releases its OCODE lease, allowing
+PLL restoration, CPU clock restoration and the remaining startup work. A later
+PMU abort does not undo a completed internal calibration.
+
+On failure, call `esp_radio_c6_ocode_legacy_abort(cycles)` **before** PLL/CPU
+restoration. It retains IRQ masking and ownership on any further failure,
+recovers a pending bus command, reads back uncertain reset writes and restores
+the saved reset bit without blindly replaying a strobe. Restoring RESETB=1 may
+restart calibration, so abort also waits for both done flags before releasing
+the PLL-off lease. Subsequent cleanup is PLL restore, CPU clock restore, then
+PMU abort. If an abort keeps timing out, the caller must retain those leases;
+this component does not permit normal execution to resume with an uncertain
+calibration.
+
+The legacy C oracle executes the pinned vendor `calibrate_ocode` function
+against all16 status-bit combinations and checks clock/reset ordering. The
+host model combines the real PMU, analog bus, PLL and OCODE components with an
+injected held XTAL lease. It tests both master routes, root-clock/IRQ states,
+reset/fuse policy, every snapshot/reset/status timeout, interrupted aborts,
+late completion, nominal10ms and cycle wrap. SRAM/XIP/radio firmware checks
+cover callback placement and signed invalid-budget returns. These results
+prove the modeled sequence and packaging; actual bandgap voltage, analog
+transfers, clock switching and full hardware/RF startup remain unverified.
 
 The analog-I2C primitive now checks both busy engines before selecting its
 160 MHz source. `esp_radio_c6_regi2c_idle()` provides a command-free preflight

@@ -21,6 +21,7 @@ def main():
     for name in ['compiler', 'reference', 'work']:
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--qemu-c6', type=Path)
+    parser.add_argument('--inputs-only', action='store_true')
     args = parser.parse_args()
     work, ref, compiler = args.work.resolve(), args.reference.resolve(), args.compiler.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -113,6 +114,9 @@ int main(void){
     expected = work / 'expected.bin'
     expected.write_bytes((inputs / 'expected.bin').read_bytes() + run([oracle]))
     assert expected.stat().st_size == 2656
+    if args.inputs_only:
+        print('Primary PLL/PMU inputs emitted; no test execution claim')
+        return
     prefix = (ROOT / 'tests/esp32/riscv-pmu-stage-model.flex').read_text().split('fn main(argc,argv){')[0]
     prefix = prefix.replace('fn esp32_load32(', 'fn pmu_load32(').replace('fn esp32_store32(', 'fn pmu_store32(')
     prefix = prefix.replace('fn esp32_call32(', 'fn pmu_call32(').replace('fn bus_write(', 'fn pmu_bus_write(')
@@ -163,6 +167,8 @@ int main(void){
     checks = struct.unpack('<Q', protected.stdout)[0]
     controls = []
     for name, before, after in [
+        ('analog-master-lease-omitted', 'esp_radio_c6_clock_write(0x600af018,4,4,cycles)', '0'),
+        ('analog-master-restore-omitted', 'esp_radio_c6_clock_write(0x600af018,4,esp_radio_pll_old_master_clock,cycles)', '0'),
         ('signed-status-truncated', 'return esp32_call64(', 'return esp32_call32('),
         ('explicit-consumer-ignored', 'esp_radio_pll_consumers || ', ''),
         ('USB-clock-ignored', '(esp32_load32(0x6009608c)&3)==1', '0'),
@@ -252,7 +258,7 @@ int main(void){
         packaging.append(dict(target=target, real_IRAM_callbacks=found, executed=bool(args.qemu_c6),
                               execution_scope='invalid-budget signed status through real IRAM wrappers' if args.qemu_c6 else 'package-only',
                               image_sha256=hashlib.sha256(image.read_bytes()).hexdigest()))
-    report = dict(pass_all=True, canonical_coefficient_writes=6, peripheral_consumer_rows=15,
+    report = dict(pass_all=True, continuous_analog_master_clock=True, canonical_coefficient_writes=6, peripheral_consumer_rows=15,
                   injected_XTAL_lease=True, primary_configuration_function="clk_ll_bbpll_set_config",
                   checks=checks, controls=controls, packaging=packaging, physical_hardware=False, real_PLL_power_or_calibration_verified=False,
                   legacy_software_OCODE_complete=False, compiler_sha256=hashlib.sha256(compiler.read_bytes()).hexdigest())
