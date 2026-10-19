@@ -124,6 +124,9 @@ jobs:
       - name: Test common subexpression elimination
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-ir-cse.py
 
+      - name: Test CFG liveness and native register preservation
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-ir-liveness.py
+
       - name: Test the default native IR pipeline and direct reference path
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-pipeline.py
 

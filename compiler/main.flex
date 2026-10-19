@@ -21,6 +21,7 @@ import "backends/sass-schedule.flex";
 import "backends/sass-float.flex";
 import "ir.flex";
 import "ir-opt.flex";
+import "ir-liveness.flex";
 import "backends/word-io.flex";
 import "native-link.flex";
 import "native-branches.flex";
@@ -62,6 +63,7 @@ global native_reg_map=0;
 global native_reg_replay=0;
 global native_reg_callee_count=0;
 global native_spill_slots=-1;
+global native_spill_mask=-1;
 global native_loop_depth=0;
 global native_address_site=-1;
 global native_address_kind=0;
@@ -500,7 +502,7 @@ fn native_nops(n) {
     else if n==7 {emit(128);emit32(0);}else {emit(132);emit(0);emit32(0);}return 0;
 }
 fn native_reg_begin() {
-    native_register_frame=!vm_mode && !baremetal_target;native_reg_replay=0;native_reg_callee_count=0;native_loop_depth=0;native_temp_epoch=0;native_frame_hint=-1;native_spill_slots=-1;
+    native_register_frame=!vm_mode && !baremetal_target;native_reg_replay=0;native_reg_callee_count=0;native_loop_depth=0;native_temp_epoch=0;native_frame_hint=-1;native_spill_slots=-1;native_spill_mask=-1;
     if native_register_frame && !native_reg_counts {native_reg_counts=alloc(32768);native_reg_map=alloc(32768);if native_reg_counts<0 || native_reg_map<0 {fail("cannot allocate native local cache");}}return 0;
 }
 fn native_local(slot,storing) {
@@ -524,7 +526,7 @@ fn native_reg_select() {
     native_reg_callee_count=chosen;if native_reg_callee_count>5 {native_reg_callee_count=5;}return 0;
 }
 fn native_reg_spill(storing) {
-    if !native_register_frame || !native_reg_replay {return 0;}let limit=slots;if native_spill_slots>=0 {limit=native_spill_slots;}let slot=0;while slot<limit {let reg=load64(native_reg_map+slot*8);if reg>=6 {let op=139;if storing {op=137;}native_rbp(op,reg+2,-8*(slot+1));}slot=slot+1;}return 0;
+    if !native_register_frame || !native_reg_replay {return 0;}let limit=slots;if native_spill_slots>=0 {limit=native_spill_slots;}let slot=0;while slot<limit {let reg=load64(native_reg_map+slot*8);if reg>=6 && (native_spill_mask&(1<<(reg-6))) {let op=139;if storing {op=137;}native_rbp(op,reg+2,-8*(slot+1));}slot=slot+1;}return 0;
 }
 fn native_frame(count) {
     native_parameter_count=count;emit(85);emit(72);emit(137);emit(229);let frame=0;let bytes=-1;

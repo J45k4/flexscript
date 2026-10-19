@@ -32,6 +32,10 @@ comparison branches and short-branch encoding. Static-address literals use an
 internal relocation opcode so numeric constants cannot be mistaken for pointers;
 this adds no portable FIR format version or VM execution opcode.
 
+The shared [local liveness analysis](ir-liveness.md) also lets the native IR
+backend preserve only cached local values needed after a call. It follows
+branches and loop backedges without changing the instruction stream.
+
 `examples/ir-optimization.flex` provides a small example of constant folding
 and dead-branch removal. Both modes return 42; `--stats` shows the reduction.
 

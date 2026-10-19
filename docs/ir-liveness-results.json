@@ -1,0 +1,183 @@
+{
+  "date": "2026-10-19T16:34:00.098400+00:00",
+  "cpu": 0,
+  "scope": "Synthetic loop designed to make cached locals dead across calls. Same native IR pipeline; process wall time, including process startup. Two warmups per binary; alternating pairs. Application measurements are sizes only, not application throughput.",
+  "iterations": 50000000,
+  "rounds": 9,
+  "compilers": {
+    "before": {
+      "path": "/home/teppo/Work/flexscript/build/ir-liveness/flex-before",
+      "bytes": 647416,
+      "sha256": "448e356d2b15de94a035355ba79a374a436dac74e75faa9838e3416223580836"
+    },
+    "after": {
+      "path": "/home/teppo/Work/flexscript/build/ir-liveness/flex-stage2",
+      "bytes": 598880,
+      "sha256": "ca308c08d82f0f823315b68f61513865708fef003d6f56b61cbfeb8d2f2ed897"
+    }
+  },
+  "source": {
+    "path": "/home/teppo/Work/flexscript/build/ir-liveness/comparison/calls.flex",
+    "bytes": 325,
+    "sha256": "de8ca6d8798c337a3d0bf9fa7fa00cc8466534f785ebc9ce220f5bdd66b75928"
+  },
+  "artifacts": {
+    "before": {
+      "path": "/home/teppo/Work/flexscript/build/ir-liveness/comparison/calls-before",
+      "bytes": 643,
+      "sha256": "957e7ba4efeaf5f9dcaa9cabaf8d3aa939c58e81b3a90723df571f8af5240eb8"
+    },
+    "after": {
+      "path": "/home/teppo/Work/flexscript/build/ir-liveness/comparison/calls-after",
+      "bytes": 619,
+      "sha256": "d666342254de20971d43ac2c60c8ed01f86cea7b8fbb9e90a2374716fcf0179d"
+    }
+  },
+  "samples": [
+    {
+      "round": 2,
+      "name": "before",
+      "wall_ns": 136200548
+    },
+    {
+      "round": 2,
+      "name": "after",
+      "wall_ns": 129115829
+    },
+    {
+      "round": 3,
+      "name": "after",
+      "wall_ns": 129473713
+    },
+    {
+      "round": 3,
+      "name": "before",
+      "wall_ns": 136635135
+    },
+    {
+      "round": 4,
+      "name": "before",
+      "wall_ns": 136840519
+    },
+    {
+      "round": 4,
+      "name": "after",
+      "wall_ns": 129052907
+    },
+    {
+      "round": 5,
+      "name": "after",
+      "wall_ns": 129305572
+    },
+    {
+      "round": 5,
+      "name": "before",
+      "wall_ns": 136301570
+    },
+    {
+      "round": 6,
+      "name": "before",
+      "wall_ns": 136413381
+    },
+    {
+      "round": 6,
+      "name": "after",
+      "wall_ns": 129071398
+    },
+    {
+      "round": 7,
+      "name": "after",
+      "wall_ns": 129290211
+    },
+    {
+      "round": 7,
+      "name": "before",
+      "wall_ns": 136330360
+    },
+    {
+      "round": 8,
+      "name": "before",
+      "wall_ns": 136436972
+    },
+    {
+      "round": 8,
+      "name": "after",
+      "wall_ns": 129172199
+    },
+    {
+      "round": 9,
+      "name": "after",
+      "wall_ns": 128760822
+    },
+    {
+      "round": 9,
+      "name": "before",
+      "wall_ns": 136655596
+    },
+    {
+      "round": 10,
+      "name": "before",
+      "wall_ns": 136495323
+    },
+    {
+      "round": 10,
+      "name": "after",
+      "wall_ns": 129110318
+    }
+  ],
+  "warmups": [
+    {
+      "round": 0,
+      "name": "before",
+      "wall_ns": 136545974
+    },
+    {
+      "round": 0,
+      "name": "after",
+      "wall_ns": 129285341
+    },
+    {
+      "round": 1,
+      "name": "after",
+      "wall_ns": 128746532
+    },
+    {
+      "round": 1,
+      "name": "before",
+      "wall_ns": 136303710
+    }
+  ],
+  "application": {
+    "before": {
+      "path": "/home/teppo/Work/flexscript/build/ir-liveness/comparison/application-before",
+      "bytes": 1189984,
+      "sha256": "fcc9c31479e2f1f45a2342c2dbcf782d0d27189bd36dfd41fe44b55678933564"
+    },
+    "after": {
+      "path": "/home/teppo/Work/flexscript/build/ir-liveness/comparison/application-after",
+      "bytes": 1129336,
+      "sha256": "a2c98990878b1017c05dd672ed5e8050350a093c3914b49c03fe68191131a0e8"
+    }
+  },
+  "summary": {
+    "before": {
+      "median_ms": 136.436972,
+      "min_ms": 136.200548,
+      "max_ms": 136.840519
+    },
+    "after": {
+      "median_ms": 129.115829,
+      "min_ms": 128.760822,
+      "max_ms": 129.473713
+    },
+    "speedup": 1.056702133709725,
+    "wall_reduction_percent": 5.365952419407261,
+    "paired_gain_percent": {
+      "median": 5.624099501472446,
+      "minimum": 5.410438151884134,
+      "maximum": 6.131347934389542,
+      "wins": 9,
+      "rounds": 9
+    }
+  }
+}

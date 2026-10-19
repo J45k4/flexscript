@@ -17,6 +17,7 @@ global ni_data=0;
 global ni_depth=0;
 global ni_block=0;
 global ni_acc_begin=0;
+global ni_slot_bits=0;
 fn native_ir_prepare() {
     native_ir_target=1;vm_mode=1;vm_restricted=1;vm_heap_limit=67108864;vm_heap_used=16;
     vm_heap=alloc(vm_heap_limit);if vm_heap<0 {fail("cannot allocate native IR data");}
@@ -51,7 +52,10 @@ fn ni_analyze(start,end,arity) {
         else if op==8 || op==17 {depth=depth-ni_arity(op,arg);if depth<0 {fail("native IR argument stack underflow");}}
         pc=pc+16;
     }
-    if depth {fail("native IR operand stack unbalanced");}native_loop_depth=0;native_reg_select();return 0;
+    if depth {fail("native IR operand stack unbalanced");}native_loop_depth=0;native_reg_select();
+    if !ni_slot_bits {ni_slot_bits=alloc(4096*8);if ni_slot_bits<0 {fail("cannot allocate native liveness map");}}
+    slot=0;while slot<slots {let reg=load64(native_reg_map+slot*8);let mask=0;if reg>=6 {mask=1<<(reg-6);}store64(ni_slot_bits+slot*8,mask);slot=slot+1;}
+    ir_live_analyze(ni_code,start,end,slots,ni_slot_bits);return 0;
 }
 fn ni_acc_dead(pc,end) {
     let rounds=0;while pc<end && load64(ni_code+pc)==10 && rounds<64 {pc=load64(ni_code+pc+8);rounds=rounds+1;}
@@ -94,13 +98,14 @@ fn ni_emit(start,end,arity) {
                 binary(arg);
             }ni_acc_begin=begin;
         }else if op==8 {
+            native_spill_mask=ir_live_after(pc);
             let f=functions+arg*32;let count=load64(f+24);ni_depth=ni_depth-count;let kind=lowering_lookup(load64(f),load64(f+8),0);
             if kind {
                 if kind==127 {native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);}
                 if kind==122 && native_address_site>=0 {output_size=output_size-1;native_address_load(3);}else {lowering_native(kind);}
                 if kind==127 {native_reg_spill(0);}
             }else {ni_call(load64(f),load64(f+8),count);}ni_acc_begin=at;
-        }else if op==17 {ni_depth=ni_depth-ni_arity(op,arg);ni_builtin(arg);ni_acc_begin=at;}
+        }else if op==17 {native_spill_mask=ir_live_after(pc);ni_depth=ni_depth-ni_arity(op,arg);ni_builtin(arg);ni_acc_begin=at;}
         else if op==9 {epilogue();ni_acc_begin=output_size;}
         else if op>=10 && op<=12 {
             let handle=0;if op==10 {handle=jump(233);}else {let discard=ni_acc_dead(pc+16,end) && ni_acc_dead(arg,end);handle=condition_jump(op==12,discard);}
@@ -134,7 +139,7 @@ fn native_ir_finish() {
             let arity=load64(f+24);slots=load64(ni_code+start+8);native_reg_begin();ni_analyze(start,end,arity);native_reg_replay=1;native_frame_hint=slots;
             let beginning=output_size;let before_calls=call_count;native_branch_begin();ni_emit(start,end,arity);let original_end=output_size;let saved=native_branch_relax();
             if saved {output_size=beginning;call_count=before_calls;ni_emit(start,end,arity);if output_size!=original_end-saved {fail("native IR branch replay differs");}}
-            native_branch_end();native_register_frame=0;native_reg_replay=0;native_spill_slots=-1;lowering_entry(f);
+            native_branch_end();native_register_frame=0;native_reg_replay=0;native_spill_slots=-1;native_spill_mask=-1;lowering_entry(f);
         }i=i+1;
     }
     native_link_replay=0;resolve();return 0;
