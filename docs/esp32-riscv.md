@@ -1265,6 +1265,50 @@ evidence: actual cached execution across clock changes, analog timing and
 physical RF startup remain unverified. The full C6 initializer retains its
 clean `-95` gate until modem clocks and PHY startup are implemented.
 
+`esp32c6-radio-modem.flex` stages the remaining modem register policy after
+PMU preparation and successful calibration. Call
+`esp_radio_c6_modem_stage(source, divider, cycles)` with source0 RC_SLOW,
+1 RC_FAST,2 main XTAL,3 RC32K,4 XTAL32K or5 external32K, and divider0..4095.
+The caller supplies an available oscillator, as in the vendor clock API;
+this function does not start or calibrate that oscillator.
+
+The stage ORs the ten pinned ESP-IDF ICG defaults into the existing maps,
+preserving existing mode bits and all unrelated fields. BT and IEEE802154
+use ACTIVE-only defaults; Wi-Fi, FE, MODEM_APB and the LP domains also permit
+MODEM. It stops the Wi-Fi power clock, disconnects its LP mux, selects the
+shared32K source where needed, sets the source/divider, then enables that
+clock. Enabled/forced coexistence or BLE timer clocks refuse admission.
+A forced Wi-Fi power clock also refuses, because its ordinary enable cannot
+stop it. Changing a shared32K source selected by BLE/coexistence refuses even
+when those users' clocks are gated; an unchanged selector is allowed.
+
+Success holds the modem lease and the caller's IRQ mask. Every owned write
+has bounded readback, with wrapping cycle deadlines and a late-read check.
+Failure retains the lease and snapshots. Retry
+`esp_radio_c6_modem_abort(cycles)` until it succeeds; it restores the source,
+divider and maps while the consumer is stopped, then restores the original
+Wi-Fi power-clock enable and IRQ state. Recovery reads before writing and
+resumes at the failed step. Public PMU/clock/calibration operations, PMU analog
+writes and new PLL references refuse during the modem lease. The receipt
+fields `esp_radio_modem_phase` (prepared1/recovery2), `step` (preparation1..8),
+`recovery` (cleanup0..6), `error` and `cleanup_error` expose progress and retain
+the original preparation error separately from the latest abort result.
+
+After the enclosing startup has issued PMU immediate updates and completed
+base-clock activation, while PHY references and hardware-ready are still zero, `esp_radio_c6_modem_commit()` transfers both modem and PMU state to
+platform lifetime together. A committed configuration cannot be undone with
+this staging abort. Immediate ICG activation/live-state rollback remains
+T582; this stage does not issue WT strobes or enable RF. The production C6
+hardware initializer retains its `-95` gate.
+
+The model executes the real modem stage/abort/commit and PLL reference guard
+against24,576 vectors from pinned C HAL functions, LL bitfields and the ICG
+default table, covering every divisor and source in both IRQ states. Prepared
+PMU/calibration inputs are injected; their independent suites test the actual
+lower stages. Native SRAM/XIP/radio firmware executes rejected/unprepared
+calls only. Physical clocks, oscillator availability, analog transfers and
+complete modem/PHY startup remain unverified.
+
 The analog-I2C primitive now checks both busy engines before selecting its
 160 MHz source. `esp_radio_c6_regi2c_idle()` provides a command-free preflight
 using the existing source and restores the register-clock enable bit. Refusing
