@@ -7,7 +7,9 @@ global ext_data_size=0;
 global ext_output=0;
 global ext_output_size=0;
 fn ext_len(text) {let n=0;while load8(text+n) {n=n+1;}return n;}
-fn ext_copy(to,from,n) {let i=0;while i<n {store8(to+i,load8(from+i));i=i+1;}return 0;}
+// Exact forward copy, including bytewise right-overlap semantics. Wide loads
+// stay inside n; overlapping distances below eight keep the byte loop.
+fn ext_copy(to,from,n) {if n<=0 {return 0;}let i=0;if to<=from || to-from>=8 {while i<=n-8 {store64(to+i,load64(from+i));i=i+8;}}while i<n {store8(to+i,load8(from+i));i=i+1;}return 0;}
 fn ext_print(text) {let n=ext_len(text);while n>0 {let k=syscall(1,2,text,n,0,0,0);if k<=0 {return 0;}text=text+k;n=n-k;}return 0;}
 fn ext_number(value) {
     let text=alloc(32);let at=31;let negative=value<0;

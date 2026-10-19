@@ -7,6 +7,7 @@ fn db_schema_reject(body,message) {
 }
 fn suite(compiler) {
     t_init(compiler);h_compile(t_compiler,"libs/db/tests/core.flex",t_binary);let p=h_check(h_run(h_args(t_binary,t_work,0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
+    h_compile(t_compiler,"libs/db/tests/schema-large.flex",t_binary);h_check(h_run(h_args(t_binary,h_join(t_work,"large-schema.db"),0,0,0,0)),0,0);t_checks=t_checks+1;
     h_compile(t_compiler,"libs/db/examples/people.flex",t_binary);let path=h_join(t_work,"example.db");h_check(h_run(h_args(t_binary,path,0,0,0,0)),0,"Puppy -> Compilers\nAda -> Graphics\n");h_check(h_run(h_args(t_binary,path,0,0,0,0)),0,"Puppy -> Compilers\nAda -> Graphics\n");t_checks=t_checks+2;
     h_compile(t_compiler,"libs/db/examples/compiled.flex",t_binary);h_check(h_run(h_args(t_binary,path,0,0,0,0)),0,"fused scan\nprimary-key seek\n");t_checks=t_checks+1;
     h_compile(t_compiler,"libs/db/tests/compiled.flex",t_binary);p=h_check(h_run(h_args(t_binary,h_join(t_work,"compiled.db"),0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
@@ -15,6 +16,8 @@ fn suite(compiler) {
     h_compile(t_compiler,"libs/db/tests/transactions.flex",t_binary);p=h_check(h_run(h_args(t_binary,h_join(t_work,"transactions.db"),0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
     h_compile(t_compiler,"libs/db/tests/native-scan.flex",t_binary);p=h_check(h_run(h_args(t_binary,h_join(t_work,"native-scan.db"),0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
     h_compile(t_compiler,"libs/db/tests/native-pack.flex",t_binary);p=h_check(h_run(h_args(t_binary,h_join(t_work,"native-pack.db"),0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
+    h_compile(t_compiler,"libs/db/tests/blobs.flex",t_binary);p=h_check(h_run(h_args(t_binary,t_work,0,0,0,0)),0,0);h_print(1,h_out(p));t_checks=t_checks+1;
+    h_compile(t_compiler,"libs/db/examples/blobs.flex",t_binary);let blob_example=h_join(t_work,"blob-example.db");h_check(h_run(h_args(t_binary,blob_example,0,0,0,0)),0,"Compressed blob round trip: 65536 bytes\n");h_check(h_run(h_args(t_binary,blob_example,0,0,0,0)),0,"Compressed blob round trip: 65536 bytes\n");t_checks=t_checks+2;
     db_compile_reject("global changed=0;fn predicate(row){changed=1;return 1;}fn main(){return 0;}","must not mutate");
     db_compile_reject("fn helper(row){store64(row,5);return 1;}fn predicate(row){return helper(row);}fn main(){return 0;}","must not mutate");
     db_compile_reject("fn helper(row){return helper(row);}fn predicate(row){return helper(row);}fn main(){return 0;}","recursive predicate");

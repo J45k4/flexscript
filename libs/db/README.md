@@ -91,8 +91,10 @@ returns a table handle. `flexdb_table(db, name)` looks up an existing table;
 The allocation arena may be a database or a query handle. Build a row with
 `flexdb_values(arena)` and `flexdb_add(arena, values, value)` in schema order.
 Insert and update copy the values into database-owned storage, so query-owned
-input values may be freed immediately afterward. Text/blob values are limited
-to 1 MiB each; an oversized/negative-length blob constructor returns zero.
+input values may be freed immediately afterward. Text values are limited to
+1 MiB. Blobs accept up to 64 MiB minus one byte; an oversized/negative-length
+blob constructor returns zero. Large blobs are stored outside the row as
+described in [external blobs](blobs.md).
 
 `flexdb_insert(table, values)` returns an automatically assigned positive row
 ID; zero means failure. IDs are local to each table, increasing, and preserved
@@ -102,9 +104,23 @@ are not implicitly unique or foreign keys.
 `flexdb_get(table, id)` returns a row or zero. `flexdb_update(table, id, values)`
 replaces the complete row; `flexdb_delete(table, id)` removes it. Both return
 one on success and zero on failure. Read values with `flexdb_cell(row, column)`
-and then `flexdb_kind(value)`, `flexdb_word(value)`, or `flexdb_bytes(value)`.
+and then `flexdb_kind(value)` and `flexdb_bytes(value)`. Use `flexdb_word(value)`
+for scalar/text words; use `flexdb_blob_data(value)`, `flexdb_blob_read(...)`
+or an incremental blob reader for blob bytes. An external blob's internal word
+is a descriptor, not a payload pointer. Generated schema blob getters call
+`flexdb_blob_data`; their `_value` accessor returns the lazy value handle.
 `flexdb_rowid(row)` retrieves the row ID. Invalid row/column lookup returns
 zero; zero is a missing handle, whereas a null field has a nonzero value handle.
+
+For sequential archive scans, use `flexdb_blob_reader_sequential(value)` with
+the ordinary `flexdb_blob_reader_read` / `flexdb_blob_reader_close` calls. Fresh
+committed extents use a 64 KiB input buffer instead of a payload mapping; captured
+values and active readers remain valid across compaction. The original reader
+retains mapped pages for repeated access. `flexdb_blob_release_pages(value)`
+explicitly drops resident file pages without invalidating value handles.
+See [blob storage and streaming](blobs.md) for ownership and validation details.
+An experimental [native Zstd codec](../compress/README.md) can be selected with
+`flexdb_blob_native_zstd(db, 1)`; the faster C implementation remains the default.
 
 ## Queries in software
 
@@ -363,6 +379,11 @@ Consecutive inserts use schema-typed batches with null bitmaps and implied row
 IDs; original upsert records still replay. Commit appends and calls `fsync`;
 file creation also syncs the parent directory.
 
+External blobs use `FLEXBL01` extents with `FLEXTX03/FLEXEND3` commits and
+`FLEXCP04` checkpoints. Their compressed payloads remain in the same file,
+referenced rather than recopied by metadata updates/checkpoints. See
+[blob storage and streaming APIs](blobs.md).
+
 `flexdb_checkpoint(db)` appends the current schema, row directory and live row
 data, then fsyncs a checksummed `FLEXCPE1` footer. It requires no transaction and
 writes nothing when the existing checkpoint already covers the current commit
@@ -405,7 +426,8 @@ and read only the requested byte range.
 temporary file beside the database, fsyncs it, atomically renames it over the
 database, and syncs the parent directory. It holds both inode locks across
 publication; new openers verify pathname/inode identity after taking the lock.
-A compacted `FLEXDB02` header marks its initial checkpoint as mandatory; an
+A compacted `FLEXDB02` header (or `FLEXDB03` for external blobs) marks its
+initial checkpoint as mandatory; an
 incomplete base fails rather than recovering to an empty database.
 The API requires no transaction, retains stable IDs/tombstones/next ID, and
 preserves captured row/results until close. Successful compaction leaves one
@@ -420,7 +442,8 @@ strings. Allocation failure/arena overflow terminates the process.
 
 This is an experimental file format and engine, with no compatibility promise
 yet. The current bounds are 1,024 tables, 64 columns per table and 16 MiB per
-transaction/checkpoint. Legacy files without a checkpoint replay into memory;
+transaction/checkpoint metadata and inline data. External blob frames are
+outside that bound and are not copied into checkpoints. Legacy files without a checkpoint replay into memory;
 checkpoint-backed rows load on demand. The mapped file and cached rows remain
 owned by the connection; the row cache currently has no eviction. Row-ID lookup
 has a constant-time dense-ID path with a binary-search fallback. The common RAM

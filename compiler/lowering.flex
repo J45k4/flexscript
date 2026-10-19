@@ -4,6 +4,7 @@ global lowering_entries=0;
 global lowering_count=0;
 global lowering_reference=0;
 fn lowering_operation(p,n) {
+    if equal(p,n,"machine.call1",13) {return 127;}
     if equal(p,n,"f32x2.add",9){return 112;}if equal(p,n,"f32x2.sub",9){return 113;}if equal(p,n,"f32x2.mul",9){return 114;}
     if equal(p,n,"f32.add",7) {return 30;}
     if equal(p,n,"f32.sub",7) {return 31;}
@@ -17,12 +18,18 @@ fn lowering_operation(p,n) {
     if equal(p,n,"f64.sqrt",8) {return 44;}
     if equal(p,n,"f32.dot3",8) {return 110;}
     if equal(p,n,"f32.dot3.load",13) {return 111;}
+    if equal(p,n,"memory.copy",11) {return 120;}
+    if equal(p,n,"memory.fill",11) {return 121;}
+    if equal(p,n,"word.store32",12) {return 125;}
+    if equal(p,n,"word.load32",11) {return 122;}
+    if equal(p,n,"word.high_bit",13) {return 123;}
+    if equal(p,n,"memory.common_prefix",20) {return 124;}
     if equal(p,n,"word.add",8) {return 100;}
     if equal(p,n,"word.xor",8) {return 101;}
     if equal(p,n,"lowering.active",15) {return 102;}
     fail("unknown lowering operation");return 0;
 }
-fn lowering_arity(op) {if op==110 {return 6;}if op==102 {return 0;}if op==34 || op==44 {return 1;}return 2;}
+fn lowering_arity(op) {if op==125 || op==127 {return 2;}if op>=120 && op<=124 {if op==122 || op==123 {return 1;}return 3;}if op==110 {return 6;}if op==102 {return 0;}if op==34 || op==44 {return 1;}return 2;}
 fn lowering_declaration() {
     next();if token!=256 {fail("expected lowering function name");}
     let name=source+token_start;let size=token_size;
@@ -66,6 +73,12 @@ fn lowering_lookup(name,size,gpu) {
 // Arguments are already evaluated once, left to right, on the word stack.
 // SSE2 is baseline x86-64. No fast math, fusion, FTZ or DAZ.
 fn lowering_native(op) {
+    if op==127 {
+        // Caller spills volatile locals before entering this operation. The
+        // machine function follows System V, including preserving RBP.
+        lowering_bytes("5f58554889e54883e4f0ffd04889ec5d");return 0;
+    }
+    if op>=120 && op<=125 {return lowering_memory(op);}
     if op==102 {immediate(1);return 0;}
     if op==110 || op==111 {return lowering_dot3(op);}
     if lowering_arity(op)==2 {emit(89);}emit(88); // rhs -> rcx, lhs -> rax
@@ -110,4 +123,63 @@ fn lowering_dot3(op) {
     }
     if op==110 {emit(72);emit(131);emit(196);emit(48);}
     return lowering_native_result(0);
+}
+
+// Reusable exact-bound byte operations. SSE2/BSR and REP are baseline x86-64;
+// no CPUID-dependent instructions or external runtime helpers are needed.
+fn lowering_memory(op) {
+    if op==125 {emit(88);emit(95);emit(137);emit(7);return 0;}
+    if op==122 {emit(95);emit(139);emit(7);return 0;} // pop rdi; mov eax,[rdi]
+    if op==123 {
+        emit(88);emit(72);emit(15);emit(189);emit(192); // bsr rax,rax
+        let nonzero=jump(133);immediate(-1);patch_jump(nonzero);return 0;
+    }
+    emit(89); // count -> rcx
+    if op==120 {return lowering_copy();}
+    if op==121 {
+        emit(88);emit(95);emit(72);emit(137);emit(250); // byte/dst; rdx=dst
+        emit(252);emit(243);emit(170);emit(72);emit(137);emit(208);return 0;
+    }
+    emit(95);emit(94);emit(49);emit(192); // b -> rdi, a -> rsi, offset -> rax
+    let loop=output_size;
+    emit(72);emit(131);emit(249);emit(16);let tail=jump(130);
+    // Compare exactly sixteen bytes, returning the earliest differing byte.
+    emit(243);emit(15);emit(111);emit(4);emit(6);
+    emit(243);emit(15);emit(111);emit(12);emit(7);
+    emit(102);emit(15);emit(116);emit(193);
+    emit(102);emit(15);emit(215);emit(208);
+    emit(129);emit(242);emit32(65535);let mismatch=jump(133);
+    emit(72);emit(131);emit(192);emit(16);emit(72);emit(131);emit(233);emit(16);
+    let back=jump(233);patch32(back,loop-back-4);
+    patch_jump(tail);let bytes=output_size;
+    emit(72);emit(133);emit(201);let empty=jump(132);
+    emit(15);emit(182);emit(20);emit(6);emit(58);emit(20);emit(7);let different=jump(133);
+    emit(72);emit(255);emit(192);emit(72);emit(255);emit(201);
+    back=jump(233);patch32(back,bytes-back-4);
+    patch_jump(mismatch);emit(15);emit(188);emit(210);emit(72);emit(1);emit(208);
+    patch_jump(empty);patch_jump(different);return 0;
+}
+
+fn lowering_bytes(s) {let i=0;while load8(s+i) {let a=load8(s+i);let b=load8(s+i+1);let high=a&15;let low=b&15;if a>57 {high=high+9;}if b>57 {low=low+9;}emit((high<<4)|low);i=i+2;}return 0;}
+// Exact small copies use SSE2 and scalar edge loads. All loads precede stores
+// in the overlapping first/last short cases. Right-overlap retains forward REP
+// semantics; large ranges use ERMS where the hardware implements it efficiently.
+fn lowering_copy() {
+    lowering_bytes("5e5f4889f84885c9");let empty=jump(132);
+    lowering_bytes("4881f980000000");let large=jump(131);
+    lowering_bytes("4839f7");let normal=jump(134);
+    lowering_bytes("4889fa4829f24839ca");let alias=jump(130);
+    patch_jump(normal);let loop=output_size;lowering_bytes("4883f920");let small=jump(134);
+    lowering_bytes("f30f6f06f30f7f074883c6104883c7104883e910");let back=jump(233);patch32(back,loop-back-4);
+    patch_jump(small);lowering_bytes("4883f910");let under16=jump(130);
+    lowering_bytes("f30f6f06f30f6f4c0ef0f30f7f07f30f7f4c0ff0");let end16=jump(233);
+    patch_jump(under16);lowering_bytes("4883f908");let under8=jump(130);
+    lowering_bytes("f30f7e06488b540ef8660fd6074889540ff8");let end8=jump(233);
+    patch_jump(under8);lowering_bytes("4883f904");let under4=jump(130);
+    lowering_bytes("660f6e068b540efc660f7e0789540ffc");let end4=jump(233);
+    patch_jump(under4);lowering_bytes("4883f902");let under2=jump(130);
+    lowering_bytes("0fb7160fb7740efe6689176689740ffe");let end2=jump(233);
+    patch_jump(under2);lowering_bytes("8a168817");let end1=jump(233);
+    patch_jump(large);patch_jump(alias);lowering_bytes("fcf3a4");
+    patch_jump(empty);patch_jump(end16);patch_jump(end8);patch_jump(end4);patch_jump(end2);patch_jump(end1);return 0;
 }

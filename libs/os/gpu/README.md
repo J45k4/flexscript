@@ -217,6 +217,12 @@ host launches alone does not establish a speed advantage.
 
 ## Shared-scheduler benchmark
 
+The [2026-10-19 native host pipeline comparison](benchmark-native-pipeline.md)
+measures the direct source emitter against the default native IR pipeline with
+identical RDNA GPU OS code: approximately unchanged decode speed, 3.33% smaller
+standalone Qwen host and 1.21% smaller full chat host. It includes memory,
+latency and reproducible raw samples.
+
 A matched chat benchmark on 2026-10-13 used Qwen3-1.7B F16 on the RX 9070 XT,
 context 1024, greedy sampling and 128 generated tokens. Graph and the shared
 Flexscript HIP scheduler remained loaded; three measured requests per

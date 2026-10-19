@@ -23,15 +23,53 @@ the [historical build instructions](bootstrap-0.0.1.md).
 The Flexscript bootstrap flattens the compiler's known import graph into
 `build/core.flex`, with globals before functions and ordinary definitions of the
 five FFI intrinsics that return zero. The original seed builds this standalone
-core. The core rebuilds itself byte-for-byte, then compiles the real imported
-compiler into stage 1. Stage 1 builds stage 2; stage 2 builds stage 3. Stages 2
-and 3 must be byte-identical.
+core as `core-seed`. It builds `core-rebuilt`, which builds the final `core`;
+the latter two must be byte-identical. This permits an older seed to emit
+different instructions while still checking the new emitter's fixed point.
+The final core then compiles the real imported compiler into stage 1. Stage 1
+builds stage 2; stage 2 builds stage 3. Stages 2 and 3 must be byte-identical.
 
 The full compiler requires the Linux x86-64 glibc loader and libc. HTTPS upgrades
 load OpenSSL 3 lazily. Programs without FFI remain standalone. The static core
 needs no loader, libc, OpenSSL, Rust or other compiler to run, and can build the
 full compiler. Its own FFI calls return zero, so it supports interpretation but
 cannot JIT or perform HTTPS upgrades.
+
+Native Linux builds from Flexscript source validate every function, then emit
+only functions reachable from `main`. Unused functions, their string literals
+and FFI adapters are omitted; errors in unused functions still fail compilation.
+The default native pipeline parses shared IR, optimizes it, then emits x86-64
+through `compiler/native-ir.flex`. `--native-pipeline direct` retains the
+original source-emitter path for reference comparisons.
+`--native-link all` retains every function for diagnostics and size comparisons;
+`--native-link reachable` explicitly selects the default. This linking option
+does not apply to VM/JIT, FIR, SetaScript, GPU or freestanding output.
+
+The x86-64 emitter uses shorter immediate and stack displacement encodings when
+their values fit, and reads uncached parameters directly from incoming argument
+slots. `build/tools/test-native-size build/stage2` checks reachability, diagnostics,
+FFI removal, recursion and stack/argument encoding boundaries.
+
+Native Flexscript functions also relax local branches to the two-byte x86-64
+encoding when the final distance fits -128 through +127 bytes. The compiler
+records branch boundaries and targets, repeatedly selects newly fitting jumps,
+then re-emits the function with its normal symbol and data fixups. Embedded
+strings and assets are never decoded as instructions. Planning is bounded to
+131,072 branches per function and 64 relaxation rounds; larger functions retain
+valid long branches, and the round limit may leave some fitting branches long.
+`FLEX_COMPILER=build/stage2 python3 scripts/test-short-branches.py` checks exact
+forward/backward boundaries, cascading size reductions, execution and fallback.
+
+Native source `if` and `while` conditions consume comparison flags directly,
+omitting the intermediate `SETcc`, boolean widening and `TEST` when the value
+is only needed for the branch. Stored and returned comparisons remain canonical
+0/1 values. Logical negation can invert the existing condition, and `&&`/`||`
+reuse flags while retaining the boolean value needed on their skipped path.
+The emitter tracks the immediately preceding boolean producer and invalidates
+that information at every emitted instruction and control-flow join. This is
+an x86-64 instruction-selection optimization reused by both native source
+pipelines. Verify it with
+`FLEX_COMPILER=build/stage2 python3 scripts/test-condition-branches.py`.
 
 The host harness in `scripts/lib/` provides argv-based process execution,
 concurrent stdout/stderr capture, timeouts, binary comparisons, private temporary
@@ -81,5 +119,7 @@ The CI private key stays in memory. Branch and pull-request tests use disposable
 keys and never receive the release secret.
 
 The VM/JIT live in `vm/runtime.flex` and `vm/jit.flex`; native compilation remains
-available. See [VM](vm.md), [signing](signing.md), and the historical
+available. Resolved word IR passes through the shared
+[IR optimization pipeline](ir-optimization.md) before backend lowering.
+See [VM](vm.md), [signing](signing.md), and the historical
 [0.0.1 bootstrap record](bootstrap-0.0.1.md).

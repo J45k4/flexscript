@@ -42,15 +42,15 @@ fn fd_open_storage(db,path) {
     }
     let header=fd_alloc(db,32);
     if size<32 || !fd_io(fd,header,32,0,0) {return fd_error(db,"invalid FlexDB header or version");}
-    let base=fd_bytes(header,"FLEXDB02",8) && load64(header+8)==2 && load64(header+16)==32 && load64(header+24)==1;
+    let base=(fd_bytes(header,"FLEXDB02",8) && load64(header+8)==2 || fd_bytes(header,"FLEXDB03",8) && load64(header+8)==3) && load64(header+16)==32 && load64(header+24)==1;
     let legacy=fd_bytes(header,"FLEXDB01",8) && load64(header+8)==1 && load64(header+16)==32 && load64(header+24)==0;
     if !base && !legacy {return fd_error(db,"invalid FlexDB header or version");}if base && size<128 {return fd_error(db,"incomplete base checkpoint");}store64(db+192,base);
     // A completed footer identifies the authoritative checkpoint without a
     // mutable header/root slot. Torn tails use the ordinary recovery scan.
-    let offset=32;let sequence=0;
+    let offset=32;let sequence=0;let pending_blobs=0;
     if size>=80 {
         let tail=fd_alloc(db,48);if !fd_io(fd,tail,48,size-48,0) {return fd_error(db,"cannot read file tail");}
-        if fd_footer_ok(tail) && (fd_bytes(tail,"FLEXEND2",8) || fd_bytes(tail,"FLEXCPE1",8)) {
+        if fd_footer_ok(tail) && (fd_bytes(tail,"FLEXEND2",8) || (fd_bytes(tail,"FLEXEND3",8) && load64(tail+24)>0) || fd_bytes(tail,"FLEXCPE1",8)) {
             let cp=load64(tail+24);let start=load64(tail+16);if cp<32 || cp>start || start>size-80 {return fd_error(db,"invalid checkpoint footer location");}
             if !fd_cp_load(db,cp,size) {return 0;}offset=load64(db+152);sequence=load64(db+160);
             if load64(tail+8)<sequence || (fd_bytes(tail,"FLEXCPE1",8) && (start!=cp || offset!=size)) {return fd_error(db,"invalid checkpoint tail sequence");}
@@ -61,15 +61,18 @@ fn fd_open_storage(db,path) {
         let remain=size-offset;
         if remain<32 {if base && offset==32 {ok=fd_error(db,"incomplete base checkpoint");}else {size=offset;}}
         else {
-            let h=fd_alloc(scratch,32);if !fd_io(fd,h,32,offset,0) {ok=fd_error(db,"cannot read transaction header");}
-            else if fd_bytes(h,"FLEXCP01",8) || fd_bytes(h,"FLEXCP02",8) || fd_bytes(h,"FLEXCP03",8) {
-                if !fd_cp_header_ok(h) || (offset!=32 && load64(h+16)!=sequence) {ok=fd_error(db,"invalid checkpoint header");}
+            let h=fd_alloc(scratch,64);if !fd_io(fd,h,32,offset,0) {ok=fd_error(db,"cannot read transaction header");}
+            else if fd_bytes(h,"FLEXBL01",8) {
+                if !pending_blobs {pending_blobs=offset;}if remain<64 {size=offset;}else if !fd_io(fd,h+32,32,offset+32,0) {ok=fd_error(db,"cannot read blob header");}else {let result=fd_blob_recover(db,h,offset,size,scratch);if !result {ok=0;}else if result==2 {size=offset;}else {offset=offset+112+load64(h+8);}}
+            }
+            else if fd_bytes(h,"FLEXCP01",8) || fd_bytes(h,"FLEXCP02",8) || fd_bytes(h,"FLEXCP03",8) || fd_bytes(h,"FLEXCP04",8) {
+                if !fd_cp_header_ok(h) || (offset!=32 && (!base || load64(db+144)) && load64(h+16)!=sequence) {ok=fd_error(db,"invalid checkpoint header");}
                 else if remain<load64(h+8)+80 {if base && offset==32 {ok=fd_error(db,"incomplete base checkpoint");}else {size=offset;}}
                 else if !fd_cp_load(db,offset,size) {ok=0;}
-                else {sequence=load64(db+160);offset=load64(db+152);}
+                else {sequence=load64(db+160);offset=load64(db+152);pending_blobs=0;}
             }
             else {
-                let modern=fd_bytes(h,"FLEXTX02",8);let overhead=48;if modern {overhead=80;}
+                let external=fd_bytes(h,"FLEXTX03",8);let modern=fd_bytes(h,"FLEXTX02",8) || external;let overhead=48;if modern {overhead=80;}
                 if (!modern && !fd_bytes(h,"FLEXTX01",8)) || load64(h+8)<8 || load64(h+8)>16777216 || load64(h+16)!=sequence+1 || ((load64(h+24)>>32)&4294967295)!=(fd_crc(4294967295,h,24)^4294967295) {ok=fd_error(db,"invalid transaction header");}
                 else {
                     let n=load64(h+8);if remain<overhead+n {size=offset;}
@@ -78,10 +81,10 @@ fn fd_open_storage(db,path) {
                         if !fd_io(fd,p,n+overhead-32,offset+32,0) {ok=fd_error(db,"cannot read transaction");}
                         else {
                             let footer=p+n;let footer_ok=fd_bytes(footer,"FLEXEND1",8) && load64(footer+8)==sequence+1;
-                            if modern {footer_ok=fd_bytes(footer,"FLEXEND2",8) && load64(footer+8)==sequence+1 && load64(footer+16)==offset && load64(footer+24)==load64(db+144) && fd_footer_ok(footer);}
+                            if modern {let expected="FLEXEND2";if external {expected="FLEXEND3";}footer_ok=fd_bytes(footer,expected,8) && load64(footer+8)==sequence+1 && load64(footer+16)==offset && load64(footer+24)==load64(db+144) && fd_footer_ok(footer);}
                             if !footer_ok || (fd_crc(fd_crc(4294967295,h,24),p,n)^4294967295)!=(load64(h+24)&4294967295) {ok=fd_error(db,"transaction checksum or footer mismatch");}
-                            else if !fd_replay(db,p,n) {ok=fd_error(db,"invalid transaction contents");}
-                            else {sequence=sequence+1;offset=offset+overhead+n;}
+                            else if !fd_replay_version(db,p,n,external) {ok=fd_error(db,"invalid transaction contents");}
+                            else {sequence=sequence+1;offset=offset+overhead+n;pending_blobs=0;}
                         }
                     }
                 }
@@ -89,16 +92,16 @@ fn fd_open_storage(db,path) {
         }
         fd_clear(scratch);
     }
-    fd_clear(scratch);syscall(11,scratch,32,0,0,0,0);if !ok {return 0;}
+    fd_clear(scratch);syscall(11,scratch,32,0,0,0,0);if !ok {return 0;}if base && !load64(db+144) {return fd_error(db,"incomplete base checkpoint");}if pending_blobs {offset=pending_blobs;}
     if offset<load64(stat+48) {if syscall(77,fd,offset,0,0,0,0)<0 || !fd_sync(fd) {return fd_error(db,"cannot recover incomplete transaction");}}
-    store64(db+56,offset);store64(db+64,sequence);return 1;
+    store64(db+56,offset);store64(db+64,sequence);let bs=load64(db+232);if bs {store64(bs+56,offset);}return 1;
 }
 fn fd_write_transaction(db) {
     let a=load64(db+72);let b=load64(db+80);let n=load64(b);let sequence=load64(db+64)+1;
-    let h=fd_alloc(a,32);let modern=load64(db+144)!=0;let magic="FLEXTX01";if modern {magic="FLEXTX02";}fd_copy(h,magic,8);store64(h+8,n);store64(h+16,sequence);
+    let h=fd_alloc(a,32);let bs=load64(db+232);let external=bs && load64(bs+80);let modern=load64(db+144)!=0 || external;let magic="FLEXTX01";if modern {magic="FLEXTX02";}if external {magic="FLEXTX03";}fd_copy(h,magic,8);store64(h+8,n);store64(h+16,sequence);
     let payload_crc=fd_crc(fd_crc(4294967295,h,24),load64(b+16),n)^4294967295;let header_crc=fd_crc(4294967295,h,24)^4294967295;
     store64(h+24,payload_crc|(header_crc<<32));
-    let tail=0;let bytes=16;let offset=load64(db+56);if modern {tail=fd_footer(a,"FLEXEND2",sequence,offset,load64(db+144));bytes=48;}else {tail=fd_alloc(a,16);fd_copy(tail,"FLEXEND1",8);store64(tail+8,sequence);}
+    let tail=0;let bytes=16;let offset=load64(db+56);if modern {let end_magic="FLEXEND2";if external {end_magic="FLEXEND3";}tail=fd_footer(a,end_magic,sequence,offset,load64(db+144));bytes=48;}else {tail=fd_alloc(a,16);fd_copy(tail,"FLEXEND1",8);store64(tail+8,sequence);}
     let fd=load64(db+24);
     if !fd_io(fd,h,32,offset,1) || !fd_io(fd,load64(b+16),n,offset+32,1) || !fd_io(fd,tail,bytes,offset+32+n,1) || !fd_sync(fd) {
         store64(db+48,2);return fd_error(db,"commit I/O failed; close and reopen (outcome uncertain)");

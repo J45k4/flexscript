@@ -11,6 +11,12 @@ fn cx_reject(text,message){
     h_check(result,1,0);t_assert(h_has(h_err(result),message),h_err(result));
     t_assert(h_equal(h_sha(t_fixture),source) && h_equal(h_sha(t_binary),before),"rejection changed source or destination");return 0;
 }
+fn cx_bytes(prefix) {
+    let fixture=h_real("tests/cpu-cxx/bytes.flex");let cpp=h_join(t_work,"bytes.cpp");let library=h_join(t_work,"bytes.so");cx_emit(fixture,cpp);cx_link(cpp,library);
+    let host=h_cat3(prefix,"import \"",h_cat(fixture,"\";fn main(argc,argv){h_environment(argc,argv);let a=h_take(264);let b=h_take(264);let call=0;if argc>1{let lib=ffi_open(load64(argv+8));call=ffi_symbol(lib,\"flex_kernel\");h_assert(call,\"byte kernel\");}let n=0;while n<=256{let result=0;if call{result=ffi_call(call,a,b,n,0,0,0);}else{result=kernel(a,b,n);}h_assert(result==0,\"byte kernel semantics\");n=n+1;}return 0;}"));
+    t_program(host);h_ok(h_args(t_compiler,"--lowering-mode","hardware",t_fixture,"-o",t_binary));h_ok(h_args(t_binary,0,0,0,0,0));h_ok(h_args(t_binary,library,0,0,0,0));
+    h_ok(h_args(t_compiler,"--lowering-mode","reference",t_fixture,"-o",t_binary));h_ok(h_args(t_binary,0,0,0,0,0));t_checks=t_checks+771;return 0;
+}
 fn cx_input(path){
     let edges=h_vec();h_add(edges,0);h_add(edges,1);h_add(edges,0x80000000);h_add(edges,0x7f800000);h_add(edges,0xff800000);h_add(edges,0x7fc12345);h_add(edges,0xff800001);h_add(edges,0x7fffffff);h_add(edges,0x3f800000);h_add(edges,0x00800000);h_add(edges,0x007fffff);h_add(edges,-1);h_add(edges,0x8000000000000000);h_add(edges,0x7ff0000000000000);h_add(edges,0xfff0000000000000);h_add(edges,0x7ff0000000000001);h_add(edges,0xfff8123456789abc);
     let directed=h_count(edges)*h_count(edges);let pairs=directed+12000;let data=h_take(1+pairs*30*24);store8(data,0xa5);let seed=12345;let i=0;
@@ -23,6 +29,11 @@ fn suite(compiler){
     let fixture=h_real("tests/cpu-cxx/corpus.flex");let cpp=h_join(t_work,"kernel.cpp");let library=h_join(t_work,"kernel.so");cx_emit(fixture,cpp);cx_link(cpp,library);
     let input=h_join(t_work,"input.words");let checks=cx_input(input);
     let prefix=h_cat3("import \"",h_real("scripts/lib/host.flex"),"\";\n");
+    cx_bytes(prefix);
+    // Raw native function pointers never escape the portable CPU kernel body.
+    t_program(h_cat3("import \"",h_real("lib/native.flex"),"\";fn kernel(pointer,value){return native_call1(pointer,value);}"));
+    let rawcpp=h_join(t_work,"raw-fallback.cpp");let rawlib=h_join(t_work,"raw-fallback.so");cx_emit(t_fixture,rawcpp);cx_link(rawcpp,rawlib);
+    t_program(h_cat(prefix,"fn main(argc,argv){let library=ffi_open(load64(argv+8));let call=ffi_symbol(library,\"flex_kernel\");h_assert(call && ffi_call(call,1,47,0,0,0,0)==0,\"CPU target keeps machine-call fallback\");return 0;}"));t_compile();h_ok(h_args(t_binary,rawlib,0,0,0,0));t_checks=t_checks+1;
     let host=h_cat3(prefix,"import \"",h_cat(fixture,"\";\nfn main(argc,argv){h_environment(argc,argv);let input=h_read(load64(argv+8));let n=(h_file_size-1)/24;let output=h_take(n*8+1);h_assert(kernel(input+1,output+1,n)==n,\"kernel result\");h_save_bytes(load64(argv+16),output+1,n*8,384);return 0;}"));
     let native=h_join(t_work,"native.words");let reference=h_join(t_work,"reference.words");let optimized=h_join(t_work,"optimized.words");
     t_program(host);h_ok(h_args(t_compiler,"--lowering-mode","hardware",t_fixture,"-o",t_binary));h_ok(h_args(t_binary,input,native,0,0,0));

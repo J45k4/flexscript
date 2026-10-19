@@ -1,5 +1,14 @@
 # FlexDB versus SQLite
 
+## Compressed external blobs (2026-10-17)
+
+[Blob storage measurements](benchmark-blobs.md) cover automatic 4 KiB placement,
+Zstd levels, raw fallback, bounded streaming, metadata/checkpoint growth and
+compaction. The varied synthetic 4 MiB log sample stores 535,967 payload bytes
+at level 1 (7.82x); a raw 4 MiB high-entropy blob has a compacted file size of
+4,194,778 bytes. These are separate diagnostic measurements, not a new SQLite
+matrix. The historical 355-comparison snapshot below predates external blobs.
+
 ## Broader roadmap comparison (2026-10-14)
 
 The latest [roadmap results](benchmark-results.md#bulk-checkpoint-packing-2026-10-14)

@@ -16,7 +16,11 @@ import "sass-registers.flex";
 import "sass-schedule.flex";
 import "sass-float.flex";
 import "ir.flex";
+import "ir-opt.flex";
 import "word-io.flex";
+import "native-link.flex";
+import "native-branches.flex";
+import "native-ir.flex";
 import "extensions.flex";
 import "transforms.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
@@ -44,6 +48,26 @@ global nesting = 0;
 global conditional_depth = 0;
 global calls = 0;
 global call_count = 0;
+// A first parse weights local references; a second emits the selected register
+// assignments. Caller-saved locals spill around calls and host syscalls.
+global native_register_frame=0;
+global native_parameter_count=0;
+global native_frame_hint=-1;
+global native_reg_counts=0;
+global native_reg_map=0;
+global native_reg_replay=0;
+global native_reg_callee_count=0;
+global native_spill_slots=-1;
+global native_loop_depth=0;
+global native_address_site=-1;
+global native_address_kind=0;
+global native_address_value=0;
+global native_temp_epoch=0;
+global native_binary_cached=0;
+// Only the immediately emitted boolean may reuse its producer's flags.
+global native_boolean_end=-1;
+global native_boolean_start=0;
+global native_boolean_cc=0;
 // File records: path, bytes, size, device, inode, state, declarations, functions.
 global modules = 0;
 global module_count = 0;
@@ -289,6 +313,8 @@ fn expect(t) {
 }
 
 fn emit(b) {
+    native_address_site=-1;
+    native_boolean_end=-1;
     if output_size >= output_limit {if output_limit==268435456 {fail("output exceeds 256 MiB");}fail("output exceeds 64 MiB");}
     store8(output + output_size, b);
     output_size = output_size + 1;
@@ -309,6 +335,9 @@ fn emit64(value) {
 
 fn patch32(at, value) {
     if vm_mode {store64(output+at,at+4+value);return 0;}
+    // Recorded branches return negative handles. Existing relative-fixup
+    // callers still yield the absolute target through at+4+value.
+    if at<0 {return native_branch_patch(at,at+4+value);}
     let i = 0;
     while i < 4 { store8(output + at + i, value >> (i * 8)); i = i + 1; }
     return 0;
@@ -319,6 +348,7 @@ fn jump(opcode) {
         let kind=10;if opcode==132 {kind=11;}else if opcode==133 {kind=12;}
         return vm_emit(kind,0)+8;
     }
+    if native_branch_mode {let handle=native_branch_emit(opcode);if handle {return handle;}}
     if opcode != 233 { emit(15); }
     emit(opcode);
     let at = output_size;
@@ -326,11 +356,13 @@ fn jump(opcode) {
     return at;
 }
 
-fn patch_jump(at) {if vm_mode {store64(output+at,output_size);}else {patch32(at,output_size-at-4);}return 0;}
+fn patch_jump(at) {native_boolean_end=-1;if vm_mode {store64(output+at,output_size);}else {patch32(at,output_size-at-4);}return 0;}
 fn test_rax() {if vm_mode {return 0;}emit(72);emit(133);emit(192);return 0;}
-fn immediate(n) {if vm_mode {vm_emit(1,n);return 0;}emit(72);emit(184);emit64(n);return 0;}
-fn epilogue() {if vm_mode {vm_emit(9,0);return 0;}emit(201);emit(195);return 0;}
-fn push_value() {if vm_mode {vm_emit(2,0);}else {emit(80);}return 0;}
+// MOV EAX zero-extends; MOV r64,imm32 sign-extends. Both preserve flags, unlike
+// XOR-based zeroing, and avoid an imm64 for the common small word constants.
+fn immediate(n) {if vm_mode {vm_emit(1,n);return 0;}if n>=0 && n<=4294967295 {emit(184);emit32(n);}else if n>=(-2147483648) && n<0 {emit(72);emit(199);emit(192);emit32(n);}else {emit(72);emit(184);emit64(n);}return 0;}
+fn epilogue() {if vm_mode {vm_emit(9,0);return 0;}if native_register_frame && native_reg_replay {native_reg_pushes(native_reg_callee_count,1);}emit(201);emit(195);return 0;}
+fn push_value() {if vm_mode {vm_emit(2,0);}else {let address=native_address_site;emit(80);native_address_site=address;}return 0;}
 
 fn find(table, count, name, size) {
     let i = count - 1;
@@ -349,6 +381,7 @@ fn declare_local(name, size) {
     if prior >= 0 && load64(locals + prior * 32 + 24) == depth {
         fail("duplicate local");
     }
+    if native_register_frame && !native_reg_replay {store64(native_reg_counts+slots*8,0);store64(native_reg_map+slots*8,0);}
     let entry = locals + local_count * 32;
     store64(entry, name);
     store64(entry + 8, size);
@@ -366,10 +399,7 @@ fn variable(name, size, storing) {
             let op=3;if storing {op=4;}
             vm_emit(op,load64(locals+index*32+16));return 0;
         }
-        emit(72);
-        if storing { emit(137); } else { emit(139); }
-        emit(133);
-        emit32(-8 * (load64(locals + index * 32 + 16) + 1));
+        native_local(load64(locals+index*32+16),storing);
     } else {
         index = find(globals, global_count, name, size);
         if index < 0 { fail("undefined variable"); }
@@ -402,16 +432,36 @@ fn precedence(t) {
 
 fn normalize() {
     if vm_mode {vm_emit(13,0);return 0;}
-    test_rax();
-    emit(15); emit(149); emit(192);
-    emit(72); emit(15); emit(182); emit(192);
+    if native_boolean_end==output_size {return 0;}
+    test_rax();return native_boolean(149);
+}
+fn native_boolean(cc) {
+    let start=output_size;emit(15);emit(cc);emit(192);
+    // MOVZX EAX,AL also clears RAX's high half. Neither instruction changes
+    // the producer's flags, so a following branch can consume them directly.
+    emit(15);emit(182);emit(192);
+    if native_register_frame && !frontend_language {native_boolean_start=start;native_boolean_cc=cc;native_boolean_end=output_size;}
     return 0;
+}
+fn native_boolean_not() {
+    if native_boolean_end==output_size {let cc=native_boolean_cc;output_size=native_boolean_start;return native_boolean(cc^1);}
+    test_rax();return native_boolean(148);
+}
+fn condition_jump(truth,discard) {
+    if !vm_mode && native_boolean_end==output_size {
+        let cc=native_boolean_cc;
+        // Short-circuit expressions still need the normalized value on their
+        // skipped path. Only if/while consumers may discard its materialization.
+        if discard {output_size=native_boolean_start;}
+        if !truth {cc=cc^1;}return jump(cc-16);
+    }
+    test_rax();let opcode=132;if truth {opcode=133;}return jump(opcode);
 }
 
 fn binary(op) {
     if vm_mode {vm_emit(7,op);return 0;}
-    emit(89); // pop rcx (left); rax is right
-    if op == 43 { emit(72); emit(1); emit(200); }
+    if native_binary_cached {native_binary_cached=0;emit(76);emit(137);emit(217);}else {emit(89);} // RCX=left, RAX=right
+    if op == 43 {let at=output_size;emit(72);emit(1);emit(200);native_address_site=at;native_address_kind=2;native_address_value=8;}
     else if op == 45 {
         emit(72); emit(41); emit(193);
         emit(72); emit(137); emit(200);
@@ -431,17 +481,156 @@ fn binary(op) {
         if op == 265 { emit(224); } else { emit(248); }
     } else {
         emit(72); emit(57); emit(193);
-        emit(15);
-        if op == 259 { emit(148); }
-        else if op == 260 { emit(149); }
-        else if op == 60 { emit(156); }
-        else if op == 62 { emit(159); }
-        else if op == 261 { emit(158); }
-        else { emit(157); }
-        emit(192);
-        emit(72); emit(15); emit(182); emit(192);
+        let cc=157;if op==259 {cc=148;}else if op==260 {cc=149;}else if op==60 {cc=156;}else if op==62 {cc=159;}else if op==261 {cc=158;}
+        native_boolean(cc);
     }
     return 0;
+}
+
+// Native literal operands need no expression-stack round trip. Recognize only
+// complete side-effect-free immediate sequences, never arbitrary suffix bytes.
+fn native_nops(n) {
+    if !n {return 0;}if n==1 {emit(144);return 0;}if n==2 {emit(102);emit(144);return 0;}
+    if n==6 || n==9 {emit(102);n=n-1;}emit(15);emit(31);
+    if n==3 {emit(0);}else if n==4 {emit(64);emit(0);}else if n==5 {emit(68);emit(0);emit(0);}
+    else if n==7 {emit(128);emit32(0);}else {emit(132);emit(0);emit32(0);}return 0;
+}
+fn native_reg_begin() {
+    native_register_frame=!vm_mode && !baremetal_target;native_reg_replay=0;native_reg_callee_count=0;native_loop_depth=0;native_temp_epoch=0;native_frame_hint=-1;native_spill_slots=-1;
+    if native_register_frame && !native_reg_counts {native_reg_counts=alloc(32768);native_reg_map=alloc(32768);if native_reg_counts<0 || native_reg_map<0 {fail("cannot allocate native local cache");}}return 0;
+}
+fn native_local(slot,storing) {
+    let reg=0;if native_register_frame {if native_reg_replay {reg=load64(native_reg_map+slot*8);}else {let shift=native_loop_depth*3;if shift>12 {shift=12;}store64(native_reg_counts+slot*8,load64(native_reg_counts+slot*8)+(1<<shift));}}
+    if reg==1 {emit(72);emit(137);if storing {emit(195);}else {emit(216);}return 0;}
+    if reg>=2 && reg<=5 {if storing {emit(73);emit(137);emit(194+reg);}else {emit(76);emit(137);emit(208+reg*8);}return 0;}
+    if reg>=6 {if storing {emit(73);emit(137);emit(186+reg);}else {emit(76);emit(137);emit(144+reg*8);}return 0;}
+    let offset=-8*(slot+1);if native_register_frame && native_reg_replay && slot<native_parameter_count {offset=16+(native_parameter_count-slot-1)*8;}
+    let op=139;if storing {op=137;}native_rbp(op,0,offset);return 0;
+}
+fn native_rbp(op,reg,offset) {
+    let rex=72;if reg>=8 {rex=76;}emit(rex);emit(op);let bits=((reg&7)<<3)|5;
+    if offset>=(-128) && offset<=127 {emit(64|bits);emit(offset&255);}else {emit(128|bits);emit32(offset);}return 0;
+}
+fn native_reg_pushes(count,popping) {
+    let i=0;while i<count {let index=i;if popping {index=count-i-1;}if index {emit(65);if popping {emit(91+index);}else {emit(83+index);}}else {if popping {emit(91);}else {emit(83);}}i=i+1;}return 0;
+}
+fn native_reg_select() {
+    if native_loop_depth {fail("native loop weighting unbalanced");}
+    let chosen=0;let more=1;while chosen<8 && more {let slot=-1;let best=2;let i=0;while i<slots {if !load64(native_reg_map+i*8) && load64(native_reg_counts+i*8)>best {slot=i;best=load64(native_reg_counts+i*8);}i=i+1;}if slot<0 {more=0;}else {store64(native_reg_map+slot*8,chosen+1);chosen=chosen+1;}}
+    native_reg_callee_count=chosen;if native_reg_callee_count>5 {native_reg_callee_count=5;}return 0;
+}
+fn native_reg_spill(storing) {
+    if !native_register_frame || !native_reg_replay {return 0;}let limit=slots;if native_spill_slots>=0 {limit=native_spill_slots;}let slot=0;while slot<limit {let reg=load64(native_reg_map+slot*8);if reg>=6 {let op=139;if storing {op=137;}native_rbp(op,reg+2,-8*(slot+1));}slot=slot+1;}return 0;
+}
+fn native_frame(count) {
+    native_parameter_count=count;emit(85);emit(72);emit(137);emit(229);let frame=0;let bytes=-1;
+    if native_frame_hint>=0 {bytes=((native_frame_hint*8+15)/16)*16;}
+    if bytes!=0 {emit(72);if bytes>0 && bytes<=127 {emit(131);emit(236);frame=(-output_size)-1;emit(bytes);}else {emit(129);emit(236);frame=output_size;emit32(0);}}
+    if native_register_frame && native_reg_replay {native_reg_pushes(native_reg_callee_count,0);}
+    let i=0;while i<count {let copy=1;if native_register_frame && native_reg_replay && !load64(native_reg_map+i*8) {copy=0;}if copy {native_rbp(139,0,16+(count-i-1)*8);native_local(i,1);}i=i+1;}return frame;
+}
+fn native_frame_patch(frame) {let bytes=((slots*8+15)/16)*16;if frame>0 {patch32(frame,bytes);}else if frame<0 {store8(output-frame-1,bytes);}return 0;}
+fn native_stack_drop(bytes) {emit(72);if bytes<=127 {emit(131);emit(196);emit(bytes);}else {emit(129);emit(196);emit32(bytes);}return 0;}
+
+// Fold a whole, pure local-index expression into LEA. The source segment must
+// be exactly one local read, optionally shifted by a legal x86 scale.
+fn native_binary_index(op,pushed) {
+    if vm_mode || op!=43 {return 0;}let at=pushed+native_push_span();let end=output_size;let scale=0;
+    if end-at>=7 && load8(output+end-4)==72 && load8(output+end-3)==193 && load8(output+end-2)==224 {scale=load8(output+end-1);if scale>3 {return 0;}end=end-4;}
+    let n=end-at;let kind=0;let value=0;let rex=0;
+    if n==3 && (load8(output+at)==72 || load8(output+at)==76) && load8(output+at+1)==137 && (load8(output+at+2)&199)==192 {kind=1;rex=load8(output+at);value=load8(output+at+2)|1;}
+    else if n==7 && load8(output+at)==72 && load8(output+at+1)==139 && load8(output+at+2)==133 {kind=2;value=(load64(output+at+3)<<32)>>32;}
+    else if n==4 && load8(output+at)==72 && load8(output+at+1)==139 && load8(output+at+2)==69 {kind=2;value=load8(output+at+3);if value>=128 {value=value-256;}}
+    if !kind {return 0;}output_size=pushed;if kind==1 {emit(rex);emit(137);emit(value);}else {native_rbp(139,1,value);}
+    let address=output_size;emit(72);emit(141);emit(4);emit((scale<<6)|8);native_address_site=address;native_address_kind=3;native_address_value=(scale<<6)|8;return 1;
+}
+// Called only when the immediately preceding address-producing operation is
+// known from emitter metadata. Raw byte patterns in literals are never scanned.
+fn native_address_load(kind) {
+    let at=native_address_site;let address_kind=native_address_kind;let value=native_address_value;output_size=at;
+    if address_kind==1 {
+        if kind==1 {emit(15);emit(182);}else {if kind==2 {emit(72);}emit(139);}
+        if !value {emit(0);}else if value>= -128 && value<=127 {emit(64);emit(value&255);}else {emit(128);emit32(value);}
+    }else {
+        if kind==1 {emit(15);emit(182);}else {if kind==2 {emit(72);}emit(139);}emit(4);emit(value);
+    }return 0;
+}
+
+fn native_push_span() {if vm_mode || baremetal_target {return 1;}return 3;}
+fn native_expression_push() {push_value();if !vm_mode && !baremetal_target {native_nops(2);}return 0;}
+// A pure RHS local needs no operand spill. Keep the left in RAX and load the
+// right directly into RCX, avoiding the stack and the shift's register swap.
+fn native_binary_local(op,pushed) {
+    if vm_mode {return 0;}let at=pushed+native_push_span();let n=output_size-at;let kind=0;let rex=0;let value=0;
+    if n==3 && (load8(output+at)==72 || load8(output+at)==76) && load8(output+at+1)==137 && (load8(output+at+2)&199)==192 {kind=1;rex=load8(output+at);value=load8(output+at+2)|1;}
+    else if n==7 && load8(output+at)==72 && load8(output+at+1)==139 && load8(output+at+2)==133 {kind=2;value=(load64(output+at+3)<<32)>>32;}
+    else if n==4 && load8(output+at)==72 && load8(output+at+1)==139 && load8(output+at+2)==69 {kind=2;value=load8(output+at+3);if value>=128 {value=value-256;}}
+    if !kind {return 0;}output_size=pushed;if kind==1 {emit(rex);emit(137);emit(value);}else {native_rbp(139,1,value);}
+    if op==43 {let site=output_size;emit(72);emit(1);emit(200);native_address_site=site;native_address_kind=2;native_address_value=8;}
+    else if op==45 {emit(72);emit(41);emit(200);}else if op==42 {emit(72);emit(15);emit(175);emit(193);}
+    else if op==38 {emit(72);emit(33);emit(200);}else if op==124 {emit(72);emit(9);emit(200);}else if op==94 {emit(72);emit(49);emit(200);}
+    else if op==265 || op==266 {emit(72);emit(211);if op==265 {emit(224);}else {emit(248);}}
+    else if op==47 || op==37 {emit(72);emit(137);emit(207);emit(72);emit(153);emit(72);emit(247);emit(255);if op==37 {emit(72);emit(137);emit(208);}}
+    else {emit(72);emit(57);emit(200);let cc=157;if op==259 {cc=148;}else if op==260 {cc=149;}else if op==60 {cc=156;}else if op==62 {cc=159;}else if op==261 {cc=158;}native_boolean(cc);}return 1;
+}
+
+fn native_constant_width(at,end) {
+    let n=end-at;if n>=5 && load8(output+at)==184 {return 5;}
+    if n>=7 && load8(output+at)==72 && load8(output+at+1)==199 && load8(output+at+2)==192 {return 7;}
+    if n>=10 && load8(output+at)==72 && load8(output+at+1)==184 {return 10;}return 0;
+}
+fn native_constant(at,end) {
+    let width=native_constant_width(at,end);if !width {return 0;}let n=end-at;if n==width {return 1;}
+    return n==width+3 && load8(output+at+width)==72 && load8(output+at+width+1)==247 && (load8(output+at+width+2)==216 || load8(output+at+width+2)==208);
+}
+fn native_constant_value(at,end) {
+    let width=native_constant_width(at,end);let v=0;
+    if width==10 {v=load64(output+at+2);}else {let p=at+1;if width==7 {p=at+3;}v=load8(output+p)|(load8(output+p+1)<<8)|(load8(output+p+2)<<16)|(load8(output+p+3)<<24);if width==7 {v=(v<<32)>>32;}}
+    if end-at==width+3 {if load8(output+at+width+2)==216 {return -v;}return ~v;}return v;
+}
+fn native_immediate_group(group,value) {
+    emit(72);if value>= -128 && value<=127 {emit(131);emit(192|(group<<3));emit(value&255);}
+    else {emit(129);emit(192|(group<<3));emit32(value);}return 0;
+}
+fn word_binary_result(op,a,b) {
+    if op==43 {return a+b;}if op==45 {return a-b;}if op==42 {return a*b;}
+    if op==47 {return a/b;}if op==37 {return a%b;}if op==38 {return a&b;}if op==124 {return a|b;}if op==94 {return a^b;}
+    if op==265 {return a<<b;}if op==266 {return a>>b;}if op==259 {return a==b;}if op==260 {return a!=b;}
+    if op==60 {return a<b;}if op==62 {return a>b;}if op==261 {return a<=b;}return a>=b;
+}
+fn native_binary_literal(op,begin,pushed) {
+    if vm_mode || !native_constant(pushed+native_push_span(),output_size) {return 0;}
+    let value=native_constant_value(pushed+native_push_span(),output_size);
+    if native_constant(begin,pushed) {
+        let a=native_constant_value(begin,pushed);
+        if (op!=47 && op!=37) || (value!=0 && !(a==0x8000000000000000 && value==(-1))) {
+            output_size=begin;immediate(word_binary_result(op,a,value));return 1;
+        }
+    }
+    if op==265 || op==266 {output_size=pushed;emit(72);emit(193);if op==265 {emit(224);}else {emit(248);}emit(value&63);return 1;}
+    if op==42 && value>=0 && (value==0 || !(value&(value-1))) {
+        output_size=pushed;if !value {immediate(0);return 1;}let shift=0;while value>1 {value=value>>1;shift=shift+1;}
+        if shift {emit(72);emit(193);emit(224);emit(shift);}return 1;
+    }
+    if (op==47 || op==37) && value>0 && !(value&(value-1)) {
+        output_size=pushed;if value==1 {if op==37 {immediate(0);}return 1;}
+        let k=0;let power=value;while power>1 {power=power>>1;k=k+1;}
+        // Bias negative operands before arithmetic shift: signed division must
+        // truncate toward zero, and signed remainder keeps the dividend's sign.
+        emit(72);emit(137);emit(194);emit(72);emit(193);emit(250);emit(63);
+        emit(72);emit(193);emit(234);emit(64-k);emit(72);emit(1);emit(208);
+        if op==47 {emit(72);emit(193);emit(248);emit(k);}
+        else {if value-1<=2147483647 {native_immediate_group(4,value-1);}else if value==4294967296 {emit(137);emit(192);}else {emit(72);emit(185);emit64(value-1);emit(72);emit(33);emit(200);}emit(72);emit(41);emit(208);}
+        return 1;
+    }
+    if op==38 && value==4294967295 {output_size=pushed;emit(137);emit(192);return 1;}
+    if value< -2147483648 || value>2147483647 || op==47 || op==37 {return 0;}
+    output_size=pushed;
+    if op==43 {let at=output_size;native_immediate_group(0,value);native_address_site=at;native_address_kind=1;native_address_value=value;}else if op==45 {let at=output_size;native_immediate_group(5,value);if value!=(-2147483648) {native_address_site=at;native_address_kind=1;native_address_value=-value;}}
+    else if op==38 {native_immediate_group(4,value);}else if op==124 {native_immediate_group(1,value);}else if op==94 {native_immediate_group(6,value);}
+    else if op==42 {emit(72);emit(105);emit(192);emit32(value);}
+    else {native_immediate_group(7,value);let cc=157;if op==259 {cc=148;}else if op==260 {cc=149;}else if op==60 {cc=156;}else if op==62 {cc=159;}else if op==261 {cc=158;}native_boolean(cc);}
+    return 1;
 }
 
 fn call(name, size) {
@@ -509,13 +698,43 @@ fn call(name, size) {
             baremetal_builtin(builtin);return 0;
         }
         if vm_mode {vm_emit(17,builtin);return 0;}
+        native_builtin(builtin);
+    } else {
+        if call_count >= 65536 { fail("too many calls"); }
+        if vm_mode {
+            let site=calls+call_count*32;
+            store64(site,name);store64(site+8,size);store64(site+16,vm_emit(8,0)+8);
+            store64(site+24,count);call_count=call_count+1;return 0;
+        }
+        let op=lowering_lookup(name,size,0);
+        if op {
+            if count!=lowering_arity(op) {fail("wrong lowering function arity");}
+            let site=calls+call_count*32;call_count=call_count+1;
+            store64(site,name);store64(site+8,size);store64(site+16,-1);store64(site+24,count);
+            if op==127 {native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);}
+            if op==122 && native_address_site>=0 {output_size=output_size-1;native_address_load(3);}else {lowering_native(op);}
+            if op==127 {native_reg_spill(0);}return 0;
+        }
+        native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);emit(232);
+        let entry = calls + call_count * 32;
+        store64(entry, name);
+        store64(entry + 8, size);
+        store64(entry + 16, output_size);
+        store64(entry + 24, count);
+        call_count = call_count + 1;
+        emit32(0);
+        if count > 0 {native_stack_drop(count*8);}native_reg_spill(0);
+    }
+    return 0;
+}
+
+fn native_builtin(builtin) {
+        if builtin==5 || builtin==6 {native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);}
         if builtin == 1 || builtin == 2 {
-            emit(95);
-            emit(72);
-            if builtin == 1 { emit(15); emit(182); } else { emit(139); }
-            emit(7);
+            let address=native_address_site;output_size=output_size-1;
+            if address>=0 {native_address_load(builtin);}else {if builtin==1 {emit(15);emit(182);}else {emit(72);emit(139);}emit(0);}
         } else if builtin == 3 || builtin == 4 {
-            emit(88); emit(95);
+            output_size=output_size-1;emit(95);
             if builtin == 3 { emit(136); } else { emit(72); emit(137); }
             emit(7);
         } else if builtin == 5 {
@@ -532,30 +751,7 @@ fn call(name, size) {
             emit(90); emit(94); emit(95); emit(88);
             emit(15); emit(5);
         }
-    } else {
-        if call_count >= 65536 { fail("too many calls"); }
-        if vm_mode {
-            let site=calls+call_count*32;
-            store64(site,name);store64(site+8,size);store64(site+16,vm_emit(8,0)+8);
-            store64(site+24,count);call_count=call_count+1;return 0;
-        }
-        let op=lowering_lookup(name,size,0);
-        if op {
-            if count!=lowering_arity(op) {fail("wrong lowering function arity");}
-            let site=calls+call_count*32;call_count=call_count+1;
-            store64(site,name);store64(site+8,size);store64(site+16,-1);store64(site+24,count);
-            lowering_native(op);return 0;
-        }
-        emit(232);
-        let entry = calls + call_count * 32;
-        store64(entry, name);
-        store64(entry + 8, size);
-        store64(entry + 16, output_size);
-        store64(entry + 24, count);
-        call_count = call_count + 1;
-        emit32(0);
-        if count > 0 { emit(72); emit(129); emit(196); emit32(count * 8); }
-    }
+        if builtin==5 || builtin==6 {native_reg_spill(0);}
     return 0;
 }
 
@@ -567,7 +763,7 @@ fn prefix() {
         if tx_recording {store64(tx_literal_flags+(function_count-1)*8,128);}
         if ptx_target || sass_target || hip_target {fail("GPU targets do not support string literals");}
         if cpu_cxx_target {fail("CPU kernels do not support string literals");}
-        if vm_mode {let address=vm_string_literal();if esp32_target {address=address+esp_data_base;}immediate(address);next();return 0;}
+        if vm_mode {let address=vm_string_literal();if native_ir_target {vm_emit(28,(vm_string_size<<32)|address);}else {if esp32_target {address=address+esp_data_base;}immediate(address);}next();return 0;}
         let start = token_start + 1;
         let end = token_start + token_size - 1;
         let skip = jump(233);
@@ -607,10 +803,7 @@ fn prefix() {
         }
         if op == 45 { emit(72); emit(247); emit(216); }
         else if op == 126 { emit(72); emit(247); emit(208); }
-        else {
-            test_rax(); emit(15); emit(148); emit(192);
-            emit(72); emit(15); emit(182); emit(192);
-        }
+        else {native_boolean_not();}
     } else { fail("expected expression"); }
     return 0;
 }
@@ -618,6 +811,7 @@ fn prefix() {
 fn expression(minimum) {
     nesting = nesting + 1;
     if nesting > 128 { fail("expression nesting limit exceeded"); }
+    let native_begin=output_size;
     prefix();
     while precedence(token) >= minimum {
         let op = token;
@@ -625,16 +819,18 @@ fn expression(minimum) {
         next();
         if op == 263 || op == 264 {
             normalize();
-            test_rax();
-            let skip = 0;
-            if op == 263 { skip = jump(132); } else { skip = jump(133); }
+            let truth=0;if op==264 {truth=1;}
+            let skip=condition_jump(truth,0);
             expression(priority + 1);
             normalize();
             patch_jump(skip);
         } else {
-            push_value();
+            let pushed=output_size;native_expression_push();let epoch=native_temp_epoch;
             expression(priority + 1);
-            binary(op);
+            if !native_binary_literal(op,native_begin,pushed) && !native_binary_index(op,pushed) && !native_binary_local(op,pushed) {
+                if !vm_mode && !baremetal_target && epoch==native_temp_epoch {store8(output+pushed,73);store8(output+pushed+1,137);store8(output+pushed+2,195);native_binary_cached=1;native_temp_epoch=native_temp_epoch+1;}
+                binary(op);
+            }
         }
     }
     nesting = nesting - 1;
@@ -646,8 +842,7 @@ fn conditional() {
     if conditional_depth > 128 { fail("conditional nesting limit exceeded"); }
     next();
     expression(1);
-    test_rax();
-    let otherwise = jump(132);
+    let otherwise=condition_jump(0,1);
     block();
     if is("else") {
         next();
@@ -674,13 +869,13 @@ fn statement() {
     } else if is("if") { conditional(); }
     else if is("while") {
         next();
+        native_loop_depth=native_loop_depth+1;
         let start = output_size;
-        expression(1); test_rax();
-        let end = jump(132);
+        expression(1);let end=condition_jump(0,1);
         block();
         let back = jump(233);
         patch32(back, start - back - 4);
-        patch_jump(end);
+        patch_jump(end);native_loop_depth=native_loop_depth-1;
     } else if token == 123 { block(); }
     else {
         let beginning = token_start;
@@ -762,6 +957,7 @@ fn function_definition() {
     function_count = function_count + 1;
     local_count = 0;
     slots = 0;
+    native_reg_begin();
     depth = 1;
     next(); expect(40);
     if token != 41 {
@@ -776,26 +972,29 @@ fn function_definition() {
     expect(41);
     let count = local_count;
     store64(entry + 24, count);
+    if native_link_replay && !native_link_live(function_count-1) {skip_function();return 0;}
     if vm_mode {
         let frame=vm_emit(18,0);depth=0;block();immediate(0);epilogue();
         store64(output+frame+8,slots);tx_function_site(function_count-1,definition_start);return 0;
     }
-    emit(85); emit(72); emit(137); emit(229);
-    emit(72); emit(129); emit(236);
-    let frame = output_size;
-    emit32(0);
-    let i = 0;
-    while i < count {
-        emit(72); emit(139); emit(133); emit32(16 + (count - i - 1) * 8);
-        emit(72); emit(137); emit(133); emit32(-8 * (i + 1));
-        i = i + 1;
+    let body=token_start;let before_calls=call_count;let start=output_size;
+    let frame=native_frame(count);depth=0;block();immediate(0);epilogue();native_frame_patch(frame);
+    if native_register_frame {
+        let expected_slots=slots;native_reg_select();native_reg_replay=1;native_frame_hint=expected_slots;output_size=start;call_count=before_calls;pos=body;next();slots=count;local_count=count;depth=0;native_loop_depth=0;
+        native_branch_begin();
+        frame=native_frame(count);block();immediate(0);epilogue();native_frame_patch(frame);
+        if slots!=expected_slots {fail("native local replay differs");}
+        let original_end=output_size;let saved=native_branch_relax();
+        if saved {
+            output_size=start;call_count=before_calls;pos=body;next();slots=count;local_count=count;depth=0;native_loop_depth=0;
+            frame=native_frame(count);block();immediate(0);epilogue();native_frame_patch(frame);
+            if slots!=expected_slots || output_size!=original_end-saved {fail("native branch layout differs");}
+        }
+        native_branch_end();
     }
-    // Parameters and declarations in the function body share one scope.
-    depth = 0;
-    block();
-    immediate(0); epilogue();
-    patch32(frame, ((slots * 8 + 15) / 16) * 16);
+    native_register_frame=0;native_reg_replay=0;
     lowering_entry(entry);
+    if !baremetal_target {native_link_record(function_count-1,before_calls,call_count);}
     return 0;
 }
 
@@ -1914,11 +2113,11 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--ir-opt basic|none] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
-    let target_seen=0;let lowering_mode_seen=0;
+    let target_seen=0;let lowering_mode_seen=0;let keep_unused_seen=0;let native_pipeline_seen=0;
     while first<argc && load8(load64(argv+first*8))==45 {
         let arg=load64(argv+first*8);if first+1>=argc {print(2,"compiler option needs a value\n");return 1;}
         let value=load64(argv+(first+1)*8);
@@ -1952,6 +2151,14 @@ fn main(argc, argv) {
             else if up_text(value,"unbuffered") {word_io_buffered=0;}
             else {print(2,"expected buffered or unbuffered word I/O\n");return 1;}
         }
+        else if up_text(arg,"--native-link") {
+            if keep_unused_seen {fail("choose only one native link mode");}keep_unused_seen=1;
+            if up_text(value,"reachable") {native_keep_unused=0;}
+            else if up_text(value,"all") {native_keep_unused=1;}
+            else {print(2,"expected reachable or all native link mode\n");return 1;}
+        }
+        else if up_text(arg,"--ir-opt") {ir_opt_select(value);}
+        else if up_text(arg,"--native-pipeline") {if native_pipeline_seen {fail("choose only one native pipeline");}native_pipeline_seen=1;if up_text(value,"ir") {native_pipeline_ir=1;}else if up_text(value,"direct") {native_pipeline_ir=0;}else {fail("expected ir or direct native pipeline");}}
         else {print(2,"unknown compiler option\n");return 1;}
         first=first+2;
     }
@@ -1967,12 +2174,15 @@ fn main(argc, argv) {
     if (ptx_target || sass_target || hip_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
     if lowering_mode_seen && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || cpu_cxx_target) {fail("lowering mode requires native Linux x86-64 output");}
     if cpu_cxx_target && frontend_language {fail("CPU kernel backend currently requires Flexscript source");}
+    if native_pipeline_seen && (vm_mode || shader_target || baremetal_target || frontend_ir_target || frontend_language) {fail("native pipeline requires native Linux Flexscript source output");}
+    if keep_unused_seen && (vm_mode || shader_target || baremetal_target || frontend_ir_target || frontend_language) {fail("native link mode requires native Linux Flexscript source output");}
     frontend_platform_check();
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=268435456;}
     let destination = load64(argv + (first+2)*8);
     if equal(source_path, length(source_path), destination, length(destination)) {
         fail("source and output paths must differ");
     }
+    if native_pipeline_ir && !vm_mode && !baremetal_target && !shader_target && !frontend_language && !frontend_ir_target {native_ir_prepare();}
     compiler_initialize();
     if wasm_target || ptx_target || sass_target || hip_target || cpu_cxx_target || esp32_target {wasm_initialize();if esp32_target {vm_heap_used=24;}}
     load_module(source_path);
@@ -1986,7 +2196,9 @@ fn main(argc, argv) {
         select_module(0);
         token_start = source_size;
         resolve();
-        if frontend_ir_target {output=frontend_blob;output_size=frontend_blob_size;}
+        if native_ir_target {native_ir_finish();}else {native_link();}
+        if native_ir_target {}
+        else if frontend_ir_target {output=frontend_blob;output_size=frontend_blob_size;}
         else if esp32_target {esp32_finish();}
         else if wasm_target {wasm_finish();}
         else if ptx_target {ptx_finish();}
@@ -2029,7 +2241,7 @@ fn compiler_initialize() {
     let source_limit=16777216;if frontend_language {source_limit=33554432;}if frontend_language==1 {source_limit=67108864;}if frontend_language==3 {source_limit=268435456;}
     source_arena = alloc(source_limit);
     source = source_arena;
-    output = alloc(67108864);
+    output = alloc(output_limit);
     globals = alloc(2048 * 32);
     functions = alloc(8192 * 32);
     locals = alloc(4096 * 32);

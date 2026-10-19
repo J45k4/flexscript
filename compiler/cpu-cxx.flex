@@ -4,7 +4,7 @@ import "cpu-cxx-builtins.flex";
 global cpu_cxx_target=0;
 fn cc_kind(index) {
     let f=functions+index*32;let kind=lowering_lookup(load64(f),load64(f+8),0);
-    if kind {return kind;}kind=gpu_intrinsic(index);if kind>=83 && kind<=90 && kind!=87 {return kind;}return 0;
+    if kind && kind!=127 {return kind;}if kind==127 {return 0;}kind=gpu_intrinsic(index);if kind>=83 && kind<=90 && kind!=87 {return kind;}return 0;
 }
 fn cc_arity(op,arg) {if op==8 {return load64(functions+arg*32+24);}if arg>=1 && arg<=2 {return 1;}if arg>=3 && arg<=4 {return 2;}fail("CPU kernels cannot allocate, perform host I/O, or call FFI");return 0;}
 fn cc_visit(index,level) {

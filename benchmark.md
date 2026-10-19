@@ -13,6 +13,14 @@ the entire target matrix is covered. **Partial** means some variants are timed.
 means correctness checks exist, but performance has not been measured.
 **Gated** means a missing capability or limit prevents the intended experiment.
 
+## External blob measurements (2026-10-17)
+
+[Compression/storage results](libs/db/benchmark-blobs.md) measure 4 KiB automatic
+placement, Zstd levels, raw fallback, incremental/range reads, metadata updates
+and compaction. Tests include an 18 MiB raw external payload outside the metadata
+transaction/checkpoint limit. These diagnostics are separate from the historical
+SQLite matrix; they do not complete its workload variants or resource targets.
+
 ## Executed SQLite comparison (2026-10-14)
 
 The roadmap now has **355 timed comparisons across 24 scenario configurations**,

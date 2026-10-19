@@ -33,6 +33,7 @@ fn frontend_auto(path) {
     if frontend_ir_target && !frontend_language {fail("--target ir requires a frontend extension or FIR1 input");}return 0;
 }
 fn frontend_child(fd,text,size,path) {
+    native_ir_target=0;output_limit=67108864;
     // fork gives the extension a separate compiler/VM instance. Guest code has
     // bounded memory, fuel and time, and no file, network or raw FFI grants.
     source_path=frontend_path;module_count=0;arena_size=0;import_depth=0;source_deadline=0;tx_inside=1;
@@ -96,6 +97,9 @@ fn frontend_source_accept(blob,size) {
     store64(modules+8,text);store64(modules+16,size-64);store64(modules+48,0);
     frontend_language=0;function_count=0;global_count=0;call_count=0;output_size=0;
     vm_mode=frontend_source_vm || wasm_target || ptx_target || sass_target || hip_target || esp32_target;
+    if native_pipeline_ir && !vm_mode && !baremetal_target {
+        native_ir_prepare();output=alloc(output_limit);if output<0 {fail("cannot allocate generated native IR");}
+    }
     initialize_output();compile_modules();return 0;
 }
 fn frontend_compile_modules() {

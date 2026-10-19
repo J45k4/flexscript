@@ -1,0 +1,306 @@
+{
+  "date": "2026-10-17",
+  "machine": "Linux-7.2.5-3-omarchy-x86_64-with-glibc2.44",
+  "method": "3 samples; each sample times 3 iterations inside the same native Flexscript process, excluding launch/file I/O. C is system libzstd level 1, single-thread. Native decode and C decode both read C-compressed data. No CPU pinning. Streaming VmHWM is reported by the executable itself through /proc/self/status, with 64 KiB input/output buffers; three fresh processes per backend, each decoding three times. File cache is excluded from process RSS.",
+  "binary_bytes": 120416,
+  "source_sha256": {
+    "libs/compress/common.flex": "85a51f35a53dd9cc60549d1f0ef4fe2163a845c5b1502831943163b66685c8ec",
+    "libs/compress/decode.flex": "c829e4278e4bc329371476c667a03807be23fe3bf6aab03f73218287a38e4d06",
+    "libs/compress/encode.flex": "3dae70aeae6dd9d2293b3222938cc023dfef13404e3a74f44dcaf35b5fedd792",
+    "libs/compress/fse.flex": "b77dab32e6c15f4c9c82fefcdb8ee375b42d48d772ed7e8b8f88b46728763df0",
+    "libs/compress/huffman.flex": "152023a39f0c96ee4e153f3272dbb1817b72725fb0ac262e0907d064eeeb3beb",
+    "libs/compress/tests/benchmark.flex": "0a2e053787a7bcab41e4bccfda22e4a24d77ed6667846e4abac62e2757c96496",
+    "libs/compress/tests/db.flex": "b1ca992637f48fa180efe67821909b11cbff63eeceba33215e1f89896856884a",
+    "libs/compress/tests/driver.flex": "d79e4c411d8f650a83359783fce0d92ef5a2e1899291bbff28a58982ec1bdb4d",
+    "libs/compress/tests/memory.flex": "b864f5fbb9aa0515bd40bbf7e163e2e8bc2b177a0d1cbe1ee0a853efb4b988e7",
+    "libs/compress/tests/unit.flex": "49bbff129e47a14cf123b4684fc2304f66c9df59a63a66707565c94d410da3c9",
+    "libs/compress/xxhash.flex": "d5b4c549a2a4859a7b56b34aee42bd05a9dc8e4de54fb15d199bb30f2345a1b7",
+    "libs/compress/zstd.flex": "733508b301a3abae1133496bb553d452f86ea57cf664123dd75a22af07f665f2"
+  },
+  "fixtures": [
+    {
+      "name": "synthetic text logs",
+      "source": null,
+      "bytes": 7260258,
+      "sha256": "1df0808c6b3e4f801d4ea5072edfffe5421cae5ef01386b3e48051baaa84c5f4",
+      "samples": [
+        {
+          "bytes": 7260258,
+          "rounds": 3,
+          "c_bytes": 628772,
+          "native_bytes": 1286768,
+          "c_encode_ns": 19736868,
+          "native_encode_ns": 223373598,
+          "c_decode_ns": 7309888,
+          "native_decode_ns": 134803711
+        },
+        {
+          "bytes": 7260258,
+          "rounds": 3,
+          "c_bytes": 628772,
+          "native_bytes": 1286768,
+          "c_encode_ns": 19832789,
+          "native_encode_ns": 224501236,
+          "c_decode_ns": 7289768,
+          "native_decode_ns": 134961593
+        },
+        {
+          "bytes": 7260258,
+          "rounds": 3,
+          "c_bytes": 628772,
+          "native_bytes": 1286768,
+          "c_encode_ns": 19262480,
+          "native_encode_ns": 224655539,
+          "c_decode_ns": 7330488,
+          "native_decode_ns": 134897853
+        }
+      ],
+      "c_bytes": 628772,
+      "c_encode_MB_s": 1103.5577681322081,
+      "c_decode_MB_s": 2979.631698871446,
+      "native_bytes": 1286768,
+      "native_encode_MB_s": 97.0185037199528,
+      "native_decode_MB_s": 161.4612354134354,
+      "stream_peak_kib": {
+        "native": [
+          2500,
+          2508,
+          2492
+        ],
+        "c": [
+          3012,
+          3036,
+          3028
+        ]
+      }
+    },
+    {
+      "name": "random bytes",
+      "source": null,
+      "bytes": 8388608,
+      "sha256": "48588a1cf50096d81de761bb10a7e6d3f33453c271ae98c077d17217a30afd52",
+      "samples": [
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 8388810,
+          "native_bytes": 8388810,
+          "c_encode_ns": 4311820,
+          "native_encode_ns": 45944550,
+          "c_decode_ns": 1432063,
+          "native_decode_ns": 24685877
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 8388810,
+          "native_bytes": 8388810,
+          "c_encode_ns": 3945473,
+          "native_encode_ns": 46361837,
+          "c_decode_ns": 1436473,
+          "native_decode_ns": 24712748
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 8388810,
+          "native_bytes": 8388810,
+          "c_encode_ns": 4053116,
+          "native_encode_ns": 46808204,
+          "c_decode_ns": 1502924,
+          "native_decode_ns": 25415909
+        }
+      ],
+      "c_bytes": 8388810,
+      "c_encode_MB_s": 6209.006601340796,
+      "c_decode_MB_s": 17519.17648295513,
+      "native_bytes": 8388810,
+      "native_encode_MB_s": 542.8133488325755,
+      "native_decode_MB_s": 1018.3336956294784,
+      "stream_peak_kib": {
+        "native": [
+          2576,
+          2568,
+          2576
+        ],
+        "c": [
+          2844,
+          2908,
+          2912
+        ]
+      }
+    },
+    {
+      "name": "repetitive bytes",
+      "source": null,
+      "bytes": 8388608,
+      "sha256": "7d212b9c884f5c77896de960ae17cc341cda43b14d6a971f34ca29ebd4badf7f",
+      "samples": [
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 1036,
+          "native_bytes": 1101,
+          "c_encode_ns": 1825469,
+          "native_encode_ns": 10185955,
+          "c_decode_ns": 1099887,
+          "native_decode_ns": 19167539
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 1036,
+          "native_bytes": 1101,
+          "c_encode_ns": 1824019,
+          "native_encode_ns": 10321846,
+          "c_decode_ns": 1026876,
+          "native_decode_ns": 19015977
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 1036,
+          "native_bytes": 1101,
+          "c_encode_ns": 1827819,
+          "native_encode_ns": 10228135,
+          "c_decode_ns": 1092207,
+          "native_decode_ns": 19206150
+        }
+      ],
+      "c_bytes": 1036,
+      "c_encode_MB_s": 13785.949802489113,
+      "c_decode_MB_s": 23041.258662506283,
+      "native_bytes": 1101,
+      "native_encode_MB_s": 2460.4509033171735,
+      "native_decode_MB_s": 1312.9397571592262,
+      "stream_peak_kib": {
+        "native": [
+          2388,
+          2380,
+          2388
+        ],
+        "c": [
+          2848,
+          2912,
+          2912
+        ]
+      }
+    },
+    {
+      "name": "PuppyLog varied prefix",
+      "source": "/home/teppo/Work/puppylog/workdir/flex/benchmark-4lb3i95q/fixture/000000.log.zst",
+      "bytes": 8388608,
+      "sha256": "788c0de7fe8012468a429c4f0bd0c2cf37c3e343c91749909d1bc8d551f69cd8",
+      "samples": [
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 1331603,
+          "native_bytes": 2264369,
+          "c_encode_ns": 28058961,
+          "native_encode_ns": 376059598,
+          "c_decode_ns": 10279475,
+          "native_decode_ns": 202285729
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 1331603,
+          "native_bytes": 2264369,
+          "c_encode_ns": 28100103,
+          "native_encode_ns": 378905653,
+          "c_decode_ns": 10131153,
+          "native_decode_ns": 202130366
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 1331603,
+          "native_bytes": 2264369,
+          "c_encode_ns": 28129753,
+          "native_encode_ns": 381320082,
+          "c_decode_ns": 10077153,
+          "native_decode_ns": 202137906
+        }
+      ],
+      "c_bytes": 1331603,
+      "c_encode_MB_s": 895.5776425445843,
+      "c_decode_MB_s": 2484.0039430852544,
+      "native_bytes": 2264369,
+      "native_encode_MB_s": 66.41712468723712,
+      "native_decode_MB_s": 124.49829177512109,
+      "stream_peak_kib": {
+        "native": [
+          2528,
+          2508,
+          2520
+        ],
+        "c": [
+          3064,
+          3140,
+          3148
+        ]
+      }
+    },
+    {
+      "name": "PuppyLog stress prefix",
+      "source": "/home/teppo/Work/puppylog/workdir/production-scale/fixture/logs/5200001.log",
+      "bytes": 8388608,
+      "sha256": "834295e7cfc8b63870f7abba75161bf504761d33c8b1feba6aed0e82eca3b28f",
+      "samples": [
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 422536,
+          "native_bytes": 688635,
+          "c_encode_ns": 11230271,
+          "native_encode_ns": 117833678,
+          "c_decode_ns": 4028705,
+          "native_decode_ns": 76814818
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 422536,
+          "native_bytes": 688635,
+          "c_encode_ns": 11349613,
+          "native_encode_ns": 116949834,
+          "c_decode_ns": 4108586,
+          "native_decode_ns": 77302685
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 3,
+          "c_bytes": 422536,
+          "native_bytes": 688635,
+          "c_encode_ns": 11507375,
+          "native_encode_ns": 116928693,
+          "c_decode_ns": 4184208,
+          "native_decode_ns": 76506202
+        }
+      ],
+      "c_bytes": 422536,
+      "c_encode_MB_s": 2217.328819934213,
+      "c_decode_MB_s": 6125.178832814987,
+      "native_bytes": 688635,
+      "native_encode_MB_s": 215.18477743200557,
+      "native_decode_MB_s": 327.61678872948704,
+      "stream_peak_kib": {
+        "native": [
+          2492,
+          2496,
+          2496
+        ],
+        "c": [
+          3116,
+          3008,
+          3108
+        ]
+      }
+    }
+  ],
+  "cpu": "AMD Ryzen 9 5900X 12-Core Processor",
+  "binary_sha256": "9d4d5f011565c3cba7279a655e4df16ef383a597685c17a03693a39c26a78b78",
+  "compiler_sha256": "023c758db24eaddc4befbab452a7e00acbdc1ca98536178e02e1f4f1c651efd3",
+  "c_zstd_version": "1.5.7"
+}

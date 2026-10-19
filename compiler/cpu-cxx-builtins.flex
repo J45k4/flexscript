@@ -49,6 +49,12 @@ fn cc_builtins(){
     p_text("static CC_INLINE double cc_double(W a){double v;uint64_t bits=(a.tag&4)?a.raw:(uint64_t)a;memcpy(&v,&bits,8);return v;}\n");
     p_text("static CC_INLINE W cc_bits32(float f){uint32_t w;memcpy(&w,&f,4);return W(w,1);}\n");
     p_text("static CC_INLINE W cc_bits64(double f){uint64_t w;memcpy(&w,&f,8);return W(w,4);}\n");
+    p_text("static CC_INLINE W cc_op120(W d,W s,W n){auto dst=(unsigned char*)(uintptr_t)d;auto src=(const unsigned char*)(uintptr_t)s;for(uint64_t i=0;i<(uint64_t)n;i++)dst[i]=src[i];return d;}\n");
+    p_text("static CC_INLINE W cc_op121(W d,W v,W n){memset((void*)(uintptr_t)d,(unsigned char)v,(uint64_t)n);return d;}\n");
+    p_text("static CC_INLINE W cc_op125(W p,W v){uint32_t raw=v;memcpy((void*)(uintptr_t)p,&raw,4);return v;}\n");
+    p_text("static CC_INLINE W cc_op122(W p){uint32_t v;memcpy(&v,(void*)(uintptr_t)p,4);return v;}\n");
+    p_text("static CC_INLINE W cc_op123(W a){uint64_t v=a;return v?63-__builtin_clzll(v):~0ULL;}\n");
+    p_text("static CC_INLINE W cc_op124(W a,W b,W n){auto x=(const unsigned char*)(uintptr_t)a;auto y=(const unsigned char*)(uintptr_t)b;uint64_t i=0;while(i<(uint64_t)n && x[i]==y[i])i++;return i;}\n");
     p_text("static CC_INLINE W cc_op30(W a,W b){return cc_bits32(cc_float(a)+cc_float(b));}\n");
     p_text("static CC_INLINE W cc_op31(W a,W b){return cc_bits32(cc_float(a)-cc_float(b));}\n");
     p_text("static CC_INLINE W cc_op32(W a,W b){return cc_bits32(cc_float(a)*cc_float(b));}\n");

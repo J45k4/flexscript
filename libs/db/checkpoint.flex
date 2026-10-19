@@ -12,7 +12,7 @@ fn fd_map(db,size) {
 }
 fn fd_corrupt(db,message) {store64(db+48,2);return fd_error(db,message);}
 fn fd_base_header(a) {let p=fd_header(a);fd_copy(p,"FLEXDB02",8);store64(p+8,2);store64(p+24,1);return p;}
-fn fd_cp_header_ok(h) {return (fd_bytes(h,"FLEXCP01",8) || fd_bytes(h,"FLEXCP02",8) || fd_bytes(h,"FLEXCP03",8)) && load64(h+8)>=16 && load64(h+8)<=16777216 && load64(h+16)>=0 && ((load64(h+24)>>32)&4294967295)==(fd_crc(4294967295,h,24)^4294967295);}
+fn fd_cp_header_ok(h) {return (fd_bytes(h,"FLEXCP01",8) || fd_bytes(h,"FLEXCP02",8) || fd_bytes(h,"FLEXCP03",8) || fd_bytes(h,"FLEXCP04",8)) && load64(h+8)>=16 && load64(h+8)<=16777216 && load64(h+16)>=0 && ((load64(h+24)>>32)&4294967295)==(fd_crc(4294967295,h,24)^4294967295);}
 fn fd_cp_load(db,offset,size) {
     if offset<32 || offset>size-80 || !fd_map(db,size) {return fd_error(db,"invalid checkpoint location");}
     let h=load64(db+128)+offset;if !fd_cp_header_ok(h) {return fd_error(db,"invalid checkpoint header");}let n=load64(h+8);let sequence=load64(h+16);
@@ -30,9 +30,10 @@ fn fd_cp_load(db,offset,size) {
         if !load64(r+24) {return fd_error(db,"truncated checkpoint schema");}let t=fd_table_new(db,name,columns);let v=load64(t+24);store64(v,rows*8);store64(v+8,rows*8);if rows {store64(v+16,fd_alloc(db,rows*8));}
         store64(t+32,rows+1);store64(t+64,body+directory);store64(t+72,body);store64(t+80,rows);store64(t+88,checks);store64(t+96,fd_alloc(db,pages));store64(t+104,n);store64(t+112,meta);i=i+1;
     }
-    if (fd_bytes(h,"FLEXCP02",8) || fd_bytes(h,"FLEXCP03",8)) && !fd_auto_cp_load(db,r,body,n,meta,fd_bytes(h,"FLEXCP03",8)) {return 0;}
+    if (fd_bytes(h,"FLEXCP02",8) || fd_bytes(h,"FLEXCP03",8) || fd_bytes(h,"FLEXCP04",8)) && !fd_auto_cp_load(db,r,body,n,meta,fd_bytes(h,"FLEXCP03",8) || fd_bytes(h,"FLEXCP04",8)) {return 0;}
+    if fd_bytes(h,"FLEXCP04",8) && !fd_blob_cp_load(db,r) {return 0;}
     if !load64(r+24) || load64(r+8)!=meta || i!=tables {return fd_error(db,"invalid checkpoint metadata");}
-    store64(db+144,offset);store64(db+152,offset+n+80);store64(db+160,sequence);store64(db+224,0);return 1;
+    store64(db+240,fd_bytes(h,"FLEXCP04",8));store64(db+144,offset);store64(db+152,offset+n+80);store64(db+160,sequence);store64(db+224,0);return 1;
 }
 // Parse a checked checkpoint row once, then construct its owned immutable
 // representation directly. Scratch descriptors never escape this function.
@@ -57,7 +58,7 @@ fn fd_cp_scalar_cache(t,col) {
                 let mask=load64(p);if count<64 && (mask>>count)!=0 {fd_corrupt(db,"invalid checkpoint null mask");return -1;}let at=8;let j=0;let value=0;
                 while j<count {let c=fd_at(columns,j);let kind=load64(c+8);let word=0;
                     if mask&(1<<j) {if !load64(c+16) {fd_corrupt(db,"invalid checkpoint row values");return -1;}}
-                    else {if at>bytes-8 {fd_corrupt(db,"invalid checkpoint row values");return -1;}word=load64(p+at);at=at+8;if kind==2 || kind==3 {if word<0 || word>1048576 || word>bytes-at {fd_corrupt(db,"invalid checkpoint row values");return -1;}at=at+word;}}
+                    else {if at>bytes-8 {fd_corrupt(db,"invalid checkpoint row values");return -1;}word=load64(p+at);at=at+8;if kind==3 && word<0 {if !fd_blob_cp_ref(db,p+at,bytes-at,word) {return -1;}at=at+40;}else if kind==2 || kind==3 {if word<0 || word>1048576 || word>bytes-at {fd_corrupt(db,"invalid checkpoint row values");return -1;}at=at+word;}}
                     if j==col {value=word;}j=j+1;
                 }if at!=bytes {fd_corrupt(db,"invalid checkpoint row values");return -1;}store64(data+i*16,value);store64(data+i*16+8,1);
             }
@@ -70,12 +71,12 @@ fn fd_cp_decode(db,id,columns,p,bytes) {
     while i<count {let c=fd_at(columns,i);let kind=load64(c+8);let word=0;let length=0;
         if mask&(1<<i) {if !load64(c+16) {return fd_corrupt(db,"invalid checkpoint row values");}kind=0;}
         else {if at>bytes-8 {return fd_corrupt(db,"invalid checkpoint row values");}word=load64(p+at);at=at+8;
-            if kind==2 || kind==3 {length=word;if length<0 || length>1048576 || length>bytes-at {return fd_corrupt(db,"invalid checkpoint row values");}word=p+at;at=at+length;needed=needed+((length+8)&(-8));}}
+            if kind==3 && word<0 {length=word;word=fd_blob_cp_ref(db,p+at,bytes-at,length);if !word {return 0;}at=at+40;}else if kind==2 || kind==3 {length=word;if length<0 || length>1048576 || length>bytes-at {return fd_corrupt(db,"invalid checkpoint row values");}word=p+at;at=at+length;needed=needed+((length+8)&(-8));}}
         let v=scratch+576+i*24;store64(v,kind);store64(v+8,word);store64(v+16,length);i=i+1;
     }if at!=bytes {return fd_corrupt(db,"invalid checkpoint row values");}
     let row=fd_alloc(db,needed);store64(row,id);store64(row+8,count);let payload=row+16+count*32;i=0;
     while i<count {let v=scratch+576+i*24;let copy=row+16+count*8+i*24;let kind=load64(v);store64(row+16+i*8,copy);store64(copy,kind);store64(copy+16,load64(v+16));
-        if kind==2 || kind==3 {let length=load64(v+16);fd_copy(payload,load64(v+8),length);store8(payload+length,0);store64(copy+8,payload);payload=payload+((length+8)&(-8));}else {store64(copy+8,load64(v+8));}i=i+1;
+        if kind==3 && load64(v+16)<0 {store64(copy+8,load64(v+8));}else if kind==2 || kind==3 {let length=load64(v+16);fd_copy(payload,load64(v+8),length);store8(payload+length,0);store64(copy+8,payload);payload=payload+((length+8)&(-8));}else {store64(copy+8,load64(v+8));}i=i+1;
     }return row;
 }
 fn fd_table_row(t,index) {
@@ -94,9 +95,9 @@ fn fd_table_row(t,index) {
 }
 fn fd_cp_word(a,b,w) {if !fd_word(a,b,w) {return 0;}return 1;}
 fn fd_cp_row(a,b,row) {
-    let cells=load64(row+8);let size=8;let mask=0;let i=0;while i<cells {let v=load64(row+16+i*8);let kind=load64(v);if !kind {mask=mask|(1<<i);}else {size=size+8;if kind==2 || kind==3 {size=size+load64(v+16);}}i=i+1;}
+    let cells=load64(row+8);let size=8;let mask=0;let i=0;while i<cells {let v=load64(row+16+i*8);let kind=load64(v);if !kind {mask=mask|(1<<i);}else {size=size+8;if kind==2 || kind==3 {if flexdb_blob_external(v) {size=size+40;}else {size=size+load64(v+16);}}}i=i+1;}
     let used=load64(b);if !fd_reserve(a,b,used+size) {return 0;}let p=load64(b+16)+used;store64(p,mask);p=p+8;i=0;
-    while i<cells {let v=load64(row+16+i*8);let kind=load64(v);if kind==2 || kind==3 {let bytes=load64(v+16);store64(p,bytes);fd_copy(p+8,load64(v+8),bytes);p=p+8+bytes;}else if kind {store64(p,load64(v+8));p=p+8;}i=i+1;}store64(b,used+size);return size;
+    while i<cells {let v=load64(row+16+i*8);let kind=load64(v);if flexdb_blob_external(v) {p=p+fd_blob_encode(p,v);}else if kind==2 || kind==3 {let bytes=load64(v+16);store64(p,bytes);fd_copy(p+8,load64(v+8),bytes);p=p+8+bytes;}else if kind {store64(p,load64(v+8));p=p+8;}i=i+1;}store64(b,used+size);return size;
 }
 // Reserve the complete checkpoint before emitting rows. Include all caches in
 // the bound; the writer still omits those that do not fit the 16 MiB limit.
@@ -107,13 +108,13 @@ fn fd_cp_capacity(db,meta) {
         // validate/hydrate remaining rows before trusted owned-row packing.
         if load64(t+64) {while j<fd_size(rows) {if !fd_at(rows,j) && !fd_table_row(t,j) {return 0;}j=j+1;}}
         let payload=-2;if fd_size(rows)>=128 {payload=fd_pack_size(t);}if payload==-1 {return 0;}
-        if payload>=0 {bytes=bytes+payload;}else {j=0;while j<fd_size(rows) {let row=fd_at(rows,j);if !row {return 0;}let count=load64(row+8);if count {bytes=bytes+8;let c=0;while c<count {let v=load64(row+16+c*8);let kind=load64(v);if kind {bytes=bytes+8;if kind==2 || kind==3 {bytes=bytes+load64(v+16);}}c=c+1;}}j=j+1;}}
+        if payload>=0 {bytes=bytes+payload;}else {j=0;while j<fd_size(rows) {let row=fd_at(rows,j);if !row {return 0;}let count=load64(row+8);if count {bytes=bytes+8;let c=0;while c<count {let v=load64(row+16+c*8);let kind=load64(v);if kind {bytes=bytes+8;if kind==2 || kind==3 {if flexdb_blob_external(v) {bytes=bytes+40;}else {bytes=bytes+load64(v+16);}}}c=c+1;}}j=j+1;}}
         let indexes=load64(t+120);if indexes {let k=0;while k<fd_size(indexes) {bytes=bytes+load64(fd_at(indexes,k)+56)*16;k=k+1;}}i=i+1;
     }if bytes>16777216 {bytes=16777216;}return bytes;
 }
 fn fd_cp_build(db,a) {
     fd_cp_cache_close(db);
-    let b=fd_vec(a);let info=fd_vec(a);let tables=load64(db+40);let meta_bytes=16+fd_auto_meta_bytes(db);let ti=0;
+    let b=fd_vec(a);let info=fd_vec(a);let tables=load64(db+40);let meta_bytes=16+fd_auto_meta_bytes(db);let bs=load64(db+232);if bs && load64(bs+80) {meta_bytes=meta_bytes+24;}let ti=0;
     while ti<fd_size(tables) {let t=fd_at(tables,ti);meta_bytes=meta_bytes+40+fd_len(load64(t+8))+((fd_size(load64(t+24))*16+4095)/4096)*8;let columns=load64(t+16);let ci=0;while ci<fd_size(columns) {meta_bytes=meta_bytes+24+fd_len(load64(fd_at(columns,ci)));ci=ci+1;}ti=ti+1;}if meta_bytes>16777216 {return 0;}let capacity=fd_cp_capacity(db,meta_bytes);if !capacity || !fd_reserve(a,b,capacity) {return 0;}
     fd_word(a,b,0);fd_word(a,b,fd_size(tables));let i=0;
     while i<fd_size(tables) {
@@ -122,7 +123,7 @@ fn fd_cp_build(db,a) {
         let rows=fd_size(load64(t+24));let pages=(rows*16+4095)/4096;let record=fd_alloc(a,32);store64(record,t);store64(record+8,load64(b)+8);store64(record+16,load64(b)+24);store64(record+24,rows);fd_push(a,info,record);
         fd_word(a,b,rows);fd_word(a,b,0);fd_word(a,b,pages);j=0;while j<pages {if !fd_cp_word(a,b,0) {return 0;}j=j+1;}i=i+1;
     }
-    let indexes=fd_auto_cp_meta(db,a,b);let meta=load64(b);store64(load64(b+16),meta);i=0;
+    let indexes=fd_auto_cp_meta(db,a,b);if !fd_blob_cp_meta(db,a,b) {return 0;}let meta=load64(b);store64(load64(b+16),meta);i=0;
     while i<fd_size(info) {
         let record=fd_at(info,i);let t=load64(record);let rows=load64(record+24);let directory=load64(b);let bytes=rows*16;
         if !fd_reserve(a,b,directory+bytes) {return 0;}store64(load64(b+16)+load64(record+8),directory);store64(b,directory+bytes);let j=0;
@@ -132,7 +133,7 @@ fn fd_cp_build(db,a) {
     }if !fd_auto_cp_data(a,b,indexes) {return 0;}return b;
 }
 fn fd_cp_write(db,fd,offset,a,b) {
-    let h=fd_alloc(a,32);fd_copy(h,"FLEXCP03",8);store64(h+8,load64(b));store64(h+16,load64(db+64));let p=load64(b+16);let crc=fd_crc(fd_crc(4294967295,h,24),p,load64(p))^4294967295;store64(h+24,crc|((fd_crc(4294967295,h,24)^4294967295)<<32));
+    let h=fd_alloc(a,32);fd_copy(h,"FLEXCP03",8);let bs=load64(db+232);if bs && load64(bs+80) {fd_copy(h,"FLEXCP04",8);}store64(h+8,load64(b));store64(h+16,load64(db+64));let p=load64(b+16);let crc=fd_crc(fd_crc(4294967295,h,24),p,load64(p))^4294967295;store64(h+24,crc|((fd_crc(4294967295,h,24)^4294967295)<<32));
     let footer=fd_footer(a,"FLEXCPE1",load64(db+64),offset,offset);
     return fd_io(fd,h,32,offset,1) && fd_io(fd,p,load64(b),offset+32,1) && fd_io(fd,footer,48,offset+32+load64(b),1) && fd_sync(fd);
 }
@@ -143,7 +144,7 @@ fn flexdb_checkpoint(db) {
     else {let offset=load64(db+56);if fd_cp_write(db,load64(db+24),offset,a,b) {store64(db+144,offset);store64(db+152,offset+load64(b)+80);store64(db+160,load64(db+64));store64(db+56,load64(db+152));store64(db+224,0);ok=1;}else {fd_corrupt(db,"checkpoint I/O failed; close and reopen");}}
     fd_clear(a);syscall(11,a,32,0,0,0,0);return ok;
 }
-fn flexdb_integrity(db) {if !fd_ready(db) {return 0;}let tables=load64(db+40);let i=0;while i<fd_size(tables) {let t=fd_at(tables,i);let rows=fd_size(load64(t+24));let j=0;while j<rows {if !fd_table_row(t,j) {return 0;}j=j+1;}if !fd_auto_integrity(t) {return 0;}i=i+1;}return 1;}
+fn flexdb_integrity(db) {if !fd_ready(db) {return 0;}let tables=load64(db+40);let i=0;while i<fd_size(tables) {let t=fd_at(tables,i);let rows=fd_size(load64(t+24));let j=0;while j<rows {let row=fd_table_row(t,j);if !row {return 0;}let k=0;while k<load64(row+8) {let v=flexdb_cell(row,k);if flexdb_blob_external(v) && !fd_blob_integrity(v) {return 0;}k=k+1;}j=j+1;}if !fd_auto_integrity(t) {return 0;}i=i+1;}return 1;}
 fn fd_sync_directory(path,arena) {
     let n=fd_len(path);let i=n-1;while i>=0 && load8(path+i)!=47 {i=i-1;}let parent=".";
     if i>=0 {let bytes=i;if !bytes {bytes=1;}parent=fd_alloc(arena,bytes+1);fd_copy(parent,path,bytes);store8(parent+bytes,0);}
@@ -155,15 +156,15 @@ fn flexdb_compact(db) {
     if !fd_ready(db) {return 0;}if load64(db+48) {return fd_error(db,"compaction requires no active transaction");}
     let a=alloc(32);if a<=0 {fd_panic();}let path=load64(db+168);let st=fd_alloc(a,144);let named=fd_alloc(a,144);let fd=load64(db+24);
     if syscall(5,fd,st,0,0,0,0)<0 || syscall(4,path,named,0,0,0,0)<0 || load64(st)!=load64(named) || load64(st+8)!=load64(named+8) {fd_clear(a);syscall(11,a,32,0,0,0,0);return fd_error(db,"database path was replaced; reopen before compaction");}
-    let b=fd_cp_build(db,a);if !b {fd_clear(a);syscall(11,a,32,0,0,0,0);return fd_error(db,"compaction checkpoint exceeds 16 MiB or has invalid rows");}
+    let blobs=fd_blob_compact_plan(db,a);let b=0;if blobs {b=fd_cp_build(db,a);}if !b {if blobs {fd_blob_compact_done(db,blobs,0);}fd_clear(a);syscall(11,a,32,0,0,0,0);return fd_error(db,"compaction checkpoint exceeds 16 MiB or has invalid rows");}
     let n=fd_len(path);let temp=fd_alloc(a,n+34);fd_copy(temp,path,n);fd_copy(temp+n,".compact-",9);let random=fd_alloc(a,8);
-    if syscall(318,random,8,0,0,0,0)!=8 {fd_clear(a);syscall(11,a,32,0,0,0,0);return fd_error(db,"cannot create compaction name");}
+    if syscall(318,random,8,0,0,0,0)!=8 {fd_blob_compact_done(db,blobs,0);fd_clear(a);syscall(11,a,32,0,0,0,0);return fd_error(db,"cannot create compaction name");}
     let hex="0123456789abcdef";let i=0;while i<8 {let byte=load8(random+i);store8(temp+n+9+i*2,load8(hex+byte/16));store8(temp+n+10+i*2,load8(hex+(byte&15)));i=i+1;}store8(temp+n+25,0);
     let output=syscall(2,temp,0xa00c2,384,0,0,0);let ok=output>=0;
-    if ok {ok=syscall(73,output,6,0,0,0,0)==0 && fd_io(output,fd_base_header(a),32,0,1) && fd_cp_write(db,output,32,a,b);}
+    let cp_offset=32;if ok {let header=fd_base_header(a);let bs=load64(db+232);if bs && load64(bs+80) {fd_copy(header,"FLEXDB03",8);store64(header+8,3);}ok=syscall(73,output,6,0,0,0,0)==0 && fd_io(output,header,32,0,1);let bi=0;while ok && bi<fd_size(blobs) {let d=fd_at(blobs,bi);ok=fd_blob_write_frame(db,output,d,load64(d+96),a);cp_offset=cp_offset+112+load64(d+32);bi=bi+1;}if ok {ok=fd_cp_write(db,output,cp_offset,a,b);}}
     if !ok || syscall(82,temp,path,0,0,0,0)<0 {
-        if output>=0 {syscall(3,output,0,0,0,0,0);syscall(87,temp,0,0,0,0,0);}fd_clear(a);syscall(11,a,32,0,0,0,0);return fd_error(db,"cannot write/publish compacted database");
+        if output>=0 {syscall(3,output,0,0,0,0,0);syscall(87,temp,0,0,0,0,0);}fd_blob_compact_done(db,blobs,0);fd_clear(a);syscall(11,a,32,0,0,0,0);return fd_error(db,"cannot write/publish compacted database");
     }
-    store64(db+24,output);store64(db+144,32);store64(db+152,32+load64(b)+80);store64(db+56,load64(db+152));store64(db+160,load64(db+64));store64(db+224,0);syscall(3,fd,0,0,0,0,0);
+    store64(db+24,output);store64(db+144,cp_offset);store64(db+152,cp_offset+load64(b)+80);store64(db+56,load64(db+152));store64(db+160,load64(db+64));store64(db+224,0);fd_blob_compact_done(db,blobs,1);syscall(3,fd,0,0,0,0,0);
     ok=fd_sync_directory(path,a);fd_clear(a);syscall(11,a,32,0,0,0,0);if !ok {return fd_corrupt(db,"compaction directory sync failed; close and reopen");}return 1;
 }

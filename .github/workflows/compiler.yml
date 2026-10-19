@@ -29,7 +29,7 @@ jobs:
       - name: Install verification dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -102,6 +102,30 @@ jobs:
           build/test-monolith-integration build/stage2 --source
           build/test-monolith-browser build/stage2 google-chrome --source
           build/test-monolith-browser build/monolith-todo google-chrome
+
+      - name: Test native Zstd format and mixed-backend FlexDB files
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-zstd.py
+
+      - name: Test native word expression optimizations against an independent oracle
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-constants.py
+
+      - name: Test native reachability and compact calling conventions
+        run: build/tools/test-native-size build/stage2 --report build/native-size-tests.json
+
+      - name: Test short branch encodings and signed-distance boundaries
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-short-branches.py
+
+      - name: Test direct comparison branches and short-circuit values
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-condition-branches.py
+
+      - name: Test shared IR optimization across execution backends
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-ir-opt.py
+
+      - name: Test common subexpression elimination
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-ir-cse.py
+
+      - name: Test the default native IR pipeline and direct reference path
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-pipeline.py
 
       - name: Test buffered native word I/O and failure recovery
         run: python3 tests/word-io/check.py build/stage2
@@ -190,6 +214,7 @@ jobs:
             build/ffi-tests.json
             build/network-tests.json
             build/vm-tests.json
+            build/native-size-tests.json
             build/wasm-tests.json
             build/gpu-tests.json
             build/sass-tests.json

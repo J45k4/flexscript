@@ -41,6 +41,7 @@ class Worker:
             '--checkpoint', str(Path(args.checkpoint).resolve()),
             '--compiler', str(Path(args.compiler).resolve()),
             '--backend', 'rdna', '--weights', 'f16',
+            '--gpu-os-target', getattr(args, 'worker_target', 'auto'),
             '--runtime', runtime, '--device', '0', '--context', str(args.context),
         ], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=self.error, bufsize=0)

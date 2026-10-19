@@ -1,0 +1,2045 @@
+{
+  "date": "2026-10-19T13:12:01.317257+00:00",
+  "settings": {
+    "compiler": "build/flex",
+    "checkpoint": "build/llm/models/qwen3-1.7b",
+    "context": 1024,
+    "tokens": 128,
+    "rounds": 7,
+    "output": "build/gpu-os/native-pipeline"
+  },
+  "machine": {
+    "system": "Linux",
+    "node": "linusinkosto",
+    "release": "7.2.8-9-omarchy",
+    "version": "#1 SMP PREEMPT_DYNAMIC Sat, 17 Oct 2026 22:09:33 +0000",
+    "machine": "x86_64",
+    "processor": ""
+  },
+  "scope": "Same compiler source and GPU code; only native x86-64 host pipeline differs.",
+  "timing": "Decode steps/s excludes prefill and first selected token; includes sampling, mailbox publication, host polling and streaming. Profiling off; unlocked GPU clocks.",
+  "compiler": {
+    "path": "/home/teppo/Work/flexscript/build/flex",
+    "bytes": 573912,
+    "sha256": "d5d6f122b7862a875ef1e2652e5192c86621ed4c023b47812181903ff4bea764"
+  },
+  "artifacts": {
+    "qwen": {
+      "direct": {
+        "path": "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/qwen-direct",
+        "bytes": 132704,
+        "sha256": "baf44db390bf06e48d7aa4c86195538a6e131b17f487496afe90b531302f6925"
+      },
+      "ir": {
+        "path": "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/qwen-ir",
+        "bytes": 128280,
+        "sha256": "863425d26ab2f89857e0027a9b087e64534e98bc0864eb4f32504c6ffe36ae84"
+      },
+      "saved_bytes": 4424,
+      "saved_percent": 3.3337352302869494
+    },
+    "llm": {
+      "direct": {
+        "path": "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/llm-direct",
+        "bytes": 239384,
+        "sha256": "074b790fffadaccc5a86ee646eb2d4e3d1b141144a5d52427a152c9dae3370eb"
+      },
+      "ir": {
+        "path": "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/llm-ir",
+        "bytes": 236488,
+        "sha256": "8aea7b4af3916fef244e6b6ec7cd3e46d9067770a276a6d55f3057a8e43ed7e2"
+      },
+      "saved_bytes": 2896,
+      "saved_percent": 1.209771747485211
+    },
+    "compiler": {
+      "direct": {
+        "path": "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/compiler-direct",
+        "bytes": 580664,
+        "sha256": "4e88cd219901e2dfdf8321b21f30f16c75e69cf868f2211f5ccdd8c3b9808f6b"
+      },
+      "ir": {
+        "path": "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/compiler-ir",
+        "bytes": 573912,
+        "sha256": "d5d6f122b7862a875ef1e2652e5192c86621ed4c023b47812181903ff4bea764"
+      },
+      "saved_bytes": 6752,
+      "saved_percent": 1.1628067178264923
+    }
+  },
+  "builds": {
+    "qwen-direct": {
+      "command": [
+        "/home/teppo/Work/flexscript/build/flex",
+        "--native-pipeline",
+        "direct",
+        "libs/os/gpu/qwen.flex",
+        "-o",
+        "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/qwen-direct"
+      ],
+      "single_build_ms": 29.125633
+    },
+    "qwen-ir": {
+      "command": [
+        "/home/teppo/Work/flexscript/build/flex",
+        "--native-pipeline",
+        "ir",
+        "libs/os/gpu/qwen.flex",
+        "-o",
+        "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/qwen-ir"
+      ],
+      "single_build_ms": 17.667738
+    },
+    "llm-direct": {
+      "command": [
+        "/home/teppo/Work/flexscript/build/flex",
+        "--native-pipeline",
+        "direct",
+        "llm.flex",
+        "-o",
+        "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/llm-direct"
+      ],
+      "single_build_ms": 54.006343
+    },
+    "llm-ir": {
+      "command": [
+        "/home/teppo/Work/flexscript/build/flex",
+        "--native-pipeline",
+        "ir",
+        "llm.flex",
+        "-o",
+        "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/llm-ir"
+      ],
+      "single_build_ms": 31.052191
+    },
+    "compiler-direct": {
+      "command": [
+        "/home/teppo/Work/flexscript/build/flex",
+        "--native-pipeline",
+        "direct",
+        "compiler/main.flex",
+        "-o",
+        "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/compiler-direct"
+      ],
+      "single_build_ms": 126.081683
+    },
+    "compiler-ir": {
+      "command": [
+        "/home/teppo/Work/flexscript/build/flex",
+        "--native-pipeline",
+        "ir",
+        "compiler/main.flex",
+        "-o",
+        "/home/teppo/Work/flexscript/build/gpu-os/native-pipeline/compiler-ir"
+      ],
+      "single_build_ms": 66.399247
+    }
+  },
+  "workers": {
+    "direct": {
+      "ready": {
+        "event": "ready",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "resident_bytes": 3682745976,
+        "context_capacity": 1024,
+        "memory_reserve_bytes": 1709598310
+      },
+      "startup_ms": 2919.255584,
+      "ready_memory": {
+        "VmSize_KiB": 8517468,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 392044,
+        "RssAnon_KiB": 348156,
+        "RssFile_KiB": 43888,
+        "RssShmem_KiB": 0
+      },
+      "worker_image": {
+        "path": "/home/teppo/Work/flexscript/build/gpu-os/rdna/resident.hsaco",
+        "bytes": 93552,
+        "sha256": "2bd5f1419df1e0916b46c1f770664d03e337160f9a6956a98eab314b168d7a92"
+      },
+      "final_memory": {
+        "VmSize_KiB": 8621460,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 489788,
+        "RssAnon_KiB": 445580,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    "ir": {
+      "ready": {
+        "event": "ready",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "resident_bytes": 3682745976,
+        "context_capacity": 1024,
+        "memory_reserve_bytes": 1709598310
+      },
+      "startup_ms": 1480.961037,
+      "ready_memory": {
+        "VmSize_KiB": 8516444,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 393640,
+        "RssAnon_KiB": 349668,
+        "RssFile_KiB": 43972,
+        "RssShmem_KiB": 0
+      },
+      "worker_image": {
+        "path": "/home/teppo/Work/flexscript/build/gpu-os/rdna/resident.hsaco",
+        "bytes": 93552,
+        "sha256": "2bd5f1419df1e0916b46c1f770664d03e337160f9a6956a98eab314b168d7a92"
+      },
+      "final_memory": {
+        "VmSize_KiB": 8620428,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 491388,
+        "RssAnon_KiB": 447096,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    }
+  },
+  "warmups": [
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 60496,
+        "tokens": 128,
+        "elapsed_us": 870658,
+        "first_token_us": 66690,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 872350,
+      "decode_us": 803968,
+      "decode_steps": 127,
+      "decode_steps_per_second": 157.9664862283076,
+      "end_to_end_tokens_per_second": 147.01524594042667,
+      "before": {
+        "gpu_busy_percent": 16,
+        "mem_info_vram_used": 11215167488,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 42000,
+        "power1_average": 45000000,
+        "freq1_input": 898000000
+      },
+      "after": {
+        "gpu_busy_percent": 97,
+        "mem_info_vram_used": 11252240384,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 43000,
+        "power1_average": 176000000,
+        "freq1_input": 3137000000
+      },
+      "workload": "short",
+      "pipeline": "direct",
+      "round": 0,
+      "memory": {
+        "VmSize_KiB": 8568160,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 436848,
+        "RssAnon_KiB": 392640,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 55232,
+        "tokens": 128,
+        "elapsed_us": 864859,
+        "first_token_us": 61303,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 866230,
+      "decode_us": 803556,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.0474789560404,
+      "end_to_end_tokens_per_second": 148.00100363180587,
+      "before": {
+        "gpu_busy_percent": 97,
+        "mem_info_vram_used": 11252240384,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 43000,
+        "power1_average": 176000000,
+        "freq1_input": 3137000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289317376,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 44000,
+        "power1_average": 194000000,
+        "freq1_input": 3257000000
+      },
+      "workload": "short",
+      "pipeline": "ir",
+      "round": 0,
+      "memory": {
+        "VmSize_KiB": 8567132,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 438452,
+        "RssAnon_KiB": 394160,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 273221,
+        "tokens": 128,
+        "elapsed_us": 1096205,
+        "first_token_us": 274436,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1099668,
+      "decode_us": 821769,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.54464697500148,
+      "end_to_end_tokens_per_second": 116.76648072212771,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289399296,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 48000,
+        "power1_average": 81000000,
+        "freq1_input": 3261000000
+      },
+      "after": {
+        "gpu_busy_percent": 99,
+        "mem_info_vram_used": 11289403392,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 48000,
+        "power1_average": 209000000,
+        "freq1_input": 3230000000
+      },
+      "workload": "longer",
+      "pipeline": "direct",
+      "round": 0,
+      "memory": {
+        "VmSize_KiB": 8596652,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 465096,
+        "RssAnon_KiB": 420888,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 270900,
+        "tokens": 128,
+        "elapsed_us": 1096313,
+        "first_token_us": 272083,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1099159,
+      "decode_us": 824230,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.08320493066256,
+      "end_to_end_tokens_per_second": 116.75497782111495,
+      "before": {
+        "gpu_busy_percent": 99,
+        "mem_info_vram_used": 11289403392,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 48000,
+        "power1_average": 209000000,
+        "freq1_input": 3230000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289407488,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 48000,
+        "power1_average": 202000000,
+        "freq1_input": 3192000000
+      },
+      "workload": "longer",
+      "pipeline": "ir",
+      "round": 0,
+      "memory": {
+        "VmSize_KiB": 8595620,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 466692,
+        "RssAnon_KiB": 422400,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    }
+  ],
+  "samples": [
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 54182,
+        "tokens": 128,
+        "elapsed_us": 855060,
+        "first_token_us": 55368,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 856456,
+      "decode_us": 799692,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.81114228978157,
+      "end_to_end_tokens_per_second": 149.69709727972307,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289317376,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 44000,
+        "power1_average": 194000000,
+        "freq1_input": 3257000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289325568,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 45000,
+        "power1_average": 204000000,
+        "freq1_input": 3286000000
+      },
+      "workload": "short",
+      "pipeline": "ir",
+      "round": 1,
+      "memory": {
+        "VmSize_KiB": 8570676,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 442008,
+        "RssAnon_KiB": 397716,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 59216,
+        "tokens": 128,
+        "elapsed_us": 861487,
+        "first_token_us": 60748,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 863093,
+      "decode_us": 800739,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.6034900260884,
+      "end_to_end_tokens_per_second": 148.58030359134844,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289325568,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 45000,
+        "power1_average": 204000000,
+        "freq1_input": 3286000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289329664,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 45000,
+        "power1_average": 201000000,
+        "freq1_input": 3263000000
+      },
+      "workload": "short",
+      "pipeline": "direct",
+      "round": 1,
+      "memory": {
+        "VmSize_KiB": 8571708,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 440408,
+        "RssAnon_KiB": 396200,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 55300,
+        "tokens": 128,
+        "elapsed_us": 858387,
+        "first_token_us": 56481,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 859946,
+      "decode_us": 801906,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.37267709681683,
+      "end_to_end_tokens_per_second": 149.11689016725555,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289329664,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 45000,
+        "power1_average": 201000000,
+        "freq1_input": 3263000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289333760,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 45000,
+        "power1_average": 191000000,
+        "freq1_input": 3212000000
+      },
+      "workload": "short",
+      "pipeline": "direct",
+      "round": 2,
+      "memory": {
+        "VmSize_KiB": 8575388,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 443944,
+        "RssAnon_KiB": 399736,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 59477,
+        "tokens": 128,
+        "elapsed_us": 863322,
+        "first_token_us": 60670,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 864696,
+      "decode_us": 802652,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.22548252542822,
+      "end_to_end_tokens_per_second": 148.2644945918209,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289333760,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 45000,
+        "power1_average": 191000000,
+        "freq1_input": 3212000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289337856,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 46000,
+        "power1_average": 178000000,
+        "freq1_input": 3144000000
+      },
+      "workload": "short",
+      "pipeline": "ir",
+      "round": 2,
+      "memory": {
+        "VmSize_KiB": 8574356,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 445544,
+        "RssAnon_KiB": 401252,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 59095,
+        "tokens": 128,
+        "elapsed_us": 864393,
+        "first_token_us": 60280,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 865944,
+      "decode_us": 804113,
+      "decode_steps": 127,
+      "decode_steps_per_second": 157.93800125106796,
+      "end_to_end_tokens_per_second": 148.08079195458546,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289337856,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 46000,
+        "power1_average": 178000000,
+        "freq1_input": 3144000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289341952,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 46000,
+        "power1_average": 187000000,
+        "freq1_input": 3182000000
+      },
+      "workload": "short",
+      "pipeline": "ir",
+      "round": 3,
+      "memory": {
+        "VmSize_KiB": 8577900,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 449068,
+        "RssAnon_KiB": 404776,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 55387,
+        "tokens": 128,
+        "elapsed_us": 859451,
+        "first_token_us": 56937,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 861021,
+      "decode_us": 802514,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.25269091878772,
+      "end_to_end_tokens_per_second": 148.93228351587234,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289341952,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 46000,
+        "power1_average": 187000000,
+        "freq1_input": 3182000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289354240,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 46000,
+        "power1_average": 185000000,
+        "freq1_input": 3183000000
+      },
+      "workload": "short",
+      "pipeline": "direct",
+      "round": 3,
+      "memory": {
+        "VmSize_KiB": 8578932,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 447468,
+        "RssAnon_KiB": 403260,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 55325,
+        "tokens": 128,
+        "elapsed_us": 858641,
+        "first_token_us": 56490,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 860225,
+      "decode_us": 802151,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.32430552352363,
+      "end_to_end_tokens_per_second": 149.07277896117236,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289354240,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 46000,
+        "power1_average": 185000000,
+        "freq1_input": 3183000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289358336,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 46000,
+        "power1_average": 196000000,
+        "freq1_input": 3238000000
+      },
+      "workload": "short",
+      "pipeline": "direct",
+      "round": 4,
+      "memory": {
+        "VmSize_KiB": 8582476,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 450992,
+        "RssAnon_KiB": 406784,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 59864,
+        "tokens": 128,
+        "elapsed_us": 860376,
+        "first_token_us": 61040,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 861548,
+      "decode_us": 799336,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.8818719537216,
+      "end_to_end_tokens_per_second": 148.7721647279794,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289358336,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 46000,
+        "power1_average": 196000000,
+        "freq1_input": 3238000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289362432,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 201000000,
+        "freq1_input": 3257000000
+      },
+      "workload": "short",
+      "pipeline": "ir",
+      "round": 4,
+      "memory": {
+        "VmSize_KiB": 8581444,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 452592,
+        "RssAnon_KiB": 408300,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 59130,
+        "tokens": 128,
+        "elapsed_us": 860465,
+        "first_token_us": 60309,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 861797,
+      "decode_us": 800156,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.71904978529187,
+      "end_to_end_tokens_per_second": 148.7567768590239,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289362432,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 201000000,
+        "freq1_input": 3257000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289374720,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 200000000,
+        "freq1_input": 3241000000
+      },
+      "workload": "short",
+      "pipeline": "ir",
+      "round": 5,
+      "memory": {
+        "VmSize_KiB": 8584988,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 456116,
+        "RssAnon_KiB": 411824,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 61412,
+        "tokens": 128,
+        "elapsed_us": 865615,
+        "first_token_us": 62944,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 867194,
+      "decode_us": 802671,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.22173717500695,
+      "end_to_end_tokens_per_second": 147.8717443667219,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289374720,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 200000000,
+        "freq1_input": 3241000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289378816,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 179000000,
+        "freq1_input": 3137000000
+      },
+      "workload": "short",
+      "pipeline": "direct",
+      "round": 5,
+      "memory": {
+        "VmSize_KiB": 8586020,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 454516,
+        "RssAnon_KiB": 410308,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 60090,
+        "tokens": 128,
+        "elapsed_us": 865338,
+        "first_token_us": 61258,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 867136,
+      "decode_us": 804080,
+      "decode_steps": 127,
+      "decode_steps_per_second": 157.94448313600637,
+      "end_to_end_tokens_per_second": 147.91907901883425,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289378816,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 83000000,
+        "freq1_input": 3235000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289382912,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 180000000,
+        "freq1_input": 3146000000
+      },
+      "workload": "short",
+      "pipeline": "direct",
+      "round": 6,
+      "memory": {
+        "VmSize_KiB": 8589564,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 458048,
+        "RssAnon_KiB": 413840,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 60387,
+        "tokens": 128,
+        "elapsed_us": 865669,
+        "first_token_us": 61561,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 867015,
+      "decode_us": 804108,
+      "decode_steps": 127,
+      "decode_steps_per_second": 157.93898332064848,
+      "end_to_end_tokens_per_second": 147.86252020113923,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289382912,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 180000000,
+        "freq1_input": 3146000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289387008,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 178000000,
+        "freq1_input": 3135000000
+      },
+      "workload": "short",
+      "pipeline": "ir",
+      "round": 6,
+      "memory": {
+        "VmSize_KiB": 8588532,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 459644,
+        "RssAnon_KiB": 415352,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 54799,
+        "tokens": 128,
+        "elapsed_us": 857045,
+        "first_token_us": 55973,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 858263,
+      "decode_us": 801072,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.53755967004216,
+      "end_to_end_tokens_per_second": 149.35038416885928,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289387008,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 178000000,
+        "freq1_input": 3135000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289391104,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 187000000,
+        "freq1_input": 3189000000
+      },
+      "workload": "short",
+      "pipeline": "ir",
+      "round": 7,
+      "memory": {
+        "VmSize_KiB": 8592076,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 463168,
+        "RssAnon_KiB": 418876,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 57523,
+        "tokens": 128,
+        "elapsed_us": 861686,
+        "first_token_us": 59084,
+        "reason": "limit",
+        "input_ids_sha256": "087193ebf7e1069869413e09a4f986c15114d62203839fa67140377370afe80a",
+        "generated_ids_sha256": "15405cd022cffcee9048fed04bdd1aecc497a8dcf4feebdd05491cee7165562b"
+      },
+      "prompt_tokens": 41,
+      "wall_us": 863366,
+      "decode_us": 802602,
+      "decode_steps": 127,
+      "decode_steps_per_second": 158.23533955808733,
+      "end_to_end_tokens_per_second": 148.545990070629,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289391104,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 187000000,
+        "freq1_input": 3189000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289399296,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 47000,
+        "power1_average": 184000000,
+        "freq1_input": 3168000000
+      },
+      "workload": "short",
+      "pipeline": "direct",
+      "round": 7,
+      "memory": {
+        "VmSize_KiB": 8593108,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 461572,
+        "RssAnon_KiB": 417364,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 271201,
+        "tokens": 128,
+        "elapsed_us": 1095522,
+        "first_token_us": 272383,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1098603,
+      "decode_us": 823139,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.28742897615106,
+      "end_to_end_tokens_per_second": 116.83927844443106,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289407488,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 48000,
+        "power1_average": 202000000,
+        "freq1_input": 3192000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289419776,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 203000000,
+        "freq1_input": 3182000000
+      },
+      "workload": "longer",
+      "pipeline": "ir",
+      "round": 1,
+      "memory": {
+        "VmSize_KiB": 8599164,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 470244,
+        "RssAnon_KiB": 425952,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 273862,
+        "tokens": 128,
+        "elapsed_us": 1100918,
+        "first_token_us": 275473,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1104125,
+      "decode_us": 825445,
+      "decode_steps": 127,
+      "decode_steps_per_second": 153.85640472714718,
+      "end_to_end_tokens_per_second": 116.2666065955866,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289419776,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 203000000,
+        "freq1_input": 3182000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289423872,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 202000000,
+        "freq1_input": 3173000000
+      },
+      "workload": "longer",
+      "pipeline": "direct",
+      "round": 1,
+      "memory": {
+        "VmSize_KiB": 8600196,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 468644,
+        "RssAnon_KiB": 424436,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 270973,
+        "tokens": 128,
+        "elapsed_us": 1096095,
+        "first_token_us": 272150,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1099671,
+      "decode_us": 823945,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.13650182961243,
+      "end_to_end_tokens_per_second": 116.7781989699798,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289423872,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 202000000,
+        "freq1_input": 3173000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289436160,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 202000000,
+        "freq1_input": 3189000000
+      },
+      "workload": "longer",
+      "pipeline": "direct",
+      "round": 2,
+      "memory": {
+        "VmSize_KiB": 8603740,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 472168,
+        "RssAnon_KiB": 427960,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 271919,
+        "tokens": 128,
+        "elapsed_us": 1096883,
+        "first_token_us": 273092,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1099868,
+      "decode_us": 823791,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.16531620277473,
+      "end_to_end_tokens_per_second": 116.69430559138942,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289436160,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 202000000,
+        "freq1_input": 3189000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289440256,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 207000000,
+        "freq1_input": 3198000000
+      },
+      "workload": "longer",
+      "pipeline": "ir",
+      "round": 2,
+      "memory": {
+        "VmSize_KiB": 8602708,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 473768,
+        "RssAnon_KiB": 429476,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 275609,
+        "tokens": 128,
+        "elapsed_us": 1101143,
+        "first_token_us": 276796,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1104264,
+      "decode_us": 824347,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.0613358209589,
+      "end_to_end_tokens_per_second": 116.24284947549955,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289440256,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 207000000,
+        "freq1_input": 3198000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289444352,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 197000000,
+        "freq1_input": 3154000000
+      },
+      "workload": "longer",
+      "pipeline": "ir",
+      "round": 3,
+      "memory": {
+        "VmSize_KiB": 8606252,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 477292,
+        "RssAnon_KiB": 433000,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 275865,
+        "tokens": 128,
+        "elapsed_us": 1101897,
+        "first_token_us": 277479,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1105296,
+      "decode_us": 824418,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.04806784907657,
+      "end_to_end_tokens_per_second": 116.16330745977164,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289444352,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 197000000,
+        "freq1_input": 3154000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289448448,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 197000000,
+        "freq1_input": 3153000000
+      },
+      "workload": "longer",
+      "pipeline": "direct",
+      "round": 3,
+      "memory": {
+        "VmSize_KiB": 8607284,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 475692,
+        "RssAnon_KiB": 431484,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 276609,
+        "tokens": 128,
+        "elapsed_us": 1105581,
+        "first_token_us": 277798,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1108755,
+      "decode_us": 827783,
+      "decode_steps": 127,
+      "decode_steps_per_second": 153.42185089570575,
+      "end_to_end_tokens_per_second": 115.77622987370441,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289448448,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 197000000,
+        "freq1_input": 3153000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289452544,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 197000000,
+        "freq1_input": 3160000000
+      },
+      "workload": "longer",
+      "pipeline": "direct",
+      "round": 4,
+      "memory": {
+        "VmSize_KiB": 8610828,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 479216,
+        "RssAnon_KiB": 435008,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 267189,
+        "tokens": 128,
+        "elapsed_us": 1089414,
+        "first_token_us": 268361,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1092693,
+      "decode_us": 821053,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.67941777205613,
+      "end_to_end_tokens_per_second": 117.49435935282638,
+      "before": {
+        "gpu_busy_percent": 5,
+        "mem_info_vram_used": 11289452544,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 82000000,
+        "freq1_input": 3264000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289464832,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 216000000,
+        "freq1_input": 3233000000
+      },
+      "workload": "longer",
+      "pipeline": "ir",
+      "round": 4,
+      "memory": {
+        "VmSize_KiB": 8609796,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 480816,
+        "RssAnon_KiB": 436524,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 398909,
+        "tokens": 128,
+        "elapsed_us": 1226914,
+        "first_token_us": 400079,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1230006,
+      "decode_us": 826835,
+      "decode_steps": 127,
+      "decode_steps_per_second": 153.59775529579662,
+      "end_to_end_tokens_per_second": 104.32679063080217,
+      "before": {
+        "gpu_busy_percent": 56,
+        "mem_info_vram_used": 11289464832,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 100000000,
+        "freq1_input": 3339000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289468928,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 156000000,
+        "freq1_input": 2793000000
+      },
+      "workload": "longer",
+      "pipeline": "ir",
+      "round": 5,
+      "memory": {
+        "VmSize_KiB": 8613340,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 484340,
+        "RssAnon_KiB": 440048,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 273137,
+        "tokens": 128,
+        "elapsed_us": 1097939,
+        "first_token_us": 274682,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1101212,
+      "decode_us": 823257,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.26531447652434,
+      "end_to_end_tokens_per_second": 116.58206876702621,
+      "before": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289468928,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 49000,
+        "power1_average": 156000000,
+        "freq1_input": 2793000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289473024,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 203000000,
+        "freq1_input": 3178000000
+      },
+      "workload": "longer",
+      "pipeline": "direct",
+      "round": 5,
+      "memory": {
+        "VmSize_KiB": 8614372,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 482740,
+        "RssAnon_KiB": 438532,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 275820,
+        "tokens": 128,
+        "elapsed_us": 1100984,
+        "first_token_us": 276999,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1104463,
+      "decode_us": 823985,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.1290193389443,
+      "end_to_end_tokens_per_second": 116.25963683395943,
+      "before": {
+        "gpu_busy_percent": 63,
+        "mem_info_vram_used": 11289473024,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 88000000,
+        "freq1_input": 3276000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289485312,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 196000000,
+        "freq1_input": 3151000000
+      },
+      "workload": "longer",
+      "pipeline": "direct",
+      "round": 6,
+      "memory": {
+        "VmSize_KiB": 8617916,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 486264,
+        "RssAnon_KiB": 442056,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 276299,
+        "tokens": 128,
+        "elapsed_us": 1102498,
+        "first_token_us": 277470,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1105498,
+      "decode_us": 825028,
+      "decode_steps": 127,
+      "decode_steps_per_second": 153.9341695069743,
+      "end_to_end_tokens_per_second": 116.099983854846,
+      "before": {
+        "gpu_busy_percent": 47,
+        "mem_info_vram_used": 11289485312,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 84000000,
+        "freq1_input": 3256000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289489408,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 196000000,
+        "freq1_input": 3146000000
+      },
+      "workload": "longer",
+      "pipeline": "ir",
+      "round": 6,
+      "memory": {
+        "VmSize_KiB": 8616884,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 487864,
+        "RssAnon_KiB": 443572,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 275068,
+        "tokens": 128,
+        "elapsed_us": 1103551,
+        "first_token_us": 276236,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1106366,
+      "decode_us": 827315,
+      "decode_steps": 127,
+      "decode_steps_per_second": 153.50863939370132,
+      "end_to_end_tokens_per_second": 115.9892021302142,
+      "before": {
+        "gpu_busy_percent": 34,
+        "mem_info_vram_used": 11289489408,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 81000000,
+        "freq1_input": 3258000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289493504,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 198000000,
+        "freq1_input": 3155000000
+      },
+      "workload": "longer",
+      "pipeline": "ir",
+      "round": 7,
+      "memory": {
+        "VmSize_KiB": 8620428,
+        "VmHWM_KiB": 3704376,
+        "VmRSS_KiB": 491388,
+        "RssAnon_KiB": 447096,
+        "RssFile_KiB": 44292,
+        "RssShmem_KiB": 0
+      }
+    },
+    {
+      "done": {
+        "event": "done",
+        "backend": "rdna",
+        "target": "rdna-gfx1201",
+        "linear_target": "rdna-gfx1201",
+        "runtime": "gpu-os",
+        "wave_size": 32,
+        "worker_target": "rdna-greedy",
+        "resident_workers": 32,
+        "threads_per_worker": 512,
+        "decode_launches": 1,
+        "prefill_us": 271310,
+        "tokens": 128,
+        "elapsed_us": 1096028,
+        "first_token_us": 272845,
+        "reason": "limit",
+        "input_ids_sha256": "7461367ad8e1ff8ff49aed641b5a7e304217a6c9e6cbdd8a17ec80a36dc1a297",
+        "generated_ids_sha256": "fc42167928401cb9f1686644307247ada7c67a6c1eca7eacc68ffcde30d7636f"
+      },
+      "prompt_tokens": 378,
+      "wall_us": 1099476,
+      "decode_us": 823183,
+      "decode_steps": 127,
+      "decode_steps_per_second": 154.27918215026307,
+      "end_to_end_tokens_per_second": 116.78533760086421,
+      "before": {
+        "gpu_busy_percent": 29,
+        "mem_info_vram_used": 11289493504,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 83000000,
+        "freq1_input": 3264000000
+      },
+      "after": {
+        "gpu_busy_percent": 98,
+        "mem_info_vram_used": 11289497600,
+        "mem_info_vram_total": 17095983104,
+        "temp1_input": 50000,
+        "power1_average": 203000000,
+        "freq1_input": 3184000000
+      },
+      "workload": "longer",
+      "pipeline": "direct",
+      "round": 7,
+      "memory": {
+        "VmSize_KiB": 8621460,
+        "VmHWM_KiB": 3703044,
+        "VmRSS_KiB": 489788,
+        "RssAnon_KiB": 445580,
+        "RssFile_KiB": 44208,
+        "RssShmem_KiB": 0
+      }
+    }
+  ],
+  "summaries": {
+    "short": {
+      "direct": {
+        "median": 158.25269091878772,
+        "minimum": 157.94448313600637,
+        "maximum": 158.6034900260884,
+        "prompt_tokens": 41,
+        "generated_tokens": 128,
+        "median_first_token_ms": 59.084,
+        "median_prefill_ms": 57.523,
+        "median_request_wall_ms": 863.093,
+        "median_RSS_KiB": 450992,
+        "peak_RSS_KiB": 3703044
+      },
+      "ir": {
+        "median": 158.53755967004216,
+        "minimum": 157.93800125106796,
+        "maximum": 158.8818719537216,
+        "prompt_tokens": 41,
+        "generated_tokens": 128,
+        "median_first_token_ms": 60.309,
+        "median_prefill_ms": 59.13,
+        "median_request_wall_ms": 861.797,
+        "median_RSS_KiB": 452592,
+        "peak_RSS_KiB": 3704376
+      },
+      "ir_vs_direct_percent": 0.1800087882237733,
+      "paired_gain_percent": {
+        "median": 0.13092540628143468,
+        "minimum": -0.1988526488192588,
+        "maximum": 0.35216729885805265,
+        "ir_wins": 4,
+        "rounds": 7
+      }
+    },
+    "longer": {
+      "direct": {
+        "median": 154.1290193389443,
+        "minimum": 153.42185089570575,
+        "maximum": 154.27918215026307,
+        "prompt_tokens": 378,
+        "generated_tokens": 128,
+        "median_first_token_ms": 275.473,
+        "median_prefill_ms": 273.862,
+        "median_request_wall_ms": 1104.125,
+        "median_RSS_KiB": 479216,
+        "peak_RSS_KiB": 3703044
+      },
+      "ir": {
+        "median": 154.0613358209589,
+        "minimum": 153.50863939370132,
+        "maximum": 154.67941777205613,
+        "prompt_tokens": 378,
+        "generated_tokens": 128,
+        "median_first_token_ms": 276.236,
+        "median_prefill_ms": 275.068,
+        "median_request_wall_ms": 1104.264,
+        "median_RSS_KiB": 480816,
+        "peak_RSS_KiB": 3704376
+      },
+      "ir_vs_direct_percent": -0.04391354611589238,
+      "paired_gain_percent": {
+        "median": 0.008612877829361487,
+        "minimum": -0.4994470062793521,
+        "maximum": 0.8196791193747721,
+        "ir_wins": 4,
+        "rounds": 7
+      }
+    }
+  },
+  "initial_sensors": {
+    "gpu_busy_percent": 4,
+    "mem_info_vram_used": 3305033728,
+    "mem_info_vram_total": 17095983104,
+    "temp1_input": 44000,
+    "power1_average": 39000000,
+    "freq1_input": 291000000
+  },
+  "prompts": {
+    "short": "Write a long, detailed adventure story about a little robot exploring a forest. Include scenery, dialogue, and several events. Keep telling the story.",
+    "longer": "The forest has tall trees, a river, old stone bridges, hidden caves, friendly animals, and an abandoned observatory. The robot carries a map and wants to learn how the forest changes through the seasons. The forest has tall trees, a river, old stone bridges, hidden caves, friendly animals, and an abandoned observatory. The robot carries a map and wants to learn how the forest changes through the seasons. The forest has tall trees, a river, old stone bridges, hidden caves, friendly animals, and an abandoned observatory. The robot carries a map and wants to learn how the forest changes through the seasons. The forest has tall trees, a river, old stone bridges, hidden caves, friendly animals, and an abandoned observatory. The robot carries a map and wants to learn how the forest changes through the seasons. The forest has tall trees, a river, old stone bridges, hidden caves, friendly animals, and an abandoned observatory. The robot carries a map and wants to learn how the forest changes through the seasons. The forest has tall trees, a river, old stone bridges, hidden caves, friendly animals, and an abandoned observatory. The robot carries a map and wants to learn how the forest changes through the seasons. The forest has tall trees, a river, old stone bridges, hidden caves, friendly animals, and an abandoned observatory. The robot carries a map and wants to learn how the forest changes through the seasons. The forest has tall trees, a river, old stone bridges, hidden caves, friendly animals, and an abandoned observatory. The robot carries a map and wants to learn how the forest changes through the seasons. \nWrite a long, detailed adventure story about a little robot exploring a forest. Include scenery, dialogue, and several events. Keep telling the story."
+  },
+  "checkpoint_config": {
+    "path": "/home/teppo/Work/flexscript/build/llm/models/qwen3-1.7b/config.json",
+    "bytes": 726,
+    "sha256": "1ddb5b89ebc90dcb417a45c213d818577e65976454d29385c8f6140771d95197"
+  },
+  "final_sensors": {
+    "gpu_busy_percent": 66,
+    "mem_info_vram_used": 3305254912,
+    "mem_info_vram_total": 17095983104,
+    "temp1_input": 50000,
+    "power1_average": 80000000,
+    "freq1_input": 2519000000
+  },
+  "full_report_sha256": "f870630230ee00338d576a8d0201bbcf2cc19131e9f536ad0b552bbc54be4da9",
+  "token_identity_verified": true
+}

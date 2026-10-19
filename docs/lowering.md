@@ -46,6 +46,12 @@ retain their documented target restrictions.
 | `f32.dot3.load` | 2 | Same dot product; pointers to three 8-byte word slots |
 | `word.add` | 2 | Wrapping 64-bit integer addition |
 | `word.xor` | 2 | 64-bit exclusive-or |
+| `memory.copy` | 3 | `(dst, src, n)`: exact-bound forward byte copy, returns `dst` |
+| `memory.fill` | 3 | `(dst, value, n)`: fill with low byte, returns `dst` |
+| `word.load32` | 1 | Unaligned little-endian load, zero-extended to a word |
+| `word.store32` | 2 | Unaligned little-endian store of low 32 bits; returns original value |
+| `word.high_bit` | 1 | Highest set bit 0–63; `-1` for zero |
+| `memory.common_prefix` | 3 | `(a, b, n)`: equal prefix length, bounded by `n` |
 | `lowering.active` | 0 | 1 when native lowering is enabled; body supplies fallback |
 
 `lib/f32.flex` provides neutral `f32_add/sub/mul/div/sqrt/dot3/dot3_load` functions.
@@ -56,6 +62,20 @@ Conversions, comparisons and FMA have not acquired native emitters here.
 Words and the call ABI remain 64-bit; this does not introduce a language type
 system or change array layout. `f32.dot3.load` requires two readable 24-byte
 vectors and uses the low 32 bits of each word, with no writes.
+
+`lib/bytes.flex` supplies portable bodies for the byte and bit operations above.
+Sizes must be nonnegative and all specified ranges valid. Zero lengths touch no
+memory. Copy preserves forward byte propagation for overlapping ranges; it is
+not `memmove`. Native copies and prefix comparisons use baseline SSE2/REP
+instructions without reading beyond the supplied ranges. The optimizing CPU
+target has equivalent operations; VM, JIT and Wasm execute portable bodies.
+
+Ordinary native word expressions also fold pure constants, select immediate
+instructions and fuse indexed loads. A two-pass local-reference count assigns
+up to eight locals to registers, preserving caller-saved values around calls
+and syscalls. Nested expression temporaries stay in a register when safe.
+These optimizations retain wrapping word arithmetic, signed comparisons and
+division behavior; they require no annotation in application code.
 
 Native ELF startup establishes MXCSR 0x1f80: nearest-even rounding, masked FP
 exceptions, gradual subnormals, with neither DAZ nor FTZ. Arithmetic canonicalizes
@@ -106,3 +126,24 @@ The [optimizing CPU kernel target](cpu-kernels.md) consumes the same symbol
 bindings. `cpu-cxx` may also be named as a target selector. Its optional
 `f32x2.add/sub/mul` operations pack two independent FP32 lanes into one word;
 other targets retain the portable function bodies.
+
+## Trusted native calls
+
+`lib/native.flex` declares `native_call1(pointer, argument)` through
+`machine.call1` for `native-x86_64`. It calls code owned by the application
+using the System V x86-64 ABI: one word argument in RDI and a word result in
+RAX. The callee must preserve nonvolatile registers, stack discipline and the
+floating-point control environment. The compiler aligns the stack, preserves
+cached caller-volatile locals and invalidates expression temporaries around
+the call. Arguments are evaluated once, left to right.
+
+This is an unsafe primitive for trusted native code, with no pointer or signature
+validation. Reference mode, VM, Wasm, GPU and `cpu-cxx` execute its portable body,
+which returns zero without executing the pointer. It does not make arbitrary
+host addresses callable from a sandboxed extension. The Zstd library uses it
+only for its own CPU-checked, RW-to-RX emitted kernels; allocation or protection
+failure selects the ordinary Flexscript fallback.
+
+The native local-register heuristic weights references inside loops. Loop entry
+and exit must balance; the allocator checks this invariant before selecting
+registers so a malformed nesting weight cannot silently favor cold locals.

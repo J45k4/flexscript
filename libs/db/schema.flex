@@ -32,7 +32,9 @@ fn fds_char(c) {return fds_kind==3 && load8(fds_token)==c;}
 fn fds_expect(c,message) {if !fds_char(c) {fds_error(message);}fds_next();return 0;}
 fn fds_name() {if fds_kind!=1 || ext_len(fds_token)>63 {fds_error("FlexDB schema: expected identifier (at most 63 bytes)");}let name=fds_token;fds_next();return name;}
 fn fds_join(a,b) {let n=ext_len(a);let m=ext_len(b);let p=alloc(n+m+1);ext_copy(p,a,n);ext_copy(p+n,b,m);return p;}
-fn fds_register(name) {let p=fds_names;while p {if ext_equal(load64(p),name) {fds_error("FlexDB schema: duplicate generated name");}p=load64(p+8);}let node=alloc(16);store64(node,name);store64(node+8,fds_names);fds_names=node;return 0;}
+// A sparse bounded registry avoids quadratic name comparisons consuming the
+// transformation fuel budget on realistic schemas with hundreds of helpers.
+fn fds_register(name) {let hash=5381;let i=0;while load8(name+i) {hash=(hash*33)^load8(name+i);i=i+1;}let slot=hash&8191;let probes=0;while probes<8192 {let at=fds_names+slot*8;let prior=load64(at);if !prior {store64(at,name);return 0;}if ext_equal(prior,name) {return fds_error("FlexDB schema: duplicate generated name");}slot=(slot+1)&8191;probes=probes+1;}return fds_error("FlexDB schema: generated name registry is full");}
 fn fds_symbol(table,suffix) {return fds_join(fds_join(table,"_"),suffix);}
 fn fds_function(table,suffix) {let name=fds_symbol(table,suffix);fds_register(name);ext_emit("fn ");ext_emit(name);return 0;}
 // Field: name, kind (0 virtual rowid), nullable, column, next, source, converter, default expression.
@@ -109,7 +111,7 @@ fn fds_emit_table(table) {
     fds_function(name,"values");ext_emit("(arena");f=fields;while f {if load64(f+8) {ext_emit(",");fds_argument(load64(f+24));if load64(f+8)==3 && !load64(f+16) {ext_emit(",");fds_argument(load64(f+24));ext_emit("_bytes");}}f=load64(f+32);}ext_emit("){let values=flexdb_values(arena);");f=fields;
     while f {let kind=load64(f+8);if kind {ext_emit("if !flexdb_add(arena,values,");if load64(f+16) {fds_argument(load64(f+24));}else {ext_emit("flexdb_");if kind==1 {ext_emit("int");}else if kind==2 {ext_emit("text");}else if kind==3 {ext_emit("blob");}else {ext_emit("real");}ext_emit("(arena,");fds_argument(load64(f+24));if kind==3 {ext_emit(",");fds_argument(load64(f+24));ext_emit("_bytes");}ext_emit(")");}ext_emit("){return 0;}");}f=load64(f+32);}ext_emit("return values;}\n");
     f=fields;while f {
-        let field_name=load64(f);fds_function(name,field_name);ext_emit("(row){return ");if !load64(f+8) {ext_emit("flexdb_rowid(row)");}else {ext_emit("flexdb_word(flexdb_cell(row,");ext_emit_number(load64(f+24));ext_emit("))");}ext_emit(";}\n");
+        let field_name=load64(f);fds_function(name,field_name);ext_emit("(row){return ");if !load64(f+8) {ext_emit("flexdb_rowid(row)");}else {if load64(f+8)==3 {ext_emit("flexdb_blob_data(flexdb_cell(row,");}else {ext_emit("flexdb_word(flexdb_cell(row,");}ext_emit_number(load64(f+24));ext_emit("))");}ext_emit(";}\n");
         if load64(f+8) {
             fds_function(name,fds_join(field_name,"_column"));ext_emit("(){return ");ext_emit_number(load64(f+24));ext_emit(";}\n");
             fds_function(name,fds_join(field_name,"_value"));ext_emit("(row){return flexdb_cell(row,");ext_emit_number(load64(f+24));ext_emit(");}\n");
@@ -133,12 +135,15 @@ fn fds_database() {
     // global into an illegal global-after-functions declaration.
     ext_edit(fds_module,start,end,"",0);ext_append_output(fds_module);return 0;
 }
+// Ordinary function bodies cannot contain a top-level schema declaration.
+// Skip their raw bytes without allocating a token for every identifier/string.
+// Quotes, escapes and line comments keep braces in literals from ending a body.
+fn fds_skip_body() {let depth=1;while fds_at<fds_size && depth {let c=load8(fds_source+fds_at);fds_at=fds_at+1;if c==34 {let more=1;while fds_at<fds_size && more {let x=load8(fds_source+fds_at);fds_at=fds_at+1;if x==92 && fds_at<fds_size {fds_at=fds_at+1;}else if x==34 {more=0;}}}else if c==47 && fds_at<fds_size && load8(fds_source+fds_at)==47 {while fds_at<fds_size && load8(fds_source+fds_at)!=10 {fds_at=fds_at+1;}}else if c==123 {depth=depth+1;}else if c==125 {depth=depth-1;}}if depth {fds_error("FlexDB schema: unterminated ordinary block");}return 1;}
 fn transform_syntax(context,version) {
-    ext_init(context,version);fds_names=0;fds_tables=0;fds_fields=0;let module=0;
+    ext_init(context,version);fds_names=alloc(65536);fds_tables=0;fds_fields=0;let module=0;
     while module<ext_module_count() {fds_module=module;fds_source=ext_module_text(module);fds_size=ext_module_size(module);fds_at=ext_module_declarations(module);let depth=0;let declaration=1;fds_next();
         while fds_kind {if !depth && declaration && fds_is("database") {fds_database();}else {
-            if fds_char(123) {depth=depth+1;declaration=0;}else if fds_char(125) {depth=depth-1;if !depth {declaration=1;}}
-            else if !depth {declaration=fds_char(59);}fds_next();
+            if fds_char(123) && !depth {fds_skip_body();declaration=1;}else if !depth {declaration=fds_char(59);}fds_next();
         }}module=module+1;
     }return ext_finish();
 }

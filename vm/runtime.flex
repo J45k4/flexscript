@@ -3,6 +3,7 @@ import "jit.flex";
 // uses guest offsets and explicitly granted host capabilities.
 // Bytecode is compiler-owned: 16-byte records (opcode, operand).
 global vm_mode=0;
+global vm_string_size=0;
 global vm_restricted=0;
 global vm_heap=0;
 global vm_heap_limit=16777216;
@@ -137,7 +138,7 @@ fn vm_string_literal() {
         }
         store8(bytes+n,c);n=n+1;
     }
-    store8(bytes+n,0);return address;
+    vm_string_size=n+1;store8(bytes+n,0);return address;
 }
 fn vm_ffi_kind(name,size) {
     if equal(name,size,"ffi_open",8) {return 7;}
@@ -154,7 +155,11 @@ fn vm_resolve() {
         let site=calls+i*32;let index=find(functions,function_count,load64(site),load64(site+8));
         let at=load64(site+16);
         if index>=0 {
-            if load64(functions+index*32+24)!=load64(site+24) {locate_name(load64(site));fail("wrong function argument count");}
+            if load64(functions+index*32+24)!=load64(site+24) {
+                locate_name(load64(site));
+                if native_ir_target {let previous=vm_mode;vm_mode=0;let binding=lowering_lookup(load64(site),load64(site+8),0);vm_mode=previous;if binding {fail("wrong lowering function arity");}}
+                fail("wrong function argument count");
+            }
             store64(output+at,index);
         }else {
             let kind=vm_ffi_kind(load64(site),load64(site+8));
@@ -165,7 +170,7 @@ fn vm_resolve() {
         }
         i=i+1;
     }
-    return 0;
+    ir_optimize();return 0;
 }
 fn vm_push(value) {
     if vm_sp>=524288 {vm_error=4;return 0;}
@@ -423,7 +428,7 @@ fn vm_prefix(text,prefix) {return equal(text,length(prefix),prefix,length(prefix
 fn vm_help(fd) {
     print(fd,"Usage: flexscript run [options] <source> [args...]\n");
     print(fd,"  --language NAME      flex, seta or ir (.seta is detected automatically)\n  --frontend PATH      run a Flexscript frontend extension in a bounded VM\n");
-    print(fd,"  --interpret          bytecode interpreter only\n  --jit                compile eligible functions on first call\n  --stats              report interpreter/JIT counters\n");
+    print(fd,"  --interpret          bytecode interpreter only\n  --jit                compile eligible functions on first call\n  --stats              report IR and interpreter/JIT counters\n  --ir-opt MODE        basic (default) or none; also --ir-opt=MODE\n");
     print(fd,"  --fuel=N             instruction budget (default 10000000)\n  --memory=N           guest heap bytes; k/m suffixes accepted (default 16m)\n  --timeout-ms=N       execution deadline (default 5000)\n");
     print(fd,"  --restricted        use isolated guest memory and capability-limited host calls\n");
     print(fd,"  --platform PATH      link a trusted Flexscript module for frontend extern functions (repeatable)\n");
@@ -468,6 +473,8 @@ fn vm_main(argc,argv) {
         if up_text(arg,"--interpret") {vm_jit_enabled=0;}
         else if up_text(arg,"--jit") {vm_jit_enabled=1;vm_jit_explicit=1;vm_jit_threshold=1;}
         else if up_text(arg,"--stats") {vm_show_stats=1;}
+        else if up_text(arg,"--ir-opt") {first=first+1;if first>=argc {vm_help(2);return 1;}ir_opt_select(load64(argv+first*8));}
+        else if vm_prefix(arg,"--ir-opt=") {ir_opt_select(arg+9);}
         else if up_text(arg,"--restricted") {vm_restricted=1;}
         else if up_text(arg,"--allow-stdin") {vm_stdin=1;}
         else if up_text(arg,"--allow-url-imports") {imports=1;}
@@ -526,6 +533,7 @@ fn vm_main(argc,argv) {
     if vm_read_root>=0 {syscall(3,vm_read_root,0,0,0,0,0);}
     vm_jit_cleanup();
     if vm_show_stats {
+        ir_opt_stats();
         print(2,"VM steps: ");print_number(vm_steps);print(2,"; JIT compilations: ");print_number(vm_jit_compilations);
         print(2,"; JIT calls: ");print_number(vm_jit_calls);print(2,"; fuel remaining: ");print_number(vm_fuel);print(2,"\n");
     }

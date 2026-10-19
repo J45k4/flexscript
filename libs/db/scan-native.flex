@@ -15,7 +15,7 @@ fn fd_scan_jump(code,state,op,label) {
 fn fd_scan_patch(code,at,target) {let rel=target-at-4;let i=0;while i<4 {store8(code+at+i,(rel>>(i*8))&255);i=i+1;}return 1;}
 fn fd_scan_crc_call(code,state) {fd_crc_hex(code,state,"498b4c245841ff54245035ffffffff");return 1;}
 fn fd_scan_native(t,col) {
- if fd_crc_code<=0 {return 0;}let columns=load64(t+16);let count=fd_size(columns);if count<1 || count>64 {return 0;}let required=0;let i=0;
+ if fd_crc_code<=0 {return 0;}let columns=load64(t+16);let count=fd_size(columns);let blob_column=0;while blob_column<count {if load64(fd_at(columns,blob_column)+8)==3 {let state=load64(load64(t)+232);if state && load64(state+80) {return 0;}}blob_column=blob_column+1;}if count<1 || count>64 {return 0;}let required=0;let i=0;
  while i<count {let c=fd_at(columns,i);let kind=load64(c+8);let nullable=load64(c+16);if kind<1 || kind>4 || nullable<0 || nullable>1 {return 0;}if !nullable {required=required|(1<<i);}i=i+1;}
  let code=alloc(16384);if code<=0 {return 0;}let a=alloc(32);if a<=0 {syscall(11,code,16384,0,0,0,0);return 0;}let state=fd_alloc(a,24);store64(state+16,a);store64(state+8,fd_vec(a));let labels=fd_alloc(a,72);
  fd_crc_hex(code,state,"555341544155415641574883ec084989fc4531ed");let loop=load64(state);

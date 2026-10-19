@@ -83,6 +83,7 @@ fn tx_vm_reset() {
     if !vm_initialize() {fail("cannot initialize transformation VM");}return 0;
 }
 fn tx_child(fd,path,config,request_module,phase) {
+    native_ir_target=0;output_limit=67108864;
     baremetal_target=0;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;cpu_cxx_target=0;frontend_language=0;
     tx_inside=1;tx_vm_reset();
     if phase {

@@ -94,7 +94,9 @@ fn suite(compiler) {
     t_reject(t_fixture,h_join(t_work,"invalid"),"source must be smaller");
     h_reset(mark);
     mark=h_mark();
-    t_program(h_cat3("fn main(){",h_repeat("1;",6711000),"}"));
+    // Tiny constants can use five-byte MOVs. Keep the source below 16 MiB
+    // while exceeding the 64 MiB output bound even with compact instructions.
+    t_program(h_cat3("fn main(){",h_repeat("alloc(1);",1700000),"}"));
     t_reject(t_fixture,h_join(t_work,"invalid"),"output exceeds");
     h_reset(mark);
     t_program("fn main(){return 42;}\n");

@@ -1,6 +1,21 @@
 // Focused native resident leaf checks against the established portable FP32 kernels.
 import "../libs/ml/llm/pup.flex";
 import "../libs/os/gpu/build-lib.flex";
+// Threading either inner arm through the outer loop backedge bypasses RDNA
+// execution-mask restoration. The scalar CFG is equivalent, GPU lanes are not.
+fn resident_control_test(compiler) {
+ let dir="build/llm/resident-leaves";let fixture=h_cat(dir,"/control.flex");
+ h_save(fixture,"fn kernel(i,input,output,count){let running=1;let n=0;let value=0;while running{if n>=4{running=0;}else{n=n+1;if i&1{value=value+3;}else{value=value+7;}}}store64(output+i*8,value);return 0;}");
+ let total=1025;let bytes=(total+1)*8;let out=h_take(bytes);let yp=lm_alloc(bytes);let mode=0;
+ while mode<2 {let name="none";if mode {name="basic";}let image=h_cat3(dir,"/control-",h_cat(name,".hsaco"));
+  let args=h_args(compiler,"--target","rdna-gfx1201","--ir-opt",name,fixture);h_add(args,"-o");h_add(args,image);h_ok(args);
+  let module=device_module(h_read(image));lm_check(device_status);let i=0;while i<=total {store64(out+i*8,0x123456789abcdef0);i=i+1;}
+  lm_check(device_upload(yp,out,bytes));lm_check(device_launch(module,0,yp,total));lm_check(device_download(out,yp,bytes));
+  i=0;while i<total {let expected=28;if i&1 {expected=12;}h_assert(load64(out+i*8)==expected,h_cat("resident divergent loop mismatch at ",h_int(i)));i=i+1;}
+  h_assert(load64(out+total*8)==0x123456789abcdef0,"resident control wrote beyond count");lm_check(device_unload(module));mode=mode+1;
+ }
+ h_print(1,"Native control: 2050 divergent-loop values, both IR modes and guards pass\n");return 0;
+}
 fn resident_attention_test(compiler){let dir="build/llm/resident-leaves";h_mkdir(dir);
  let source=h_buffer();h_text(source,h_cat3("import \"",h_real("libs/ml/llm/kernels/common-f16.flex"),"\";"));h_text(source,h_cat3("import \"",h_real("lib/rdna.flex"),"\";"));h_text(source,"fn os_word(step,i){return gpu_load_u64(step+16+i*8);}");h_text(source,gb_model("attention","libs/ml/llm/kernels/attention.flex",0));
  let common=h_data(source);let fixture=h_cat3(dir,"/","attention-native.flex");
@@ -97,5 +112,5 @@ fn resident_stage_head_test(compiler) {
  i=total;while i<total+8 {h_assert(gpu_load_u32(y+i*4)==0x7fc12345,"head RMS overwrote guard");i=i+1;}lm_check(device_unload(module));h_print(1,"Native stage head RMS: 33 rows, repeated full-block calls, caller registers and guards pass\n");return 0;
 }
 fn main(argc,argv) {
- h_environment(argc,argv);let compiler=b_option(argc,argv,"--compiler",lm_default_compiler());h_mkdir("build/llm/resident-leaves");lm_select_backend("rdna");lm_context=device_context_device(0);lm_check(device_status);lm_buffers=h_vec();resident_attention_test(compiler);resident_elements_test(compiler);resident_rope_test(compiler);resident_stage_rms_test(compiler);resident_stage_head_test(compiler);let i=0;while i<h_count(lm_buffers){lm_check(device_free(h_at(lm_buffers,i)));i=i+1;}lm_check(device_close(lm_context));return 0;
+ h_environment(argc,argv);let compiler=b_option(argc,argv,"--compiler",lm_default_compiler());h_mkdir("build/llm/resident-leaves");lm_select_backend("rdna");lm_context=device_context_device(0);lm_check(device_status);lm_buffers=h_vec();resident_control_test(compiler);resident_attention_test(compiler);resident_elements_test(compiler);resident_rope_test(compiler);resident_stage_rms_test(compiler);resident_stage_head_test(compiler);let i=0;while i<h_count(lm_buffers){lm_check(device_free(h_at(lm_buffers,i)));i=i+1;}lm_check(device_close(lm_context));return 0;
 }

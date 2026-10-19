@@ -19,7 +19,7 @@ fn flexdb_scan(q,t) {
 fn fd_compare(a,b) {
     let kind=load64(a);if kind==1 {let x=load64(a+8);let y=load64(b+8);if x<y {return -1;}return x>y;}
     if kind==4 {let x=load64(a+8);let y=load64(b+8);if f64_is_nan(x) || f64_is_nan(y) {return 2;}if f64_lt(x,y) {return -1;}return f64_gt(x,y);}
-    let n=load64(a+16);let m=load64(b+16);let i=0;while i<n && i<m {let x=load8(load64(a+8)+i);let y=load8(load64(b+8)+i);if x<y {return -1;}if x>y {return 1;}i=i+1;}if n<m {return -1;}return n>m;
+    let n=flexdb_bytes(a);let m=flexdb_bytes(b);let ap=load64(a+8);let bp=load64(b+8);if kind==3 {ap=flexdb_blob_data(a);bp=flexdb_blob_data(b);if !ap || !bp {return 2;}}let i=0;while i<n && i<m {let x=load8(ap+i);let y=load8(bp+i);if x<y {return -1;}if x>y {return 1;}i=i+1;}if n<m {return -1;}return n>m;
 }
 fn flexdb_eq() {return 0;}
 fn flexdb_ne() {return 1;}
@@ -35,13 +35,13 @@ fn fd_matches(a,op,b) {
 fn flexdb_where(q,input,column,op,value) {
     let db=load64(q+24);if !input || !value || column<0 || column>=load64(input) || op<0 || op>5 {fd_error(db,"invalid filter");return 0;}
     if load64(value) && load64(value)!=fd_at(load64(input+16),column) {fd_error(db,"filter type mismatch");return 0;}
-    let result=fd_relation(q,load64(input+16));let i=0;while i<flexdb_count(input) {let row=flexdb_at(input,i);if fd_matches(flexdb_cell(row,column),op,value) {fd_push(q,load64(result+8),row);}i=i+1;}return result;
+    let result=fd_relation(q,load64(input+16));let i=0;while i<flexdb_count(input) {let row=flexdb_at(input,i);if fd_matches(flexdb_cell(row,column),op,value) {fd_push(q,load64(result+8),row);}i=i+1;}if load64(db+48)==2 {return 0;}return result;
 }
 fn flexdb_where_null(q,input,column,is_null) {
     if !input || column<0 || column>=load64(input) {fd_error(load64(q+24),"invalid null filter");return 0;}
     let result=fd_relation(q,load64(input+16));let i=0;while i<flexdb_count(input) {let row=flexdb_at(input,i);if (!load64(flexdb_cell(row,column)))==(is_null!=0) {fd_push(q,load64(result+8),row);}i=i+1;}return result;
 }
-fn fd_join_hash(v) {let kind=load64(v);let word=load64(v+8);if kind==1 {return fd_auto_hash(1,word);}if kind==4 {if !(word&0x7fffffffffffffff) {word=0;}return fd_auto_hash(1,word);}return fd_hash_bytes(word,load64(v+16));}
+fn fd_join_hash(v) {let kind=load64(v);let word=load64(v+8);if kind==1 {return fd_auto_hash(1,word);}if kind==4 {if !(word&0x7fffffffffffffff) {word=0;}return fd_auto_hash(1,word);}if kind==3 {word=flexdb_blob_data(v);if !word {return 0;}}return fd_hash_bytes(word,flexdb_bytes(v));}
 // Hash the right relation; reverse insertion preserves its existing row order.
 fn flexdb_join(q,left,lcol,right,rcol) {
     let db=load64(q+24);if !left || !right || lcol<0 || lcol>=load64(left) || rcol<0 || rcol>=load64(right) {fd_error(db,"invalid join columns");return 0;}
@@ -52,7 +52,7 @@ fn flexdb_join(q,left,lcol,right,rcol) {
     i=0;while i<flexdb_count(left) {let l=flexdb_at(left,i);let value=flexdb_cell(l,lcol);if load64(value) {let node=load64(heads+(fd_join_hash(value)&(cap-1))*8);while node {let r=load64(node);
         if fd_matches(value,0,flexdb_cell(r,rcol)) {let row=fd_alloc(q,16+load64(result)*8);store64(row,0);store64(row+8,load64(result));fd_copy(row+16,l+16,load64(l+8)*8);fd_copy(row+16+load64(l+8)*8,r+16,load64(r+8)*8);fd_push(q,load64(result+8),row);}node=load64(node+8);}}
         i=i+1;
-    }return result;
+    }if load64(db+48)==2 {return 0;}return result;
 }
 fn flexdb_project(q,input,columns) {
     if !input || fd_size(columns)<1 {fd_error(load64(q+24),"empty projection");return 0;}let types=fd_vec(q);let i=0;

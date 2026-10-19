@@ -27,12 +27,18 @@ fn main(argc,argv) {
     seed=h_real(seed);
     let core_source=h_join(out,"core.flex");
     h_save(core_source,b_flatten(1));
-    let core=h_join(out,"core");
+    let core=h_join(out,"core-seed");
     h_compile(seed,core_source,core);
     h_elf(core,1);
     let rebuilt=h_join(out,"core-rebuilt");
     h_compile(core,core_source,rebuilt);
-    h_assert(h_equal(h_sha(core),h_sha(rebuilt)),"core self rebuild differs");
+    // An older seed can emit different instructions after an optimizer change.
+    // Require the new emitter to reach a fixed point, independently of the seed.
+    let core_seed_sha=h_sha(core);
+    let stable=h_join(out,"core");
+    h_compile(rebuilt,core_source,stable);
+    h_assert(h_equal(h_sha(rebuilt),h_sha(stable)),"core stages 2 and 3 differ");
+    core=stable;h_elf(core,1);
     let stages=h_vec();
     let compiler=core;
     let i=1;
@@ -64,6 +70,7 @@ fn main(argc,argv) {
     }
     j_set(report,"stages",hashes);
     j_set(report,"core_sha256",j_string(h_sha(core)));
+    j_set(report,"core_seed_sha256",j_string(core_seed_sha));
     let harness=h_join(out,"test-harness");
     h_compile(compiler,"scripts/test-harness.flex",harness);
     h_print(1,h_out(h_ok(h_args(harness,"--report",h_join(out,"harness-tests.json"),0,0,0))));

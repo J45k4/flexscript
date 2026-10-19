@@ -1,0 +1,137 @@
+{
+  "binary_sha256": "10c19301b56a1c81ab17d5d88f62a8cba9171951c4b96400e87b64ffbebde6c4",
+  "query": "msg like \"needle-not-in-fixture-6723\"",
+  "runs": [
+    {
+      "result": {
+        "matched": 0,
+        "scanned": 5000000,
+        "segments_read": 180,
+        "segments_skipped": 0,
+        "segments_counted": 0,
+        "decoded_bytes": 1363298960,
+        "elapsed_ns": 1538111975
+      },
+      "wait4_peak_rss_kib": 19348,
+      "vmhwm_kib": 3888,
+      "sampled_rss_kib": 3888,
+      "sampled_anon_kib": 1436,
+      "sampled_file_kib": 2452,
+      "samples": 709,
+      "native_codec": false,
+      "round": 1
+    },
+    {
+      "result": {
+        "matched": 0,
+        "scanned": 5000000,
+        "segments_read": 180,
+        "segments_skipped": 0,
+        "segments_counted": 0,
+        "decoded_bytes": 1363298960,
+        "elapsed_ns": 1608997041
+      },
+      "wait4_peak_rss_kib": 19732,
+      "vmhwm_kib": 3424,
+      "sampled_rss_kib": 3424,
+      "sampled_anon_kib": 1332,
+      "sampled_file_kib": 2092,
+      "samples": 743,
+      "native_codec": true,
+      "round": 1
+    },
+    {
+      "result": {
+        "matched": 0,
+        "scanned": 5000000,
+        "segments_read": 180,
+        "segments_skipped": 0,
+        "segments_counted": 0,
+        "decoded_bytes": 1363298960,
+        "elapsed_ns": 1610396861
+      },
+      "wait4_peak_rss_kib": 19732,
+      "vmhwm_kib": 3424,
+      "sampled_rss_kib": 3424,
+      "sampled_anon_kib": 1332,
+      "sampled_file_kib": 2092,
+      "samples": 743,
+      "native_codec": true,
+      "round": 2
+    },
+    {
+      "result": {
+        "matched": 0,
+        "scanned": 5000000,
+        "segments_read": 180,
+        "segments_skipped": 0,
+        "segments_counted": 0,
+        "decoded_bytes": 1363298960,
+        "elapsed_ns": 1544086294
+      },
+      "wait4_peak_rss_kib": 19732,
+      "vmhwm_kib": 3888,
+      "sampled_rss_kib": 3888,
+      "sampled_anon_kib": 1436,
+      "sampled_file_kib": 2452,
+      "samples": 714,
+      "native_codec": false,
+      "round": 2
+    },
+    {
+      "result": {
+        "matched": 0,
+        "scanned": 5000000,
+        "segments_read": 180,
+        "segments_skipped": 0,
+        "segments_counted": 0,
+        "decoded_bytes": 1363298960,
+        "elapsed_ns": 1548581725
+      },
+      "wait4_peak_rss_kib": 19732,
+      "vmhwm_kib": 3892,
+      "sampled_rss_kib": 3892,
+      "sampled_anon_kib": 1440,
+      "sampled_file_kib": 2452,
+      "samples": 716,
+      "native_codec": false,
+      "round": 3
+    },
+    {
+      "result": {
+        "matched": 0,
+        "scanned": 5000000,
+        "segments_read": 180,
+        "segments_skipped": 0,
+        "segments_counted": 0,
+        "decoded_bytes": 1363298960,
+        "elapsed_ns": 1611408957
+      },
+      "wait4_peak_rss_kib": 19732,
+      "vmhwm_kib": 3420,
+      "sampled_rss_kib": 3420,
+      "sampled_anon_kib": 1332,
+      "sampled_file_kib": 2088,
+      "samples": 744,
+      "native_codec": true,
+      "round": 3
+    }
+  ],
+  "summary": {
+    "C": {
+      "median_seconds": 1.544086294,
+      "peak_vmhwm_kib": 3892
+    },
+    "native": {
+      "median_seconds": 1.610396861,
+      "peak_vmhwm_kib": 3424
+    }
+  },
+  "date": "2026-10-19",
+  "affinity_cpu": 3,
+  "compiler_sha256": "fe15ab216a1d1f6491706699d21e6b7e02de35a0a1863928a0c41f43184f17c9",
+  "database": "/home/teppo/Work/puppylog/workdir/flex/benchmark-happo6cs/level-1.flexdb",
+  "database_bytes": 215199240,
+  "database_sha256": "65dc95e398db8c20f008a3ab6a8208219054a137d30d72796a36bb392f812fcc",
+  "method": "One warmup per backend, then three alternating paired runs pinned to CPU 3; same existing database and query. The process reports elapsed query time and VmHWM. Includes parsing, checksums, reads and per-reader decoder construction, unlike warmed codec throughput."
+}

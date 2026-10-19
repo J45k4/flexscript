@@ -1,13 +1,15 @@
 // FlexDB: embedded relational storage, queried through ordinary function calls.
 import "memory.flex";
 import "storage.flex";
+import "blob.flex";
 import "query.flex";
 import "reconcile.flex";
 import "checkpoint.flex";
 import "autoindex.flex";
 // DB (256 bytes): arena, fd, error, tables, state, end, sequence,
 // transaction arena/buffer/snapshots, original table count, operation count.
-// Table: db, name, columns, rows (ordered stable IDs, including tombstones), next ID, active, ordinal.
+// Table (144 bytes): db, name, columns, rows, next ID, active, ordinal;
+// checkpoint/index state through +120, conservative blob-schema flag at +128.
 fn fd_ready(db) {if !db || load64(db+24)<0 || load64(db+48)==2 {return fd_error(db,"database is unavailable; close and reopen");}return 1;}
 fn fd_writing(db) {if !fd_ready(db) {return 0;}if load64(db+48)!=1 {return fd_error(db,"mutation requires flexdb_begin");}return 1;}
 fn open_flexdb(path) {
@@ -17,7 +19,7 @@ fn open_flexdb(path) {
 }
 fn close_flexdb(db) {
     if !db {return 0;}let ok=1;if !load64(db+48) && (load64(db+56)-load64(db+152)>=65536 || load64(db+224)>=2) {ok=flexdb_checkpoint(db);if !ok && !load64(db+48) {ok=1;}}if load64(db+72) {fd_clear(load64(db+72));syscall(11,load64(db+72),32,0,0,0,0);}
-    fd_tx_cache_close(db);fd_query_cache_close(db);fd_cp_cache_close(db);fd_auto_close(db);if load64(db+24)>=0 {syscall(3,load64(db+24),0,0,0,0,0);}if load64(db+128) {syscall(11,load64(db+128),load64(db+136),0,0,0,0);}fd_clear(db);syscall(11,db,256,0,0,0,0);return ok;
+    fd_blob_close(db);fd_tx_cache_close(db);fd_query_cache_close(db);fd_cp_cache_close(db);fd_auto_close(db);if load64(db+24)>=0 {syscall(3,load64(db+24),0,0,0,0,0);}if load64(db+128) {syscall(11,load64(db+128),load64(db+136),0,0,0,0);}fd_clear(db);syscall(11,db,256,0,0,0,0);return ok;
 }
 fn flexdb_begin(db) {
     if !fd_ready(db) {return 0;}if load64(db+48) {return fd_error(db,"transaction already active");}
@@ -33,6 +35,7 @@ fn fd_tx_prepare(db) {
 }
 fn fd_tx_cache_close(db) {let a=load64(db+216);if a {fd_clear(a);syscall(11,a,32,0,0,0,0);store64(db+216,0);}return 1;}
 fn fd_end_transaction(db) {
+    fd_blob_rollback(db);
     let a=load64(db+72);if a {let p=load64(a);if p && !load64(p) && load64(p+8)<=65536 && !load64(db+216) {store64(a+8,0);store64(db+216,a);}else {fd_clear(a);syscall(11,a,32,0,0,0,0);}}
     store64(db+72,0);store64(db+80,0);store64(db+88,0);store64(db+112,0);store64(db+120,0);store64(db+248,0);store64(db+48,0);return 1;
 }
@@ -42,7 +45,7 @@ fn flexdb_rollback(db) {
     let tables=load64(db+40);i=load64(db+96);while i<fd_size(tables) {store64(fd_at(tables,i)+40,0);i=i+1;}store64(tables,load64(db+96)*8);return fd_end_transaction(db);
 }
 fn flexdb_commit(db) {
-    if !fd_writing(db) {return 0;}if !load64(db+104) {return fd_end_transaction(db);}if load64(db+104) {store64(load64(load64(db+80)+16),load64(db+104));if !fd_write_transaction(db) {return 0;}}
+    if !fd_writing(db) {return 0;}if !load64(db+104) {return fd_end_transaction(db);}if load64(db+104) {store64(load64(load64(db+80)+16),load64(db+104));if !fd_blob_write_pending(db) || !fd_write_transaction(db) {return 0;}fd_blob_publish(db);}
     if !fd_auto_commit(db) {return 0;}return fd_end_transaction(db);
 }
 fn flexdb_schema(db) {if !fd_ready(db) {return 0;}return fd_vec(db);}
@@ -54,8 +57,8 @@ fn flexdb_column(db,schema,name,kind,nullable) {
 }
 fn flexdb_table(db,name) {if !fd_ready(db) {return 0;}let v=load64(db+40);let i=0;while i<fd_size(v) {let t=fd_at(v,i);if fd_same(load64(t+8),name) {return t;}i=i+1;}return 0;}
 fn fd_table_new(db,name,columns) {
-    let t=fd_alloc(db,128);store64(t,db);store64(t+8,fd_text(db,name));let schema=fd_vec(db);let i=0;
-    while i<fd_size(columns) {let c=fd_at(columns,i);let copy=fd_alloc(db,24);store64(copy,fd_text(db,load64(c)));store64(copy+8,load64(c+8));store64(copy+16,load64(c+16));fd_push(db,schema,copy);i=i+1;}
+    let t=fd_alloc(db,144);store64(t,db);store64(t+8,fd_text(db,name));let schema=fd_vec(db);let i=0;
+    while i<fd_size(columns) {let c=fd_at(columns,i);let copy=fd_alloc(db,24);store64(copy,fd_text(db,load64(c)));store64(copy+8,load64(c+8));store64(copy+16,load64(c+16));fd_push(db,schema,copy);if load64(c+8)==3 {store64(t+128,1);}i=i+1;}
     store64(t+16,schema);store64(t+24,fd_vec(db));store64(t+32,1);store64(t+40,1);store64(t+48,fd_size(load64(db+40)));fd_push(db,load64(db+40),t);return t;
 }
 fn fd_table_id(t) {return load64(t+48);}
@@ -92,21 +95,21 @@ fn fd_check_values(t,values) {
 fn fd_check_columns(db,columns,values) {
     if fd_size(values)!=fd_size(columns) {return fd_error(db,"row does not match column count");}
     let i=0;while i<fd_size(values) {let v=fd_at(values,i);let c=fd_at(columns,i);if !v {return fd_error(db,"invalid value");}let kind=load64(v);
-        if (kind==0 && !load64(c+16)) || (kind!=0 && kind!=load64(c+8)) || ((kind==2 || kind==3) && (load64(v+16)<0 || load64(v+16)>1048576)) {return fd_error(db,"row value does not match column type/nullability");}i=i+1;}return 1;
+        if (kind==0 && !load64(c+16)) || (kind!=0 && kind!=load64(c+8)) || ((kind==2 && (load64(v+16)<0 || load64(v+16)>1048576)) || (kind==3 && !fd_blob_value_ok(db,v,kind,load64(v+16)))) {return fd_error(db,"row value does not match column type/nullability");}i=i+1;}return 1;
 }
 fn fd_row_undo(db,rows,index) {let a=load64(db+72);let entry=fd_alloc(a,24);store64(entry,rows);store64(entry+8,index);store64(entry+16,fd_at(rows,index));fd_push(a,load64(db+112),entry);return 1;}
 // Consecutive inserts share a schema-typed batch header instead of repeating
 // table/row/column metadata per record. Updates retain the original encoding.
 fn fd_upsert(t,id,values,index) {
-    let db=load64(t);let columns=load64(t+16);let count=fd_size(values);if count!=fd_size(columns) {return fd_error(db,"row does not match column count");}
+    let db=load64(t);if load64(t+128) {if !fd_check_values(t,values) {return 0;}values=fd_blob_values(db,values);if !values {return 0;}}let columns=load64(t+16);let count=fd_size(values);if count!=fd_size(columns) {return fd_error(db,"row does not match column count");}
     let batch=0;let tid=fd_table_id(t);let b=load64(db+80);
     if index<0 && load64(db+120) {let at=load64(db+120)-1;let header=load64(b+16)+at;if load64(header)==5 && load64(header+8)==tid && load64(header+16)+load64(header+24)==id {batch=at+1;}}
     let n=32+count*16;let mask=0;if index<0 {n=8;if !batch {n=n+32;}}
     let row_bytes=16+count*32;let i=0;
     while i<count {let v=fd_at(values,i);let c=fd_at(columns,i);if !v {return fd_error(db,"invalid value");}let kind=load64(v);
-        if (kind==0 && !load64(c+16)) || (kind!=0 && kind!=load64(c+8)) || ((kind==2 || kind==3) && (load64(v+16)<0 || load64(v+16)>1048576)) {return fd_error(db,"row value does not match column type/nullability");}
+        if (kind==0 && !load64(c+16)) || (kind!=0 && kind!=load64(c+8)) || ((kind==2 && (load64(v+16)<0 || load64(v+16)>1048576)) || (kind==3 && !fd_blob_value_ok(db,v,kind,load64(v+16)))) {return fd_error(db,"row value does not match column type/nullability");}
         if index<0 {if kind==0 {mask=mask|(1<<i);}else {n=n+8;}}
-        if kind==2 || kind==3 {let size=load64(v+16);n=n+size;row_bytes=row_bytes+((size+8)&(-8));}i=i+1;
+        if kind==3 && load64(v+16)<0 {n=n+40;}else if kind==2 || kind==3 {let size=load64(v+16);n=n+size;row_bytes=row_bytes+((size+8)&(-8));}i=i+1;
     }
     if !fd_command(db,n) {return 0;}b=load64(db+80);let used=load64(b);let p=load64(b+16)+used;let row=fd_alloc(db,row_bytes);store64(row,id);store64(row+8,count);let payload=row+16+count*32;
     if index<0 {
@@ -115,7 +118,7 @@ fn fd_upsert(t,id,values,index) {
     }else {store64(p,2);store64(p+8,tid);store64(p+16,id);store64(p+24,count);p=p+32;}i=0;
     while i<count {let v=fd_at(values,i);let kind=load64(v);let copy=row+16+count*8+i*24;store64(row+16+i*8,copy);store64(copy,kind);
         if index>=0 {store64(p,kind);p=p+8;}
-        if kind==2 || kind==3 {let bytes=load64(v+16);store64(p,bytes);fd_copy(p+8,load64(v+8),bytes);p=p+8+bytes;fd_copy(payload,load64(v+8),bytes);store8(payload+bytes,0);store64(copy+8,payload);store64(copy+16,bytes);payload=payload+((bytes+8)&(-8));}
+        if kind==3 && load64(v+16)<0 {p=p+fd_blob_encode(p,v);store64(copy+8,load64(v+8));store64(copy+16,load64(v+16));}else if kind==2 || kind==3 {let bytes=load64(v+16);store64(p,bytes);fd_copy(p+8,load64(v+8),bytes);p=p+8+bytes;fd_copy(payload,load64(v+8),bytes);store8(payload+bytes,0);store64(copy+8,payload);store64(copy+16,bytes);payload=payload+((bytes+8)&(-8));}
         else {let word=load64(v+8);if index>=0 || kind {store64(p,word);p=p+8;}store64(copy+8,word);store64(copy+16,0);}i=i+1;
     }
     let before=0;if index>=0 {before=fd_at(load64(t+24),index);}fd_auto_event(t,id,before,row);store64(b,used+n);if index<0 {fd_push(db,load64(t+24),row);store64(t+32,id+1);if !batch {fd_logged(db);batch=used+1;}store64(db+120,batch);}else {fd_row_undo(db,load64(t+24),index);fd_put(load64(t+24),index,row);fd_logged(db);}return id;
@@ -131,7 +134,7 @@ fn fd_read_word(r) {let at=load64(r+8);if at>load64(r+16)-8 {store64(r+24,0);ret
 fn fd_read_bytes(db,r,n) {let at=load64(r+8);if n<0 || n>1048576 || n>load64(r+16)-at {store64(r+24,0);return "";}let p=fd_alloc(db,n+1);fd_copy(p,load64(r)+at,n);store8(p+n,0);store64(r+8,at+n);return p;}
 fn fd_read_name(db,r) {let n=fd_read_word(r);let p=fd_read_bytes(db,r,n);if n<1 || n>255 || fd_len(p)!=n {store64(r+24,0);}return p;}
 // One bounded scratch value set per frame; fd_row copies before it is reused.
-fn fd_decode_values(r,count,columns,mask) {
+fn fd_decode_values(db,r,count,columns,mask) {
     let values=r+40;store64(values,count*8);store64(values+8,512);store64(values+16,r+64);let j=0;
     while j<count && load64(r+24) {
         let kind=0;let word=0;
@@ -139,12 +142,13 @@ fn fd_decode_values(r,count,columns,mask) {
         else {kind=fd_read_word(r);word=fd_read_word(r);}
         if kind<0 || kind>4 || (kind==0 && word!=0) {store64(r+24,0);return 0;}
         let v=r+576+j*24;store64(v,kind);store64(v+16,0);
-        if kind==2 || kind==3 {let at=load64(r+8);if word<0 || word>1048576 || word>load64(r+16)-at {store64(r+24,0);return 0;}store64(v+8,load64(r)+at);store64(v+16,word);store64(r+8,at+word);}
+        if kind==3 && word<0 {if !load64(r+32) {store64(r+24,0);return 0;}let d=fd_blob_decode(db,r,word);if !d {store64(r+24,0);return 0;}store64(v+8,d);store64(v+16,word);}else if kind==2 || kind==3 {let at=load64(r+8);if word<0 || word>1048576 || word>load64(r+16)-at {store64(r+24,0);return 0;}store64(v+8,load64(r)+at);store64(v+16,word);store64(r+8,at+word);}
         else {store64(v+8,word);}fd_put(values,j,v);j=j+1;
     }return values;
 }
-fn fd_replay(db,p,n) {
-    let r=fd_alloc(db,2112);store64(r,p);store64(r+8,0);store64(r+16,n);store64(r+24,1);let ops=fd_read_word(r);if ops<1 || ops>n/16 {return 0;}
+fn fd_replay(db,p,n) {return fd_replay_version(db,p,n,0);}
+fn fd_replay_version(db,p,n,external) {
+    let r=fd_alloc(db,2112);store64(r,p);store64(r+8,0);store64(r+16,n);store64(r+24,1);store64(r+32,external);let ops=fd_read_word(r);if ops<1 || ops>n/16 {return 0;}
     let i=0;while i<ops && load64(r+24) {
         let op=fd_read_word(r);let tid=fd_read_word(r);let tables=load64(db+40);
         if op==1 {
@@ -156,14 +160,14 @@ fn fd_replay(db,p,n) {
             if tid<0 || tid>=fd_size(tables) {return 0;}let t=fd_at(tables,tid);let id=fd_read_word(r);if id<=0 || id>=9223372036854775807 {return 0;}let index=fd_row_index(t,id);
             if op==3 {let before=flexdb_get(t,id);if !before {return 0;}let row=fd_alloc(db,16);store64(row,id);store64(row+8,0);fd_put(load64(t+24),index,row);if !fd_auto_change(t,id,before,row) {return 0;}}
             else {
-                let count=fd_read_word(r);if count!=fd_size(load64(t+16)) {return 0;}let values=fd_decode_values(r,count,0,0);
+                let count=fd_read_word(r);if count!=fd_size(load64(t+16)) {return 0;}let values=fd_decode_values(db,r,count,0,0);
                 if load64(r+24) {if !fd_check_values(t,values) {return 0;}let row=fd_row(db,id,values);let before=0;if index<0 {if id!=load64(t+32) {return 0;}fd_push(db,load64(t+24),row);store64(t+32,id+1);}else {before=flexdb_get(t,id);if !before {return 0;}fd_put(load64(t+24),index,row);}if !fd_auto_change(t,id,before,row) {return 0;}}
             }
         }else if op==5 {
             if tid<0 || tid>=fd_size(tables) {return 0;}let t=fd_at(tables,tid);let first=fd_read_word(r);let count=fd_read_word(r);
             if first!=load64(t+32) || count<1 || count>(load64(r+16)-load64(r+8))/8 || first>9223372036854775807-count {return 0;}
             let columns=load64(t+16);let cells=fd_size(columns);let k=0;while k<count && load64(r+24) {
-                let mask=fd_read_word(r);if cells<64 && (mask>>cells)!=0 {return 0;}let values=fd_decode_values(r,cells,columns,mask);
+                let mask=fd_read_word(r);if cells<64 && (mask>>cells)!=0 {return 0;}let values=fd_decode_values(db,r,cells,columns,mask);
                 if load64(r+24) {if !fd_check_values(t,values) {return 0;}let row=fd_row(db,first+k,values);fd_push(db,load64(t+24),row);store64(t+32,first+k+1);if !fd_auto_change(t,first+k,0,row) {return 0;}}k=k+1;
             }
         }else if op==4 {

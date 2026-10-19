@@ -5,6 +5,8 @@ low-level adapters in `lib/` remain available and can be imported directly.
 
 - [`ml`](ml/README.md): tensors, reverse-mode autodiff, neural-network layers,
   optimizers and optional CUDA kernels, implemented in ordinary Flexscript.
+- [`compress`](compress/README.md): native Zstd-compatible streaming decoding
+  and fast encoding, with standard-format interoperability.
 - [`db`](db/README.md): FlexDB, an experimental single-file relational database
   with typed rows, transactions and programmatic queries.
 - [`physics`](physics/README.md): a portable rigid-body engine with shared native,

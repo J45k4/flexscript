@@ -38,6 +38,13 @@ This is a baseline JIT without inlining, speculative optimization or on-stack
 replacement. A long-running function's first call stays interpreted in default
 mode; use `--jit` to compile it before entering an eligible function.
 
+Before execution, the [shared IR optimizer](ir-optimization.md) folds constants,
+reuses common arithmetic expressions, simplifies branches and removes unreachable
+instructions. `--ir-opt none`
+disables this stage; `--ir-opt basic` selects the default. `--stats` includes
+IR instruction counts before and after optimization. Fuel is charged against
+the selected instruction stream, equally in interpreter and JIT modes.
+
 The JIT emits x86-64 machine code directly. Code pages are writable during
 construction and become read/execute before use. It uses the existing C ABI
 adapter to enter native code; no external JIT library or Rust runtime is needed.

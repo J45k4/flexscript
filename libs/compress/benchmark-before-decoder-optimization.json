@@ -1,0 +1,472 @@
+{
+  "date": "2026-10-17",
+  "machine": "Linux-7.2.5-3-omarchy-x86_64-with-glibc2.44",
+  "method": "5 samples; each sample times 15 iterations inside the same native Flexscript process, excluding launch/file I/O. All buffers are committed and both backends warmed before timing; both reuse their contexts. C is system libzstd level 1, single-thread. Both decoders read identical C-compressed bytes. Complete-buffer and streaming decode are measured separately; streaming output is 64 KiB. No CPU pinning. Streaming VmHWM is reported by the executable itself through /proc/self/status, with 64 KiB input/output buffers; three fresh processes per backend, each decoding three times. File cache is excluded from process RSS.",
+  "cpu": "AMD Ryzen 9 5900X 12-Core Processor",
+  "compiler_sha256": "fe15ab216a1d1f6491706699d21e6b7e02de35a0a1863928a0c41f43184f17c9",
+  "binary_bytes": 202416,
+  "binary_sha256": "6c67d0e17a5b689a006a408f0ff843a5d511e6e1fb5efeeb89897108b0b73619",
+  "c_zstd_version": "1.5.7",
+  "source_sha256": {
+    "libs/compress/common.flex": "0903397c9bc8ee74fe05e8e55a3183c37d201b38ffcd4c6389735bc776997149",
+    "libs/compress/decode.flex": "0c089e71f71473e44be41c0e172d481affd11d375fc978de12b32612e4be745f",
+    "libs/compress/encode.flex": "deea157e119c67a1a6d36f4dbb4c9e0bf36139fdc186177bb701b70cefe1351f",
+    "libs/compress/fse-encode.flex": "5cd859e2b3e4602ba2d6e0f499cb7ff0e258b011056498624c22b8db2ccf0bda",
+    "libs/compress/fse.flex": "d2da6aec42153cd046f61a8e4cd8777aec61c86fd0024fabb1668c1602da2c02",
+    "libs/compress/huffman-encode.flex": "fe444bcca0df03b8b0d33f25d45fcefa4ff4a6f162a4aea693cc719853466cc7",
+    "libs/compress/huffman.flex": "8319bb3eb458d3bad83899d766cd0c546498ca9ee3a18ca635d26e3d3e237006",
+    "libs/compress/native-x86.flex": "4eea14fbfa29990e954b8ba51679fc3178132f63419c721099b54f1f256d69e8",
+    "libs/compress/tests/benchmark.flex": "67e4354bc1157d43faee74e4cb7e992fb3e5f5916962526eb8fc7b2291ff0c26",
+    "libs/compress/tests/bytes.flex": "06f1fe7e517f2c39ef3f02dad1c7a36c0bcbe978c00c786a0ec6f479be7de2a2",
+    "libs/compress/tests/db.flex": "b1ca992637f48fa180efe67821909b11cbff63eeceba33215e1f89896856884a",
+    "libs/compress/tests/driver.flex": "aef6fffd1ad93e3475cead4f9dbca82016fca0f305a55884661f1f19f8d2dce9",
+    "libs/compress/tests/memory.flex": "b864f5fbb9aa0515bd40bbf7e163e2e8bc2b177a0d1cbe1ee0a853efb4b988e7",
+    "libs/compress/tests/native-call.flex": "3b36a2b40a072a669567c3ff8c92d90a302cc97091e05a7279a5ec3ad0ffe86e",
+    "libs/compress/tests/standalone.flex": "aeb1343c7d870900dee8790e1777bf6899c7ddf5d6c2eafe7fb83e0d7baba447",
+    "libs/compress/tests/unit.flex": "3c625b47f60b81c3203b4ca3496623203636a5fe253d8e5dbdd6a824269e7fe0",
+    "libs/compress/xxhash.flex": "d5b4c549a2a4859a7b56b34aee42bd05a9dc8e4de54fb15d199bb30f2345a1b7",
+    "libs/compress/zstd.flex": "f4997b56552fdf7898003945f4384162a2d16392ee091622c4c344fe830990d8"
+  },
+  "fixtures": [
+    {
+      "name": "synthetic text logs",
+      "source": null,
+      "bytes": 7260258,
+      "sha256": "1df0808c6b3e4f801d4ea5072edfffe5421cae5ef01386b3e48051baaa84c5f4",
+      "samples": [
+        {
+          "bytes": 7260258,
+          "rounds": 15,
+          "c_bytes": 628772,
+          "native_bytes": 574732,
+          "c_encode_ns": 94224242,
+          "native_encode_ns": 81652618,
+          "c_decode_ns": 34779485,
+          "native_decode_ns": 41930588,
+          "c_stream_decode_ns": 37702155,
+          "native_stream_decode_ns": 53459255
+        },
+        {
+          "bytes": 7260258,
+          "rounds": 15,
+          "c_bytes": 628772,
+          "native_bytes": 574732,
+          "c_encode_ns": 95380562,
+          "native_encode_ns": 84488236,
+          "c_decode_ns": 34645673,
+          "native_decode_ns": 42021279,
+          "c_stream_decode_ns": 38000631,
+          "native_stream_decode_ns": 53079948
+        },
+        {
+          "bytes": 7260258,
+          "rounds": 15,
+          "c_bytes": 628772,
+          "native_bytes": 574732,
+          "c_encode_ns": 95529995,
+          "native_encode_ns": 82459142,
+          "c_decode_ns": 35127371,
+          "native_decode_ns": 42062200,
+          "c_stream_decode_ns": 38077961,
+          "native_stream_decode_ns": 52792504
+        },
+        {
+          "bytes": 7260258,
+          "rounds": 15,
+          "c_bytes": 628772,
+          "native_bytes": 574732,
+          "c_encode_ns": 94438496,
+          "native_encode_ns": 82227338,
+          "c_decode_ns": 34957928,
+          "native_decode_ns": 41985339,
+          "c_stream_decode_ns": 37862888,
+          "native_stream_decode_ns": 54360800
+        },
+        {
+          "bytes": 7260258,
+          "rounds": 15,
+          "c_bytes": 628772,
+          "native_bytes": 574732,
+          "c_encode_ns": 95059767,
+          "native_encode_ns": 82622934,
+          "c_decode_ns": 35092400,
+          "native_decode_ns": 42146442,
+          "c_stream_decode_ns": 37892338,
+          "native_stream_decode_ns": 53266152
+        }
+      ],
+      "c_bytes": 628772,
+      "c_encode_MB_s": 1145.6357767003574,
+      "c_decode_MB_s": 3115.283892111683,
+      "c_stream_decode_MB_s": 2874.034059339384,
+      "native_bytes": 574732,
+      "native_encode_MB_s": 1320.700984252298,
+      "native_decode_MB_s": 2591.6362517190396,
+      "native_stream_decode_MB_s": 2044.5229458287133,
+      "stream_peak_kib": {
+        "native": [
+          2584,
+          2568,
+          2584
+        ],
+        "c": [
+          3196,
+          3196,
+          3192
+        ]
+      }
+    },
+    {
+      "name": "random bytes",
+      "source": null,
+      "bytes": 8388608,
+      "sha256": "48588a1cf50096d81de761bb10a7e6d3f33453c271ae98c077d17217a30afd52",
+      "samples": [
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 8388810,
+          "native_bytes": 8388810,
+          "c_encode_ns": 14320035,
+          "native_encode_ns": 7856805,
+          "c_decode_ns": 2942800,
+          "native_decode_ns": 2400211,
+          "c_stream_decode_ns": 4285774,
+          "native_stream_decode_ns": 8374283
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 8388810,
+          "native_bytes": 8388810,
+          "c_encode_ns": 14387906,
+          "native_encode_ns": 11942545,
+          "c_decode_ns": 3190094,
+          "native_decode_ns": 2430962,
+          "c_stream_decode_ns": 4152021,
+          "native_stream_decode_ns": 8296352
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 8388810,
+          "native_bytes": 8388810,
+          "c_encode_ns": 14454207,
+          "native_encode_ns": 7924486,
+          "c_decode_ns": 2993381,
+          "native_decode_ns": 2409081,
+          "c_stream_decode_ns": 4625569,
+          "native_stream_decode_ns": 9282279
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 8388810,
+          "native_bytes": 8388810,
+          "c_encode_ns": 16337990,
+          "native_encode_ns": 7897265,
+          "c_decode_ns": 3094333,
+          "native_decode_ns": 2342120,
+          "c_stream_decode_ns": 4027549,
+          "native_stream_decode_ns": 8533876
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 8388810,
+          "native_bytes": 8388810,
+          "c_encode_ns": 14987936,
+          "native_encode_ns": 7775483,
+          "c_decode_ns": 3119954,
+          "native_decode_ns": 2358310,
+          "c_stream_decode_ns": 4216422,
+          "native_stream_decode_ns": 8435205
+        }
+      ],
+      "c_bytes": 8388810,
+      "c_encode_MB_s": 8705.36308218085,
+      "c_decode_MB_s": 40664.37581217019,
+      "c_stream_decode_MB_s": 29842.629603962796,
+      "native_bytes": 8388810,
+      "native_encode_MB_s": 15933.252841331776,
+      "native_decode_MB_s": 52424.191039871075,
+      "native_stream_decode_MB_s": 14917.13835052023,
+      "stream_peak_kib": {
+        "native": [
+          2648,
+          2656,
+          2640
+        ],
+        "c": [
+          2984,
+          2920,
+          2916
+        ]
+      }
+    },
+    {
+      "name": "repetitive bytes",
+      "source": null,
+      "bytes": 8388608,
+      "sha256": "7d212b9c884f5c77896de960ae17cc341cda43b14d6a971f34ca29ebd4badf7f",
+      "samples": [
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1036,
+          "native_bytes": 1036,
+          "c_encode_ns": 8039478,
+          "native_encode_ns": 4813032,
+          "c_decode_ns": 2579024,
+          "native_decode_ns": 2233448,
+          "c_stream_decode_ns": 4309974,
+          "native_stream_decode_ns": 6001933
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1036,
+          "native_bytes": 1036,
+          "c_encode_ns": 8228421,
+          "native_encode_ns": 5154048,
+          "c_decode_ns": 3386998,
+          "native_decode_ns": 2395471,
+          "c_stream_decode_ns": 4344645,
+          "native_stream_decode_ns": 5929231
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1036,
+          "native_bytes": 1036,
+          "c_encode_ns": 8209870,
+          "native_encode_ns": 5113018,
+          "c_decode_ns": 2994461,
+          "native_decode_ns": 2219778,
+          "c_stream_decode_ns": 4207932,
+          "native_stream_decode_ns": 5820720
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1036,
+          "native_bytes": 1036,
+          "c_encode_ns": 7957506,
+          "native_encode_ns": 4781262,
+          "c_decode_ns": 2535843,
+          "native_decode_ns": 2254719,
+          "c_stream_decode_ns": 4213112,
+          "native_stream_decode_ns": 5820599
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1036,
+          "native_bytes": 1036,
+          "c_encode_ns": 8241591,
+          "native_encode_ns": 5103058,
+          "c_decode_ns": 3449688,
+          "native_decode_ns": 2220098,
+          "c_stream_decode_ns": 4259613,
+          "native_stream_decode_ns": 5985993
+        }
+      ],
+      "c_bytes": 1036,
+      "c_encode_MB_s": 15326.566681323822,
+      "c_decode_MB_s": 42020.62407892438,
+      "c_stream_decode_MB_s": 29540.035679297627,
+      "native_bytes": 1036,
+      "native_encode_MB_s": 24657.591585280832,
+      "native_decode_MB_s": 56338.50441111682,
+      "native_stream_decode_MB_s": 21221.827923385004,
+      "stream_peak_kib": {
+        "native": [
+          2472,
+          2476,
+          2464
+        ],
+        "c": [
+          2984,
+          2920,
+          2920
+        ]
+      }
+    },
+    {
+      "name": "PuppyLog varied prefix",
+      "source": "/home/teppo/Work/puppylog/workdir/flex/benchmark-4lb3i95q/fixture/000000.log.zst",
+      "bytes": 8388608,
+      "sha256": "788c0de7fe8012468a429c4f0bd0c2cf37c3e343c91749909d1bc8d551f69cd8",
+      "samples": [
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1331603,
+          "native_bytes": 1401648,
+          "c_encode_ns": 137736638,
+          "native_encode_ns": 133796770,
+          "c_decode_ns": 48315016,
+          "native_decode_ns": 63601109,
+          "c_stream_decode_ns": 50852400,
+          "native_stream_decode_ns": 71759338
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1331603,
+          "native_bytes": 1401648,
+          "c_encode_ns": 139308284,
+          "native_encode_ns": 134245058,
+          "c_decode_ns": 48334227,
+          "native_decode_ns": 63435186,
+          "c_stream_decode_ns": 51079814,
+          "native_stream_decode_ns": 71741228
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1331603,
+          "native_bytes": 1401648,
+          "c_encode_ns": 137991552,
+          "native_encode_ns": 133725589,
+          "c_decode_ns": 48203704,
+          "native_decode_ns": 63645300,
+          "c_stream_decode_ns": 50924181,
+          "native_stream_decode_ns": 71834300
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1331603,
+          "native_bytes": 1401648,
+          "c_encode_ns": 138778565,
+          "native_encode_ns": 133851330,
+          "c_decode_ns": 48796756,
+          "native_decode_ns": 63499216,
+          "c_stream_decode_ns": 51098334,
+          "native_stream_decode_ns": 71906031
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 1331603,
+          "native_bytes": 1401648,
+          "c_encode_ns": 139029930,
+          "native_encode_ns": 137233669,
+          "c_decode_ns": 48679483,
+          "native_decode_ns": 63754971,
+          "c_stream_decode_ns": 51603883,
+          "native_stream_decode_ns": 72799106
+        }
+      ],
+      "c_bytes": 1331603,
+      "c_encode_MB_s": 906.6898767832049,
+      "c_decode_MB_s": 2603.3129690891715,
+      "c_stream_decode_MB_s": 2463.38250174521,
+      "native_bytes": 1401648,
+      "native_encode_MB_s": 940.0662660580211,
+      "native_decode_MB_s": 1978.410785258477,
+      "native_stream_decode_MB_s": 1751.6579127241448,
+      "stream_peak_kib": {
+        "native": [
+          2588,
+          2600,
+          2592
+        ],
+        "c": [
+          3132,
+          3140,
+          3208
+        ]
+      }
+    },
+    {
+      "name": "PuppyLog stress prefix",
+      "source": "/home/teppo/Work/puppylog/workdir/production-scale/fixture/logs/5200001.log",
+      "bytes": 8388608,
+      "sha256": "834295e7cfc8b63870f7abba75161bf504761d33c8b1feba6aed0e82eca3b28f",
+      "samples": [
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 422536,
+          "native_bytes": 437357,
+          "c_encode_ns": 55504080,
+          "native_encode_ns": 50782409,
+          "c_decode_ns": 18076130,
+          "native_decode_ns": 28546368,
+          "c_stream_decode_ns": 20133444,
+          "native_stream_decode_ns": 34999700
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 422536,
+          "native_bytes": 437357,
+          "c_encode_ns": 55088163,
+          "native_encode_ns": 51309958,
+          "c_decode_ns": 18391145,
+          "native_decode_ns": 28727631,
+          "c_stream_decode_ns": 20308138,
+          "native_stream_decode_ns": 35296774
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 422536,
+          "native_bytes": 437357,
+          "c_encode_ns": 55507000,
+          "native_encode_ns": 50820919,
+          "c_decode_ns": 18233143,
+          "native_decode_ns": 28648510,
+          "c_stream_decode_ns": 20066043,
+          "native_stream_decode_ns": 34802496
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 422536,
+          "native_bytes": 437357,
+          "c_encode_ns": 56377364,
+          "native_encode_ns": 50869571,
+          "c_decode_ns": 18331204,
+          "native_decode_ns": 28765892,
+          "c_stream_decode_ns": 20333538,
+          "native_stream_decode_ns": 34918808
+        },
+        {
+          "bytes": 8388608,
+          "rounds": 15,
+          "c_bytes": 422536,
+          "native_bytes": 437357,
+          "c_encode_ns": 55219945,
+          "native_encode_ns": 50961392,
+          "c_decode_ns": 20394199,
+          "native_decode_ns": 28576089,
+          "c_stream_decode_ns": 20278237,
+          "native_stream_decode_ns": 34930978
+        }
+      ],
+      "c_bytes": 422536,
+      "c_encode_MB_s": 2267.024694400844,
+      "c_decode_MB_s": 6864.203791524005,
+      "c_stream_decode_MB_s": 6205.131146262864,
+      "native_bytes": 437357,
+      "native_encode_MB_s": 2473.563616253025,
+      "native_decode_MB_s": 4392.169784746223,
+      "native_stream_decode_MB_s": 3602.2215009267707,
+      "stream_peak_kib": {
+        "native": [
+          2568,
+          2572,
+          2576
+        ],
+        "c": [
+          3080,
+          3180,
+          3188
+        ]
+      }
+    }
+  ]
+}
