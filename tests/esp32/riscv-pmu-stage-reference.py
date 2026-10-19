@@ -197,7 +197,7 @@ int main(void){
         ('regulator-restore-omitted', 'while esp_radio_pmu_analog_count{', 'while 0{'),
         ('digital-restore-omitted', 'while esp_radio_pmu_digital_count{', 'while 0{'),
         ('internal-admission-unmasked', 'let internal=esp_radio_pmu_internal;esp_radio_pmu_internal=1;', 'esp32_irq_restore(ps);let internal=esp_radio_pmu_internal;esp_radio_pmu_internal=1;'),
-        ('commit-ignores-pending-bus', 'esp_radio_pmu_digital_count!=49 || esp_radio_regi2c_active', 'esp_radio_pmu_digital_count!=49'),
+        ('commit-ignores-pending-bus', ' || esp_radio_regi2c_active || esp_radio_cpu_clock_active', ' || esp_radio_cpu_clock_active'),
     ]
     detected = []
     for name, before, after in defects:

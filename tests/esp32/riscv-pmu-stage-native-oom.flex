@@ -12,7 +12,7 @@ fn main(){
   let attempt=0;while attempt<3{
    if esp_radio_c6_pmu_stage(1000)!=-12{return 2;}
    let actual=esp32_irq_save();if (actual&8)!=(!mode*8){return 3;}esp32_irq_restore(actual);
-   if esp_radio_pmu_saved || esp_radio_pmu_active || esp_radio_pmu_phase || esp_radio_pmu_analog_count || esp_radio_pmu_digital_count || esp_radio_pmu_internal || esp_radio_pmu_configured || esp_radio_ocode_active || esp_radio_ocode_ready || esp_radio_ocode_phase || esp_radio_ocode_count || esp_radio_regi2c_active || esp_radio_owner!=1{return 4;}
+   if esp_radio_pmu_force_count || esp_radio_pmu_saved || esp_radio_pmu_active || esp_radio_pmu_phase || esp_radio_pmu_analog_count || esp_radio_pmu_digital_count || esp_radio_pmu_internal || esp_radio_pmu_configured || esp_radio_ocode_active || esp_radio_ocode_ready || esp_radio_ocode_phase || esp_radio_ocode_count || esp_radio_regi2c_active || esp_radio_owner!=1{return 4;}
    if esp32_load32(esp32_state())!=before+capacity-reserve || esp32_load32(0x600b0154)!=rf || esp32_load32(0x600af018)!=clock || esp32_load32(0x600af010)!=source || esp32_load32(0x600af81c)!=select{return 5;}
    attempt=attempt+1;
   }

@@ -33,7 +33,7 @@ fn esp32_store32(address,value){
 }
 fn reset_case(v,mode){
  check(!esp_radio_modem_active);esp_radio_modem_configured=0;esp_radio_modem_internal=0;esp_radio_modem_phase=0;esp_radio_modem_recovery=0;esp_radio_modem_step=0;
- esp_radio_owner=1;esp_adc_busy=0;esp_radio_phy_refs=0;esp_radio_phy_clock_refs=0;esp_radio_hw_ready=0;esp_radio_pmu_active=1;esp_radio_pmu_phase=1;esp_radio_pmu_analog_count=3;esp_radio_pmu_digital_count=49;esp_radio_pmu_configured=0;esp_radio_pmu_internal=0;esp_radio_regi2c_active=0;esp_radio_cpu_clock_active=0;esp_radio_pll_active=0;esp_radio_ocode_active=0;esp_radio_ocode_phase=0;esp_radio_ocode_ready=1;esp_radio_calibration_active=0;
+ esp_radio_owner=1;esp_adc_busy=0;esp_radio_phy_refs=0;esp_radio_phy_clock_refs=0;esp_radio_hw_ready=0;esp_radio_pmu_active=1;esp_radio_pmu_phase=1;esp_radio_pmu_analog_count=3;esp_radio_pmu_digital_count=49;esp_radio_pmu_force_count=6;esp_radio_pmu_configured=0;esp_radio_pmu_internal=0;esp_radio_regi2c_active=0;esp_radio_cpu_clock_active=0;esp_radio_pll_active=0;esp_radio_ocode_active=0;esp_radio_ocode_phase=0;esp_radio_ocode_ready=1;esp_radio_calibration_active=0;
  saved_ps=0x1880|(mode*8);ps=saved_ps;ready=1;rv_hal_chip=13;isr=0;timer=0;coex=0;forced=0;writes=0;reads=0;tick=0xfffffff0;fault_step=0;fault_recovery= -1;recovering=0;late=0;
  let i=0;while i<5{let value=load64(v+(2+i)*8);store64(bank+i*8,value);store64(before+i*8,value);i=i+1;}return 0;
 }

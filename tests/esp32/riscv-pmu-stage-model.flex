@@ -1,6 +1,7 @@
 import "../../scripts/lib/build.flex";
 import "../../lib/platform/esp32c6.flex";
 import "../../lib/platform/esp32c6-radio-pmu-stage.flex";
+global power_bank=0;global power_before=0;global power_writes=0;global power_hang= -1;global power_release=0;global power_late=0;
 global stage_seed=0;global cfg=0;global memory=0;global checks=0;global ps=0x1888;global tick=0;global ready=1;global isr=0;
 global clock=0;global source=0;global source_writes=0;global select=0;global routing=0;global ctrl0=0;global ctrl1=0;global foreign=0;global pending=0;global command=0;global polls=0;global hang=0;global release=0;global issued=0;global writes=0;global selectors=0;global commands=0;global alter=0;
 global esp_radio_hw_ready=0;global pmu_bank=0;global pmu_before=0;global rf=0;global rf_old=0;
@@ -38,12 +39,14 @@ fn clean(c,s,a){check(!esp_radio_regi2c_active&&!esp_radio_regi2c_fault&&ps==0x1
 fn pv(row,field){return cv(35+row*3+field);}
 fn av(row,field){return cv(182+row*4+field);}
 fn pmu_row(address){let i=0;while i<49{if pv(i,0)==address{return i;}i=i+1;}return -1;}
+fn power_row(address){let row=0;while row<6{if esp_radio_c6_power_address(row)==address{return row;}row=row+1;}return -1;}
 fn esp32_load32(address){
+ let power=power_row(address);if power>=0{check(!(ps&8));if power_late{power_late=power_late-1;if !power_late{tick=(tick+100)&0xffffffff;}}return load64(power_bank+power*8);}
  check(!(ps&8));if address==cv(33){fuse_reads=fuse_reads+1;return fuse_version;}if address==cv(34){return 25|(28<<5);}if address==tv(1){fuse_reads=fuse_reads+1;return (fuse_code<<tv(4))|0xa5a00000|0x1ff;}
  if address==cv(31){return rf;}let i=pmu_row(address);if i>=0{return load64(pmu_bank+i*8);}return bus_read(address);
 }
 fn esp32_store32(address,value){
- check(!(ps&8));value=value&4294967295;total_writes=total_writes+1;
+ check(!(ps&8));value=value&4294967295;total_writes=total_writes+1;let power=power_row(address);if power>=0{check(esp_radio_pmu_active && value!=load64(power_bank+power*8));if restoring{check(!esp_radio_pmu_digital_count && !esp_radio_pmu_analog_count && !pending && !esp_radio_ocode_active);}else{check(esp_radio_pmu_digital_count==49 && esp_radio_pmu_analog_count==3);}power_writes=power_writes+1;if power_hang==power && !power_release{return 0;}store64(power_bank+power*8,value);return 0;}
  if address==cv(31){rf_writes=rf_writes+1;check(esp_radio_pmu_active);rf=value;return 0;}
  let i=pmu_row(address);if i>=0{
   check(esp_radio_pmu_active && !pending && esp_radio_pmu_analog_count==3);
@@ -54,7 +57,7 @@ fn esp32_store32(address,value){
  return bus_write(address,value);
 }
 fn stage_reset(seed,value){
- stage_seed=seed;
+ stage_seed=seed;if !power_bank{power_bank=alloc(48);power_before=alloc(48);}power_writes=0;power_hang= -1;power_release=0;power_late=0;esp_radio_pmu_force_count=0;let pr=0;while pr<6{let v=((seed+1)*0x31415927+pr*0x1234567)&0xffffffff;if pr<3{v=v&~35;}if pr==4{v=v&~15;}store64(power_bank+pr*8,v);store64(power_before+pr*8,v);pr=pr+1;}
  check(!esp_radio_ocode_active);esp_radio_ocode_ready=0;esp_radio_ocode_phase=0;esp_radio_ocode_count=0;reset_reason=1;fuse_version=3<<27;fuse_code=0;trim_code_writes=0;trim_force_writes=0;reset(seed);esp_radio_hw_ready=0;esp_radio_pmu_active=0;esp_radio_pmu_internal=0;esp_radio_pmu_phase=0;esp_radio_pmu_analog_count=0;esp_radio_pmu_digital_count=0;esp_radio_pmu_configured=0;
  digital_writes=0;rf_writes=0;total_writes=0;restoring=0;rf=((seed+1)*0x31415927)&4294967295;rf_old=rf;
  let i=0;while i<49{let v=((seed+1)*0x1234567+i*0x31415927)&4294967295;store64(pmu_before+i*8,v);store64(pmu_bank+i*8,v);i=i+1;}
@@ -62,6 +65,7 @@ fn stage_reset(seed,value){
 }
 fn staged(value){
  check(esp_radio_pmu_active && !esp_radio_pmu_internal && esp_radio_pmu_phase==1 && esp_radio_pmu_analog_count==3 && esp_radio_pmu_digital_count==49 && !esp_radio_pmu_configured);
+ check(esp_radio_pmu_force_count==6);let pr=0;while pr<6{check(load64(power_bank+pr*8)==(load64(power_before+pr*8)&~esp_radio_c6_power_mask(pr)));pr=pr+1;}
  check(digital_writes==49 && rf_writes==1 && commands==9 && ps==0x1888);
  let i=0;while i<49{check(load64(pmu_bank+i*8)==((load64(pmu_before+i*8)&~pv(i,1))|pv(i,2)));i=i+1;}
  i=0;while i<3{let mask=((1<<(av(i,1)-av(i,2)+1))-1)<<av(i,2);check(load8(memory+0x6d*256+av(i,0))==((value&~mask)|(av(i,3)<<av(i,2))));i=i+1;}check(rf==(rf_old|cv(32)));return 0;
@@ -70,6 +74,7 @@ fn restored(value,changed){
  check(!esp_radio_pmu_active && !esp_radio_pmu_internal && !esp_radio_pmu_phase && !esp_radio_pmu_analog_count && !esp_radio_pmu_digital_count && !esp_radio_regi2c_active && !pending && ps==0x1888);
  let i=0;while i<49{check(load64(pmu_bank+i*8)==(load64(pmu_before+i*8)^(changed&~pv(i,1))));i=i+1;}
  i=0;while i<3{let mask=((1<<(av(i,1)-av(i,2)+1))-1)<<av(i,2);check(load8(memory+0x6d*256+av(i,0))==(value^(changed&255&~mask)));i=i+1;}
+ check(!esp_radio_pmu_force_count);let pr=0;while pr<6{check(load64(power_bank+pr*8)==load64(power_before+pr*8));pr=pr+1;}
  check(rf==(rf_old^(changed&~cv(32))));return 0;
 }
 fn force_different(){store8(memory+0x6d*256+av(0,0),0);store8(memory+0x6d*256+av(1,0),0);store8(memory+0x6d*256+av(2,0),255);return 0;}

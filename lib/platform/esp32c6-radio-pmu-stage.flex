@@ -1,4 +1,5 @@
 import "esp32c6-radio-pmu.flex";
+import "esp32c6-radio-power.flex";
 import "esp32c6-radio-regi2c.flex";
 import "esp32c6-radio-ocode.flex";
 // Reversible state staging for the complete C6 startup transaction. This does
@@ -34,6 +35,7 @@ fn esp_radio_c6_pmu_stage(cycles){
  if cycles<1 || cycles>2147483647{return -22;}
  let ps=esp32_irq_save();let result=esp_radio_c6_pmu_stage_guard();if result{esp32_irq_restore(ps);return result;}
  if esp_radio_pmu_active || esp_radio_pmu_configured || esp_radio_regi2c_active{esp32_irq_restore(ps);return -16;}
+ result=esp_radio_c6_power_idle();if result{esp32_irq_restore(ps);return result;}
  result=esp_radio_c6_regi2c_idle();if result{esp32_irq_restore(ps);return result;}
  if !esp_radio_pmu_saved{
   let saved=alloc(416);if saved<=0{esp32_irq_restore(ps);return -12;}
@@ -41,8 +43,9 @@ fn esp_radio_c6_pmu_stage(cycles){
  }
  let hp=esp_radio_c6_pmu_read_bias(0);let lp=esp_radio_c6_pmu_read_bias(1);
  let row=0;while row<49{store64(esp_radio_pmu_saved+row*8,esp32_load32(esp_radio_c6_pmu_address(row))&esp_radio_c6_pmu_mask(row));row=row+1;}
+ row=0;while row<6{esp_radio_c6_power_saved(row,esp32_load32(esp_radio_c6_power_address(row))&esp_radio_c6_power_mask(row));row=row+1;}
  esp_radio_pmu_rf_before=esp32_load32(0x600b0154)&0x0c000000;
- esp_radio_ocode_ready=0;esp_radio_pmu_active=1;esp_radio_pmu_phase=1;esp_radio_pmu_analog_count=0;esp_radio_pmu_digital_count=0;
+ esp_radio_ocode_ready=0;esp_radio_pmu_active=1;esp_radio_pmu_phase=1;esp_radio_pmu_analog_count=0;esp_radio_pmu_digital_count=0;esp_radio_pmu_force_count=0;
  esp_reg_update(0x600b0154,0x0c000000,0x0c000000);
  // Snapshot all controlled analog fields before the first analog write.
  row=0;while row<3{result=esp_radio_c6_pmu_analog(row,-1,cycles);if result<0{esp_radio_pmu_phase=2;esp32_irq_restore(ps);return result;}store64(esp_radio_pmu_saved+392+row*8,result);row=row+1;}
@@ -55,6 +58,7 @@ fn esp_radio_c6_pmu_stage(cycles){
  row=0;while row<49{
   esp_radio_pmu_digital_count=row+1;esp_reg_update(esp_radio_c6_pmu_address(row),esp_radio_c6_pmu_mask(row),esp_radio_c6_pmu_value(row,hp,lp));row=row+1;
  }
+ row=0;while row<6{esp_radio_pmu_force_count=row+1;result=esp_radio_c6_power_write(row,0,cycles);if result{esp_radio_pmu_phase=2;esp32_irq_restore(ps);return result;}row=row+1;}
  esp32_irq_restore(ps);return 0;
 }
 fn esp_radio_c6_pmu_abort(cycles){
@@ -72,6 +76,9 @@ fn esp_radio_c6_pmu_abort(cycles){
   if result!=before{result=esp_radio_c6_pmu_analog(row,before,cycles);if result{esp_radio_pmu_phase=2;esp32_irq_restore(ps);return result;}}
   esp_radio_pmu_analog_count=row;
  }
+ // Keep analog access alive until trims/regulators have been restored, then
+ // restore force controls in reverse order and finally RF/I2C power.
+ while esp_radio_pmu_force_count{let row=esp_radio_pmu_force_count-1;result=esp_radio_c6_power_write(row,esp_radio_c6_power_saved(row,-1),cycles);if result{esp_radio_pmu_phase=2;esp32_irq_restore(ps);return result;}esp_radio_pmu_force_count=row;}
  esp_reg_update(0x600b0154,0x0c000000,esp_radio_pmu_rf_before);
  esp_radio_ocode_ready=0;esp_radio_pmu_phase=0;esp_radio_pmu_active=0;esp32_irq_restore(ps);return 0;
 }
@@ -80,6 +87,6 @@ fn esp_radio_c6_pmu_abort(cycles){
 // commands. This flag alone never satisfies the C6 hardware-enable gate.
 fn esp_radio_c6_pmu_commit(){
  let ps=esp32_irq_save();let result=esp_radio_c6_pmu_stage_guard();if result{esp32_irq_restore(ps);return result;}
- if !esp_radio_pmu_active || esp_radio_pmu_phase!=1 || esp_radio_pmu_analog_count!=3 || esp_radio_pmu_digital_count!=49 || esp_radio_regi2c_active || esp_radio_cpu_clock_active || (esp_radio_ocode_active && (!esp_radio_ocode_ready || esp_radio_ocode_phase!=1)){esp32_irq_restore(ps);return -16;}
- esp_radio_ocode_active=0;esp_radio_ocode_phase=0;esp_radio_ocode_count=0;esp_radio_pmu_configured=1;esp_radio_pmu_phase=0;esp_radio_pmu_active=0;esp_radio_pmu_analog_count=0;esp_radio_pmu_digital_count=0;esp32_irq_restore(ps);return 0;
+ if !esp_radio_pmu_active || esp_radio_pmu_phase!=1 || esp_radio_pmu_analog_count!=3 || esp_radio_pmu_digital_count!=49 || esp_radio_pmu_force_count!=6 || esp_radio_regi2c_active || esp_radio_cpu_clock_active || (esp_radio_ocode_active && (!esp_radio_ocode_ready || esp_radio_ocode_phase!=1)){esp32_irq_restore(ps);return -16;}
+ esp_radio_ocode_active=0;esp_radio_ocode_phase=0;esp_radio_ocode_count=0;esp_radio_pmu_configured=1;esp_radio_pmu_phase=0;esp_radio_pmu_active=0;esp_radio_pmu_analog_count=0;esp_radio_pmu_digital_count=0;esp_radio_pmu_force_count=0;esp32_irq_restore(ps);return 0;
 }

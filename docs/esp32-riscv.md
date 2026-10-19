@@ -1265,6 +1265,34 @@ evidence: actual cached execution across clock changes, analog timing and
 physical RF startup remain unverified. The full C6 initializer retains its
 clean `-95` gate until modem clocks and PHY startup are implemented.
 
+The PMU transaction also snapshots the pinned C6 force-default controls for
+TOP, HP_AON, CPU, Wi-Fi, LP peripherals and the memory no-isolation field.
+After the49 mode-policy rows, preparation clears the six force flags in each
+controlled power domain and the four memory no-isolation bits. Each domain
+uses one masked write with bounded readback; unrelated fields and the reserved
+power domain are preserved. Fixed singleton snapshots keep the checked
+`alloc(416)` contract unchanged.
+
+Before mutation, preparation refuses asserted reset/isolation/power-down
+forces for the executing TOP/AON/CPU domains and asserted SRAM isolation.
+Wi-Fi and LP peripherals may initially be forced off. Failed force writes
+retain the PMU lease and record preparation intent before the write. Explicit
+PMU abort first restores trim and regulator accesses, then restores force
+controls in reverse order before the final RF/I2C power restore. Recovery
+reads before writing, so a timed-out but committed write is not blindly
+replayed. Commit requires all six force rows to have completed and transfers
+their state to platform lifetime. These register operations do not implement
+PMU immediate clock updates or enable the full C6 hardware path.
+
+The force oracle executes the pinned `pmu_power_domain_force_default` and its
+actual LL functions on primary C structs, including the skipped reserved
+domain. It supplies1,536 address/mask/value vectors. The model executes real
+PMU staging, analog transfers and force rollback, both IRQ modes, every force
+prepare/abort timeout, late readback, reserved-field preservation and partial
+commit refusal. Native firmware checks pure address/mask/snapshot helpers and
+heap-failure admission; valid power writes and physical transitions remain
+unverified.
+
 `esp32c6-radio-modem.flex` stages the remaining modem register policy after
 PMU preparation and successful calibration. Call
 `esp_radio_c6_modem_stage(source, divider, cycles)` with source0 RC_SLOW,
