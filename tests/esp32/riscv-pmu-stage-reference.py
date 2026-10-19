@@ -20,6 +20,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ['compiler', 'reference', 'work']:
         p.add_argument('--' + name, required=True, type=Path)
+    p.add_argument('--inputs-only', action='store_true', help='emit primary oracle inputs without running model/defect cases')
     a = p.parse_args()
     w, ref = a.work.resolve(), a.reference.resolve()
     w.mkdir(parents=True, exist_ok=True)
@@ -146,6 +147,9 @@ int main(void){
     run(['cc', '-std=c11', '-Wno-cpp', '-I', inc, policy_c, '-o', policy_exe])
     policy_data = w / 'ocode-policy.bin'
     policy_data.write_bytes(run([policy_exe]))
+    if a.inputs_only:
+        print('Primary PMU and vendor-policy inputs emitted; no test execution claim')
+        return
     text = (ROOT / 'tests/esp32/riscv-pmu-stage-model.flex').read_text()
     text = text.replace('../../scripts/', str(ROOT / 'scripts') + '/').replace('../../lib/', str(ROOT / 'lib') + '/')
 

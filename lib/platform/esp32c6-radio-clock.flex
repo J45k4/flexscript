@@ -74,7 +74,7 @@ fn esp_radio_c6_clock_restore_iram(cycles,b,c,d,e,f,g,h){
  if cycles<1 || cycles>2147483647{return -22;}let ps=esp32_irq_save();let result=esp_radio_c6_pmu_stage_guard();
  if result{if !esp_radio_cpu_clock_active{esp32_irq_restore(ps);}return result;}
  if !esp_radio_cpu_clock_active{esp32_irq_restore(ps);return 0;}
- if !esp_radio_pmu_active || esp_radio_regi2c_active || esp_radio_ocode_active{return -16;}
+ if !esp_radio_pmu_active || esp_radio_regi2c_active || esp_radio_ocode_active || esp_radio_pll_active{return -16;}
  result=esp_radio_c6_clock_idle();if result{return result;}
  let root=esp32_load32(0x60096110);let cpu=esp32_load32(0x60096118);let ahb=esp32_load32(0x6009611c);let apb=esp32_load32(0x60096120);let source=root&0x30000;let old_source=esp_radio_cpu_clock_root&0x30000;
  if ((root^esp_radio_cpu_clock_root)&~0x30000) || (source && source!=old_source) || ((cpu^esp_radio_cpu_clock_cpu)&0x1ff00) || ((ahb^esp_radio_cpu_clock_ahb)&0xff00) || ((apb^esp_radio_cpu_clock_apb)&65535){return -16;}

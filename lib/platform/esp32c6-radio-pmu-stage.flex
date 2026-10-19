@@ -5,6 +5,7 @@ import "esp32c6-radio-ocode.flex";
 // not issue PMU immediate commands, calibrate clocks/bandgap or enable RF.
 // The caller must already supply the internal analog master's base clocks.
 // A prepared or uncertain transaction retains the shared radio-domain lease.
+global esp_radio_pll_active=0;
 global esp_radio_cpu_clock_active=0;
 global esp_radio_pmu_saved=0;
 global esp_radio_pmu_phase=0;

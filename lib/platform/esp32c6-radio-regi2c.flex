@@ -4,6 +4,8 @@ import "esp32-analog-state.flex";
 // data=-1 reads a field; otherwise write the bounded field value. No automatic
 // retry: a completion timeout can mean the analog write has already happened.
 global esp_radio_regi2c_fault=0;
+// Latched for the current/last claimed transaction; busy rejections retain it.
+global esp_radio_regi2c_write_issued=0;
 global esp_radio_regi2c_clock=0;
 global esp_radio_regi2c_source=0;
 global esp_radio_regi2c_select=0;
@@ -42,6 +44,7 @@ fn esp_radio_c6_regi2c(block,reg,msb,lsb,data,cycles){
  esp_reg_update(0x600af018,4,4);
  // ANA_CONF1 selects slaves for both masters. Neither may be in flight.
  if (esp32_load32(0x600af800)|esp32_load32(0x600af804))&0x2000000{esp_reg_update(0x600af018,4,esp_radio_regi2c_clock);esp32_irq_restore(ps);return -16;}
+ esp_radio_regi2c_write_issued=0;
  esp_reg_update(0x600af010,1,1);
  esp_radio_regi2c_select=esp32_load32(0x600af81c)&0xffffff;esp_radio_regi2c_active=1;let control=0x600af804;if esp32_load32(0x600af820)&(1<<(bit+2)){control=0x600af800;}
  esp_reg_update(0x600af81c,0xffffff,0xffffff&~(1<<bit));let start=esp32_cycles();let value=0;
@@ -49,7 +52,7 @@ fn esp_radio_c6_regi2c(block,reg,msb,lsb,data,cycles){
   esp32_store32(control,block|(reg<<8));result=esp_radio_c6_regi2c_wait(control,start,cycles);
   if !result{value=(esp32_load32(control)>>16)&255;}
  }
- if !result && data>=0{value=(value&~(mask<<lsb))|(data<<lsb);esp32_store32(control,block|(reg<<8)|(value<<16)|0x1000000);result=esp_radio_c6_regi2c_wait(control,start,cycles);}
+ if !result && data>=0{value=(value&~(mask<<lsb))|(data<<lsb);esp_radio_regi2c_write_issued=1;esp32_store32(control,block|(reg<<8)|(value<<16)|0x1000000);result=esp_radio_c6_regi2c_wait(control,start,cycles);}
  if result{esp_radio_regi2c_fault=1;esp32_irq_restore(ps);return result;}
  esp_radio_c6_regi2c_restore();esp32_irq_restore(ps);if data<0{return (value>>lsb)&mask;}return 0;
 }

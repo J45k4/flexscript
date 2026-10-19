@@ -1125,12 +1125,55 @@ the clock lease is held; restore the clocks first. Both public wrappers use
 This component preserves PLL power and peripheral clock configuration. MSPI
 follows the root clock, so its frequency changes during the handoff and the
 DMA/flash-idle preconditions apply.
-PLL consumer ownership, power cycling/recalibration, legacy OCODE polling and
-the complete hardware-startup sequence remain under T561/T547. The independent
+Legacy OCODE polling and the complete hardware-startup sequence remain under
+T561/T547. The independent
 primary-HAL oracle checks clock decoding and modeled handoff/restoration;
 real ELF packages verify IRAM placement, and optional C6 ROM checks verify
 signed refusal statuses. Actual clock switching and physical timing remain
 unverified.
+
+`esp32c6-radio-pll.flex` adds an explicit owned PLL power cycle beneath the
+CPU clock lease. After `esp_radio_c6_pmu_stage` and a successful
+`esp_radio_c6_clock_begin`, call `esp_radio_c6_pll_begin(cycles)` to snapshot
+power/gate state and the MSPI PLL route, validate an existing canonical
+40MHz/480MHz analog configuration, and power down PLL/I2C using direct PMU
+write-trigger commands. Already-off PLL states are accepted without calibration.
+The PLL lease retains the XTAL source and masked interrupts.
+
+`esp_radio_c6_pll_consumer(1)` acquires an explicit shared-consumer reference;
+`esp_radio_c6_pll_consumer(0)` releases it. Existing references, functional
+UART/RMT/LEDC/timer/watchdog/I2S/ADC/PWM/PVT/SPI2/IOMUX clock selections, USB,
+functional modem clocks and the analog USB-PLL bit refuse power-off. The
+DMA/REGDMA and flash-idle checks also apply. Platform owners must register
+consumers not represented by these observed clock gates. Consumer changes
+are refused while a PLL lease is held.
+
+Cleanup order is **PLL restore, CPU clock restore, PMU abort**.
+`esp_radio_c6_pll_restore(cycles)` restores missing power bits and the saved
+PLL gate for calibration, starts calibration, issues all six pinned vendor coefficient writes,
+polls CALDONE, waits at least400 XTAL CPU cycles (10 microseconds), then stops
+calibration and restores the saved analog controls, PLL gate and MSPI route. A budget
+below400 cycles cannot complete the settling step. Every timeout retains
+ownership for explicit recovery, including after a partial power change or
+calibration stop. CPU clock restore refuses while the PLL lease is held.
+The public IRAM callback wrappers preserve signed64-bit status results.
+
+The analog-I2C driver journals whether it issued the write command. On timeout,
+PLL recovery waits for the bus to become idle; an uncertain write is read back
+before retry, while a timeout during an RMW read still requires the coefficient
+write even when the old value already matches. This prevents both duplicate
+and omitted programming writes without trusting busy-register command readback.
+
+The independent C oracle executes the pinned HAL's actual six-write
+configuration function and derives MMIO fields from primary headers. The host
+model checks consumer gates, both analog masters, retained or lost coefficients,
+interrupted power/control writes, every configuration-bus timeout, settling and
+cleanup. The model injects the already-held XTAL lease; the separate clock
+oracle checks that handoff. SRAM/XIP/radio ELF checks inspect the real callback
+locations, and optional existing C6 ROM execution checks signed invalid-budget
+returns only. PLL power switching, analog calibration/timing, full legacy OCODE
+and RF startup remain unverified on physical hardware. This component does not
+remove the production `-95` full-startup gate.
 
 The analog-I2C primitive now checks both busy engines before selecting its
 160 MHz source. `esp_radio_c6_regi2c_idle()` provides a command-free preflight
