@@ -27,8 +27,14 @@ fn main(argc,argv) {
     seed=h_real(seed);
     let core_source=h_join(out,"core.flex");
     h_save(core_source,b_flatten(1));
+    // The frozen seed emits its own historical startup/code conventions.
+    // Let that seed-built compiler emit the current core before comparing
+    // self rebuilds produced by the same backend generation.
+    let seed_core=h_join(out,"core-seed");
+    h_compile(seed,core_source,seed_core);
+    h_elf(seed_core,1);
     let core=h_join(out,"core");
-    h_compile(seed,core_source,core);
+    h_compile(seed_core,core_source,core);
     h_elf(core,1);
     let rebuilt=h_join(out,"core-rebuilt");
     h_compile(core,core_source,rebuilt);
@@ -63,6 +69,7 @@ fn main(argc,argv) {
         i=i+1;
     }
     j_set(report,"stages",hashes);
+    j_set(report,"core_seed_sha256",j_string(h_sha(seed_core)));
     j_set(report,"core_sha256",j_string(h_sha(core)));
     let harness=h_join(out,"test-harness");
     h_compile(compiler,"scripts/test-harness.flex",harness);
