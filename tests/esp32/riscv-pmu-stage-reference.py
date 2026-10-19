@@ -24,7 +24,7 @@ def main():
     w, ref = a.work.resolve(), a.reference.resolve()
     w.mkdir(parents=True, exist_ok=True)
     assert not (w / 'report.json').exists()
-    for group in ['pmu-primary', 'regi2c-primary', 'startup-primary']:
+    for group in ['pmu-primary', 'regi2c-primary', 'startup-primary', 'osi-primary']:
         rows = json.loads((ref / group / 'provenance.json').read_text())
         if isinstance(rows, dict):
             rows = rows['sources']
@@ -44,10 +44,17 @@ def main():
         shutil.copy2(f, inc / 'modem' / f.name)
     shutil.copy2(ref / 'regi2c-primary/i2c_ana_mst_reg.h', inc / 'soc/i2c_ana_mst_reg.h')
     shutil.copy2(ref / 'startup-primary/idf/components/soc/esp32c6/include/soc/regi2c_dig_reg.h', inc / 'soc/regi2c_dig_reg.h')
+    shutil.copy2(ref / 'startup-primary/idf/components/soc/esp32c6/include/soc/regi2c_lp_bias.h', inc / 'soc/regi2c_lp_bias.h')
+    rom_maps = json.loads((ref / 'radio-provenance.json').read_text())['ROM_maps']
+    for row in rom_maps:
+        assert hashlib.sha256((ref / row['path']).read_bytes()).hexdigest() == row['sha256']
+    rom_text = (ref / 'components/esp_rom/esp32c6/ld/esp32c6.rom.ld').read_text()
+    reset_address = int(re.search(r'\brtc_get_reset_reason\s*=\s*(0x[0-9a-f]+)', rom_text)[1], 16)
     bus = runpy.run_path(str(ROOT / 'tests/esp32/riscv-regi2c-reference.py'))['C']
     csource = w / 'oracle/all.c'
     csource.write_text(peer.read_text() + '\n' + bus.replace('int main(void)', 'static int dump_bus(void)') + '''
 #include "soc/regi2c_dig_reg.h"
+#include "soc/regi2c_lp_bias.h"
 int main(void){
  if(dump_bus())return 1;
  uint64_t fields[4]={PMU_RF_PWC_REG,PMU_PERIF_I2C_RSTB|PMU_XPD_PERIF_I2C,EFUSE_RD_MAC_SPI_SYS_3_REG,EFUSE_RD_MAC_SPI_SYS_2_REG};
@@ -58,9 +65,15 @@ int main(void){
  {I2C_DIG_REG_ENIF_RTC_DREG,I2C_DIG_REG_ENIF_RTC_DREG_MSB,I2C_DIG_REG_ENIF_RTC_DREG_LSB,1},
  {I2C_DIG_REG_ENIF_DIG_DREG,I2C_DIG_REG_ENIF_DIG_DREG_MSB,I2C_DIG_REG_ENIF_DIG_DREG_LSB,1},
  {I2C_DIG_REG_XPD_RTC_REG,I2C_DIG_REG_XPD_DIG_REG_MSB,I2C_DIG_REG_XPD_RTC_REG_LSB,0}};
- fwrite(analog,sizeof(analog),1,stdout);return ferror(stdout);
+ fwrite(analog,sizeof(analog),1,stdout);
+ uint64_t trim[13]={EFUSE_RD_MAC_SPI_SYS_3_REG,EFUSE_RD_SYS_PART1_DATA4_REG,
+ EFUSE_BLK_VERSION_MAJOR_S,EFUSE_BLK_VERSION_MINOR_S,EFUSE_OCODE_S,I2C_ULP,
+ I2C_ULP_EXT_CODE,I2C_ULP_EXT_CODE_MSB,I2C_ULP_EXT_CODE_LSB,
+ I2C_ULP_IR_FORCE_CODE,I2C_ULP_IR_FORCE_CODE_MSB,I2C_ULP_IR_FORCE_CODE_LSB,RESET_ROM_ADDRESS};
+ fwrite(trim,sizeof(trim),1,stdout);return ferror(stdout);
 }
 ''')
+    csource.write_text(csource.read_text().replace('RESET_ROM_ADDRESS', str(reset_address)))
     exe = w / 'oracle/all'
     run(['cc', '-std=c11', '-Wno-cpp', '-I', inc, csource, '-o', exe])
     raw = run([exe])
@@ -79,7 +92,60 @@ int main(void){
         initial += [block, shift('ana_conf1.rs', field + '_rd'), shift('ana_conf2.rs', field + '_mst_sel')]
     expected = w / 'expected.bin'
     expected.write_bytes(struct.pack('<31Q', *initial) + raw[128:])
-    assert expected.stat().st_size == 194 * 8
+    assert expected.stat().st_size == 207 * 8
+    # Execute the actual pinned reset/fuse policy with only its MMIO and
+    # software-calibration effects stubbed. Expected policy is not reimplemented.
+    def vendor_function(path, name):
+        body = path.read_text()
+        match = re.search(r'(?:static\s+)?void\s+' + name + r'\([^)]*\)\s*\{', body)
+        assert match, name
+        end, depth = match.end(), 1
+        while depth:
+            depth += (body[end] == '{') - (body[end] == '}')
+            end += 1
+        return body[match.start():end]
+
+    idf = ref / 'startup-primary/idf/components/esp_hw_support/port/esp32c6'
+    policy_c = w / 'oracle/ocode-policy.c'
+    policy_c.write_text(r'''#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include "soc/regi2c_dig_reg.h"
+#include "soc/regi2c_lp_bias.h"
+static uint32_t reason, version, code, legacy, count, written_code, written_force;
+static uint32_t efuse_hal_blk_version(void){return version;}
+static uint32_t efuse_ll_get_ocode(void){return code;}
+static uint32_t esp_rom_get_reset_reason(uint32_t cpu){assert(!cpu);return reason;}
+static void calibrate_ocode(void){legacy=1;}
+static void *PMU_instance(void){return 0;}
+static void pmu_hp_system_init_default(void *ctx){assert(!ctx);}
+static void pmu_lp_system_init_default(void *ctx){assert(!ctx);}
+static void pmu_power_domain_force_default(void *ctx){assert(!ctx);}
+#define RESET_REASON_CHIP_POWER_ON 1
+static void policy_write(uint32_t block,uint32_t reg,uint32_t value){
+ if(block!=I2C_ULP)return;
+ if(count==0){assert(reg==I2C_ULP_EXT_CODE);written_code=value;}
+ else{assert(count==1 && reg==I2C_ULP_IR_FORCE_CODE);written_force=value;}
+ count++;
+}
+#define REGI2C_WRITE_MASK(block,field,value) policy_write(block,field,value)
+''' + vendor_function(idf / 'ocode_init.c', 'set_ocode_by_efuse') + '\n'
+      + vendor_function(idf / 'ocode_init.c', 'esp_ocode_calib_init') + '\n'
+      + vendor_function(idf / 'pmu_init.c', 'pmu_init') + r'''
+int main(void){
+ uint64_t rows=256*32*4;fwrite(&rows,8,1,stdout);
+ uint32_t codes[4]={0,1,0xa7,255};
+ for(reason=0;reason<256;reason++)for(uint32_t v=0;v<32;v++)for(uint32_t c=0;c<4;c++){
+  version=(v>>3)*100+(v&7);code=codes[c];legacy=count=written_code=written_force=0;pmu_init();
+  uint64_t row[7]={reason,v,code,legacy?2:(count?1:0),count,written_code,written_force};
+  fwrite(row,sizeof(row),1,stdout);
+ }return ferror(stdout);
+}
+''')
+    policy_exe = w / 'oracle/ocode-policy'
+    run(['cc', '-std=c11', '-Wno-cpp', '-I', inc, policy_c, '-o', policy_exe])
+    policy_data = w / 'ocode-policy.bin'
+    policy_data.write_bytes(run([policy_exe]))
     text = (ROOT / 'tests/esp32/riscv-pmu-stage-model.flex').read_text()
     text = text.replace('../../scripts/', str(ROOT / 'scripts') + '/').replace('../../lib/', str(ROOT / 'lib') + '/')
 
@@ -102,7 +168,7 @@ int main(void){
             source = source.replace(imported, str(instrumented))
         file.write_text(source)
         run(['nice', '-n', '19', a.compiler.resolve(), file, '-o', binary])
-        r = subprocess.run([str(binary), str(expected)], cwd=ROOT, capture_output=True, timeout=30)
+        r = subprocess.run([str(binary), str(expected), str(policy_data)], cwd=ROOT, capture_output=True, timeout=30)
         (w / (name + '.stdout')).write_bytes(r.stdout)
         (w / (name + '.stderr')).write_bytes(r.stderr)
         return r
@@ -113,6 +179,8 @@ int main(void){
     port = ROOT / 'lib/platform/esp32c6-radio-pmu-stage.flex'
     original = port.read_text()
     defects = [
+        ('trim-outer-abort-omitted', 'if esp_radio_ocode_active{result=esp_radio_c6_ocode_abort(cycles);if result{esp32_irq_restore(ps);return result;}}', ''),
+        ('trim-uncertain-commit-admitted', ' || (esp_radio_ocode_active && (!esp_radio_ocode_ready || esp_radio_ocode_phase!=1))', ''),
         ('snapshot-allocation-unchecked', 'if saved<=0{esp32_irq_restore(ps);return -12;}', ''),
         ('snapshot-published-before-check', 'let saved=alloc(416);if saved<=0', 'let saved=alloc(416);esp_radio_pmu_saved=saved;if saved<=0'),
         ('snapshot-failure-IRQ-not-restored', 'if saved<=0{esp32_irq_restore(ps);return -12;}', 'if saved<=0{return -12;}'),
@@ -137,6 +205,29 @@ int main(void){
         r = execute(name, text.replace(str(port), str(mutant)))
         assert r.returncode != 0, name + ' escaped'
         detected.append(dict(name=name, detected=True, result=r.returncode))
+    trim_port = ROOT / 'lib/platform/esp32c6-radio-ocode.flex'
+    trim_original = trim_port.read_text()
+    trim_defects = [
+        ('trim-on-warm-reset', 'if reason!=1{', 'if 0{'),
+        ('trim-legacy-fuse-admission', 'if !version{', 'if 0{'),
+        ('trim-wrong-efuse-field', '>>9)&255', '>>8)&255'),
+        ('trim-force-before-code', 'esp_radio_ocode_count=1;result=esp_radio_c6_ocode_bus(0,code,cycles);', 'esp_radio_ocode_count=1;result=esp_radio_c6_ocode_bus(1,1,cycles);'),
+        ('trim-write-not-journaled', 'esp_radio_ocode_count=2;result=', 'result='),
+        ('trim-restore-blind-replay', 'if result!=before{', 'if 1{'),
+        ('trim-snapshot-after-write', 'esp_radio_ocode_before_code=result;', 'esp_radio_ocode_before_code=0;'),
+        ('trim-wrong-force-mask', 'high=6;low=6;', 'high=5;low=5;'),
+        ('trim-IRQ-restore-omitted', 'esp_radio_ocode_ready=1;esp32_irq_restore(ps);return 0;', 'esp_radio_ocode_ready=1;return 0;'),
+    ]
+    for name, before, after in trim_defects:
+        assert before in trim_original, name
+        mutant = w / (name + '-trim.flex')
+        mutant.write_text(trim_original.replace(before, after))
+        wrapper = w / (name + '-stage.flex')
+        module = re.sub(r'^import "([^"]+)";', lambda m: 'import "' + str(port.parent / m[1]) + '";', original, flags=re.M)
+        wrapper.write_text(module.replace(str(trim_port), str(mutant)))
+        result = execute(name, text.replace(str(port), str(wrapper)))
+        assert result.returncode != 0, name + ' escaped'
+        detected.append(dict(name=name, detected=True, result=result.returncode))
     # The PMU owner uses a private internal-bus admission; unrelated callers
     # must remain excluded while its staged state is held.
     bus_port = ROOT / 'lib/platform/esp32c6-radio-regi2c.flex'
@@ -155,6 +246,9 @@ int main(void){
     report = dict(pass_all=True, checks=checks, PMU_rows=49, byte_patterns=256,
                   clock_source_and_master_modes=8, preparation_timeouts=9, rollback_timeouts=9,
                   allocation_failure_IRQ_modes=2, allocation_retry_and_snapshot_reuse=True,
+                  factory_trim_values=256, reset_reasons=256, fuse_versions=32,
+                  actual_vendor_policy_vectors=32768,
+                  trim_preparation_timeouts=5, trim_rollback_timeouts=5,
                   detected_defects=detected, C6_CPU_execution=False, physical_hardware=False,
                   full_C6_power_clock_startup=False,
                   compiler_sha256=hashlib.sha256(a.compiler.read_bytes()).hexdigest())

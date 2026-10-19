@@ -1,16 +1,19 @@
 import "../../scripts/lib/build.flex";
 import "../../lib/platform/esp32c6.flex";
 import "../../lib/platform/esp32c6-radio-pmu-stage.flex";
-global cfg=0;global memory=0;global checks=0;global ps=0x1888;global tick=0;global ready=1;global isr=0;
+global stage_seed=0;global cfg=0;global memory=0;global checks=0;global ps=0x1888;global tick=0;global ready=1;global isr=0;
 global clock=0;global source=0;global source_writes=0;global select=0;global routing=0;global ctrl0=0;global ctrl1=0;global foreign=0;global pending=0;global command=0;global polls=0;global hang=0;global release=0;global issued=0;global writes=0;global selectors=0;global commands=0;global alter=0;
 global esp_radio_hw_ready=0;global pmu_bank=0;global pmu_before=0;global rf=0;global rf_old=0;
+global reset_reason=1;global reset_reads=0;global fuse_reads=0;global fuse_version=0x18000000;global fuse_code=0;global trim_code_writes=0;global trim_force_writes=0;
 global digital_writes=0;global rf_writes=0;global total_writes=0;global restoring=0;
 // The host oracle injects allocator results at this boundary; firmware tests
 // separately exhaust the real RV32 native heap without replacing alloc.
 global pmu_allocation_result=0;global pmu_allocation_calls=0;
 fn pmu_test_alloc(size){pmu_allocation_calls=pmu_allocation_calls+1;if pmu_allocation_result{return pmu_allocation_result;}return alloc(size);}
+fn tv(i){return cv(194+i);}
+fn esp32_call32(address,a,b,c,d,e,f,g,h){check(address==tv(12) && !a && !b && !c && !d && !e && !f && !g && !h && !(ps&8));reset_reads=reset_reads+1;return reset_reason;}
 fn cv(i){return load64(cfg+i*8);}
-fn check(ok){checks=checks+1;if !ok{h_print(2,h_cat3("regi2c check ",h_int(checks)," failed\n"));syscall(60,1,0,0,0,0,0);}return 0;}
+fn check(ok){checks=checks+1;if !ok{h_print(2,h_cat3("regi2c check ",h_int(checks)," failed\n"));h_print(2,h_cat3("seed ",h_int(stage_seed),h_cat3(" command ",h_int(issued),"\n")));syscall(60,1,0,0,0,0,0);}return 0;}
 fn esp32_state(){if ready{return rv_hal_state;}return 0;}
 fn esp32_irq_save(){check(!(ps&8) || !esp_radio_pmu_internal);let before=ps;ps=ps&~8;return before;}
 fn esp32_irq_restore(value){check(!(value&8) || !esp_radio_pmu_internal);ps=value;return 0;}
@@ -23,7 +26,11 @@ fn bus_read(address){
  if address==cv(1){return ctrl0;}return ctrl1;
 }
 fn bus_write(address,value){
- check(!(ps&8));writes=writes+1;value=value&4294967295;if address==cv(5){clock=value;return 0;}if address==cv(6){source_writes=source_writes+1;source=value;return 0;}if address==cv(3){selectors=selectors+1;select=value;return 0;}
+ check(!(ps&8));
+ if (address==cv(1)||address==cv(2)) && (value&255)==tv(5) && (value&(1<<cv(11))){
+  let reg=(value>>cv(9))&255;if reg==tv(6){trim_code_writes=trim_code_writes+1;}else{check(reg==tv(9));trim_force_writes=trim_force_writes+1;check(load8(memory+tv(5)*256+tv(6))==fuse_code || restoring);}
+ }
+ writes=writes+1;value=value&4294967295;if address==cv(5){clock=value;return 0;}if address==cv(6){source_writes=source_writes+1;source=value;return 0;}if address==cv(3){selectors=selectors+1;select=value;return 0;}
  check(address==cv(1)||address==cv(2));check(!pending&&!foreign);check((clock&cv(12))==cv(12)&&(source&cv(13))==cv(13));let i=field(value&255);check((select&cv(8))==(cv(8)&~(1<<cv(17+i*3))));let expected=cv(2);if routing&(1<<cv(18+i*3)){expected=cv(1);}check(address==expected);check(!(value&~0x1ffffff));command=value;pending=address;polls=1;issued=issued+1;commands=commands+1;return 0;
 }
 fn reset(seed){check(!esp_radio_regi2c_active);clock=(seed*0x1234567)&4294967295;source=(seed*0x3141592)&4294967295;select=(seed*0x5318429)&4294967295;source_writes=0;routing=0;ctrl0=0;ctrl1=0;foreign=0;pending=0;issued=0;commands=0;writes=0;selectors=0;hang=0;release=0;alter=0;esp_radio_owner=1;esp_adc_busy=0;esp_radio_phy_refs=0;esp_radio_phy_clock_refs=0;isr=0;ready=1;ps=0x1888;return 0;}
@@ -32,7 +39,7 @@ fn pv(row,field){return cv(35+row*3+field);}
 fn av(row,field){return cv(182+row*4+field);}
 fn pmu_row(address){let i=0;while i<49{if pv(i,0)==address{return i;}i=i+1;}return -1;}
 fn esp32_load32(address){
- check(!(ps&8));if address==cv(33){return 3<<27;}if address==cv(34){return 25|(28<<5);}
+ check(!(ps&8));if address==cv(33){fuse_reads=fuse_reads+1;return fuse_version;}if address==cv(34){return 25|(28<<5);}if address==tv(1){fuse_reads=fuse_reads+1;return (fuse_code<<tv(4))|0xa5a00000|0x1ff;}
  if address==cv(31){return rf;}let i=pmu_row(address);if i>=0{return load64(pmu_bank+i*8);}return bus_read(address);
 }
 fn esp32_store32(address,value){
@@ -47,7 +54,8 @@ fn esp32_store32(address,value){
  return bus_write(address,value);
 }
 fn stage_reset(seed,value){
- reset(seed);esp_radio_hw_ready=0;esp_radio_pmu_active=0;esp_radio_pmu_internal=0;esp_radio_pmu_phase=0;esp_radio_pmu_analog_count=0;esp_radio_pmu_digital_count=0;esp_radio_pmu_configured=0;
+ stage_seed=seed;
+ check(!esp_radio_ocode_active);esp_radio_ocode_ready=0;esp_radio_ocode_phase=0;esp_radio_ocode_count=0;reset_reason=1;fuse_version=3<<27;fuse_code=0;trim_code_writes=0;trim_force_writes=0;reset(seed);esp_radio_hw_ready=0;esp_radio_pmu_active=0;esp_radio_pmu_internal=0;esp_radio_pmu_phase=0;esp_radio_pmu_analog_count=0;esp_radio_pmu_digital_count=0;esp_radio_pmu_configured=0;
  digital_writes=0;rf_writes=0;total_writes=0;restoring=0;rf=((seed+1)*0x31415927)&4294967295;rf_old=rf;
  let i=0;while i<49{let v=((seed+1)*0x1234567+i*0x31415927)&4294967295;store64(pmu_before+i*8,v);store64(pmu_bank+i*8,v);i=i+1;}
  i=0;while i<3{store8(memory+0x6d*256+av(i,0),value);i=i+1;}return 0;
@@ -67,7 +75,7 @@ fn restored(value,changed){
 fn force_different(){store8(memory+0x6d*256+av(0,0),0);store8(memory+0x6d*256+av(1,0),0);store8(memory+0x6d*256+av(2,0),255);return 0;}
 fn different_restored(){check(load8(memory+0x6d*256+av(0,0))==0 && load8(memory+0x6d*256+av(1,0))==0 && load8(memory+0x6d*256+av(2,0))==255);return 0;}
 fn main(argc,argv){
- h_environment(argc,argv);cfg=h_read(load64(argv+8));check(h_file_size==194*8);memory=alloc(65536);pmu_bank=alloc(392);pmu_before=alloc(392);stage_reset(17,0);
+ h_environment(argc,argv);cfg=h_read(load64(argv+8));check(h_file_size==207*8);memory=alloc(65536);pmu_bank=alloc(392);pmu_before=alloc(392);stage_reset(17,0);
  check(esp_radio_c6_pmu_stage(0)==-22 && esp_radio_c6_pmu_abort(2147483648)==-22 && !total_writes);
  check(esp_radio_c6_pmu_analog(-1,1,100)==-22 && esp_radio_c6_pmu_analog(3,1,100)==-22 && esp_radio_c6_pmu_analog(0,1,100)==-16 && !total_writes);
  ready=0;check(esp_radio_c6_pmu_stage(100)==-95 && !total_writes);ready=1;rv_hal_chip=5;check(esp_radio_c6_pmu_stage(100)==-95 && esp_radio_c6_pmu_abort(100)==-95 && !total_writes);rv_hal_chip=13;
@@ -119,6 +127,68 @@ fn main(argc,argv){
  mode=0;while mode<4{stage_reset(127+mode,0);source=(source&~1)|(mode&1);let c=clock;let s=source;let a=select;foreign=cv(1+(mode>>1));check(esp_radio_c6_pmu_stage(1000)==-16 && !rf_writes && !digital_writes && !commands && !selectors && !source_writes && !esp_radio_pmu_active);clean(c,s,a);mode=mode+1;}
  stage_reset(149,0);ps=0x1880;check(!esp_radio_c6_pmu_stage(1000) && ps==0x1880);restoring=1;check(!esp_radio_c6_pmu_abort(1000) && ps==0x1880);ps=0x1888;
  stage_reset(150,0);check(!esp_radio_c6_pmu_stage(1000));hang=10;check(esp_radio_c6_pmu_analog(0,-1,21)==-110 && esp_radio_regi2c_active);check(esp_radio_c6_pmu_commit()==-16 && esp_radio_pmu_active && !esp_radio_pmu_configured);release=1;restoring=1;check(!esp_radio_c6_pmu_abort(1000));restored(0,0);
+ // All reset reasons retain analog state unless the ROM reports power-on.
+ let reason=0;while reason<256{if reason!=1{
+  stage_reset(211+reason,85);check(!esp_radio_c6_pmu_stage(1000));reset_reason=reason;let before=total_writes;let reads=fuse_reads;let calls=reset_reads;
+  check(!esp_radio_c6_ocode_stage(1000) && esp_radio_ocode_ready && !esp_radio_ocode_active && fuse_reads==reads && reset_reads==calls+1 && total_writes==before);
+  check(esp_radio_c6_ocode_stage(1000)==-16 && total_writes==before);restoring=1;check(!esp_radio_c6_pmu_abort(1000) && !esp_radio_ocode_ready);
+ }reason=reason+1;}
+ // Every encoded block version chooses fused trim except exactly0.0.
+ let version=0;while version<32{
+  stage_reset(241+version,85);check(!esp_radio_c6_pmu_stage(1000));fuse_version=((version>>3)<<tv(2))|((version&7)<<tv(3));fuse_code=0xa7;
+  let reads=fuse_reads;let before=total_writes;let result=esp_radio_c6_ocode_stage(1000);
+  if !version{check(result==-95 && !esp_radio_ocode_active && !esp_radio_ocode_ready && fuse_reads==reads+1 && total_writes==before);}
+  else{check(!result && esp_radio_ocode_active && esp_radio_ocode_ready && fuse_reads==reads+2);}
+  restoring=1;check(!esp_radio_c6_pmu_abort(1000) && !esp_radio_ocode_active);
+  version=version+1;
+ }
+ // Full trim bytes, both old force values, unrelated bits and IRQ states.
+ let value=0;while value<256{mode=0;while mode<4{
+  stage_reset(277+value+mode,85);check(!esp_radio_c6_pmu_stage(1000));let data=memory+tv(5)*256;let prior=(value*37+11)&255;let force=0xa5^(mode&1)*(1<<tv(11));store8(data+tv(6),prior);store8(data+tv(9),force);fuse_code=value;
+  if mode&2{ps=0x1880;}let saved_ps=ps;let c=clock;let s=source;let a=select;
+  check(!esp_radio_c6_ocode_stage(1000) && ps==saved_ps && esp_radio_ocode_ready && esp_radio_ocode_active && esp_radio_ocode_count==2);
+  check(load8(data+tv(6))==value && load8(data+tv(9))==(force|(1<<tv(11))) && clock==c && source==s && select==a);
+  let before=total_writes;check(esp_radio_c6_ocode_stage(1000)==-16 && total_writes==before);
+  // Foreign changes outside the owned force bit survive rollback.
+  store8(data+tv(9),load8(data+tv(9))^0x95);restoring=1;check(!esp_radio_c6_pmu_abort(1000) && ps==saved_ps);
+  check(load8(data+tv(6))==prior && load8(data+tv(9))==(force^0x95) && !esp_radio_ocode_active && !esp_radio_ocode_ready && !esp_radio_pmu_active);
+  ps=0x1888;mode=mode+1;
+ }value=value+1;}
+ // Every snapshot/preparation command and rollback command can time out.
+ phase=1;while phase<=5{
+  stage_reset(311+phase,85);check(!esp_radio_c6_pmu_stage(1000));let data=memory+tv(5)*256;store8(data+tv(6),85);store8(data+tv(9),0);fuse_code=0xa7;hang=issued+phase;tick=0xfffffff0;
+  check(esp_radio_c6_ocode_stage(21)==-110 && esp_radio_ocode_active && esp_radio_ocode_phase==2 && esp_radio_pmu_active && ps==0x1888);
+  check(esp_radio_c6_pmu_commit()==-16);let count=commands;let before=total_writes;restoring=1;
+  check(esp_radio_c6_pmu_abort(21)==-110 && commands==count && total_writes==before && esp_radio_pmu_digital_count==49 && esp_radio_ocode_active);
+  release=1;let recover_ps=esp32_irq_save();esp_radio_pmu_internal=1;check(!esp_radio_c6_regi2c_recover(1000));esp_radio_pmu_internal=0;esp32_irq_restore(recover_ps);
+  check(esp_radio_c6_pmu_commit()==-16 && esp_radio_ocode_active && esp_radio_pmu_active);
+  check(!esp_radio_c6_pmu_abort(1000) && load8(data+tv(6))==85 && !load8(data+tv(9)) && !esp_radio_ocode_active && !esp_radio_pmu_active);
+  phase=phase+1;
+ }
+ phase=1;while phase<=5{
+  stage_reset(337+phase,85);check(!esp_radio_c6_pmu_stage(1000));let data=memory+tv(5)*256;store8(data+tv(6),85);store8(data+tv(9),0);fuse_code=0xa7;check(!esp_radio_c6_ocode_stage(1000));hang=issued+phase;restoring=1;
+  check(esp_radio_c6_pmu_abort(21)==-110 && esp_radio_ocode_active && esp_radio_pmu_digital_count==49 && esp_radio_c6_pmu_commit()==-16);
+  let count=commands;let before=total_writes;check(esp_radio_c6_pmu_abort(21)==-110 && commands==count && total_writes==before);
+  release=1;check(!esp_radio_c6_pmu_abort(1000));check(load8(data+tv(6))==85 && !load8(data+tv(9)) && trim_code_writes==2 && trim_force_writes==2 && !esp_radio_ocode_active && !esp_radio_pmu_active);phase=phase+1;
+ }
+ // Expected reset/fuse decisions and trim writes come from the actual
+ // pinned pmu_init/ocode_init C functions, with their hardware effects stubbed.
+ let policy=h_read(load64(argv+16));let rows=load64(policy);check(h_file_size==8+rows*56 && rows==32768);let at=policy+8;let vector=0;
+ while vector<rows{
+  stage_reset(401+vector,85);check(!esp_radio_c6_pmu_stage(1000));reset_reason=load64(at);let encoded=load64(at+8);fuse_version=((encoded>>3)<<tv(2))|((encoded&7)<<tv(3));fuse_code=load64(at+16);let expected=load64(at+24);let before=total_writes;let reads=fuse_reads;
+  let status=esp_radio_c6_ocode_stage(1000);
+  if expected==2{check(status==-95 && !esp_radio_ocode_active && !esp_radio_ocode_ready && total_writes==before && fuse_reads==reads+1);}
+  else{
+   check(!status && esp_radio_ocode_ready && esp_radio_ocode_active==(expected==1));
+   if expected{let data=memory+tv(5)*256;check(load64(at+32)==2 && load8(data+tv(6))==load64(at+40) && ((load8(data+tv(9))>>tv(11))&1)==load64(at+48) && fuse_reads==reads+2);}
+   else{check(!load64(at+32) && fuse_reads==reads && total_writes==before);}
+  }
+  restoring=1;check(!esp_radio_c6_pmu_abort(1000));at=at+56;vector=vector+1;
+ }
+ // A completed trim is retained only by the enclosing atomic PMU commit.
+ stage_reset(359,85);check(esp_radio_c6_ocode_stage(0)==-22 && esp_radio_c6_ocode_abort(0)==-22 && esp_radio_c6_ocode_stage(1000)==-16 && esp_radio_c6_ocode_abort(1000)==-16);
+ check(!esp_radio_c6_pmu_stage(1000));fuse_code=0xa7;check(!esp_radio_c6_ocode_stage(1000));let trim_before=total_writes;
+ check(!esp_radio_c6_pmu_commit() && esp_radio_pmu_configured && esp_radio_ocode_ready && !esp_radio_ocode_active && !esp_radio_ocode_phase && !esp_radio_ocode_count && total_writes==trim_before);check(esp_radio_c6_ocode_abort(1000)==-16 && total_writes==trim_before);
  stage_reset(151,0);check(esp_radio_c6_pmu_commit()==-16);check(!esp_radio_c6_pmu_stage(1000));let before=total_writes;check(!esp_radio_c6_pmu_commit() && esp_radio_pmu_configured && !esp_radio_pmu_active && !esp_radio_pmu_phase && !esp_radio_pmu_analog_count && !esp_radio_pmu_digital_count && total_writes==before);check(esp_radio_c6_pmu_stage(1000)==-16 && !esp_radio_c6_pmu_abort(1000) && total_writes==before);
  let out=alloc(8);store64(out,checks);return syscall(1,1,out,8,0,0,0)!=8;
 }

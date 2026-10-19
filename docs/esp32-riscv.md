@@ -1075,6 +1075,31 @@ transfer the staged defaults to platform lifetime after completing calibration
 and clock setup. Commit alone does not enable RF, and those remaining startup
 steps are still tracked under T547/T536.
 
+The staged PMU can also own the factory bandgap trim transaction through
+`esp_radio_c6_ocode_stage(cycles)`. It calls the pinned CPU0 ROM reset-reason
+function first. Non-power-on resets retain the analog trim and skip both eFuse
+reads and trim writes. On power-on, nonzero eFuse block versions select the
+factory OCODE byte. The transaction snapshots `I2C_ULP_EXT_CODE` and
+`I2C_ULP_IR_FORCE_CODE`, writes the code before enabling its force bit, and
+preserves the other bits in the force register. A successful preparation keeps
+its trim lease inside the enclosing PMU lease.
+
+`esp_radio_c6_pmu_abort(cycles)` rolls back any trim transaction before restoring
+regulators or RF-I2C power. `esp_radio_c6_ocode_abort(cycles)` can also roll back
+just the trim while leaving the PMU prepared. Both retain ownership on timeout,
+recover the bus to idle and read back uncertain writes before restoration.
+`esp_radio_c6_pmu_commit()` refuses an incomplete trim transaction and commits a
+completed one with the PMU state. These component commits still require the
+remaining full clock/power startup before hardware enable.
+
+Block version0.0 still returns `-95` from the OCODE stage: those chips require
+the separate software calibration sequence, including exclusive PLL/clock
+ownership, which remains under T561/T547. The primary-header/I2C model checks
+all256 trim bytes and reset reasons, all32 encoded fuse versions, interrupted
+preparation/rollback, and32,768 vectors from the actual pinned vendor reset and
+fuse-policy functions. This is model verification; actual C6 trim application,
+software calibration and RF operation remain unverified.
+
 The analog-I2C primitive now checks both busy engines before selecting its
 160 MHz source. `esp_radio_c6_regi2c_idle()` provides a command-free preflight
 using the existing source and restores the register-clock enable bit. Refusing
