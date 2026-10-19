@@ -1,0 +1,2 @@
+import "../../lib/platform/esp32c3-spi.flex";
+fn main(){let tx=alloc(16);let rx=alloc(16);let i=0;while i<16 {store8(tx+i,i);store8(rx+i,165);i=i+1;}if esp_spi_init(2,4,5,6,1000000,0)!=1000000 {return 1;}if esp_spi_transfer(2,tx,rx,16,100000)!=-110 || esp_spi_transferred(2) || esp_spi_status(2)!=-110 {return 2;}i=0;while i<16 {if load8(rx+i)!=165 {return 3;}i=i+1;}if esp_spi_deinit(2) || esp_spi_deinit(2) {return 4;}return 0;}

@@ -9,7 +9,7 @@ a=p.parse_args();w=Path(a.work).resolve();w.mkdir(parents=True,exist_ok=True)
 if (w/'report.json').exists():raise RuntimeError('choose fresh work directory')
 source=w/'production-source';manifest=h['copy_closure'](ROOT/'tests/esp32/sdk-masked-waits.flex',source)
 env=os.environ.copy();(w/'tmp').mkdir(exist_ok=True);env['TMPDIR']=str(w/'tmp')
-mask='if ps&15 {esp32_irq_restore(ps);return -16;}'
+mask='if esp_sdk_irq_blocked(ps) {esp32_irq_restore(ps);return -16;}'
 mutations=[
  ('yield-mask-ignored','esp32-sdk-task-core.flex','esp_sdk_yield',mask,'',101),
  ('delay-mask-ignored','esp32-sdk-task-core.flex','esp_sdk_delay',mask,'',102),
@@ -20,10 +20,10 @@ mutations=[
  ('event-blocks-while-masked','esp32-sdk-sync-core.flex','esp_sdk_event_wait','let blocking=ticks && esp_sdk_can_block();','let blocking=ticks;',111),
  ('unavailable-mutex-reported-success','esp32-sdk-sync-core.flex','esp_sdk_mutex_lock','if !blocking {return 0;}','if !blocking {return 1;}',110),
  ('timer-poll-mask-ignored','esp32-sdk-timer-core.flex','esp_sdk_timer_poll','if !esp_sdk_can_block() {return -16;}','',118),
- ('wifi-stop-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_stop','(ps&15) || ','',112),
- ('wifi-start-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_start','(ps&15) || ','',113),
- ('wifi-deinit-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_deinit','(ps&15) || ','',114),
- ('wifi-init-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_init','(ps&15) || ','',115),
+ ('wifi-stop-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_stop','esp_sdk_irq_blocked(ps) || ','',112),
+ ('wifi-start-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_start','esp_sdk_irq_blocked(ps) || ','',113),
+ ('wifi-deinit-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_deinit','esp_sdk_irq_blocked(ps) || ','',114),
+ ('wifi-init-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_init','esp_sdk_irq_blocked(ps) || ','',115),
  ('BT-init-mask-ignored','esp32-bluetooth.flex','esp_bt_controller_init','(ps&15) || ','',116),
  ('BT-deinit-mask-ignored','esp32-bluetooth.flex','esp_bt_controller_deinit','(ps&15) || ','',117),
  ('immediate-semaphore-rejected','esp32-sdk-sync-core.flex','esp_sdk_sem_take','if !s {return 0;}','if !s || !esp_sdk_can_block() {return 0;}',202),

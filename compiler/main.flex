@@ -6,6 +6,7 @@ import "backends/arm64.flex";
 import "backends/arm64-object.flex";
 import "backends/baremetal.flex";
 import "backends/esp32.flex";
+import "backends/riscv32.flex";
 import "backends/wasm.flex";
 import "backends/gpu-intrinsics.flex";
 import "lowering.flex";
@@ -449,11 +450,11 @@ fn binary(op) {
 
 fn call(name, size) {
     if equal(name,size,"native_callback",15) {return baremetal_callback();}
-    if esp32_target && equal(name,size,"esp32_callback",14) {return esp_callback(23,1);}
-    if esp32_target && equal(name,size,"esp32_callback32",16) {return esp_callback(24,8);}
-    if esp32_target && equal(name,size,"esp32_iram_callback32",21) {return esp_callback(26,8);}
-    if esp32_target && equal(name,size,"esp32_iram_callback",19) {return esp_callback(27,1);}
-    if esp32_target && equal(name,size,"esp32_external",14) {return esp_external();}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_callback",14) {return esp_callback(23,1);}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_callback32",16) {return esp_callback(24,8);}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_iram_callback32",21) {return esp_callback(26,8);}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_iram_callback",19) {return esp_callback(27,1);}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_external",14) {return esp_external();}
     expect(40);
     let count = 0;
     if token != 41 {
@@ -481,7 +482,7 @@ fn call(name, size) {
     else if equal(name, size, "port_out16", 10) { builtin = 11; arity = 2; }
     else if equal(name, size, "port_in32", 9) { builtin = 12; arity = 1; }
     else if equal(name, size, "port_out32", 10) { builtin = 13; arity = 2; }
-    if esp32_target {
+    if esp32_target || rv_target {
         if equal(name,size,"esp32_load32",12) {builtin=30;arity=1;}
         else if equal(name,size,"esp32_store32",13) {builtin=31;arity=2;}
         else if equal(name,size,"esp32_cycles",12) {builtin=32;arity=0;}
@@ -571,7 +572,7 @@ fn prefix() {
         if tx_recording {store64(tx_literal_flags+(function_count-1)*8,128);}
         if ptx_target || sass_target || hip_target {fail("GPU targets do not support string literals");}
         if cpu_cxx_target {fail("CPU kernels do not support string literals");}
-        if vm_mode {let address=vm_string_literal();if esp32_target {address=address+esp_data_base;}if a64_object {vm_emit(23,address);}else {if arm64_target {address=address+a64_data_base;}immediate(address);}next();return 0;}
+        if vm_mode {let address=vm_string_literal();if esp32_target {address=address+esp_data_base;}else if rv_target {address=address+rv_data_base;}if a64_object {vm_emit(23,address);}else {if arm64_target {address=address+a64_data_base;}immediate(address);}next();return 0;}
         let start = token_start + 1;
         let end = token_start + token_size - 1;
         let skip = jump(233);
@@ -1767,7 +1768,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1779,6 +1780,7 @@ fn main(argc, argv) {
             if target_seen {print(2,"choose only one compiler target\n");return 1;}target_seen=1;
             if up_text(value,"baremetal-x86_64") {baremetal_target=1;}
             else if up_text(value,"esp32") || up_text(value,"esp32-elf") || up_text(value,"esp32-radio-elf") || up_text(value,"esp32-xip-elf") || up_text(value,"esp32-btdm-elf") {esp_btdm=up_text(value,"esp32-btdm-elf");esp_flash=up_text(value,"esp32-xip-elf") || esp_btdm;esp_elf=up_text(value,"esp32-elf") || up_text(value,"esp32-radio-elf") || esp_flash;esp32_target=2;vm_mode=1;vm_restricted=1;esp_code_base=0x40080000;esp_data_base=0x3ffb0000;esp_stack_floor=0x3ffd0000;esp_stack_top=0x3ffd8000;if up_text(value,"esp32-radio-elf") || esp_flash {esp_radio=1;esp_stack_floor=0x3ffe8000;esp_stack_top=0x3fff0000;}if esp_btdm {esp_data_base=0x3ffc0000;}}
+            else if up_text(value,"esp32c3") || up_text(value,"esp32c3-elf") || up_text(value,"esp32c6") || up_text(value,"esp32c6-elf") || up_text(value,"esp32c3-xip-elf") || up_text(value,"esp32c6-xip-elf") || up_text(value,"esp32c3-radio-elf") || up_text(value,"esp32c6-radio-elf") {rv_target=1;rv_radio=up_text(value,"esp32c3-radio-elf") || up_text(value,"esp32c6-radio-elf");rv_flash=up_text(value,"esp32c3-xip-elf") || up_text(value,"esp32c6-xip-elf") || rv_radio;rv_elf=up_text(value,"esp32c3-elf") || up_text(value,"esp32c6-elf") || rv_flash;if up_text(value,"esp32c6") || up_text(value,"esp32c6-elf") || up_text(value,"esp32c6-xip-elf") || up_text(value,"esp32c6-radio-elf") {rv_target=2;rv_code_base=0x40800000;rv_data_base=0x40830000;rv_stack_floor=0x40850000;rv_stack_top=0x40858000;}if rv_radio {rv_data_base=0x3fc90000;rv_stack_floor=0x3fcbc000;rv_stack_top=0x3fcc4000;if rv_target==2 {rv_data_base=0x40810000;rv_stack_floor=0x4083c000;rv_stack_top=0x40844000;}}vm_mode=1;vm_restricted=1;}
             else if up_text(value,"esp32s3-xip-elf") {esp_s3_xip=1;esp_flash=1;esp_elf=1;esp_radio=1;esp32_target=1;vm_mode=1;vm_restricted=1;esp_data_base=0x3fca8000;}
             else if up_text(value,"esp32s3") || up_text(value,"esp32s3-elf") || up_text(value,"esp32s3-sdk-elf") {esp_s3_sdk=up_text(value,"esp32s3-sdk-elf");esp_elf=up_text(value,"esp32s3-elf") || esp_s3_sdk;if esp_s3_sdk {esp_data_base=0x3fcc0000;}esp32_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"android-arm64") {arm64_target=1;a64_object=1;vm_mode=1;vm_restricted=1;}
@@ -1819,9 +1821,9 @@ fn main(argc, argv) {
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
     if shader_target && frontend_language!=1 {fail("shader targets require SetaScript source");}
-    if word_io_buffered && (arm64_target || wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || cpu_cxx_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
+    if word_io_buffered && (arm64_target || wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || rv_target || frontend_ir_target || cpu_cxx_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
     if (ptx_target || sass_target || hip_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
-    if lowering_mode_seen && (arm64_target || wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || cpu_cxx_target) {fail("lowering mode requires native Linux x86-64 output");}
+    if lowering_mode_seen && (arm64_target || wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || rv_target || frontend_ir_target || cpu_cxx_target) {fail("lowering mode requires native Linux x86-64 output");}
     if cpu_cxx_target && frontend_language {fail("CPU kernel backend currently requires Flexscript source");}
     frontend_platform_check();
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=268435456;}
@@ -1830,7 +1832,7 @@ fn main(argc, argv) {
         fail("source and output paths must differ");
     }
     compiler_initialize();
-    if arm64_target || wasm_target || ptx_target || sass_target || hip_target || cpu_cxx_target || esp32_target {wasm_initialize();if esp32_target {vm_heap_used=24;}}
+    if arm64_target || wasm_target || ptx_target || sass_target || hip_target || cpu_cxx_target || esp32_target || rv_target {wasm_initialize();if esp32_target {vm_heap_used=24;}else if rv_target {vm_heap_used=56;}}
     load_module(source_path);
     if shader_target {
         select_module(0);output=seta_shader_frontend(source,source_size,source_path);output_size=sg_output_size;
@@ -1845,6 +1847,7 @@ fn main(argc, argv) {
         if frontend_ir_target {output=frontend_blob;output_size=frontend_blob_size;}
         else if arm64_target {arm64_finish();}
         else if esp32_target {esp32_finish();}
+        else if rv_target {riscv32_finish();}
         else if wasm_target {wasm_finish();}
         else if ptx_target {ptx_finish();}
         else if sass_target {sass_finish();}
@@ -1877,7 +1880,7 @@ fn main(argc, argv) {
     }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
-    let mode=493;if a64_object || wasm_target || shader_target || ptx_target || sass_target || hip_target || esp32_target || frontend_ir_target || cpu_cxx_target {mode=420;}
+    let mode=493;if a64_object || wasm_target || shader_target || ptx_target || sass_target || hip_target || esp32_target || rv_target || frontend_ir_target || cpu_cxx_target {mode=420;}
     if syscall(91, fd, mode, 0, 0, 0, 0) < 0 { fail("cannot set output permissions"); }
     if syscall(3, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot close output"); }
     return 0;

@@ -1,0 +1,109 @@
+.option norelax
+.text
+.globl rv_c_narrow8
+.type rv_c_narrow8,@function
+rv_c_narrow8:
+ xor a0,a0,a1
+ xor a0,a0,a2
+ xor a0,a0,a3
+ xor a0,a0,a4
+ xor a0,a0,a5
+ xor a0,a0,a6
+ xor a0,a0,a7
+ li a1,0xdeadbeef
+ ret
+.size rv_c_narrow8,.-rv_c_narrow8
+.globl rv_c_register_probe
+.type rv_c_register_probe,@function
+rv_c_register_probe:
+ addi sp,sp,-80
+ sw ra,76(sp)
+ sw s0,0(sp)
+ sw s1,4(sp)
+ sw s2,8(sp)
+ sw s3,12(sp)
+ sw s4,16(sp)
+ sw s5,20(sp)
+ sw s6,24(sp)
+ sw s7,28(sp)
+ sw s8,32(sp)
+ sw s9,36(sp)
+ sw s10,40(sp)
+ sw s11,44(sp)
+ sw gp,48(sp)
+ sw tp,52(sp)
+ mv t0,a0
+ li s0,0x11111111
+ li s1,0x22222222
+ li s2,0x33333333
+ li s3,0x44444444
+ li s4,0x55555555
+ li s5,0x66666666
+ li s6,0x77777777
+ li s7,0x88888888
+ li s8,0x99999999
+ li s9,0xaaaaaaaa
+ li s10,0xbbbbbbbb
+ li s11,0xcccccccc
+ li gp,0x12345678
+ li tp,0x87654321
+ li a0,0
+ li a1,0xffffffff
+ li a2,0x80000000
+ li a3,0xdeadbeef
+ li a4,0x23456789
+ li a5,0xabcdef01
+ li a6,0x87654321
+ li a7,0xfedcba98
+ jalr ra,t0,0
+ li t0,0x11111111
+ bne s0,t0,.Lbad
+ li t0,0x22222222
+ bne s1,t0,.Lbad
+ li t0,0x33333333
+ bne s2,t0,.Lbad
+ li t0,0x44444444
+ bne s3,t0,.Lbad
+ li t0,0x55555555
+ bne s4,t0,.Lbad
+ li t0,0x66666666
+ bne s5,t0,.Lbad
+ li t0,0x77777777
+ bne s6,t0,.Lbad
+ li t0,0x88888888
+ bne s7,t0,.Lbad
+ li t0,0x99999999
+ bne s8,t0,.Lbad
+ li t0,0xaaaaaaaa
+ bne s9,t0,.Lbad
+ li t0,0xbbbbbbbb
+ bne s10,t0,.Lbad
+ li t0,0xcccccccc
+ bne s11,t0,.Lbad
+ li t0,0x12345678
+ bne gp,t0,.Lbad
+ li t0,0x87654321
+ bne tp,t0,.Lbad
+ j .Lrestore
+.Lbad:
+ li a0,-1
+ li a1,-1
+.Lrestore:
+ lw s0,0(sp)
+ lw s1,4(sp)
+ lw s2,8(sp)
+ lw s3,12(sp)
+ lw s4,16(sp)
+ lw s5,20(sp)
+ lw s6,24(sp)
+ lw s7,28(sp)
+ lw s8,32(sp)
+ lw s9,36(sp)
+ lw s10,40(sp)
+ lw s11,44(sp)
+ lw gp,48(sp)
+ lw tp,52(sp)
+ lw ra,76(sp)
+ addi sp,sp,80
+ ret
+.size rv_c_register_probe,.-rv_c_register_probe

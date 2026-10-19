@@ -6,8 +6,8 @@ global esp_sdk_allocated=0;
 global esp_sdk_rover=0;
 // Profiles keep their SDK arena after the native bump heap. The main-stack
 // floor is also checked before initialization writes, including smaller ELFs.
-fn esp_sdk_heap_min() {let state=esp32_state();if state==0x3fca8000 {return 0x3fcb2000;}if state==0x3fcc0000 {return 0x3fcc6000;}if state==0x3fcb0000 {return 0x3fcc8000;}if state==0x3ffb0000 || state==0x3ffc0000 {return 0x3ffc8000;}return 0;}
-fn esp_sdk_heap_max() {if esp32_state()==0x3fca8000 || esp32_state()==0x3fcb0000 || esp32_state()==0x3fcc0000 {return 0x3fcd0000;}return 0x3ffe0000;}
+fn esp_sdk_heap_min() {let state=esp32_state();if state==0x3fc90000 || state==0x40810000 {return state+49152;}if state==0x3fca0000 {return 0x3fcb8000;}if state==0x40830000 {return 0x40848000;}if state==0x3fca8000 {return 0x3fcb2000;}if state==0x3fcc0000 {return 0x3fcc6000;}if state==0x3fcb0000 {return 0x3fcc8000;}if state==0x3ffb0000 || state==0x3ffc0000 {return 0x3ffc8000;}return 0;}
+fn esp_sdk_heap_max() {if esp32_state()==0x3fc90000 || esp32_state()==0x40810000 {return esp32_state()+180224;}if esp32_state()==0x3fca0000 {return 0x3fcc0000;}if esp32_state()==0x40830000 {return 0x40850000;}if esp32_state()==0x3fca8000 || esp32_state()==0x3fcb0000 || esp32_state()==0x3fcc0000 {return 0x3fcd0000;}return 0x3ffe0000;}
 fn esp_sdk_heap_init(base,size) {
     let lower=esp_sdk_heap_min();if !lower {return -95;}let upper=esp_sdk_heap_max();if base<lower || base>=upper || (base&15) || size<64 || (size&15) || size>upper-base {return -22;}
     if esp_sdk_begin {return -16;}if base+size>esp32_load32(esp32_state()+20) {return -22;}esp_sdk_begin=base;esp_sdk_end=base+size;esp_sdk_allocated=0;esp_sdk_rover=base;

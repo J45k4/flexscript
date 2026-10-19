@@ -1,0 +1,2 @@
+import "../../lib/platform/esp32c3-i2c.flex";
+fn main(){if esp_i2c_init(0,4,5,100000) {return 1;}let tx=alloc(32);let rx=alloc(32);let i=0;while i<32{store8(rx+i,165);i=i+1;}if esp_i2c_transfer(0,0x50,tx,1,rx,1,100000)!=-16 {return 2;}if esp_i2c_recover(0,100000)!=-110 || esp_i2c_status(0)!=-110 {return 3;}i=0;while i<32 {if load8(rx+i)!=165{return 4;}i=i+1;}if esp_i2c_deinit(0)||esp_i2c_deinit(0){return 5;}return 0;}

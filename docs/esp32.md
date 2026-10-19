@@ -6,6 +6,8 @@ platform adapter and regression harness are written in Flexscript. Firmware
 compilation invokes no assembler, linker, C compiler, Rust compiler or ESP-IDF
 build. There is no interpreter or RTOS in the generated firmware.
 
+C3/C6 RISC-V targets now have a separate [implementation and verification guide](esp32-riscv.md). C3 ROM execution is verified in stock QEMU; C6 execution and the remaining platform ports are open.
+
 ## Build
 
 From the Flexscript repository, using the installed compiler:
@@ -46,11 +48,39 @@ and `MIN / -1` or `MIN % -1` fail-stop. Unaligned 64-bit memory access is lowere
 to byte operations. Pointers are physical 32-bit addresses carried in 64-bit
 words; a nonzero high word traps before a memory access.
 
+Intra-function branches retain compact three-byte jumps when their signed
+18-bit displacement fits. Larger functions use absolute jumps only for distant
+edges, including forward/backward control flow and short-circuit expressions.
+The compiler repeats function layout until every branch fits, preserving call
+and callback relocations. Valid FIR functions may end in a jump. Profile code
+and memory limits still apply.
+
+Compile `scripts/test-esp32-branches.flex` to run the dedicated regression
+suite with `--compiler PATH --qemu PATH --ld PATH [--baseline PATH]
+[--report PATH]`. It boots both chips through stock Espressif QEMU, including
+S3 SDK RAM and both cached-flash profiles, terminal FIR jumps and cascading
+branch expansion. An optional pre-change compiler verifies compact byte parity
+and rejects the formerly out-of-range fixtures. This is machine-code execution
+evidence; physical board acceptance remains separate.
+
 The internal calling convention uses `callx0`/`ret`, a2:a3 for values, a14 for
 the frame and a1 for the stack. Optional ELF targets bridge to the windowed C
 ABI for vendor archives; see [vendor integration](esp32-vendor.md). Locals
-are initialized to zero. The compiler emits only functions reachable from
-`main()`, allowing unused platform-specific helper bodies in imports.
+are initialized to zero. Stack frames reserve words only for locals read by
+the function; unread stores are omitted while initializer and assignment
+expressions still execute. Source argument positions, including sparse C
+callback parameters, retain their original calling convention. The compiler
+emits only functions reachable from `main()`, allowing unused platform-specific
+helper bodies in imports.
+
+The dedicated local-frame regression runner is
+`scripts/test-esp32-locals.flex`. Compile it natively, then run it with
+`--compiler PATH --qemu PATH --ld PATH [--gcc PATH] [--baseline PATH]
+[--report PATH]`. It covers all nine profiles, discarded-expression effects,
+zero initialization on a reused stack, high-numbered source slots, sparse
+private/C parameters, exact live-frame limits and output preservation. An
+optional pre-change compiler verifies byte parity for all-read functions,
+code-size reductions and the formerly rejected sparse frames.
 
 Hardware intrinsics available only under this target:
 
@@ -155,7 +185,7 @@ pinned headers, checks emitted ELF regions and exercises all six SDK heap
 profiles, rejection preservation and exact boundary allocations in stock QEMU.
 
 These regions account for the IRAM/DRAM aliases of physical SRAM. Individual
-function frames are limited to 16 KiB, with runtime stack checks on entry and
+function frames are limited to 16 KiB of retained local slots, with runtime stack checks on entry and
 expression pushes. `alloc` rounds to eight bytes, returns `-12` on exhaustion
 and `-22` for zero size, and has no free operation. Calling `alloc` from an
 interrupt callback traps, preventing main/ISR allocator races. ISR callbacks

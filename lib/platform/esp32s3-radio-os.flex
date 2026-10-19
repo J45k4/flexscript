@@ -3,6 +3,7 @@ import "esp32s3-sdk-sync.flex";
 import "esp32s3-radio-irq.flex";
 import "esp32s3-radio-phy.flex";
 import "esp32-radio-os-core.flex";
+import "esp32-radio-os-xtensa.flex";
 // Exact S3 OSI-v9 contract from esp-wifi-sys 5afc3a38 (480 bytes).
 fn esp_radio_os_size() {return 480;}
 fn esp_radio_nvs_offset() {return 268;}

@@ -16,6 +16,8 @@ global esp_stack_top=0x3fcd8000;
 global esp_ir=0;
 global esp_ir_size=0;
 global esp_map=0;
+global esp_ir_jumps=0;
+global esp_local_slots=0;
 global esp_functions=0;
 global esp_seen=0;
 global esp_fixups=0;
@@ -39,6 +41,7 @@ global esp_import_used=0;
 global esp_elf_names=0;
 global esp_elf_name_size=0;
 
+global esp_push_entry=0;
 fn esp_code_capacity() {if esp_s3_xip {return 98304;}if esp_s3_sdk {return 196608;}return 131072;}
 fn esp_native_heap_begin() {if esp_s3_xip {return 0x3fcb0000;}if esp_s3_sdk {return 0x3fcc4000;}if esp_btdm {return 0x3ffb6400;}return esp_data_base+65536;}
 fn esp_native_heap_end() {if esp_s3_xip {return 0x3fcb2000;}if esp_s3_sdk {return 0x3fcc6000;}if esp_btdm {return 0x3ffb8000;}return esp_data_base+98304;}
@@ -99,7 +102,7 @@ fn esp_guard(kind,s,t) {let at=esp_branch(kind,s,t);esp_j(esp_trap);esp_patch_br
 fn esp_stack_check() {esp_imm(9,esp_data_base+20);esp_load(9,9,0);esp_guard(11,1,9);return 0;}
 fn esp_push() {esp_addi(1,1,-8);esp_stack_check();esp_store(2,1,0);esp_store(3,1,4);return 0;}
 fn esp_pop(lo,hi) {esp_load(lo,1,0);esp_load(hi,1,4);esp_addi(1,1,8);return 0;}
-fn esp_local(slot) {esp_imm(8,-8*(slot+1));esp_rrr(0x800000,8,14,8);return 0;}
+fn esp_local(slot) {slot=load64(esp_local_slots+slot*8);esp_imm(8,-8*(slot+1));esp_rrr(0x800000,8,14,8);return 0;}
 fn esp_epilogue() {
     esp_mov(1,14);esp_load(0,1,0);esp_load(14,1,4);esp_addi(1,1,16);esp_ins(0x80);return 0;
 }
@@ -408,20 +411,48 @@ fn esp_interrupt_entry() {
     esp_load(0,1,0);i=2;while i<16 {esp_load(i,1,i*4);i=i+1;}
     if irq_frame==192 {esp_addi(1,1,96);esp_addi(1,1,96);}else {esp_addi(1,1,112);}esp_ins(0x003000);return 0;
 }
+// Keep ordinary IR jumps at three bytes. Only out-of-range edges grow to a
+// fixed 24-byte absolute jump; a13 is scratch at an IR instruction boundary.
+// Re-emitting one function until no edge grows also handles cascaded ranges.
+fn esp_ir_jump(pc) {
+    let wide=load64(esp_ir_jumps+pc/2)>>32;
+    store64(esp_ir_jumps+pc/2,output_size|(wide<<32));
+    if wide {esp_const(13,0);esp_ins(0x0000a0|(13<<8));}else {esp_jump();}return 0;
+}
 fn esp_function(index) {
+    let begin=output_size;let relocations=esp_fixup_count;let stable=0;
+    let pc=load64(functions+index*32+16);let slots=load64(esp_ir+pc+8);let end=esp_end(index);
+    // Local addresses cannot escape the word IR. Keep source parameter indices,
+    // but reserve stack words only for slots read anywhere in the function.
+    esp_local_slots=alloc(slots*8+8);if esp_local_slots<0 {fail("cannot allocate ESP32 local-use table");}
+    let scan=pc+16;while scan<end {if load64(esp_ir+scan)==3 {store64(esp_local_slots+load64(esp_ir+scan+8)*8,1);}scan=scan+16;}
+    let i=0;let used=0;let mask=0;while i<slots {
+        if load64(esp_local_slots+i*8) {store64(esp_local_slots+i*8,used);used=used+1;if i<8 {mask=mask|(1<<i);}}
+        else {store64(esp_local_slots+i*8,-1);}i=i+1;
+    }store64(esp_param_masks+index*8,mask);
+    let frame=((used*8+15)/16)*16;if frame>16384 {fail("ESP32 function frame exceeds 16 KiB");}
+    while !stable {
+        output_size=begin;esp_fixup_count=relocations;esp_function_body(index,frame);stable=1;
+        let pc=load64(functions+index*32+16)+16;let end=esp_end(index);
+        while pc<end {
+            let op=load64(esp_ir+pc);if op>=10 && op<=12 {
+                let edge=load64(esp_ir_jumps+pc/2);let at=edge&4294967295;
+                let to=load64(esp_map+load64(esp_ir+pc+8)/2);
+                let delta=esp_code_address(to)-esp_code_address(at)-4;
+                if !(edge>>32) && (delta< -131072 || delta>131071) {
+                    store64(esp_ir_jumps+pc/2,at|(1<<32));stable=0;
+                }
+            }pc=pc+16;
+        }
+    }return 0;
+}
+fn esp_function_body(index,frame) {
     store64(esp_functions+index*8,output_size);
     let entry=functions+index*32;let pc=load64(entry+16);let slots=load64(esp_ir+pc+8);let arity=load64(entry+24);
-    let frame=((slots*8+15)/16)*16;
-    if frame>16384 {fail("ESP32 function frame exceeds 16 KiB");}
     esp_addi(1,1,-16);esp_stack_check();esp_store(0,1,0);esp_store(14,1,4);esp_mov(14,1);
     esp_imm(8,-frame);esp_rrr(0x800000,1,1,8);esp_stack_check();
-    // Locals cannot escape by address. Skip initialization of slots never read,
-    // particularly unused C callback parameters, without changing zero-init semantics.
-    let reads=alloc(slots*8+8);if reads<0 {fail("cannot allocate ESP32 local-use table");}
-    let scan=pc+16;let end=esp_end(index);let mask=0;
-    while scan<end {if load64(esp_ir+scan)==3 {let slot=load64(esp_ir+scan+8);store64(reads+slot*8,1);if slot<8 {mask=mask|(1<<slot);}}scan=scan+16;}store64(esp_param_masks+index*8,mask);
-    let i=0;while i<slots {
-        if load64(reads+i*8) {
+    let end=esp_end(index);let i=0;while i<slots {
+        if load64(esp_local_slots+i*8)>=0 {
             if i<arity {esp_imm(8,16+(arity-i-1)*8);esp_rrr(0x800000,8,14,8);esp_load(2,8,0);esp_load(3,8,4);}
             else {esp_movi(2,0);esp_movi(3,0);}
             esp_local(i);esp_store(2,8,0);esp_store(3,8,4);
@@ -432,8 +463,11 @@ fn esp_function(index) {
         store64(esp_map+pc/2,output_size);
         let op=load64(esp_ir+pc);let arg=load64(esp_ir+pc+8);
         if op==1 {esp_imm(2,arg);esp_imm(3,arg>>32);}
-        else if op==2 {esp_push();}
-        else if op==3 || op==4 {esp_local(arg);if op==3 {esp_load(2,8,0);esp_load(3,8,4);}else {esp_store(2,8,0);esp_store(3,8,4);}}
+        else if op==2 {esp_imm(8,esp_code_address(esp_push_entry));esp_ins(0x0008c0);}
+        else if op==3 || op==4 {
+            // A dead store leaves the accumulator (and all RHS effects) intact.
+            if load64(esp_local_slots+arg*8)>=0 {esp_local(arg);if op==3 {esp_load(2,8,0);esp_load(3,8,4);}else {esp_store(2,8,0);esp_store(3,8,4);}}
+        }
         else if op==5 || op==6 {esp_imm(8,esp_data_base+arg);if op==5 {esp_load(2,8,0);esp_load(3,8,4);}else {esp_store(2,8,0);esp_store(3,8,4);}}
         else if op==7 {esp_binary(arg);}
         else if op==25 {esp_imm(8,esp_data_base+load64(esp_imports+arg*24+16));esp_load(2,8,0);esp_movi(3,0);}
@@ -441,8 +475,8 @@ fn esp_function(index) {
         else if op==8 {esp_call(arg);esp_imm(8,load64(functions+arg*32+24)*8);esp_rrr(0x800000,1,1,8);}
         else if op==9 {esp_epilogue();}
         else if op==10 || op==11 || op==12 {
-            if op!=10 {esp_rrr(0x200000,6,2,3);esp_movi(7,0);let kind=1;if op==11 {kind=9;}let skip=esp_branch(kind,6,7);esp_jump();esp_patch_branch(skip,output_size);}
-            else {esp_jump();}
+            if op!=10 {esp_rrr(0x200000,6,2,3);esp_movi(7,0);let kind=1;if op==11 {kind=9;}let skip=esp_branch(kind,6,7);esp_ir_jump(pc);esp_patch_branch(skip,output_size);}
+            else {esp_ir_jump(pc);}
         }else if op==13 || op==15 {esp_bool(op==15);}
         else if op==14 {esp_neg(2,3);}
         else if op==16 {esp_movi(7,-1);esp_rrr(0x300000,2,2,7);esp_rrr(0x300000,3,3,7);}
@@ -522,9 +556,9 @@ fn esp32_finish() {
     let main_index=find(functions,function_count,"main",4);
     if main_index<0 || load64(functions+main_index*32+24) {fail("ESP32 requires main() with no parameters");}
     if esp_s3_sdk && vm_heap_used>16384 {fail("ESP32-S3 SDK static data exceeds 16 KiB");}if vm_heap_used>65536 {fail("ESP32 static data exceeds 64 KiB");}if esp_radio && vm_heap_used>32768 {fail("ESP32 radio static data overlaps reserved ROM SRAM");}
-    esp_ir=output;esp_ir_size=output_size;esp_seen=alloc(function_count*8);esp_c_thunks=alloc(function_count*8);esp_param_masks=alloc(function_count*8);esp_iram_functions=alloc(function_count*8);esp_map=alloc(esp_ir_size/2);
+    esp_ir=output;esp_ir_size=output_size;esp_seen=alloc(function_count*8);esp_c_thunks=alloc(function_count*8);esp_param_masks=alloc(function_count*8);esp_iram_functions=alloc(function_count*8);esp_map=alloc(esp_ir_size/2);esp_ir_jumps=alloc(esp_ir_size/2);
     esp_functions=alloc(function_count*8);esp_fixups=alloc(65536*16);esp_fixup_count=0;
-    if esp_iram_functions<0 || esp_param_masks<0 || esp_c_thunks<0 || esp_seen<0 || esp_map<0 || esp_functions<0 || esp_fixups<0 {fail("cannot allocate ESP32 backend tables");}
+    if esp_ir_jumps<0 || esp_iram_functions<0 || esp_param_masks<0 || esp_c_thunks<0 || esp_seen<0 || esp_map<0 || esp_functions<0 || esp_fixups<0 {fail("cannot allocate ESP32 backend tables");}
     esp_import_used=alloc(esp_import_count*8+8);if esp_import_used<0 {fail("cannot allocate ESP32 import table");}
     if esp_platform_path {esp_platform_entry=find(functions,function_count,"esp_platform_init",17);if esp_platform_entry>=0 {if load64(functions+esp_platform_entry*32+24) {fail("esp_platform_init must take no parameters");}esp_reachable(esp_platform_entry);}}
     esp_reachable(main_index);if esp_flash {let map=find(functions,function_count,"esp_xip_enable",14);if map<0 || load64(functions+map*32+24) {if esp_s3_xip {fail("esp32s3-xip-elf requires esp_xip_enable() from platform/esp32s3-xip.flex");}fail("esp32-xip-elf requires esp_xip_enable() from platform/esp32-xip.flex");}esp_reachable(map);}esp_dispatch=find(functions,function_count,"esp_irq_dispatch",16);
@@ -537,7 +571,7 @@ fn esp32_finish() {
     }
     esp_iram_closure();
     output=alloc(output_limit);if output<0 {fail("cannot allocate ESP32 machine code");}output_size=0;
-    let entry=esp_start(main_index);if esp_dispatch>=0 {esp_interrupt_entry();esp_patch_jump(0x300,esp_irq_entry);esp_patch_jump(0x340,esp_irq_entry);}
+    let entry=esp_start(main_index);esp_push_entry=output_size;esp_push();esp_ins(0x80);if esp_dispatch>=0 {esp_interrupt_entry();esp_patch_jump(0x300,esp_irq_entry);esp_patch_jump(0x340,esp_irq_entry);}
     let flash_init=-1;let i=0;if esp_flash {
         flash_init=find(functions,function_count,"esp_xip_enable",14);esp_function(flash_init);
         i=0;while i<function_count {if load64(esp_seen+i*8) && load64(esp_iram_functions+i*8) && i!=flash_init {esp_function(i);}i=i+1;}
@@ -554,7 +588,9 @@ fn esp32_finish() {
             let pc=load64(functions+i*32+16)+16;let end=esp_end(i);
             while pc<end {
                 let op=load64(esp_ir+pc);if op>=10 && op<=12 {
-                    let next=load64(esp_map+(pc+16)/2);esp_patch_jump(next-3,load64(esp_map+load64(esp_ir+pc+8)/2));
+                    let edge=load64(esp_ir_jumps+pc/2);let at=edge&4294967295;let to=load64(esp_map+load64(esp_ir+pc+8)/2);
+                    if edge>>32 {output_size=at;esp_const(13,esp_code_address(to));output_size=code_size;}
+                    else {esp_patch_jump(at,to);}
                 }pc=pc+16;
             }
         }i=i+1;

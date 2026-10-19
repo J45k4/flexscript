@@ -109,14 +109,10 @@ fn esp_radio_cb_timer_arm(a,b,c,d,e,f,g,h) {return esp_sdk_timer_arm(a,b*1000,c)
 }
 fn esp_radio_cb_timer_us(a,b,c,d,e,f,g,h) {return esp_sdk_timer_arm(a,b,c);
 }
-fn free(a,b,c,d,e,f,g,h) {return esp_sdk_free(a);
-}
-fn malloc(a,b,c,d,e,f,g,h) {return esp_sdk_malloc(a);
-}
-fn calloc(a,b,c,d,e,f,g,h) {return esp_sdk_calloc(a,b);
-}
-fn realloc(a,b,c,d,e,f,g,h) {return esp_sdk_realloc(a,b);
-}
+
+
+
+
 fn phy_enter_critical(a,b,c,d,e,f,g,h) {return esp32_irq_save();
 }
 fn phy_exit_critical(a,b,c,d,e,f,g,h) {esp32_irq_restore(a);return 0;
@@ -125,8 +121,7 @@ fn esp_dport_access_reg_read(a,b,c,d,e,f,g,h) {return esp32_load32(a);
 }
 fn rtc_get_xtal(a,b,c,d,e,f,g,h) {return 40;
 }
-fn puts(a,b,c,d,e,f,g,h) {esp_uart_write(a);esp_uart_write("\r\n");return 0;
-}
+
 fn __esp_radio_printf(a,b,c,d,e,f,g,h) {if esp_radio_log && b {esp_uart_write(b);esp_uart_write("\r\n");}return 0;
 }
 fn vTaskDelay(a,b,c,d,e,f,g,h) {return esp_sdk_delay(a);
@@ -140,8 +135,7 @@ fn sleep(a,b,c,d,e,f,g,h) {esp_sdk_delay(a*1000);return 0;
 }
 fn usleep(a,b,c,d,e,f,g,h) {esp_sdk_delay((a+999)/1000);return 0;
 }
-fn __assert_func(a,b,c,d,e,f,g,h) {esp_uart_write("Vendor assertion ");esp_uart_write(a);esp_uart_hex(b);esp_uart_write(d);return esp_radio_fail(0x4000);
-}
+
 fn esp_radio_cb_wifi_queue(a,b,c,d,e,f,g,h) {let q=esp_radio_owned(esp_sdk_queue_create(a,b));if !q {return 0;}let p=esp_radio_owned(esp_sdk_calloc(1,4));if !p {esp_sdk_free(q);return 0;}esp32_store32(p,q);return p;}
 fn esp_radio_cb_wifi_delete_queue(a,b,c,d,e,f,g,h) {if a {esp_sdk_free(esp32_load32(a));esp_sdk_free(a);}return 0;}
 fn esp_radio_nvs_patch(table) {if table && esp_radio_nvs_table {let i=0;while i<12 {esp32_store32(table+esp_radio_nvs_offset()+i*4,esp32_load32(esp_radio_nvs_table+i*4));i=i+1;}}return 0;}
@@ -155,15 +149,11 @@ fn esp_radio_dispatch_event(id,data,size) {
     }esp32_irq_restore(ps);return 0;
 }
 fn esp_radio_os_finish() {
-    esp32_callback32(free);
-    esp32_callback32(malloc);
-    esp32_callback32(calloc);
-    esp32_callback32(realloc);
+    let exports=esp_radio_libc_exports();if exports {return exports;}
     esp32_callback32(phy_enter_critical);
     esp32_callback32(phy_exit_critical);
     esp32_callback32(esp_dport_access_reg_read);
     esp32_callback32(rtc_get_xtal);
-    esp32_callback32(puts);
     esp32_callback32(__esp_radio_printf);
     esp32_callback32(vTaskDelay);
     esp32_callback32(esp_event_post);
@@ -171,7 +161,6 @@ fn esp_radio_os_finish() {
     esp32_callback32(esp_fill_random);
     esp32_callback32(sleep);
     esp32_callback32(usleep);
-    esp32_callback32(__assert_func);
     let ps=esp32_irq_save();if esp_sdk_timer_task {esp32_irq_restore(ps);return 0;}let r=esp_sdk_timer_init();if !r {esp_radio_timer_created=1;}esp32_irq_restore(ps);return r;
 }
 // Prepare and commit the complete ABI table as one task transaction. A failed

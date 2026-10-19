@@ -1,0 +1,4 @@
+# Pinned newlib4.3/ESP GCC libraries used by the RISC-V240-byte reent/stdio ABI
+7b4afb2b3cae1f9f486b9c6c028cd61da747c5fdbb3d84a8ff93dca2c234c31d  libc.a
+28c635e75db46b5754d8d45dfd7a37f172a0256bd124599450a17dad0280397e  libgcc.a
+04631ccd63dac7f1e2a14f4f7a9288316a92cb133dea71a9395702a8789bbec4  libm.a

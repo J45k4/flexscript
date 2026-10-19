@@ -1,5 +1,6 @@
 import "lib/esp32-elf.flex";
 import "lib/esp32s3-ftm.flex";
+import "lib/esp32-riscv-radio-build.flex";
 // Explicit local vendor archives and compiler; never downloads or bootstraps.
 global er_s3=0;
 fn er_alias(a,b) {
@@ -26,8 +27,8 @@ fn er_tls(args,tls,output) {
 fn main(argc,argv) {
     h_environment(argc,argv);let compiler=b_option(argc,argv,"--compiler",h_getenv("FLEX"));if !compiler {compiler="flexscript";}
     compiler=h_real(h_executable(compiler));let vendor=b_option(argc,argv,"--vendor",0);let rom=b_option(argc,argv,"--rom",0);let output=b_option(argc,argv,"--output",0);let kind=b_option(argc,argv,"--kind","wifi");
-    h_assert(vendor && rom && output && (h_equal(kind,"wifi") || h_equal(kind,"bluetooth")),"requires --vendor ESP32_ARCHIVES --rom ROM_SCRIPTS --output firmware.bin [--chip esp32|esp32s3] [--kind wifi|bluetooth] [--compiler PATH] [--ld PATH] [--source app.flex]");
-    let chip=b_option(argc,argv,"--chip","esp32");let s3=h_equal(chip,"esp32s3");h_assert(s3 || h_equal(chip,"esp32"),"--chip must be esp32 or esp32s3");
+    h_assert(vendor && rom && output && (h_equal(kind,"wifi") || h_equal(kind,"bluetooth")),"requires --vendor ESP32_ARCHIVES --rom ROM_SCRIPTS --output firmware.bin [--chip esp32|esp32s3|esp32c3|esp32c6] [--kind wifi|bluetooth] [--compiler PATH] [--ld PATH] [--source app.flex]");
+    let chip=b_option(argc,argv,"--chip","esp32");let rv=0;if h_equal(chip,"esp32c3"){rv=3;}if h_equal(chip,"esp32c6"){rv=6;}if rv{return er_rv_build(argc,argv,compiler,vendor,rom,output,kind,rv);}let s3=h_equal(chip,"esp32s3");h_assert(s3 || h_equal(chip,"esp32"),"--chip must be esp32, esp32s3, esp32c3 or esp32c6");
     h_assert(!s3 || h_equal(kind,"wifi"),"S3 Bluetooth vendor startup is not yet integrated");er_s3=s3;
     let bluetooth=h_equal(kind,"bluetooth");let tls=b_option(argc,argv,"--tls",0);h_assert(!tls || !bluetooth,"TLS vendor profile currently requires the Wi-Fi target");let source="examples/esp32-wifi-scan.flex";let target="esp32-xip-elf";let archives="core pp net80211 phy coexist wpa_supplicant espnow regulatory printf rtc";
     if bluetooth {source="examples/esp32-bluetooth-hci.flex";target="esp32-btdm-elf";archives="btdm_app phy coexist printf rtc";}if s3 {source="examples/esp32s3-vendor-probe.flex";target="esp32s3-xip-elf";archives="core pp net80211 phy coexist wpa_supplicant espnow regulatory printf smartconfig wapi mesh";h_assert(!tls,"the TLS vendor manifest must match this chip;S3 TLS archives are not yet integrated");}source=b_option(argc,argv,"--source",source);

@@ -8,3 +8,5 @@ fn esp_wifi_platform_prepare() {
     esp32_irq_restore(ps);return 0;
 }
 fn esp_wifi_platform_release() {return 0;}
+
+fn esp_wifi_platform_reset_locks(){esp32_store32(esp32_external("s_wifi_api_lock"),0);esp32_store32(esp32_external("g_wifi_global_lock"),0);esp32_store32(esp32_external("eloop_data_lock"),0);return 0;}

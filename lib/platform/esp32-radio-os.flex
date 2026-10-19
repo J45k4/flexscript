@@ -4,6 +4,7 @@ import "esp32-sdk-sync.flex";
 import "esp32-sdk-timer.flex";
 import "esp32-radio-lifecycle.flex";
 import "esp32-radio-os-core.flex";
+import "esp32-radio-os-xtensa.flex";
 // Pinned esp-wifi-sys 5afc3a38, ESP_WIFI_OS_ADAPTER_VERSION=9, original ESP32.
 // Single CPU; optional native NVS table, no light sleep/coexistence.
 global esp_radio_irq_count=0;
