@@ -38,7 +38,7 @@ fn frontend_child(fd,text,size,path) {
     // bounded memory, fuel and time, and no file, network or raw FFI grants.
     source_path=frontend_path;module_count=0;arena_size=0;import_depth=0;source_deadline=0;tx_inside=1;
     function_count=0;global_count=0;call_count=0;output_size=0;frontend_language=0;
-    vm_mode=1;vm_restricted=1;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;esp32_target=0;esp_platform_path=0;frontend_platform_loading=0;frontend_platform_count=0;esp_elf=0;esp_radio=0;esp_btdm=0;esp_flash=0;vm_heap_limit=268435456;vm_heap_used=16;
+    vm_mode=1;vm_restricted=1;arm64_target=0;a64_object=0;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;esp32_target=0;rv_target=0;rv_elf=0;esp_platform_path=0;frontend_platform_loading=0;frontend_platform_count=0;esp_elf=0;esp_radio=0;esp_btdm=0;esp_flash=0;vm_heap_limit=268435456;vm_heap_used=16;
     vm_sp=0;vm_depth=0;vm_local_base=0;vm_local_top=0;vm_finished=0;vm_error=0;vm_steps=0;
     vm_fuel=1000000000;vm_timeout=60000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
     vm_jit_enabled=1;vm_jit_explicit=0;vm_jit_threshold=1;
@@ -96,7 +96,7 @@ fn frontend_source_accept(blob,size) {
     let text=alloc(size-63);if text<0 {fail("cannot allocate generated source");}net_copy(text,blob+64,size-64);
     store64(modules+8,text);store64(modules+16,size-64);store64(modules+48,0);
     frontend_language=0;function_count=0;global_count=0;call_count=0;output_size=0;
-    vm_mode=frontend_source_vm || wasm_target || ptx_target || sass_target || hip_target || esp32_target;
+    vm_mode=frontend_source_vm || arm64_target || wasm_target || ptx_target || sass_target || hip_target || esp32_target || rv_target;
     if native_pipeline_ir && !vm_mode && !baremetal_target {
         native_ir_prepare();output=alloc(output_limit);if output<0 {fail("cannot allocate generated native IR");}
     }
@@ -128,7 +128,7 @@ fn frontend_import_fail(f,n,reason) {
 }
 // VM-IR targets link here; native FIR links inside ir_native after lowering.
 fn frontend_link_platform() {
-    if frontend_platform_count && (wasm_target || esp32_target || !frontend_language) {frontend_compile_platform();}return 0;
+    if frontend_platform_count && (arm64_target || wasm_target || esp32_target || rv_target || !frontend_language) {frontend_compile_platform();}return 0;
 }
 // Compile explicit trusted platform modules after validated frontend IR. Their
 // globals extend the same static image; their calls can bind FIR functions, and

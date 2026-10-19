@@ -84,7 +84,7 @@ fn tx_vm_reset() {
 }
 fn tx_child(fd,path,config,request_module,phase) {
     native_ir_target=0;output_limit=67108864;
-    baremetal_target=0;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;cpu_cxx_target=0;frontend_language=0;
+    baremetal_target=0;arm64_target=0;a64_object=0;wasm_target=0;ptx_target=0;sass_target=0;hip_target=0;cpu_cxx_target=0;frontend_language=0;
     tx_inside=1;tx_vm_reset();
     if phase {
         output_size=0;function_count=0;global_count=0;call_count=0;tx_recording=1;

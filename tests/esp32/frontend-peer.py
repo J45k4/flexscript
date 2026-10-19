@@ -10,7 +10,7 @@ def main():
     expected=EXPECTED+(b'FLEXPASS' if a.pass_marker else b'')
     payload=a.image.read_bytes();assert payload[0]==233 and payload[1]==2
     chip=payload[12];assert chip in (0,9);machine='esp32' if chip==0 else 'esp32s3'
-    state=struct.unpack_from('<I',payload,32+struct.unpack_from('<I',payload,28)[0])[0];assert state in (0x3ffb0000,0x3ffc0000,0x3fcb0000)
+    state=struct.unpack_from('<I',payload,32+struct.unpack_from('<I',payload,28)[0])[0];assert state in (0x3ffb0000,0x3ffc0000,0x3fcb0000,0x3fcc0000,0x3fca8000)
     data=bytearray(b'\xff'*4194304);offset=4096 if chip==0 else 0;data[offset:offset+len(payload)]=payload
     with tempfile.TemporaryDirectory(prefix='flexscript-frontend-uart-') as tmp:
         flash=Path(tmp)/'flash.bin';flash.write_bytes(data);host,child=socket.socketpair();host.setblocking(False)

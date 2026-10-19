@@ -1,23 +1,27 @@
 import "../lib/http.flex";
 import "../lib/signature.flex";
 import "../vm/runtime.flex";
-import "baremetal.flex";
-import "esp32.flex";
-import "wasm.flex";
-import "gpu-intrinsics.flex";
+import "backends/x86_64.flex";
+import "backends/arm64.flex";
+import "backends/arm64-object.flex";
+import "backends/baremetal.flex";
+import "backends/esp32.flex";
+import "backends/riscv32.flex";
+import "backends/wasm.flex";
+import "backends/gpu-intrinsics.flex";
 import "lowering.flex";
 import "cpu-cxx.flex";
-import "ptx.flex";
-import "hip.flex";
-import "rdna.flex";
-import "sass.flex";
-import "sass-opt.flex";
-import "sass-registers.flex";
-import "sass-schedule.flex";
-import "sass-float.flex";
+import "backends/ptx.flex";
+import "backends/hip.flex";
+import "backends/rdna.flex";
+import "backends/sass.flex";
+import "backends/sass-opt.flex";
+import "backends/sass-registers.flex";
+import "backends/sass-schedule.flex";
+import "backends/sass-float.flex";
 import "ir.flex";
 import "ir-opt.flex";
-import "word-io.flex";
+import "backends/word-io.flex";
 import "native-link.flex";
 import "native-branches.flex";
 import "native-ir.flex";
@@ -635,11 +639,11 @@ fn native_binary_literal(op,begin,pushed) {
 
 fn call(name, size) {
     if equal(name,size,"native_callback",15) {return baremetal_callback();}
-    if esp32_target && equal(name,size,"esp32_callback",14) {return esp_callback(23,1);}
-    if esp32_target && equal(name,size,"esp32_callback32",16) {return esp_callback(24,8);}
-    if esp32_target && equal(name,size,"esp32_iram_callback32",21) {return esp_callback(26,8);}
-    if esp32_target && equal(name,size,"esp32_iram_callback",19) {return esp_callback(27,1);}
-    if esp32_target && equal(name,size,"esp32_external",14) {return esp_external();}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_callback",14) {return esp_callback(23,1);}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_callback32",16) {return esp_callback(24,8);}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_iram_callback32",21) {return esp_callback(26,8);}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_iram_callback",19) {return esp_callback(27,1);}
+    if (esp32_target || rv_target) && equal(name,size,"esp32_external",14) {return esp_external();}
     expect(40);
     let count = 0;
     if token != 41 {
@@ -667,7 +671,7 @@ fn call(name, size) {
     else if equal(name, size, "port_out16", 10) { builtin = 11; arity = 2; }
     else if equal(name, size, "port_in32", 9) { builtin = 12; arity = 1; }
     else if equal(name, size, "port_out32", 10) { builtin = 13; arity = 2; }
-    if esp32_target {
+    if esp32_target || rv_target {
         if equal(name,size,"esp32_load32",12) {builtin=30;arity=1;}
         else if equal(name,size,"esp32_store32",13) {builtin=31;arity=2;}
         else if equal(name,size,"esp32_cycles",12) {builtin=32;arity=0;}
@@ -686,6 +690,7 @@ fn call(name, size) {
         else if equal(name,size,"esp32_switch",12) {builtin=46;arity=2;}
         else if equal(name,size,"esp32_state",11) {builtin=47;arity=0;}
         else if equal(name,size,"esp32_irq_pc",12) {builtin=48;arity=0;}
+        else if equal(name,size,"esp32_preempt_supported",23) {builtin=49;arity=0;}
     }
     if builtin {
         if count != arity { fail("wrong builtin argument count"); }
@@ -763,7 +768,7 @@ fn prefix() {
         if tx_recording {store64(tx_literal_flags+(function_count-1)*8,128);}
         if ptx_target || sass_target || hip_target {fail("GPU targets do not support string literals");}
         if cpu_cxx_target {fail("CPU kernels do not support string literals");}
-        if vm_mode {let address=vm_string_literal();if native_ir_target {vm_emit(28,(vm_string_size<<32)|address);}else {if esp32_target {address=address+esp_data_base;}immediate(address);}next();return 0;}
+        if vm_mode {let address=vm_string_literal();if native_ir_target {vm_emit(28,(vm_string_size<<32)|address);next();return 0;}if esp32_target {address=address+esp_data_base;}else if rv_target {address=address+rv_data_base;}if a64_object {vm_emit(23,address);}else {if arm64_target {address=address+a64_data_base;}immediate(address);}next();return 0;}
         let start = token_start + 1;
         let end = token_start + token_size - 1;
         let skip = jump(233);
@@ -995,157 +1000,6 @@ fn function_definition() {
     native_register_frame=0;native_reg_replay=0;
     lowering_entry(entry);
     if !baremetal_target {native_link_record(function_count-1,before_calls,call_count);}
-    return 0;
-}
-
-fn initialize_output() {
-    if vm_mode {return 0;}
-    if baremetal_target {return baremetal_initialize();}
-    let i = 0;
-    while i < 120 { emit(0); i = i + 1; }
-    store8(output, 127); store8(output + 1, 69);
-    store8(output + 2, 76); store8(output + 3, 70);
-    store8(output + 4, 2); store8(output + 5, 1); store8(output + 6, 1);
-    store8(output + 16, 2); store8(output + 18, 62);
-    patch32(20, 1); store64(output + 24, 4194424);
-    store64(output + 32, 64);
-    store8(output + 52, 64); store8(output + 54, 56); store8(output + 56, 1);
-    patch32(64, 1); patch32(68, 7);
-    store64(output + 80, 4194304); store64(output + 88, 4194304);
-    store64(output + 112, 4096);
-    // Establish round-to-nearest, gradual underflow and masked FP exceptions.
-    emit(104);emit32(8064);emit(15);emit(174);emit(20);emit(36);emit(72);emit(131);emit(196);emit(8);
-    emit(72); emit(139); emit(4); emit(36); emit(80);
-    emit(72); emit(141); emit(68); emit(36); emit(16); emit(80);
-    emit(232); native_main_call=output_size; emit32(0);
-    emit(72); emit(131); emit(196); emit(16);
-    word_io_exit();
-    emit(72); emit(137); emit(199);
-    emit(184); emit32(60); emit(15); emit(5);
-    return 0;
-}
-
-fn resolve() {
-    lowering_validate();
-    if ptx_target || sass_target || hip_target || cpu_cxx_target {vm_resolve();return 0;}
-    let main_index = find(functions, function_count, "main", 4);
-    if main_index < 0 { fail("missing main function"); }
-    let entry = functions + main_index * 32;
-    let count = load64(entry + 24);
-    if count != 0 && count != 2 { fail("main must take zero or two parameters"); }
-    if vm_mode {vm_resolve();return 0;}
-    if baremetal_target && count != 0 {fail("bare-metal main must take zero parameters");}
-    patch32(native_main_call, load64(entry + 16) - native_main_call - 4);
-    let i = 0;
-    while i < call_count {
-        let site = calls + i * 32;
-        let index = find(functions, function_count, load64(site), load64(site + 8));
-        let target = 0;
-        if index < 0 {
-            target = ffi_resolve(load64(site),load64(site+8),load64(site+24));
-            if !target { locate_name(load64(site)); if baremetal_target {fail("undefined function; dynamic FFI is unavailable on bare metal");}fail("undefined function"); }
-        } else {
-            let function = functions + index * 32;
-            if load64(function + 24) != load64(site + 24) {
-                locate_name(load64(site)); fail("wrong function argument count");
-            }
-            target=load64(function+16);
-        }
-        let at = load64(site + 16);
-        if at>=0 {patch32(at, target - at - 4);}
-        i = i + 1;
-    }
-    if ffi_dynamic { ffi_finish(load64(entry+16)); }
-    if baremetal_target {baremetal_finish();}
-    else {store64(output + 96, output_size);store64(output + 104, output_size);}
-    return 0;
-}
-
-// FFI adapters bridge Flexscript's internal stack ABI to System V AMD64.
-// Named Flexscript functions take precedence, allowing a frozen bootstrap shim.
-fn ffi_argument(reg,offset) {
-    emit(72); if reg>=8 { store8(output+output_size-1,76); }
-    emit(139); emit(133|((reg&7)<<3)); emit32(offset); return 0;
-}
-fn ffi_indirect(symbol) {
-    emit(255); emit(21);
-    store64(ffi_fixups+ffi_fixup_count*16,output_size);
-    store64(ffi_fixups+ffi_fixup_count*16+8,symbol);
-    ffi_fixup_count=ffi_fixup_count+1; emit32(0); return 0;
-}
-fn ffi_resolve(name,size,count) {
-    let kind=-1; let arity=7;
-    if equal(name,size,"ffi_open",8) {kind=0;arity=1;}
-    else if equal(name,size,"ffi_symbol",10) {kind=1;arity=2;}
-    else if equal(name,size,"ffi_call",8) {kind=2;}
-    else if equal(name,size,"ffi_call_i32",12) {kind=3;}
-    else if equal(name,size,"ffi_call_u32",12) {kind=4;}
-    if kind<0 {return 0;}
-    if baremetal_target && kind<2 {return 0;}
-    if count!=arity {locate_name(name);fail("wrong FFI argument count");}
-    let cached=load64(ffi_entries+kind*8); if cached {return cached;}
-    let at=output_size;store64(ffi_entries+kind*8,at);
-    emit(85);emit(72);emit(137);emit(229); // preserve rbp
-    if kind==0 {ffi_argument(7,16);emit(190);emit32(2);ffi_dynamic=1;}
-    else if kind==1 {ffi_argument(7,24);ffi_argument(6,16);ffi_dynamic=1;}
-    else {
-        ffi_argument(0,64);ffi_argument(7,56);ffi_argument(6,48);
-        ffi_argument(2,40);ffi_argument(1,32);ffi_argument(8,24);ffi_argument(9,16);
-    }
-    emit(72);emit(131);emit(228);emit(240); // and rsp,-16 before C call
-    if kind<2 {ffi_indirect(kind);} else {emit(255);emit(208);}
-    if kind==3 {emit(72);emit(152);} // sign extend C int
-    else if kind==4 {emit(137);emit(192);} // zero extend C unsigned int
-    epilogue();return at;
-}
-fn ffi_align() {while output_size%8 {emit(0);}return 0;}
-fn ffi_tag(tag,value) {emit64(tag);emit64(value);return 0;}
-fn ffi_phdr(kind,flags,offset,size,alignment) {
-    emit32(kind);emit32(flags);emit64(offset);emit64(4194304+offset);
-    emit64(4194304+offset);emit64(size);emit64(size);emit64(alignment);return 0;
-}
-fn ffi_finish(main_address) {
-    // C runtime startup initializes environ, TLS and libc before calling our
-    // stack-ABI main, and returns through libc for orderly library cleanup.
-    let main_bridge=output_size;
-    emit(85);emit(72);emit(137);emit(229);emit(87);emit(86);
-    emit(232);emit32(main_address-output_size-4);
-    emit(72);emit(131);emit(196);emit(16);epilogue();
-    let start=output_size;store64(output+24,4194304+start);
-    emit(49);emit(237);emit(73);emit(137);emit(209); // rbp=0, r9=rtld_fini
-    emit(94);emit(72);emit(137);emit(226); // argc -> rsi, argv -> rdx
-    emit(72);emit(131);emit(228);emit(240);emit(80);emit(84);
-    emit(69);emit(49);emit(192);emit(49);emit(201);
-    emit(72);emit(141);emit(61);emit32(main_bridge-output_size-4);
-    ffi_indirect(2);emit(244);
-    ffi_align();let got=output_size;emit64(0);emit64(0);emit64(0);
-    let i=0;while i<ffi_fixup_count {
-        let at=load64(ffi_fixups+i*16);let symbol=load64(ffi_fixups+i*16+8);
-        patch32(at,got+symbol*8-at-4);i=i+1;
-    }
-    let strings=output_size;
-    let names="\0dlopen\0dlsym\0__libc_start_main\0libc.so.6\0";
-    i=0;while i<42 {emit(load8(names+i));i=i+1;}
-    ffi_align();let symbols=output_size;i=0;while i<24 {emit(0);i=i+1;}
-    i=0;while i<3 {
-        let name_offset=1;if i==1 {name_offset=8;}else if i==2 {name_offset=14;}
-        emit32(name_offset);emit(18);emit(0);emit(0);emit(0);emit64(0);emit64(0);i=i+1;
-    }
-    let hashes=output_size;emit32(1);emit32(4);emit32(1);
-    emit32(0);emit32(2);emit32(3);emit32(0);
-    ffi_align();let relocations=output_size;i=0;while i<3 {
-        emit64(4194304+got+i*8);emit64(((i+1)<<32)|6);emit64(0);i=i+1;
-    }
-    let dynamic=output_size;
-    ffi_tag(1,32);ffi_tag(4,4194304+hashes);ffi_tag(5,4194304+strings);ffi_tag(10,42);
-    ffi_tag(6,4194304+symbols);ffi_tag(11,24);ffi_tag(7,4194304+relocations);
-    ffi_tag(8,72);ffi_tag(9,24);ffi_tag(0,0);
-    let interpreter=output_size;names="/lib64/ld-linux-x86-64.so.2";
-    i=0;while i<=length(names) {emit(load8(names+i));i=i+1;}
-    ffi_align();let headers=output_size;let total=headers+224;
-    store64(output+32,headers);store8(output+56,4);
-    ffi_phdr(6,4,headers,224,8);ffi_phdr(3,4,interpreter,28,1);
-    ffi_phdr(1,7,0,total,4096);ffi_phdr(2,6,dynamic,160,8);
     return 0;
 }
 
@@ -2113,7 +1967,7 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--ir-opt basic|none] [--target wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -2125,7 +1979,11 @@ fn main(argc, argv) {
             if target_seen {print(2,"choose only one compiler target\n");return 1;}target_seen=1;
             if up_text(value,"baremetal-x86_64") {baremetal_target=1;}
             else if up_text(value,"esp32") || up_text(value,"esp32-elf") || up_text(value,"esp32-radio-elf") || up_text(value,"esp32-xip-elf") || up_text(value,"esp32-btdm-elf") {esp_btdm=up_text(value,"esp32-btdm-elf");esp_flash=up_text(value,"esp32-xip-elf") || esp_btdm;esp_elf=up_text(value,"esp32-elf") || up_text(value,"esp32-radio-elf") || esp_flash;esp32_target=2;vm_mode=1;vm_restricted=1;esp_code_base=0x40080000;esp_data_base=0x3ffb0000;esp_stack_floor=0x3ffd0000;esp_stack_top=0x3ffd8000;if up_text(value,"esp32-radio-elf") || esp_flash {esp_radio=1;esp_stack_floor=0x3ffe8000;esp_stack_top=0x3fff0000;}if esp_btdm {esp_data_base=0x3ffc0000;}}
-            else if up_text(value,"esp32s3") || up_text(value,"esp32s3-elf") {esp_elf=up_text(value,"esp32s3-elf");esp32_target=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"esp32c3") || up_text(value,"esp32c3-elf") || up_text(value,"esp32c6") || up_text(value,"esp32c6-elf") || up_text(value,"esp32c3-xip-elf") || up_text(value,"esp32c6-xip-elf") || up_text(value,"esp32c3-radio-elf") || up_text(value,"esp32c6-radio-elf") {rv_target=1;rv_radio=up_text(value,"esp32c3-radio-elf") || up_text(value,"esp32c6-radio-elf");rv_flash=up_text(value,"esp32c3-xip-elf") || up_text(value,"esp32c6-xip-elf") || rv_radio;rv_elf=up_text(value,"esp32c3-elf") || up_text(value,"esp32c6-elf") || rv_flash;if up_text(value,"esp32c6") || up_text(value,"esp32c6-elf") || up_text(value,"esp32c6-xip-elf") || up_text(value,"esp32c6-radio-elf") {rv_target=2;rv_code_base=0x40800000;rv_data_base=0x40830000;rv_stack_floor=0x40850000;rv_stack_top=0x40858000;}if rv_radio {rv_data_base=0x3fc90000;rv_stack_floor=0x3fcbc000;rv_stack_top=0x3fcc4000;if rv_target==2 {rv_data_base=0x40810000;rv_stack_floor=0x4083c000;rv_stack_top=0x40844000;}}vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"esp32s3-xip-elf") {esp_s3_xip=1;esp_flash=1;esp_elf=1;esp_radio=1;esp32_target=1;vm_mode=1;vm_restricted=1;esp_data_base=0x3fca8000;}
+            else if up_text(value,"esp32s3") || up_text(value,"esp32s3-elf") || up_text(value,"esp32s3-sdk-elf") {esp_s3_sdk=up_text(value,"esp32s3-sdk-elf");esp_elf=up_text(value,"esp32s3-elf") || esp_s3_sdk;if esp_s3_sdk {esp_data_base=0x3fcc0000;}esp32_target=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"android-arm64") {arm64_target=1;a64_object=1;vm_mode=1;vm_restricted=1;}
+            else if up_text(value,"linux-arm64") || up_text(value,"aarch64") {arm64_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"wasm32") {wasm_target=1;vm_mode=1;vm_restricted=1;}
             else if up_text(value,"glsl") {shader_target=1;}
             else if up_text(value,"wgsl") {shader_target=2;}
@@ -2170,9 +2028,9 @@ fn main(argc, argv) {
     source_path = load64(argv + first*8);
     frontend_auto(source_path);
     if shader_target && frontend_language!=1 {fail("shader targets require SetaScript source");}
-    if word_io_buffered && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || cpu_cxx_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
+    if word_io_buffered && (arm64_target || wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || rv_target || frontend_ir_target || cpu_cxx_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
     if (ptx_target || sass_target || hip_target) && frontend_language && frontend_language!=2 {fail("GPU targets require Flexscript or an external source frontend");}
-    if lowering_mode_seen && (wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || frontend_ir_target || cpu_cxx_target) {fail("lowering mode requires native Linux x86-64 output");}
+    if lowering_mode_seen && (arm64_target || wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || rv_target || frontend_ir_target || cpu_cxx_target) {fail("lowering mode requires native Linux x86-64 output");}
     if cpu_cxx_target && frontend_language {fail("CPU kernel backend currently requires Flexscript source");}
     if native_pipeline_seen && (vm_mode || shader_target || baremetal_target || frontend_ir_target || frontend_language) {fail("native pipeline requires native Linux Flexscript source output");}
     if keep_unused_seen && (vm_mode || shader_target || baremetal_target || frontend_ir_target || frontend_language) {fail("native link mode requires native Linux Flexscript source output");}
@@ -2184,7 +2042,7 @@ fn main(argc, argv) {
     }
     if native_pipeline_ir && !vm_mode && !baremetal_target && !shader_target && !frontend_language && !frontend_ir_target {native_ir_prepare();}
     compiler_initialize();
-    if wasm_target || ptx_target || sass_target || hip_target || cpu_cxx_target || esp32_target {wasm_initialize();if esp32_target {vm_heap_used=24;}}
+    if arm64_target || wasm_target || ptx_target || sass_target || hip_target || cpu_cxx_target || esp32_target || rv_target {wasm_initialize();if esp32_target {vm_heap_used=24;}else if rv_target {vm_heap_used=56;}}
     load_module(source_path);
     if shader_target {
         select_module(0);output=seta_shader_frontend(source,source_size,source_path);output_size=sg_output_size;
@@ -2199,7 +2057,9 @@ fn main(argc, argv) {
         if native_ir_target {native_ir_finish();}else {native_link();}
         if native_ir_target {}
         else if frontend_ir_target {output=frontend_blob;output_size=frontend_blob_size;}
+        else if arm64_target {arm64_finish();}
         else if esp32_target {esp32_finish();}
+        else if rv_target {riscv32_finish();}
         else if wasm_target {wasm_finish();}
         else if ptx_target {ptx_finish();}
         else if sass_target {sass_finish();}
@@ -2232,7 +2092,7 @@ fn main(argc, argv) {
     }
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
-    let mode=493;if wasm_target || shader_target || ptx_target || sass_target || hip_target || esp32_target || frontend_ir_target || cpu_cxx_target {mode=420;}
+    let mode=493;if a64_object || wasm_target || shader_target || ptx_target || sass_target || hip_target || esp32_target || rv_target || frontend_ir_target || cpu_cxx_target {mode=420;}
     if syscall(91, fd, mode, 0, 0, 0, 0) < 0 { fail("cannot set output permissions"); }
     if syscall(3, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot close output"); }
     return 0;

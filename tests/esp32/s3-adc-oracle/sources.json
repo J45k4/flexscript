@@ -1,0 +1,50 @@
+{
+  "adc_ll.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/hal/esp32s3/include/hal/adc_ll.h",
+    "sha256": "995d83949f7b60a343dae53209a8c4bc5e317f55cfb6d8407dc62bb52795311c"
+  },
+  "sens_reg.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/sens_reg.h",
+    "sha256": "3113e9fbcc92c629edcc748baac4ca16c4e66b4e9cac8672cc9162212715c41c"
+  },
+  "sens_struct.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/sens_struct.h",
+    "sha256": "9a7b0da272d77e4e6aeb78b7fc22c0962b9bdc158b1bc05be593caa059261469"
+  },
+  "rtc_io_reg.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/rtc_io_reg.h",
+    "sha256": "78ee63f958c6ee78b71fc4968e76173036d595084ece8d7a36f0dc54d2a40a78"
+  },
+  "rtc_cntl_reg.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/rtc_cntl_reg.h",
+    "sha256": "3d424e581aa7df773af29a2340171cab8da23f07f6e5043d8c2892d2efb2f47e"
+  },
+  "apb_saradc_reg.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/apb_saradc_reg.h",
+    "sha256": "d39f695cd6b65bd4500502f85d1e154ac3f5c8e2f8ed5c66325af107689b1a35"
+  },
+  "system_reg.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/system_reg.h",
+    "sha256": "83439de5edf634caa160c8ca925cc0867f04faa9b01ac3ef5d7970bba2ac6f3c"
+  },
+  "reg_base.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/reg_base.h",
+    "sha256": "802685ed7862544287fa1abf87e4864220d4a086f72f6636dde9ee555d297f66"
+  },
+  "adc_periph.c": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/adc_periph.c",
+    "sha256": "f6a19bdc449a9db1bba6d015ea5c7845cf17598f23c6d174d973c44b356d78fa"
+  },
+  "adc_channel.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/include/soc/adc_channel.h",
+    "sha256": "7a6ab711b25a0eb33db21001038d567ca4a9bfdf802ff84bb289ebf02e06702b"
+  },
+  "gpio_reg.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/gpio_reg.h",
+    "sha256": "f8302ac3dffdf5d4b4f987ac76aec780c5130b489529b22d8f59f371b552df3f"
+  },
+  "io_mux_reg.h": {
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/io_mux_reg.h",
+    "sha256": "1f409189248d612c028a16a604caadb37e2266347054180edd3432901bb21768"
+  }
+}

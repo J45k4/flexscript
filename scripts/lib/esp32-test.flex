@@ -14,6 +14,8 @@ global te_psram=0;
 global te_legacy=0;
 global te_btdm=0;
 global te_xip=0;
+global te_s3_sdk=0;
+global te_s3_xip=0;
 fn te_assert(ok,message) {h_assert(ok,message);te_checks=te_checks+1;return 0;}
 fn te_program(text) {return h_save(te_fixture,text);}
 fn te_init(compiler) {te_compiler=h_real(compiler);te_work=h_temp();te_fixture=h_join(te_work,"test.flex");te_binary=h_join(te_work,"firmware.bin");return 0;}
@@ -27,14 +29,14 @@ fn te_image(image) {
     te_assert(size>=80 && size%16==0,"firmware image size");
     te_assert(load8(bytes)==233 && load8(bytes+1)==2 && load8(bytes+2)==2,"ROM magic, segments, DIO flash mode");
     let chip=9;let code_base=0x40380000;let data_base=0x3fcb0000;if te_legacy {chip=0;code_base=0x40080000;data_base=0x3ffb0000;}
-    if te_btdm {data_base=0x3ffc0000;}
+    if te_btdm {data_base=0x3ffc0000;}if te_s3_sdk {data_base=0x3fcc0000;}let code_capacity=131072;let data_capacity=65536;if te_s3_sdk {code_capacity=196608;data_capacity=16384;}if te_s3_xip {data_base=0x3fca8000;code_capacity=98304;data_capacity=32768;}
     te_assert(load8(bytes+12)==chip && load8(bytes+13)==0 && load8(bytes+23)==1,"ESP32-S3 chip ID and hash flag");
     let at=24;let sum=239;let i=0;
     while i<2 {
         let base=te_u32(bytes+at);let n=te_u32(bytes+at+4);at=at+8;
-        te_assert(n>0 && n<=131072 && n%4==0 && at+n<size-32,"bounded aligned RAM segment");
-        if !i {te_assert(n<=131072,"code SRAM bound");if !te_legacy {te_assert(0x3fc90000+n<=data_base,"code physical alias ends before DRAM");}te_assert(base==code_base && te_u32(bytes+4)>=base+1024 && te_u32(bytes+4)<base+n,"IRAM load and entry addresses");}
-        else {te_assert(base==data_base && n<=65536,"DRAM load address and bound");}
+        te_assert(n>0 && n<=code_capacity && n%4==0 && at+n<size-32,"bounded aligned RAM segment");
+        if !i {te_assert(n<=code_capacity,"code SRAM bound");if !te_legacy {te_assert(0x3fc90000+n<=data_base,"code physical alias ends before DRAM");}te_assert(base==code_base && te_u32(bytes+4)>=base+1024 && te_u32(bytes+4)<base+n,"IRAM load and entry addresses");}
+        else {te_assert(base==data_base && n<=data_capacity,"DRAM load address and bound");}
         let j=0;while j<n {sum=sum^load8(bytes+at+j);j=j+1;}at=at+n;i=i+1;
     }
     while at%16!=15 {te_assert(load8(bytes+at)==0,"zero image padding");at=at+1;}
@@ -56,14 +58,17 @@ fn te_run(image,trapped,expected) {
     let marker="0x444f4e45";if trapped>0 {marker="0x54524150";}
     let status_query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /1wx 0x3fcb0004\"}}\n";if te_legacy {status_query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /1wx 0x3ffb0004\"}}\n";}
     if te_btdm {status_query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /1wx 0x3ffc0004\"}}\n";}
+    if te_s3_sdk {status_query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /1wx 0x3fcc0004\"}}\n";}
+    if te_s3_xip {status_query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /1wx 0x3fca8004\"}}\n";}
     let end=net_now()+10000;if trapped<0 {end=net_now()+1000;}let terminal=0;
     while !terminal && !h_has(h_out(process),marker) && net_now()<end && h_status(process)== -999 {
         h_trigger(process,status_query);h_pump(process,10);
         if h_has(h_out(process),"0x54524150") || h_has(h_out(process),"0x444f4e45") {terminal=1;}
     }
+    let returned_zero=1;
     if !trapped && h_has(h_out(process),marker) {
-        let query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /2wx 0x3fcb0008\"}}\n";let address="3fcb0008";if te_legacy {query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /2wx 0x3ffb0008\"}}\n";address="3ffb0008";}if te_btdm {query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /2wx 0x3ffc0008\"}}\n";address="3ffc0008";}h_trigger(process,query);h_until(process,address,3000);
-        te_assert(h_has(h_out(process),"0x00000000 0x00000000"),"main returned zero");
+        let query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /2wx 0x3fcb0008\"}}\n";let address="3fcb0008";if te_legacy {query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /2wx 0x3ffb0008\"}}\n";address="3ffb0008";}if te_btdm {query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /2wx 0x3ffc0008\"}}\n";address="3ffc0008";}if te_s3_sdk {query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /2wx 0x3fcc0008\"}}\n";address="3fcc0008";}if te_s3_xip {query="{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /2wx 0x3fca8008\"}}\n";address="3fca8008";}h_trigger(process,query);h_until(process,address,3000);
+        returned_zero=h_has(h_out(process),"0x00000000 0x00000000");
     }
     let reached=h_has(h_out(process),marker);if trapped<0 {reached=1;}
     if !reached {h_trigger(process,"{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"info registers\"}}\n");h_pump(process,30);}
@@ -73,8 +78,8 @@ fn te_run(image,trapped,expected) {
     if h_status(process)== -999 {h_stop(process);}
     let serial=h_read(uart);
     let persisted=h_read(flash);te_assert(h_equal(h_sha_bytes(data,1048576),h_sha_bytes(persisted,1048576)),"protected first MiB of flash preserved");
-    if !reached {h_print(2,serial);h_print(2,h_out(process));h_print(2,h_err(process));}
-    te_assert(reached,"guest completion/trap status");h_check(process,0,0);
+    if !reached || !returned_zero {let trace=h_out(process);h_save(h_join(te_work,"qmp-failure.log"),trace);h_print(2,serial);if h_len(trace)>4096 {trace=trace+h_len(trace)-4096;}h_print(2,trace);h_print(2,h_err(process));}
+    te_assert(reached,"guest completion/trap status");te_assert(returned_zero,"main returned zero");h_check(process,0,0);
     let entry_text="entry 0x4038";let boot_text="SPI_FLASH_BOOT";if te_legacy {entry_text="entry 0x4008";boot_text="SPI_FAST_FLASH_BOOT";}te_assert(h_has(serial,boot_text) && h_has(serial,entry_text),"booted through the chip ROM from flash");
     te_assert(!h_has(serial,"SHA-256 comparison failed") && !h_has(serial,"invalid header"),"ROM accepted image integrity");
     if expected {te_assert(h_has(serial,expected),serial);}

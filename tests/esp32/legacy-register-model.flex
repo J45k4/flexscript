@@ -18,7 +18,7 @@ fn esp32_cycles() {return 0;}
 fn main() {
     lr_regs=alloc(16384);
     if esp_gpio_mux_address(0)!=0x3ff49044 || esp_gpio_mux_address(1)!=0x3ff49088 || esp_gpio_mux_address(39)!=0x3ff49010 {return 1;}
-    esp32_store32(0x3ff48494,1<<19);if esp_gpio_input(4,1) || (esp32_load32(0x3ff48494)&(1<<19)) || esp32_load32(0x3ff49048)!=0x2300 {return 2;}
+    esp32_store32(0x3ff48494,1<<19);if esp_gpio_input(4,1) || (esp32_load32(0x3ff48494)&(1<<19)) || esp32_load32(0x3ff49048)!=0x2200 || !(esp32_load32(0x3ff48494)&(1<<27)) {return 2;}
     if esp_gpio_input(34,0) || esp_gpio_input(34,1)!= -22 || esp_gpio_output(34)!= -22 || esp_gpio_route_output(35,0)!= -22 {return 3;}
     if esp_gpio_output(20)!= -22 || esp_gpio_output(24)!= -22 || esp_gpio_output(28)!= -22 || esp_gpio_output(40)!= -22 {return 4;}
     if esp_gpio_interrupt(4,3) || esp32_load32(0x3ff44098)!=(0x8000|384) {return 5;}

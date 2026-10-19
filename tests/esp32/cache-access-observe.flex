@@ -1,0 +1,4 @@
+// Diagnostic entry:16 read cases;generated wrapper supplies backup hash.
+import "cache-access-body.flex";
+fn main(){esp_uart_write("START: RAM-only cache access observation\r\n");let ps=esp32_irq_save();esp32_irq_mask(0);esp32_store32(0x3ff00214,1);esp32_store32(0x3ff005a0,0);ci_disable();ci_flush();esp32_call32(0x400095a4,0,0,0,0,0,0,0,0);let pins=esp32_call32(0x40008658,0,0,0,0,0,0,0,0);esp32_call32(0x40062a6c,pins,0,0,0,0,0,0,0);ci_setup();ci_check(ci_hash(0x3f401234)==ci_expected() && ci_hash(0x400d1234)==ci_expected(),1);
+ let bus=0;while bus<2{let trap=0;while trap<2{let mode=0;while mode<4{ci_observe(bus,mode,trap);mode=mode+1;}trap=trap+1;}bus=bus+1;}esp32_store32(0x3ff005a0,0);esp32_store32(0x3ff00214,6);ci_disable();esp32_irq_restore(ps);esp_uart_write("PASS: cache access observation,16 read cases\r\n");esp_uart_flush();return 0;}

@@ -39,6 +39,8 @@ The output profiles and normal memory/startup contracts remain:
 | --- | --- |
 | `esp32`, `esp32s3` | Direct ROM image for the corresponding chip |
 | `esp32-elf`, `esp32s3-elf` | ELF for RAM loading or the explicit linker driver |
+| `esp32s3-sdk-elf` | S3 RAM layout with192KiB IRAM and40KiB SDK arena |
+| `esp32s3-xip-elf` | S3 cached code/data with120KiB SDK arena; requires the S3 cache initializer |
 | `esp32-radio-elf` | Original-ESP32 ELF with reserved SDK/radio SRAM |
 | `esp32-xip-elf` | Original-ESP32 cached code; requires the native cache initializer |
 | `esp32-btdm-elf` | Cached code and Bluetooth-safe original-ESP32 memory layout |
@@ -47,9 +49,9 @@ For ELF output, compile `scripts/esp32-link.flex` and supply the normal explicit
 GNU `--ld` and ROM-script inputs. Supply `--image` to produce a ROM image;
 cached profiles also require `--xip`. See [vendor linking](esp32-vendor.md).
 State shares the normal target static image:64KiB maximum, or32KiB in the
-reserved-radio layouts, including control words and native adapter data.
-Large portable IR profiles do not expand physical MCU memory. The existing
-128KiB IRAM/16KiB function-frame bounds also remain in force.
+reserved-radio/cached layouts, or16KiB for the S3 RAM SDK profile, including control words and native adapter data.
+Large portable IR profiles do not expand physical MCU memory. IRAM bounds follow the selected profile:128KiB normally,192KiB for S3 RAM SDK,
+and96KiB for S3 cached firmware. Function frames remain limited to16KiB.
 
 ## Explicit native platform adapters
 

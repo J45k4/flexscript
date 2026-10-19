@@ -1,0 +1,11 @@
+// User-confirmed GPIO21 -> GPIO19 jumper. No flash writes or RF.
+import "../../lib/platform/esp32-pwm.flex";
+import "../../lib/platform/esp32-rmt.flex";
+global signal_cases=0;
+fn sv(text,n){esp_uart_write(text);esp_uart_hex(n);esp_uart_write("\r\n");return 0;}
+fn sc(ok,id){if !ok{sv("SIGNAL FAIL ",id);esp_uart_flush();esp32_halt();}return 0;}
+fn near(a,b,tolerance){return a>=b-tolerance && a<=b+tolerance;}
+fn half(word,index){if index{return (word>>16)&65535;}return word&65535;}
+fn pwm_case(channel,rate,duty,rx){sc(esp_pwm_duty(channel,duty)==0,10);esp_delay_cycles(1000000);let n=esp_rmt_read(7,rx,8,300000000);if n!=8{sv("PWM COUNT ",n);}sc(n==8,11);let period=1000000/rate;let high=period*duty/1024;let i=1;while i<n-1{let word=esp32_load32(rx+i*4);let h=0;while h<2{let sample=half(word,h);let expected=period-high;if sample&32768{expected=high;}if !near(sample&32767,expected,3){sv("PWM WORD ",word);sv("EXPECTED ",expected);}sc(near(sample&32767,expected,3),12);h=h+1;}i=i+1;}signal_cases=signal_cases+1;return 0;}
+fn main(){esp_uart_write("SIGNAL MATRIX PROBE\r\n");let tx=alloc(256);let rx=alloc(256);sc(esp_rmt_rx_init(7,19,80,20000,3)==0,1);let channel=0;while channel<16{let timer=(channel/8)*4+(channel&3);let step=0;while step<3{let rate=500;if step==1{rate=1000;}if step==2{rate=4000;}sc(esp_pwm_timer(timer,rate,10)==rate,2);sc(esp_pwm_channel(channel,timer,21)==0,3);pwm_case(channel,rate,128,rx);pwm_case(channel,rate,256,rx);pwm_case(channel,rate,768,rx);sc(esp_pwm_stop(channel,1)==0,4);esp_delay_cycles(1000000);sc(esp_gpio_read(19)==1,5);sc(esp_pwm_stop(channel,0)==0,6);esp_delay_cycles(1000000);sc(esp_gpio_read(19)==0,7);sc(esp_pwm_duty(channel,0)==0,8);esp_delay_cycles(1000000);sc(esp_gpio_read(19)==0,9);sc(esp_pwm_channel_deinit(channel)==0 && esp_pwm_timer_deinit(timer)==0,13);step=step+1;}sv("PWM MATRIX PASS CHANNEL ",channel);channel=channel+1;}sc(signal_cases==144,15);sc(esp_pwm_timer(0,100,10)==100 && esp_pwm_channel(0,0,21)==0,16);sc(esp_pwm_duty(0,128)==0,17);sc(esp_pwm_duty(0,256)== -16,18);esp_delay_cycles(10000000);pwm_case(0,100,128,rx);pwm_case(0,100,256,rx);sc(esp_pwm_channel_deinit(0)==0 && esp_pwm_timer_deinit(0)==0,19);sc(esp_rmt_deinit(7)==0,14);sc(signal_cases==146,20);
+ sv("SIGNAL CASES ",signal_cases);esp_uart_write("PEER PASS\r\n");esp_uart_flush();return 0;}

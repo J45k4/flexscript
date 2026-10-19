@@ -46,13 +46,68 @@ connection attempts time out after 20 seconds. `esp_wifi_disconnect()` cancels
 retry intent; `esp_wifi_reconnect()` reuses the configuration already in RAM.
 `esp_wifi_linked`, `esp_wifi_reason` and `esp_wifi_last_error` expose status.
 
+Join, connect/reconnect, disconnect and polling share one control-operation
+lease. A concurrent control call, lifecycle transition, ISR or already masked
+caller returns -16 before changing retry intent. Stop/start/deinit also return
+-16 while a control call owns its vendor frame or temporary configuration.
+Vendor config/connect/disconnect calls run unmasked, including while another
+task executes packet TX/RX. Retry policy updates and event state publication
+use a short saved interrupt mask.
+
+Inline or asynchronous connected/disconnected/stopped events advance the link
+generation. An older connect/disconnect/timeout call only commits its synchronous
+state result if that generation still matches. Its return value remains the
+vendor result, so it can report an error while a newer connected event has
+already published a valid link; inspect the current state separately. A timeout
+schedules its retry from the completed disconnect call, while a newer disconnect
+event retains the deadline it published. A stopped event clears the connection
+deadline. Poll rechecks retry eligibility atomically before starting another
+attempt. Failed or overlapping calls leave the control lease recoverable; join
+clears all 184 temporary configuration bytes before freeing them on success,
+validation failure and vendor failure.
+
+An independent windowed-C peer verifies real preempted config/connect/disconnect
+frames, event injection before return, credential lifetime/clearing, timeout
+backoff and allocation rollback. Six forced windows and eighteen isolated
+defects exercise admission, policy/event/retry publication and stale returns.
+These checks use existing QEMU; physical preemptive RF operation remains open.
+
 The Ethernet RX callback copies into four bounded 1536-byte slots and releases
 the vendor buffer outside the critical section, including on overflow. No
-per-packet allocation occurs. `esp_wifi_receive(buffer,capacity)` returns the
-frame length, zero for empty, or -90 without consuming an oversized frame.
-`esp_wifi_transmit(buffer,size)` rejects traffic before association; the vendor
-copies successful sends. `esp_wifi_rx_dropped` counts rejected incoming frames.
-The adapter requires one application consumer on CPU0.
+per-packet allocation occurs. A producer reservation protects its slot while an
+application consumer drains older frames. A callback activity count stays held
+through the vendor free call, even when a dropped frame never entered the ring.
+Callbacks received during lifecycle operations drop their frame and release its
+vendor buffer. The vendor must deliver callbacks in its normal unmasked task
+context. Driver deinitialization remains responsible for quiescing future
+callbacks before its resources disappear.
+
+`esp_wifi_receive(buffer,capacity)` returns the frame length, zero for empty,
+or -90 without consuming an oversized frame. One consumer owns an RX copy;
+an overlapping consumer, ISR use or a lifecycle transition returns -16. Slot
+copying runs outside the adapter's interrupt mask, while head/count publication
+is atomic. The application owns its output buffer through the return.
+
+`esp_wifi_transmit(buffer,size)` returns -107 before association and -16 during
+lifecycle operations or when called from an ISR/critical section. Concurrent
+application TX calls retain separate activity references through vendor return.
+The [pinned internal TX API](https://github.com/espressif/esp-idf/blob/v5.5.1/components/esp_wifi/include/esp_private/wifi.h)
+copies the supplied data; the caller retains its input through the call and may
+reuse it after return. Successful-send counters update under the interrupt mask.
+The vendor TX and RX-free calls remain unmasked so their mutex paths can run.
+`esp_wifi_rx_dropped` counts rejected incoming frames. The IPv4 facade still
+requires one application consumer on CPU0.
+
+Station stop/start/deinit return -16 while packet copies or vendor frames hold
+activity references. If a callback enters during vendor stop and its free call
+is still active when stop returns, the native state records the stopped driver
+and retains its allocations. Retry the lifecycle call after the callback exits.
+The final activity check, domain release and ring removal are atomic. Atomic
+ring construction also rejects a second constructor without leaking an arena
+allocation. Independent C TX/free rendezvous, ten forced transaction windows
+and seventeen isolated defects verify these rules on existing QEMU. These
+software checks do not establish physical preemptive RF operation; the wider
+radio audit remains open, and examples retain cooperative startup.
 
 ## IPv4, DHCP, DNS, UDP and TCP
 
@@ -98,9 +153,12 @@ The [MQTT client](esp32-mqtt.md) is also verified against an independent broker
 natively, in cached-flash Xtensa/QEMU and on the original ESP32 over TCP/TLS. See
 [TLS configuration and verification](esp32-tls.md). There
 is no IPv6, AAAA lookup or DNSSEC validation. Those limitations
-must not be treated as complete general network support. The scheduler is
-cooperative and requires regular polling; there is one network interface and
-one bound application UDP port. S3 networking still needs its own radio port.
+must not be treated as complete general network support. The supplied examples
+use cooperative scheduling and require regular polling; there is one network
+interface and one bound application UDP port. The shared station facade now has
+an S3 adapter and typed vendor-ABI/lifecycle checks. Full S3 vendor startup reaches
+a PHY-ready register missing from stock QEMU; S3 radio/network operation still
+requires physical verification. See [vendor integration](esp32-vendor.md).
 
 ## DNS over TCP
 

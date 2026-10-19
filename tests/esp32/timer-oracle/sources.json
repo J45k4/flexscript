@@ -1,0 +1,52 @@
+[
+  {
+    "path": "soc/esp32/register/soc/reg_base.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/reg_base.h",
+    "sha256": "ae2fca720aed27ba11b2ed95e687e0f652da1067d9597afe62f09e6514fc9353",
+    "size": 3360
+  },
+  {
+    "path": "soc/esp32/register/soc/timer_group_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/timer_group_reg.h",
+    "sha256": "68408ff169b6fe0d757fdc6b2b6245b7756cea392f51cb6ab63d4b4b0ea00e0c",
+    "size": 27994
+  },
+  {
+    "path": "soc/esp32/register/soc/timer_group_struct.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/register/soc/timer_group_struct.h",
+    "sha256": "8c0aa4c09350ab9c7d1c886642c41627e7d33235dc12b0dc05f04b13129ef233",
+    "size": 21003
+  },
+  {
+    "path": "soc/esp32s3/register/soc/reg_base.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/reg_base.h",
+    "sha256": "802685ed7862544287fa1abf87e4864220d4a086f72f6636dde9ee555d297f66",
+    "size": 3644
+  },
+  {
+    "path": "soc/esp32s3/register/soc/timer_group_reg.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/timer_group_reg.h",
+    "sha256": "079e24c84f1723ec60bd3cd31c612656364a5b0233ddab01a8ca131cab74b03e",
+    "size": 26494
+  },
+  {
+    "path": "soc/esp32s3/register/soc/timer_group_struct.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/register/soc/timer_group_struct.h",
+    "sha256": "2692cfdea63b689d4993d0b64a1bc514891d8744b5a3a02f130b41f35fa52bc0",
+    "size": 16780
+  },
+  {
+    "chip": "esp32",
+    "path": "soc/esp32/include/soc/soc_caps.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32/include/soc/soc_caps.h",
+    "sha256": "45e1fb7f6c226d07229613e0cabcbc67034913a454c9fed7178743255620b394",
+    "size": 23117
+  },
+  {
+    "chip": "esp32s3",
+    "path": "soc/esp32s3/include/soc/soc_caps.h",
+    "url": "https://raw.githubusercontent.com/espressif/esp-idf/v5.5.1/components/soc/esp32s3/include/soc/soc_caps.h",
+    "sha256": "25ff368906aaee06e77022aa50227a2ab7c9b4739da1f34c48f64c87052925a4",
+    "size": 32394
+  }
+]

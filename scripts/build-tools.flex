@@ -15,6 +15,9 @@ fn main(argc,argv) {
     h_add(names,"test-vm");
     h_add(names,"test-wasm");
     h_add(names,"test-esp32");
+    h_add(names,"test-esp32-branches");
+    h_add(names,"test-esp32-locals");
+    h_add(names,"test-esp32-riscv");
     h_add(names,"test-esp32-frontends");
     h_add(names,"esp32-link");
     h_add(names,"esp32-data-object");

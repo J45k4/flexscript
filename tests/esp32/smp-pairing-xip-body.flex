@@ -1,0 +1,3 @@
+fn mc_report(case_number,step,check) {esp_uart_write("SMP PAIRING FAIL ");esp_uart_hex(case_number);esp_uart_hex(step);esp_uart_hex(check);esp_uart_write("\r\n");return 0;}
+fn mc_difference(byte,actual,expected) {esp_uart_write("SMP PAIRING DIFFERENCE ");esp_uart_hex(byte);esp_uart_hex(actual);esp_uart_hex(expected);esp_uart_write("\r\n");return 0;}
+fn main() {let r=mc_run(esp32_external("smp_pair_cases"),esp32_external("smp_pair_cases_size"));if r {esp_uart_write("SMP PAIRING RETURN ");esp_uart_hex(r);esp_uart_write("\r\n");esp_uart_flush();return r;}esp_uart_write("PASS: SMP pairing ");esp_uart_hex(mc_checks);esp_uart_write(" independent observations\r\n");esp_uart_flush();return 0;}

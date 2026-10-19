@@ -21,7 +21,7 @@ exits with status 1. Successful `write_word` calls return their original value;
 for buffering this means accepted into the buffer, rather than already delivered.
 The wire format remains eight little-endian bytes per word.
 
-`compiler/word-io.flex` emits the device routines. The native FIR lowering calls
+`compiler/backends/word-io.flex` emits the device routines. The native FIR lowering calls
 them; the compiler's entry stub preserves `main`'s status while flushing at exit.
 This changes neither VM execution nor Wasm device semantics.
 

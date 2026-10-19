@@ -1,6 +1,6 @@
 // Original ESP32 only. Single PRO CPU; APP CPU stays held in reset.
 // ROM entry points pinned to ESP-IDF v5.5.1 esp32.rom.ld, cache.h.
-// Link --target esp32-radio-elf with scripts/esp32-link --xip.
+// Link --target esp32-xip-elf with scripts/esp32-link --xip.
 fn esp_xip_enable() {
     let ps=esp32_irq_save();
     esp32_call32(0x40009ab8,0,0,0,0,0,0,0,0);

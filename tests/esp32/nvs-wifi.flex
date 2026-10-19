@@ -3,7 +3,7 @@ import "../../lib/platform/esp32-nvs.flex";
 import "../../lib/platform/esp32-wifi.flex";
 fn nn_word(label,value) {esp_uart_write(label);esp_uart_hex(value);esp_uart_write("\r\n");return value;}
 fn nn_run() {
-    esp_radio_clock_init();if esp_sdk_heap_init(0x3ffc8000,98304) || esp_sdk_task_init() {return 1;}
+    esp_radio_clock_init();if esp_sdk_heap_init(0x3ffc8000,98304) || esp_sdk_task_init() {return 1;}esp32_irq_restore(0);
     let r=esp_nvs_init(0x3e0000,4096,1);nn_word("NVS INIT ",r);if r {return 2;}
     let out=alloc(16);let data=alloc(608);if esp_nvs_open("probe",1,out) {return 3;}let h=kv_u32(out);let previous=0;
     r=esp_nvs_get_u8(h,"count",out+4);if r==0 {previous=load8(out+4);kv_put32(out+8,608);if esp_nvs_get_blob(h,"payload",data,out+8) || kv_u32(out+8)!=600 {return 4;}let i=0;while i<600 {if load8(data+i)!=((i*29+previous)&255) {return 5;}i=i+1;}}

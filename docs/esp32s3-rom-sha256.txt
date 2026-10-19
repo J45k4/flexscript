@@ -1,0 +1,5 @@
+# Espressif esp-idf v5.5.1 components/esp_rom/esp32s3/ld
+98b4f37225581d9e6625f109136425658bd9a48cac5b2958ffcfb77f0e5fdab3  esp32s3.rom.ld
+12f69326e7449fe102b7df3d1d6582c4d7220daed6e852b129dc2c3ed77d7685  esp32s3.rom.libgcc.ld
+04b6097c7f145226c8ef268ee58623ca32e2920a407daf82bd91aa91cbc87edd  esp32s3.rom.libc.ld
+3362ad9d8762797cfa0fc8f8e6293527217074cfcfb2099d7056114c2dcbb3a4  esp32s3.rom.newlib.ld

@@ -1,0 +1,13 @@
+plugin arm64.arrays v1 {}
+state { values:i32[4]=[3,5,7,11] count:i32=0 }
+fn update(index:i32,value:i32)->i32 {
+    state.values[index]=value
+    state.count+=1
+    return state.values[index]+state.count
+}
+fn main()->i32 {
+    let value=read_word()
+    write_word(update(2,value)+state.values[0]+state.values[3])
+    write_word(state.values[2])
+    return state.count
+}

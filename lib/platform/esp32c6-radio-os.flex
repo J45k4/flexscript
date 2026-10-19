@@ -1,0 +1,14 @@
+import "esp32c6-xip.flex";
+import "esp32c6-sdk-preempt.flex";
+import "esp32c6-sdk-timer.flex";
+import "esp32c6-libc-rom.flex";
+import "esp32c6-atomics.flex";
+import "esp32-riscv-radio-hardware.flex";
+import "esp32c6-radio-regi2c.flex";
+import "esp32c6-radio-pmu.flex";
+import "esp32c6-radio-pmu-stage.flex";
+import "esp32-riscv-radio-irq.flex";
+import "esp32-riscv-radio-phy.flex";
+import "esp32-radio-os-core.flex";
+import "esp32-riscv-radio-exports.flex";
+import "esp32-riscv-radio-osi.flex";

@@ -1,0 +1,2 @@
+fn rc_report(case_number,step,byte,actual,expected) {esp_uart_write("SMP RETRY FAIL ");esp_uart_hex(case_number);esp_uart_hex(step);esp_uart_hex(byte);esp_uart_hex(actual);esp_uart_hex(expected);esp_uart_write("\r\n");return 0;}
+fn main() {let r=rc_run(esp32_external("smp_retry_cases"),esp32_external("smp_retry_cases_size"));if r {esp_uart_write("SMP RETRY RETURN ");esp_uart_hex(r);esp_uart_write("\r\n");esp_uart_flush();return r;}esp_uart_write("PASS: SMP retry ");esp_uart_hex(rc_checks);esp_uart_write(" independent observations\r\n");esp_uart_flush();return 0;}
