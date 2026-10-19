@@ -1,10 +1,11 @@
-// Direct word IR -> RV32IM instructions -> ESP32-C3/C6 ROM image or ELF32.
+// Direct word IR -> RV32IMC instructions -> ESP32-C3/C6 ROM image or ELF32.
 // Private stack ABI: a0:a1 value, s0 frame, ra return, eight-byte word args.
 // No assembler/linker, interpreter, libc, ESP-IDF runtime or RTOS in firmware.
 global rv_target=0;
 global rv_elf=0;
 global rv_flash=0;
 global rv_radio=0;
+global rv_compressed=0;
 global rv_iram_size=0;
 global rv_iram_functions=0;
 global rv_flash_init=-1;
@@ -33,16 +34,24 @@ fn rv_heap_begin() {return rv_data_base+rv_data_capacity();}
 fn rv_heap_end() {if rv_radio {return rv_heap_begin()+16384;}return rv_heap_begin()+32768;}
 fn rv_address(offset) {if rv_flash && offset>=0x50000 {return 0x42000000+offset-0x50000;}return rv_code_base+offset;}
 fn rv_ins(word) {let bound=rv_code_capacity();if rv_flash && output_size>=0x50000 {bound=0x350000;}if output_size+4>bound {if bound<=131072 {if rv_radio {fail("RISC-V radio machine code exceeds 64 KiB SRAM region");}fail("RISC-V machine code exceeds 128 KiB SRAM region");}fail("RISC-V flash code exceeds 3 MiB");}emit32(word);return 0;}
+fn rv_ins16(word) {let bound=rv_code_capacity();if rv_flash && output_size>=0x50000 {bound=0x350000;}if output_size+2>bound {if bound<=131072 {if rv_radio {fail("RISC-V radio machine code exceeds 64 KiB SRAM region");}fail("RISC-V machine code exceeds 128 KiB SRAM region");}fail("RISC-V flash code exceeds 3 MiB");}emit(word&255);emit((word>>8)&255);rv_compressed=1;return 0;}
 fn rv_r(f3,f7,d,s,t) {return rv_ins(0x33|(d<<7)|(f3<<12)|(s<<15)|(t<<20)|(f7<<25));}
+fn rv_add(d,s,t) {if d==s && d && t {return rv_ins16(0x9002|(d<<7)|(t<<2));}return rv_r(0,0,d,s,t);}
 fn rv_i(op,f3,d,s,n) {if n< -2048 || n>2047 {fail("RISC-V immediate out of range");}return rv_ins(op|(d<<7)|(f3<<12)|(s<<15)|((n&4095)<<20));}
-fn rv_addi(d,s,n) {return rv_i(0x13,0,d,s,n);}
-fn rv_mov(d,s) {return rv_addi(d,s,0);}
-fn rv_const(d,n) {n=(n<<32)>>32;let lo=((n+2048)&4095)-2048;rv_ins(0x37|(d<<7)|(((n-lo)>>12&1048575)<<12));rv_addi(d,d,lo);return 0;}
-fn rv_imm(d,n) {n=(n<<32)>>32;if n>= -2048 && n<=2047 {return rv_addi(d,0,n);}return rv_const(d,n);}
-fn rv_lw(d,s,n) {return rv_i(3,2,d,s,n);}
+fn rv_addi(d,s,n) {if d==s && d && n && n>= -32 && n<=31 {return rv_ins16(1|(d<<7)|((n&32)<<7)|((n&31)<<2));}return rv_i(0x13,0,d,s,n);}
+fn rv_mov(d,s) {if d && s {return rv_ins16(0x8002|(d<<7)|(s<<2));}return rv_addi(d,s,0);}
+fn rv_const(d,n) {n=(n<<32)>>32;let lo=((n+2048)&4095)-2048;rv_ins(0x37|(d<<7)|(((n-lo)>>12&1048575)<<12));rv_i(0x13,0,d,d,lo);return 0;}
+fn rv_imm(d,n) {n=(n<<32)>>32;if d && n>= -32 && n<=31 {return rv_ins16(0x4001|(d<<7)|((n&32)<<7)|((n&31)<<2));}if n>= -2048 && n<=2047 {return rv_addi(d,0,n);}return rv_const(d,n);}
+fn rv_lw(d,s,n) {
+ if n>=0 && n%4==0 {if s==2 && d && n<=252 {return rv_ins16(0x4002|(d<<7)|((n&32)<<7)|((n&28)<<2)|((n&192)>>4));}if d>=8 && d<=15 && s>=8 && s<=15 && n<=124 {return rv_ins16(0x4000|((n&56)<<7)|((s-8)<<7)|((n&4)<<4)|((n&64)>>1)|((d-8)<<2));}}
+ return rv_i(3,2,d,s,n);
+}
 fn rv_lbu(d,s,n) {return rv_i(3,4,d,s,n);}
 fn rv_store(f3,t,s,n) {if n< -2048 || n>2047 {fail("RISC-V store offset out of range");}return rv_ins(0x23|((n&31)<<7)|(f3<<12)|(s<<15)|(t<<20)|(((n>>5)&127)<<25));}
-fn rv_sw(t,s,n) {return rv_store(2,t,s,n);}
+fn rv_sw(t,s,n) {
+ if n>=0 && n%4==0 {if s==2 && n<=252 {return rv_ins16(0xc002|((n&60)<<7)|((n&192)<<1)|(t<<2));}if t>=8 && t<=15 && s>=8 && s<=15 && n<=124 {return rv_ins16(0xc000|((n&56)<<7)|((s-8)<<7)|((n&4)<<4)|((n&64)>>1)|((t-8)<<2));}}
+ return rv_store(2,t,s,n);
+}
 fn rv_shift_i(f3,d,s,n) {if n<0 || n>31 {fail("RISC-V shift out of range");}return rv_i(0x13,f3,d,s,n);}
 fn rv_slli(d,s,n) {return rv_shift_i(1,d,s,n);}
 fn rv_srli(d,s,n) {return rv_shift_i(5,d,s,n);}
@@ -64,8 +73,13 @@ fn rv_guard(f3,s,t) {let okay=rv_branch(f3,s,t);rv_j(0);rv_patch_branch(okay,out
 fn rv_stack_check() {rv_imm(5,rv_data_base+20);rv_lw(6,5,0);rv_guard(7,2,6);return 0;}
 fn rv_push() {rv_addi(2,2,-8);rv_stack_check();rv_sw(10,2,0);rv_sw(11,2,4);return 0;}
 fn rv_pop(lo,hi) {rv_lw(lo,2,0);rv_lw(hi,2,4);rv_addi(2,2,8);return 0;}
-fn rv_local(slot) {rv_imm(5,-8*(load64(rv_locals+slot*8)+1));rv_r(0,0,5,8,5);return 0;}
-fn rv_epilogue() {rv_mov(2,8);rv_lw(1,2,0);rv_lw(8,2,4);rv_addi(2,2,16);rv_i(0x67,0,0,1,0);return 0;}
+// Fold frame addressing into the two word accesses when both offsets fit.
+// Larger frames/parameter lists retain the full-width address calculation.
+fn rv_frame_pair(offset,storing) {
+ let base=8;if offset< -2048 || offset>2043 {rv_imm(5,offset);rv_add(5,8,5);base=5;offset=0;}
+ if storing {rv_sw(10,base,offset);rv_sw(11,base,offset+4);}else {rv_lw(10,base,offset);rv_lw(11,base,offset+4);}return 0;
+}
+fn rv_epilogue(frame) {if frame {if frame<=2047 {rv_addi(2,8,frame);}else {rv_imm(5,frame);rv_add(2,8,5);}}else {rv_mov(2,8);}rv_lw(1,2,0);rv_lw(8,2,4);rv_addi(2,2,16);rv_ins16(0x8082);return 0;}
 fn rv_neg(lo,hi) {rv_r(0,32,5,0,lo);rv_r(3,0,6,0,lo);rv_r(0,32,hi,0,hi);rv_r(0,32,hi,hi,6);rv_mov(lo,5);return 0;}
 fn rv_bool(invert) {rv_r(6,0,5,10,11);rv_r(3,0,10,0,5);if invert {rv_i(0x13,4,10,10,1);}rv_imm(11,0);return 0;}
 fn rv_compare(op) {
@@ -103,9 +117,9 @@ fn rv_divide(remainder) {
 }
 fn rv_binary(op) {
     rv_pop(12,13);
-    if op==43 {rv_r(0,0,5,12,10);rv_r(3,0,6,5,12);rv_r(0,0,11,13,11);rv_r(0,0,11,11,6);rv_mov(10,5);}
+    if op==43 {rv_add(5,12,10);rv_r(3,0,6,5,12);rv_add(11,13,11);rv_add(11,11,6);rv_mov(10,5);}
     else if op==45 {rv_r(3,0,5,12,10);rv_r(0,32,10,12,10);rv_r(0,32,11,13,11);rv_r(0,32,11,11,5);}
-    else if op==42 {rv_r(0,1,5,12,10);rv_r(3,1,6,12,10);rv_r(0,1,7,13,10);rv_r(0,0,6,6,7);rv_r(0,1,7,12,11);rv_r(0,0,11,6,7);rv_mov(10,5);}
+    else if op==42 {rv_r(0,1,5,12,10);rv_r(3,1,6,12,10);rv_r(0,1,7,13,10);rv_add(6,6,7);rv_r(0,1,7,12,11);rv_add(11,6,7);rv_mov(10,5);}
     else if op==47 || op==37 {rv_divide(op==37);}
     else if op==38 || op==124 || op==94 {let f=7;if op==124 {f=6;}else if op==94 {f=4;}rv_r(f,0,10,12,10);rv_r(f,0,11,13,11);}
     else if op==265 || op==266 {rv_shift(op);}else {rv_compare(op);}return 0;
@@ -123,7 +137,7 @@ fn rv_c_callback(index) {
     // touches the other saved registers, gp or tp. Both ABIs return a0:a1.
     store64(rv_c_thunks+index*8,output_size);rv_addi(2,2,-80);rv_stack_check();rv_sw(1,2,64);
     let i=0;while i<8 {rv_sw(10+i,2,(7-i)*8);rv_sw(0,2,(7-i)*8+4);i=i+1;}
-    rv_fix(index,0);rv_lw(1,2,64);rv_addi(2,2,80);rv_i(0x67,0,0,1,0);return 0;
+    rv_fix(index,0);rv_lw(1,2,64);rv_addi(2,2,80);rv_ins16(0x8082);return 0;
 }
 fn rv_context_pointer(reg,hi) {
     rv_guard(0,hi,0);rv_i(0x13,7,28,reg,15);rv_guard(0,28,0);
@@ -206,7 +220,7 @@ fn rv_builtin(kind) {
     if kind==5 {
         rv_imm(5,rv_data_base+16);rv_lw(6,5,0);rv_guard(0,6,0);rv_pop(10,11);
         let badhi=rv_branch(1,11,0);let zero=rv_branch(0,10,0);let maximum=32768;if rv_radio {maximum=16384;}rv_imm(5,maximum);let large=rv_branch(6,5,10);
-        rv_addi(5,10,7);rv_i(0x13,7,5,5,-8);rv_imm(7,rv_data_base);rv_lw(6,7,0);rv_r(0,0,5,6,5);rv_imm(12,rv_heap_end());let full=rv_branch(6,12,5);
+        rv_addi(5,10,7);rv_i(0x13,7,5,5,-8);rv_imm(7,rv_data_base);rv_lw(6,7,0);rv_add(5,6,5);rv_imm(12,rv_heap_end());let full=rv_branch(6,12,5);
         rv_sw(5,7,0);rv_mov(10,6);rv_imm(11,0);let loop=output_size;let done=rv_branch(7,6,5);rv_store(0,0,6,0);rv_addi(6,6,1);rv_j(loop);rv_patch_branch(done,output_size);let end=rv_jump();
         rv_patch_branch(badhi,output_size);rv_patch_branch(large,output_size);rv_patch_branch(full,output_size);rv_imm(10,-12);rv_imm(11,-1);let end2=rv_jump();rv_patch_branch(zero,output_size);rv_imm(10,-22);rv_imm(11,-1);rv_patch_transfer(end,output_size,0);rv_patch_transfer(end2,output_size,0);return 0;
     }
@@ -253,10 +267,10 @@ fn rv_fix(index,reference) {
 }
 fn rv_helper(key) {if !load64(rv_helpers+key*8) {store64(rv_helpers+key*8,1);}return rv_fix(key,-1);}
 fn rv_emit_helpers() {
-    let key=0;while key<1024 {if load64(rv_helpers+key*8) {store64(rv_helpers+key*8,output_size);if key==1 {rv_push();}else if key<512 {rv_builtin(key-128);}else {rv_binary(key-512);}rv_i(0x67,0,0,1,0);}key=key+1;}return 0;
+    let key=0;while key<1024 {if load64(rv_helpers+key*8) {store64(rv_helpers+key*8,output_size);if key==1 {rv_push();}else if key<512 {rv_builtin(key-128);}else {rv_binary(key-512);}rv_ins16(0x8082);}key=key+1;}return 0;
 }
 fn rv_state(arg,storing) {
-    if storing {rv_pop(12,13);}else {rv_mov(12,10);rv_mov(13,11);}rv_guard(0,13,0);rv_imm(5,arg>>32);rv_guard(6,12,5);rv_slli(6,12,3);rv_imm(5,rv_data_base+(arg&4294967295));rv_r(0,0,5,5,6);
+    if storing {rv_pop(12,13);}else {rv_mov(12,10);rv_mov(13,11);}rv_guard(0,13,0);rv_imm(5,arg>>32);rv_guard(6,12,5);rv_slli(6,12,3);rv_imm(5,rv_data_base+(arg&4294967295));rv_add(5,5,6);
     if storing {rv_sw(10,5,0);rv_sw(11,5,4);}else {rv_lw(10,5,0);rv_lw(11,5,4);}return 0;
 }
 fn rv_word_io(reading) {
@@ -269,17 +283,36 @@ fn rv_word_io(reading) {
     }
     if !reading {let loop=output_size;rv_lw(6,12,28);rv_srli(6,6,16);rv_i(0x13,7,6,6,mask);let done=rv_branch(0,6,0);rv_j(loop);rv_patch_branch(done,output_size);}return 0;
 }
+// Definite assignment for one local. Stop a path at its first store/return;
+// retain zero initialization if any reachable path reads the local first.
+fn rv_flow_add(pc,start,end,seen,queue,stamp,top) {
+ if pc==end {return top;}if pc<start || pc>=end || pc%16 {return -1;}
+ let at=(pc-start)/2;if load64(seen+at)==stamp {return top;}
+ store64(seen+at,stamp);store64(queue+top*8,pc);return top+1;
+}
+fn rv_local_needs_initial(slot,start,end,seen,queue) {
+ let stamp=slot+1;let top=rv_flow_add(start,start,end,seen,queue,stamp,0);
+ while top>0 {
+  top=top-1;let pc=load64(queue+top*8);let op=load64(rv_ir+pc);let arg=load64(rv_ir+pc+8);
+  if op==3 && arg==slot {return 1;}
+  if op!=9 && !(op==4 && arg==slot) {
+   if op>=10 && op<=12 {top=rv_flow_add(arg,start,end,seen,queue,stamp,top);if top<0 {return 1;}}
+   if op!=10 {top=rv_flow_add(pc+16,start,end,seen,queue,stamp,top);if top<0 {return 1;}}
+  }
+ }return 0;
+}
 fn rv_function(index) {
     store64(rv_entries+index*8,output_size);let entry=functions+index*32;let pc=load64(entry+16);let slots=load64(rv_ir+pc+8);let arity=load64(entry+24);let end=rv_end(index);
     rv_locals=alloc(slots*8+8);if rv_locals<0 {fail("cannot allocate RISC-V local map");}let scan=pc+16;while scan<end {if load64(rv_ir+scan)==3 {store64(rv_locals+load64(rv_ir+scan+8)*8,1);}scan=scan+16;}
     let i=0;let used=0;while i<slots {if load64(rv_locals+i*8) {store64(rv_locals+i*8,used);used=used+1;}else {store64(rv_locals+i*8,-1);}i=i+1;}let frame=((used*8+15)/16)*16;if frame>16384 {fail("RISC-V function frame exceeds 16 KiB");}
-    rv_addi(2,2,-16);rv_stack_check();rv_sw(1,2,0);rv_sw(8,2,4);rv_mov(8,2);if frame {rv_imm(5,-frame);rv_r(0,0,2,2,5);rv_stack_check();}
-    i=0;while i<slots {if load64(rv_locals+i*8)>=0 {if i<arity {rv_imm(5,16+(arity-i-1)*8);rv_r(0,0,5,8,5);rv_lw(10,5,0);rv_lw(11,5,4);}else {rv_imm(10,0);rv_imm(11,0);}rv_local(i);rv_sw(10,5,0);rv_sw(11,5,4);}i=i+1;}
+    let init_seen=alloc((end-pc)/2+8);let init_queue=alloc((end-pc)/2+8);if init_seen<0 || init_queue<0 {fail("cannot allocate RISC-V local flow analysis");}
+    rv_addi(2,2,-16);rv_stack_check();rv_sw(1,2,0);rv_sw(8,2,4);if frame {rv_imm(5,-frame);rv_add(2,2,5);rv_stack_check();}rv_mov(8,2);
+    i=0;while i<slots {if load64(rv_locals+i*8)>=0 && (i<arity || rv_local_needs_initial(i,pc+16,end,init_seen,init_queue)) {if i<arity {rv_frame_pair(frame+16+(arity-i-1)*8,0);}else {rv_imm(10,0);rv_imm(11,0);}rv_frame_pair(frame-8*(load64(rv_locals+i*8)+1),1);}i=i+1;}
     pc=pc+16;while pc<end {store64(rv_map+pc/2,output_size);let op=load64(rv_ir+pc);let arg=load64(rv_ir+pc+8);
         if op==1 {rv_imm(10,arg);rv_imm(11,arg>>32);}else if op==2 {rv_helper(1);}
-        else if op==3 || op==4 {if load64(rv_locals+arg*8)>=0 {rv_local(arg);if op==3 {rv_lw(10,5,0);rv_lw(11,5,4);}else {rv_sw(10,5,0);rv_sw(11,5,4);}}}
+        else if op==3 || op==4 {if load64(rv_locals+arg*8)>=0 {rv_frame_pair(frame-8*(load64(rv_locals+arg*8)+1),op==4);}}
         else if op==5 || op==6 {rv_imm(5,rv_data_base+arg);if op==5 {rv_lw(10,5,0);rv_lw(11,5,4);}else {rv_sw(10,5,0);rv_sw(11,5,4);}}
-        else if op==7 {rv_helper(512+arg);}else if op==8 {rv_fix(arg,0);rv_imm(5,load64(functions+arg*32+24)*8);rv_r(0,0,2,2,5);}else if op==9 {rv_epilogue();}
+        else if op==7 {rv_helper(512+arg);}else if op==8 {rv_fix(arg,0);let bytes=load64(functions+arg*32+24)*8;if bytes {if bytes<=2047 {rv_addi(2,2,bytes);}else {rv_imm(5,bytes);rv_add(2,2,5);}}}else if op==9 {rv_epilogue(frame);}
         else if op>=10 && op<=12 {let skip=0;if op!=10 {rv_r(6,0,6,10,11);let f=0;if op==11 {f=1;}skip=rv_branch(f,6,0);}store64(rv_jumps+pc/2,rv_jump());if op!=10 {rv_patch_branch(skip,output_size);}}
         else if op==13 || op==15 {rv_bool(op==15);}else if op==14 {rv_neg(10,11);}else if op==16 {rv_i(0x13,4,10,10,-1);rv_i(0x13,4,11,11,-1);}
         else if op==17 {if arg==35 {rv_builtin(arg);}else {rv_helper(128+arg);}}else if op==19 || op==20 {rv_word_io(op==20);}else if op==21 || op==22 {rv_state(arg,op==22);}
@@ -295,9 +328,9 @@ fn rv_tls_boot() {
     rv_lw(13,12,4);rv_lw(14,12,8);rv_lw(15,12,12);rv_lw(16,12,16);rv_lw(4,12,20);
     rv_guard(1,15,0);rv_imm(28,65536);rv_guard(7,28,15);rv_guard(7,15,14);rv_guard(7,28,16);rv_imm(28,16);rv_guard(7,16,28);
     rv_addi(30,16,-1);rv_r(7,0,28,16,30);rv_guard(0,28,0);rv_r(7,0,28,4,30);rv_guard(0,28,0);rv_r(7,0,28,13,30);rv_guard(0,28,0);
-    rv_imm(28,rv_data_base+56);rv_guard(7,13,28);rv_imm(28,rv_heap_begin());rv_r(0,32,29,28,15);rv_guard(7,29,4);rv_guard(7,29,13);rv_r(0,0,28,13,15);rv_guard(7,4,28);
+    rv_imm(28,rv_data_base+56);rv_guard(7,13,28);rv_imm(28,rv_heap_begin());rv_r(0,32,29,28,15);rv_guard(7,29,4);rv_guard(7,29,13);rv_add(28,13,15);rv_guard(7,4,28);
     rv_lw(28,12,24);rv_lw(29,12,28);rv_r(6,0,28,28,29);rv_guard(0,28,0);
-    rv_imm(16,0);let loop=output_size;let copied=rv_branch(7,16,15);rv_imm(7,0);let bss=rv_branch(7,16,14);rv_r(0,0,5,13,16);rv_lbu(7,5,0);rv_patch_branch(bss,output_size);rv_r(0,0,5,4,16);rv_store(0,7,5,0);rv_addi(16,16,1);rv_j(loop);rv_patch_branch(copied,output_size);let done=rv_jump();
+    rv_imm(16,0);let loop=output_size;let copied=rv_branch(7,16,15);rv_imm(7,0);let bss=rv_branch(7,16,14);rv_add(5,13,16);rv_lbu(7,5,0);rv_patch_branch(bss,output_size);rv_add(5,4,16);rv_store(0,7,5,0);rv_addi(16,16,1);rv_j(loop);rv_patch_branch(copied,output_size);let done=rv_jump();
     rv_patch_branch(absent,output_size);let i=1;while i<8 {rv_lw(5,12,i*4);rv_guard(0,5,0);i=i+1;}rv_patch_transfer(done,output_size,0);return 0;
 }
 fn rv_start(main) {
@@ -331,7 +364,7 @@ fn rv_elf_image(code,code_size,entry) {
     let names=".text,.data,.flex.imports,.flex.info,.symtab,.strtab,.shstrtab,";if rv_flash {names=".text,.data,.flex.imports,.flex.info,.symtab,.strtab,.shstrtab,.flex.irom,";}let names_size=length(names)+1;
     let sections_at=(names_at+names_size+3)&~3;output=alloc(sections_at+nsections*40);if output<0 {fail("cannot allocate ESP32 ELF image");}output_size=0;
     emit(127);emit(69);emit(76);emit(70);emit(1);emit(1);emit(1);while output_size<16 {emit(0);}
-    esp_elf16(2);esp_elf16(243);emit32(1);emit32(rv_code_base+entry);emit32(52);emit32(sections_at);emit32(0);
+    esp_elf16(2);esp_elf16(243);emit32(1);emit32(rv_code_base+entry);emit32(52);emit32(sections_at);emit32(rv_compressed);
     esp_elf16(52);esp_elf16(32);esp_elf16(nloads);esp_elf16(40);esp_elf16(nsections);esp_elf16(7);
     i=0;while i<nloads {let base=rv_code_base;let offset=headers;let size=iram;let flags=5;if i==1 {base=rv_data_base;offset=data_at;size=vm_heap_used;flags=6;}else if i==2 {base=0x42000000;offset=flash_at;size=flash_size;}
         emit32(1);emit32(offset);emit32(base);emit32(base);emit32(size);emit32(size);emit32(flags);emit32(4);i=i+1;}
@@ -369,10 +402,10 @@ fn riscv32_finish() {
     output=alloc(output_limit);if output<0 {fail("cannot allocate RISC-V code");}output_size=0;let entry=rv_start(main);if rv_irq_dispatch>=0 {rv_interrupt_entry();}let i=0;
     if rv_flash {
         while i<function_count {if load64(rv_seen+i*8) && load64(rv_iram_functions+i*8) {rv_function(i);}i=i+1;}
-        i=0;while i<function_count {if load64(rv_c_thunks+i*8) && load64(rv_iram_functions+i*8) {rv_c_callback(i);}i=i+1;}rv_emit_helpers();rv_iram_size=output_size;while output_size<0x50000 {emit(0);}
+        i=0;while i<function_count {if load64(rv_c_thunks+i*8) && load64(rv_iram_functions+i*8) {rv_c_callback(i);}i=i+1;}rv_emit_helpers();while output_size%4 {rv_ins16(1);}rv_iram_size=output_size;while output_size<0x50000 {emit(0);}
     }
     i=0;while i<function_count {if load64(rv_seen+i*8) && (!rv_flash || !load64(rv_iram_functions+i*8)) {rv_function(i);}i=i+1;}
-    i=0;while i<function_count {if load64(rv_c_thunks+i*8) && (!rv_flash || !load64(rv_iram_functions+i*8)) {rv_c_callback(i);}i=i+1;}if !rv_flash {rv_emit_helpers();}let size=output_size;
+    i=0;while i<function_count {if load64(rv_c_thunks+i*8) && (!rv_flash || !load64(rv_iram_functions+i*8)) {rv_c_callback(i);}i=i+1;}if !rv_flash {rv_emit_helpers();}while output_size%4 {rv_ins16(1);}let size=output_size;
     i=0;while i<rv_fixup_count {let p=rv_fixups+i*24;let at=load64(p);let index=load64(p+8);let target=0;if load64(p+16)<0 {target=load64(rv_helpers+index*8);}else {target=load64(rv_entries+index*8);}if load64(p+16)>0 {if load64(p+16)==2 {target=load64(rv_c_thunks+index*8);}output_size=at;rv_const(10,rv_address(target));}else {rv_patch_transfer(at,target,1);}i=i+1;}output_size=size;
     i=0;while i<function_count {if load64(rv_seen+i*8) {let pc=load64(functions+i*32+16)+16;let end=rv_end(i);while pc<end {let op=load64(rv_ir+pc);if op>=10 && op<=12 {rv_patch_transfer(load64(rv_jumps+pc/2),load64(rv_map+load64(rv_ir+pc+8)/2),0);}pc=pc+16;}}i=i+1;}
     let code=output;if rv_elf {rv_elf_image(code,size,entry);return 0;}

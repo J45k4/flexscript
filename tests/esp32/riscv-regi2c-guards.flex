@@ -20,6 +20,11 @@ fn main(){
  esp_radio_hw_ready=1;if esp_radio_phy_enable()!=-16 || esp_radio_phy_disable()!=-16 || esp_radio_phy_clock(1)!=-16 || esp_sdk_heap_free()!=free{return 18;}esp_radio_hw_ready=0;
  if esp_radio_c6_regi2c(0x6d,7,7,0,-1,100)!=error || esp_radio_c6_pmu_stage(100)!=error || esp_radio_c6_pmu_commit()!=error{return 17;}
  esp_radio_pmu_active=0;
+ esp_radio_base_active=1;
+ if esp_radio_resources_begin(1)!=-16 || esp_radio_resources_ready()!=-16 || esp_radio_resources_end(esp32_iram_callback(esp_radio_irq))!=-16 || esp_radio_owner!=1 || esp_sdk_heap_free()!=free{return 19;}
+ if esp_radio_hardware_init()!=-16 || esp_radio_hardware_deinit()!=-16 || esp_radio_phy_enable()!=-16 || esp_radio_phy_disable()!=-16 || esp_radio_phy_clock(1)!=-16{return 20;}
+ esp_radio_hw_ready=1;if esp_radio_phy_enable()!=-16 || esp_radio_phy_disable()!=-16 || esp_radio_phy_clock(1)!=-16 || esp_sdk_heap_free()!=free{return 21;}esp_radio_hw_ready=0;
+ esp_radio_base_active=0;
  if rv_hal_chip==5{if esp_radio_c6_regi2c_recover(100)!=-95{return 11;}}else{if esp_radio_c6_regi2c_recover(100){return 12;}}
  if esp_radio_resources_end(esp32_iram_callback(esp_radio_irq))||esp_radio_owner||esp_sdk_heap_free()!=free{return 13;}
  esp_uart_write("PASS: analog-I2C/PMU refusal guards and retained radio domain ownership; no C6 PMU execution\r\n");return 0;

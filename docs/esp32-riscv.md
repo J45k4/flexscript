@@ -1325,8 +1325,8 @@ the original preparation error separately from the latest abort result.
 After the enclosing startup has issued PMU immediate updates and completed
 base-clock activation, while PHY references and hardware-ready are still zero, `esp_radio_c6_modem_commit()` transfers both modem and PMU state to
 platform lifetime together. A committed configuration cannot be undone with
-this staging abort. Immediate ICG activation/live-state rollback remains
-T582; this stage does not issue WT strobes or enable RF. The production C6
+this staging abort. The enclosing base transaction below handles immediate ICG updates and
+live-state recovery; this modem stage itself does not issue WT strobes or enable RF. The production C6
 hardware initializer retains its `-95` gate.
 
 The model executes the real modem stage/abort/commit and PLL reference guard
@@ -1353,3 +1353,77 @@ limited C6 scope explicitly. Full vendor-linked C6 refusal is likewise an
 observed gate, not completed initialization. PMU policy execution performs
 read-only eFuse access and primary-C comparisons without PMU or analog writes;
 factory fuse values and actual power/clock startup remain unverified.
+
+
+### Combined C6 base-clock transaction
+
+`esp32c6-radio-base.flex` composes the real PMU, reset-aware calibration and
+modem stages. `esp_radio_c6_base_prepare(source, divider, cycles)` uses the
+same six oscillator sources and 12-bit divider as modem staging. Call it with
+an initialized CPU0 radio domain, before PHY references or hardware-ready.
+It requires idle clock/peripheral owners, unforced foreign modem clocks and
+MSPI's retained PCR source. Configured active-state ICG/sleep selectors must
+match their live monitor fields before ownership is claimed. Success holds
+the IRQ mask and all lower leases; it does not enable RF or start an oscillator.
+
+The transaction first keeps APB/I2C access available at both old and new modem
+codes, selects active code2, then sends the pinned C preinit requests:
+`PMU_IMM_MODEM_ICG=0x80000000` followed by
+`PMU_IMM_SLEEP_SYSCLK=0x10000000`. These are raw write-trigger stores, never
+read-modify-write operations. After preinit maps, PMU policy, calibration and
+modem staging, it refreshes both immediate requests with the prepared policy.
+The small poll/store callback stays in IRAM with the six lower callbacks.
+
+A per-command journal records issuance before the store. A timeout retains
+ownership and the original preparation error. `esp_radio_c6_base_abort(cycles)`
+first drains the already-issued request without issuing an unsent forward
+request, then unwinds modem, calibration and PMU state. Recovery bridges the
+old/new APB maps only if a request was sent, restores original selectors,
+issues inverse requests once, restores maps and checks the entire original
+monitor tuple, including bit20. A failed inverse request resumes polling on
+the next abort; it is not replayed. IRQs remain masked until exact recovery.
+`esp_radio_base_error` and `esp_radio_base_cleanup_error` keep preparation and
+cleanup failures distinct. `phase`, `step`, `recovery`, `command_step` and
+`issued` expose resumable progress.
+
+`esp_radio_c6_base_commit()` requires complete preparation and transfers the
+base/modem/PMU configuration to platform lifetime before PHY ownership.
+Competing lifecycle, hardware, PHY, PMU, analog and PLL operations refuse the
+held base lease. Committed state cannot be undone with staging abort.
+
+The read-only status monitor supplies a postcondition, not a documented busy
+or acknowledgement bit. A request ignored while its target already matches
+cannot be distinguished by this poll. The host model explicitly supplies
+request completion, including delayed sampling and pending-request failures;
+it is not silicon acknowledgement proof. The primary C oracle checks256
+preinit vectors; the composed model runs all actual lower stages and detects
+13 injected defects. Native admission/guard firmware and a full pinned
+vendor/SDK-linked image are verified separately. The full combined image uses
+64,288 bytes of the unchanged64KiB IRAM partition. It boots to the existing
+clean `-95` refusal; valid WT MMIO, physical clocks and full PHY remain unproved.
+The production hardware initializer retains its gate.
+
+### Compact RV32 emission
+
+The backend emits RV32IMC, marking ELF `EF_RISCV_RVC` when emitting compressed
+instructions. Small constants/moves/adds, stack/frame word accesses and returns
+use legal C encodings; fixed-width address materialization, call/jump fixups
+and the32-entry IRQ vector remain fixed width. Vector alignment remains256
+bytes and output sections remain4-byte aligned.
+
+The private frame base is the bottom of the allocated local region. Physical
+local/parameter addresses, saved-register header, stack bounds and16-byte
+frame alignment are unchanged. Both halves of a64-bit word use direct frame
+loads/stores only when their signed12-bit offsets fit; larger frames retain
+full-width address calculation. Local zero initialization is omitted only
+when control-flow traversal proves every path stores before its first read.
+Branches, loops and reused poisoned stacks still observe default zero.
+Zero-argument calls omit unnecessary stack cleanup.
+
+`riscv-encoding-reference.py` compares14,435 production encodings against LLVM,
+including all legal compact register/offset combinations and raw boundary
+fallbacks. `riscv-frame-reference.py` exercises large local/argument frames,
+branch and loop defaults across SRAM/XIP/radio profiles, with C6 ROM execution
+and explicit C3 package checks. Existing C ABI, context, IRQ and TLS probes
+check interoperability; these are compiler/firmware checks, not physical RF
+or timing measurements. The canonical RISC-V driver includes both new cohorts.

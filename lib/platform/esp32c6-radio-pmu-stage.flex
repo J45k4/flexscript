@@ -21,13 +21,14 @@ global esp_radio_pmu_rf_before=0;
 global esp_radio_pmu_configured=0;
 fn esp_radio_c6_pmu_stage_guard(){
  if !esp_riscv_ready() || rv_hal_chip!=13{return -95;}
+ if esp_radio_base_active && !esp_radio_base_internal{return -16;}
  if esp_radio_modem_active && !esp_radio_modem_internal{return -16;}
  if esp_radio_calibration_active && !esp_radio_calibration_internal{return -16;}
  if esp_radio_owner!=1 || esp_adc_busy || esp_radio_phy_refs || esp_radio_phy_clock_refs || esp_radio_hw_ready || esp32_load32(esp32_state()+16){return -16;}return 0;
 }
 fn esp_radio_c6_pmu_reg(row){if row==0{return 5;}if row==1{return 7;}return 13;}
 fn esp_radio_c6_pmu_analog(row,data,cycles){
- if row<0 || row>2{return -22;}let ps=esp32_irq_save();if esp_radio_modem_active && !esp_radio_modem_internal{esp32_irq_restore(ps);return -16;}if esp_radio_calibration_active && !esp_radio_calibration_internal{esp32_irq_restore(ps);return -16;}if !esp_radio_pmu_active{esp32_irq_restore(ps);return -16;}
+ if row<0 || row>2{return -22;}let ps=esp32_irq_save();if esp_radio_base_active && !esp_radio_base_internal{esp32_irq_restore(ps);return -16;}if esp_radio_modem_active && !esp_radio_modem_internal{esp32_irq_restore(ps);return -16;}if esp_radio_calibration_active && !esp_radio_calibration_internal{esp32_irq_restore(ps);return -16;}if !esp_radio_pmu_active{esp32_irq_restore(ps);return -16;}
  let high=7;let low=7;if row==2{high=3;low=2;}
  let internal=esp_radio_pmu_internal;esp_radio_pmu_internal=1;let result=esp_radio_c6_regi2c(0x6d,esp_radio_c6_pmu_reg(row),high,low,data,cycles);esp_radio_pmu_internal=internal;esp32_irq_restore(ps);return result;
 }

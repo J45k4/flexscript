@@ -11,7 +11,7 @@ global esp_radio_regi2c_source=0;
 global esp_radio_regi2c_select=0;
 fn esp_radio_c6_regi2c_guard(){
  if !esp_riscv_ready() || rv_hal_chip!=13{return -95;}
- if (esp_radio_pmu_active && !esp_radio_pmu_internal) || esp_radio_owner!=1 || esp_adc_busy || esp_radio_phy_refs || esp_radio_phy_clock_refs || esp32_load32(esp32_state()+16){return -16;}return 0;
+ if (esp_radio_base_active && !esp_radio_base_internal) || (esp_radio_pmu_active && !esp_radio_pmu_internal) || esp_radio_owner!=1 || esp_adc_busy || esp_radio_phy_refs || esp_radio_phy_clock_refs || esp32_load32(esp32_state()+16){return -16;}return 0;
 }
 fn esp_radio_c6_regi2c_block(block){
  if block==0x6a{return 6;}if block==0x66{return 7;}if block==0x61{return 8;}if block==0x69{return 9;}if block==0x6d{return 10;}return -1;

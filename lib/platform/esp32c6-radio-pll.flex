@@ -16,7 +16,7 @@ global esp_radio_pll_settled=0;
 global esp_radio_pll_cal_pending=0;
 fn esp_radio_c6_pll_consumer(keep){
  if keep<0 || keep>1{return -22;}if !esp_riscv_ready() || rv_hal_chip!=13{return -95;}
- let ps=esp32_irq_save();if esp_radio_pll_active || (esp_radio_modem_active && !esp_radio_modem_internal) || (esp_radio_calibration_active && !esp_radio_calibration_internal){esp32_irq_restore(ps);return -16;}
+ let ps=esp32_irq_save();if (esp_radio_base_active && !esp_radio_base_internal) || esp_radio_pll_active || (esp_radio_modem_active && !esp_radio_modem_internal) || (esp_radio_calibration_active && !esp_radio_calibration_internal){esp32_irq_restore(ps);return -16;}
  if keep{if esp_radio_pll_consumers==9223372036854775807{esp32_irq_restore(ps);return -75;}esp_radio_pll_consumers=esp_radio_pll_consumers+1;}
  else{if !esp_radio_pll_consumers{esp32_irq_restore(ps);return -22;}esp_radio_pll_consumers=esp_radio_pll_consumers-1;}
  esp32_irq_restore(ps);return 0;
@@ -71,7 +71,7 @@ fn esp_radio_c6_pll_begin(cycles){return esp32_call64(esp32_iram_callback32(esp_
 fn esp_radio_c6_pll_begin_iram(cycles,b,c,d,e,f,g,h){
  if cycles<1 || cycles>2147483647{return -22;}let ps=esp32_irq_save();let result=esp_radio_c6_pll_guard();
  if result{if !esp_radio_cpu_clock_active{esp32_irq_restore(ps);}return result;}
- if esp_radio_pll_active || esp_radio_regi2c_active{return -16;}result=esp_radio_c6_pll_idle();if result{return result;}
+ if (esp_radio_base_active && !esp_radio_base_internal) || esp_radio_pll_active || esp_radio_regi2c_active{return -16;}result=esp_radio_c6_pll_idle();if result{return result;}
  let state=esp32_load32(0x600b0194);let on=state&0x40000000;
  if on{if (state&0x70000001)!=0x70000001{return -95;}}
  else{if state&0x62000000{return -95;}}
