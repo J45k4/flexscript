@@ -120,7 +120,16 @@ fn suite(compiler) {
     ss_reject("global x=1;fn kernel(i,a,b,n){return x;}","globals or static data");
     ss_reject("fn kernel(i,a,b,n){return load8(\"x\");}","string literals");
     let source="fn kernel(i,a,b,n){";i=0;while i<120 {source=h_cat(source,h_cat3("let x",h_int(i),"=0;"));i=i+1;}
-    ss_reject(h_cat(source,"return 0;}"),"physical register budget");
+    t_program(h_cat(source,"store64(b+i*8,load64(a+i*8));return 0;}"));ss_compile();
+    source="fn kernel(i,a,b,n){";i=0;while i<120 {source=h_cat(source,h_cat3("let x",h_int(i),h_cat3("=load64(a+(i+",h_int(i),")*8);")));i=i+1;}
+    source=h_cat(source,"let sum=0;");i=0;while i<120 {source=h_cat(source,h_cat3("sum=sum+x",h_int(i),";"));i=i+1;}
+    ss_reject(h_cat(source,"store64(b+i*8,sum);return 0;}"),"physical register budget");
+    // Two phases use more than 64 language locals, with only one phase live.
+    // Backedges must preserve the total and the next iteration's inputs.
+    let phases="let total=0;let k=0;while k<3 {";let group=0;
+    while group<2 {i=group*40;while i<(group+1)*40 {phases=h_cat(phases,h_cat3("let x",h_int(i),h_cat3("=x+k+",h_int(i),";")));i=i+1;}
+        i=group*40;while i<(group+1)*40 {phases=h_cat(phases,h_cat3("total=total+x",h_int(i),";"));i=i+1;}group=group+1;}
+    ss_case(h_cat(phases,"k=k+1;}store64(output+i*8,total);return 0;"));
     let args=h_args(t_compiler,"--language","seta","--target","sass-sm75",t_fixture);h_add(args,"-o");h_add(args,t_binary);
     let p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"require Flexscript or an external source frontend"),"unsupported SASS frontend rejected");
     return t_done();

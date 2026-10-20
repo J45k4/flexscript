@@ -362,7 +362,7 @@ fn sass_supported(op,arg) {
 fn sass_frame(index) {
     if load64(sass_frames+index*24+16) {return load64(sass_frames+index*24+16);}
     let start=load64(functions+index*32+16)+16;let end=p_end(index);let pc=start;
-    let slots=load64(p_code+start-8);let depth=0;let maximum=0;let child=0;
+    let map=sl_map(index);store64(sass_slot_maps+index*8,map);let slots=load64(map);let depth=0;let maximum=0;let child=0;
     while pc<end {
         let op=load64(p_code+pc);let arg=load64(p_code+pc+8);
         if !sass_supported(op,arg) {fail("unsupported SASS kernel instruction");}
@@ -414,7 +414,7 @@ fn sass_function(index,base,result) {
             depth=depth-1;let first=sass_reg(base+slots+1+depth);let value=arg;pc=pc+32;
             let next=0;if pc+16<end {next=load64(p_code+pc+16);}
             if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}pc=pc+16;
+                if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}pc=pc+16;
             }
             if immediate_intrinsic>=114 {
                 let condition=1;if immediate_intrinsic==115 {condition=3;}else if immediate_intrinsic==116 {condition=4;}else if immediate_intrinsic==117 {condition=6;}else if immediate_intrinsic==118 {condition=2;}else if immediate_intrinsic==119 {condition=5;}
@@ -428,7 +428,7 @@ fn sass_function(index,base,result) {
         }else if launch_load {
             let word=arg&7;pc=pc+32;let next=0;if pc+16<end {next=load64(p_code+pc+16);}
             if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}pc=pc+16;
+                if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}pc=pc+16;
             }
             sass_constant(sass_acc,376+word*8);sass_constant(sass_acc+1,380+word*8);
         }else if load_kind {
@@ -437,7 +437,7 @@ fn sass_function(index,base,result) {
             depth=depth-1;let left=sass_reg(base+slots+1+depth);let value=arg;pc=pc+48;
             let next=0;if pc+16<end {next=load64(p_code+pc+16);}
             if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
                 pc=pc+16;
             }
             sass_load_offset(load_kind,left,value);
@@ -450,7 +450,7 @@ fn sass_function(index,base,result) {
             depth=depth-1;let left=sass_reg(base+slots+1+depth);pc=pc+16;
             let next=0;if pc+16<end {next=load64(p_code+pc+16);}
             if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
                 sass_constant_binary(left,value,operation);pc=pc+16;
             }else {sass_constant_binary(left,value,operation);}
         }
@@ -460,8 +460,8 @@ fn sass_function(index,base,result) {
         }
         else if op==1 {sass_immediate(acc,arg);}
         else if op==2 {sass_move(sass_reg(base+slots+1+depth),acc);depth=depth+1;}
-        else if op==3 {sass_move(acc,sass_reg(base+arg));}
-        else if op==4 {sass_move(sass_reg(base+arg),acc);}
+        else if op==3 {sass_move(acc,sass_reg(base+sl_slot(index,arg)));}
+        else if op==4 {sass_move(sass_reg(base+sl_slot(index,arg)),acc);}
         else if op==7 {depth=depth-1;sass_binary(arg,sass_reg(base+slots+1+depth));}
         else if op==14 {sass_add(acc,8,acc,1);}
         else if op==16 {sass_logic32(acc,acc,255,0x0f);sass_logic32(acc+1,acc+1,255,0x0f);}
@@ -473,7 +473,7 @@ fn sass_function(index,base,result) {
                 let kind=gpu_intrinsic(arg);let next=0;if pc+16<end {next=load64(p_code+pc+16);}
                 let direct=kind==17 || kind==124 || kind==121 || kind==122 || kind==103 || (kind>=105 && kind<=108) || (kind>=114 && kind<=120) || (kind>=53 && kind<=64 && kind!=54) || (kind>=30 && kind<=32) || kind==35;
                 if direct && (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                    if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                    if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
                     sass_intrinsic(kind,first);pc=pc+16;
                 }else {sass_intrinsic(kind,first);}
             }
@@ -496,7 +496,7 @@ fn sass_function(index,base,result) {
 }
 fn sass_lower(kernel,code,size) {
     p_launch_words=0;p_code=code;p_size=size;p_seen=alloc(function_count*8);p_visit(kernel,0);
-    sass_frames=alloc(function_count*24);sass_math=0;
+    sass_frames=alloc(function_count*24);sass_slot_maps=alloc(function_count*8);sass_math=0;
     let frame=sass_frame(kernel);sass_math_base=sass_reg(frame);
     sass_registers=18+2*(frame+sass_math*16);
     if sass_registers>254 {fail("SASS kernel exceeds physical register budget; spilling is not implemented");}

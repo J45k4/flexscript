@@ -18,6 +18,7 @@ import "backends/rdna.flex";
 import "backends/sass.flex";
 import "backends/sass-opt.flex";
 import "backends/sass-registers.flex";
+import "backends/sass-slots.flex";
 import "backends/sass-schedule.flex";
 import "backends/sass-float.flex";
 import "ir.flex";

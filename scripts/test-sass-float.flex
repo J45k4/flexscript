@@ -111,10 +111,11 @@ fn suite(compiler) {
     t_init(compiler);
     ff_pair();ff_case(32,0,0);ff_case(32,1,0);ff_case(64,0,0);ff_case(64,1,0);ff_case(64,0,1);
     let source="fn gpu_f64_sqrt(x){return x;}fn kernel(i,a,b,n){";let i=0;
-    while i<100 {source=h_cat(source,h_cat3("let local",h_int(i),"=0;"));i=i+1;}
-    t_program(h_cat(source,"return 0;}"));let path=h_join(t_work,"registers.cubin");
+    while i<100 {source=h_cat(source,h_cat3("let local",h_int(i),h_cat3("=load64(a+(i+",h_int(i),")*8);")));i=i+1;}
+    let ending="";i=0;while i<100 {ending=h_cat(ending,h_cat3("total=total+local",h_int(i),";"));i=i+1;}ending=h_cat(ending,"store64(b+i*8,total);return 0;}");
+    t_program(h_cat(source,h_cat("let total=0;",ending)));let path=h_join(t_work,"registers.cubin");
     h_ok(h_args(t_compiler,"--target","sass-sm75",t_fixture,"-o",path));let before=h_sha(path);
-    t_program(h_cat(source,"return gpu_f64_sqrt(i);}"));
+    t_program(h_cat(source,h_cat("let total=gpu_f64_sqrt(i);",ending)));
     let p=h_run(h_args(t_compiler,"--target","sass-sm75",t_fixture,"-o",path));h_check(p,1,0);
     ff_check(h_has(h_err(p),"physical register budget"),"float scratch counts against register budget");
     ff_check(h_equal(before,h_sha(path)),"math register rejection preserves existing cubin");
