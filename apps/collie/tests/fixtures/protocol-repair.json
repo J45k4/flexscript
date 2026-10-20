@@ -1,0 +1,36 @@
+[
+  {
+    "output": [
+      {
+        "type": "custom_tool_call",
+        "name": "flexscript",
+        "call_id": "call_fixture_0",
+        "input": "",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "output": [
+      {
+        "type": "custom_tool_call",
+        "name": "flexscript",
+        "call_id": "call_fixture_1",
+        "input": "import \"/etc/passwd\";fn main(){return 0;}",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "output": [
+      {
+        "type": "custom_tool_call",
+        "name": "flexscript",
+        "call_id": "call_fixture_2",
+        "input": "fn main(){let b=\"42\\n\";syscall(1,1,b,3,0,0,0);return 0;}",
+        "status": "completed"
+      }
+    ]
+  },
+  "The answer is 42.\n"
+]

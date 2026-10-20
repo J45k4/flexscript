@@ -2,6 +2,7 @@
 /dist/
 __pycache__/
 /flexscript-todos.db*
+/collie-trace.json
 # Locally compiled browser example.
 /examples/wasm/hello.wasm
 
