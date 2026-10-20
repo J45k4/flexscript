@@ -29,7 +29,7 @@ jobs:
       - name: Install verification dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -84,6 +84,11 @@ jobs:
           build/tools/test-http --compiler build/stage2
           xvfb-run --auto-servernum --server-args='-screen 0 1280x960x24 -nolisten tcp' \
             build/tools/test-gui build/stage2 --gui --report build/gui-report.json
+
+      - name: Test Collie conversations and restricted VM execution
+        run: |
+          build/tools/test-collie --compiler build/stage2 --vm
+          python3 apps/collie/tests/tui.py --compiler build/stage2 --vm
 
       - name: Install the WebAssembly test host
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2

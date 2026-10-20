@@ -70,7 +70,6 @@ fn main(argc,argv) {
         i=i+1;
     }
     j_set(report,"stages",hashes);
-    j_set(report,"core_seed_sha256",j_string(h_sha(seed_core)));
     j_set(report,"core_sha256",j_string(h_sha(core)));
     j_set(report,"core_seed_sha256",j_string(core_seed_sha));
     let harness=h_join(out,"test-harness");

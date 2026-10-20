@@ -1,8 +1,9 @@
 # Native terminal UI library
 
 Import `libs/tui/tui.flex` to build Linux terminal applications in Flexscript.
-The library has no ML or GPU dependency. `llm.flex` is a chat application using
-it; `examples/tui/editor.flex` is a standalone editor example.
+The library has no ML or GPU dependency. `llm.flex` and
+[`apps/collie`](../apps/collie/README.md) are chat applications using it;
+`examples/tui/editor.flex` is a standalone editor example.
 
 ```sh
 build/flex-llm examples/tui/editor.flex -o build/tui-editor

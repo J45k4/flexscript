@@ -48,6 +48,8 @@ fn main(argc,argv) {
     h_add(names,"test-tetris");
     h_add(names,"test-todo");
     h_add(names,"test-http");
+    h_add(names,"build-collie");
+    h_add(names,"test-collie");
     h_add(names,"test-harness");
     h_add(names,"install");
     h_add(names,"test-libraries");
