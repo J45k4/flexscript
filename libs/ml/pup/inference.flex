@@ -3,8 +3,9 @@
 fn pni_axis(x,value) {let axis=pn_integer(value);if axis<0 {axis=axis+pg_rank(x);}if axis<0 || axis>=pg_rank(x) {pg_error("inference axis out of range");}return axis;}
 fn pni_shape(x) {let shape=alloc(pg_rank(x)*8+8);pg_copy(shape,load64(x+40),pg_rank(x)*8);return shape;}
 fn pni_call(name,args,count) {
-    if !pn_inference_mode {return 0;}
     let x=load64(args);
+    // These shape-preserving/routing operations also have training adapters.
+    if !pn_inference_mode && !pg_eq(name,"sigmoid") && !pg_eq(name,"concat") && !pg_eq(name,"slice") {return 0;}
     if pg_eq(name,"tensor") && count==2 {let key=pn_name(x);pn_unique(key);let dims=load64(args+8);if load64(dims)!=100 {pg_error("tensor needs a shape list");}let rank=load64(dims+48);if rank>4 {pg_error("inference tensor rank exceeds four");}let shape=alloc(rank*8+8);let i=0;while i<rank {store64(shape+i*8,pn_integer(load64(load64(dims+56)+i*8)));i=i+1;}let v=pg_node(23,0,0,rank,shape,0,0);store64(v+80,key);return v;}
     if pg_eq(name,"sigmoid") && count==1 {return pg_node(24,x,0,pg_rank(x),load64(x+40),0,0);}
     if pg_eq(name,"concat") && count==3 {let y=load64(args+8);let axis=pni_axis(x,load64(args+16));if pg_rank(x)!=pg_rank(y) {pg_error("concat ranks differ");}let shape=pni_shape(x);let i=0;while i<pg_rank(x) {if i!=axis && pg_dim(x,i)!=pg_dim(y,i) {pg_error("concat dimensions differ");}i=i+1;}store64(shape+axis*8,pg_dim(x,axis)+pg_dim(y,axis));return pg_node(25,x,y,pg_rank(x),shape,axis,0);}
