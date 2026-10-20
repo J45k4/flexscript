@@ -85,7 +85,7 @@ fn sass_schedule_fixed() {
         // barrier to become active before a following instruction can wait.
         if known && op!=0x23c && (((high>>46)&7)!=7 || ((high>>49)&7)!=7) {latency=2;delay=2;}
         if known && op==0x23c {delay=4;}
-        if known && (op==0x202 || op==0x802 || op==0xa02 || op==0x212 || op==0x812 || op==0x219 || op==0x819 || op==0x220 || op==0x221 || op==0x223 || op==0x209 || op==0x230) {delay=1;}
+        if known && (op==0x224 || op==0x225 || op==0x824 || op==0x825 || op==0x816 || op==0x202 || op==0x802 || op==0xa02 || op==0x212 || op==0x812 || op==0x219 || op==0x819 || op==0x220 || op==0x221 || op==0x223 || op==0x209 || op==0x230) {delay=1;}
         if known {i=0;while i<so_width {if so_dest+i<255 {store64(ready+(so_dest+i)*8,time+latency);}i=i+1;}}
         high=(high&~(15<<41))|(delay<<41);
         // Completion of these operations is guarded by dependency scoreboards.

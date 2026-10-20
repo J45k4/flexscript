@@ -30,6 +30,21 @@ fn hp_binary(op,left) {
     else {if signed {p_text("(long long)");}hp_reg(p_acc);}p_text(";\n");return 0;
 }
 fn hp_intrinsic(kind,first) {
+    if kind==124 {hp_reg(p_acc);p_text("=");hp_reg(first);p_text("+(W)(unsigned int)");hp_reg(first+1);p_text("*4;\n");return 0;}
+
+    if kind==121 || kind==122 {hp_reg(p_acc);p_text("=((");hp_reg(first);if kind==121 {p_text("&65535)|((");hp_reg(first);p_text(">>16)&0xffff0000));\n");}else {p_text(">>16)&65535)|((");hp_reg(first);p_text(">>32)&0xffff0000);\n");}return 0;}
+
+    if (kind>=105 && kind<=108) || (kind>=114 && kind<=120) {
+        hp_reg(p_acc);p_text("=");
+        if kind==120 {p_text("((W)(unsigned int)");hp_reg(first);p_text("*(unsigned int)");hp_reg(first+1);p_text(")>>32;\n");return 0;}
+        let type="(unsigned int)";if kind>=114 && kind<=117 {type="(int)";}p_text("(unsigned int)(");p_text(type);hp_reg(first);
+        let op="+";if kind==106 {op="-";}else if kind==107 || kind==108 {op="*";}else if kind==114 {op="<";}else if kind==115 {op="<=";}else if kind==116 {op=">";}else if kind==117 {op=">=";}else if kind==118 {op="==";}else if kind==119 {op="!=";}
+        p_text(op);p_text(type);hp_reg(first+1);if kind==108 {p_text("+(unsigned int)");hp_reg(first+2);}p_text(");\n");return 0;
+    }
+
+    if kind==103 {hp_reg(p_acc);p_text("=*(unsigned int*)(flex_shared+");hp_reg(first);p_text(");\n");return 0;}
+    if kind==104 {p_text("*(unsigned int*)(flex_shared+");hp_reg(first);p_text(")=(unsigned int)");hp_reg(first+1);p_text(";\n");hp_move(p_acc,first+1);return 0;}
+
     if kind==87 || kind==91 || kind==92 || kind==93 || kind==94 || kind==95 || kind==96 || kind==97 || kind==98 {fail("native RDNA intrinsics require rdna-gfx1201");}
     hp_reg(p_acc);p_text("=");
     if kind>=1 && kind<=12 {

@@ -12,6 +12,7 @@ import "backends/gpu-intrinsics.flex";
 import "lowering.flex";
 import "cpu-cxx.flex";
 import "backends/ptx.flex";
+import "backends/ptx-inline.flex";
 import "backends/hip.flex";
 import "backends/rdna.flex";
 import "backends/sass.flex";

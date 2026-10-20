@@ -83,6 +83,11 @@ fn suite(compiler) {
     ss_case("store64(output+i*8,x/(-7)+x%(-7));return 0;");
     ss_case("store64(output+i*8,x/(load64(input+(i+1)*8)|1)+x%(load64(input+(i+1)*8)|1));return 0;");
     ss_case("store64(output+i*8,x/0x8000000000000000+x%0x8000000000000000);return 0;");
+    let index_ops=h_args("gpu_u32_add(a,b)","gpu_u32_sub(a,b)","gpu_u32_mul(a,b)","gpu_u32_mad(a,b,0x123456789abcdef0)","gpu_u32_mul_hi(a,b)","gpu_i32_lt(a,b)");
+    h_add(index_ops,"gpu_i32_le(a,b)");h_add(index_ops,"gpu_i32_gt(a,b)");h_add(index_ops,"gpu_i32_ge(a,b)");h_add(index_ops,"gpu_u32_eq(a,b)");h_add(index_ops,"gpu_u32_ne(a,b)");h_add(index_ops,"gpu_f16_pair_hi(a)");h_add(index_ops,"gpu_f16_pair_lo(a)");
+    h_add(index_ops,"gpu_u32_add(a,0xffffffff)");h_add(index_ops,"gpu_u32_sub(a,0xffffffff)");h_add(index_ops,"gpu_u32_mul(a,32)");h_add(index_ops,"gpu_u32_mul(a,0x100000002)");h_add(index_ops,"gpu_i32_lt(a,0x80000000)");h_add(index_ops,"gpu_i32_ge(a,-1)");h_add(index_ops,"gpu_u32_eq(a,0x100000000)");
+    i=0;while i<h_count(index_ops) {t_program(h_cat(packed,h_cat3("let a=load64(p);let b=load64(p+8);store64(output+i*8,",h_at(index_ops,i),");return 0;}")));ss_compile();i=i+1;}
+    t_program(h_cat(packed,"store64(output+i*8,gpu_load_u32(gpu_address_f32(input,i*2))^gpu_load_u64(gpu_address_f32(input,i*2)));return 0;}"));ss_compile();
     ss_case("let n=0;let total=0;while n<5 {if (x&1) && n!=2 {total=total+x;}else {total=total-7;}n=n+1;}store64(output+i*8,total);return 0;");
     t_program("fn mix(a,b,c){if a<0 {return -a;}return a*100+b*10+c;}fn kernel(i,input,output,count){store64(output+i*8,mix(load64(input+i*8),0||1,1&&2));return 0;}");ss_compile();
     t_program("fn later(x){return x*7;}fn nest(x){return later(x)+later(x+1);}fn kernel(i,input,output,count){if i&1 {store64(output+i*8,nest(i));}else {store64(output+i*8,nest(-i));}return 0;}");ss_compile();

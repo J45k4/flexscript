@@ -18,7 +18,8 @@ fn so_metadata(low,high) {
         so_read(24,0);so_read(32,0);so_read(64,op==0x225);so_width=1;if op==0x225 {so_width=2;}return 1;
     }
     if op==0x20c {so_read(24,0);so_read(32,0);return 1;}
-    if op==0xa0c {so_read(24,0);return 1;}
+    if op==0xa0c || op==0x80c {so_read(24,0);return 1;}
+    if op==0x824 || op==0x825 {so_read(24,0);so_read(64,op==0x825);so_width=1;if op==0x825 {so_width=2;}return 1;}
     if op==0x810 || op==0x812 {so_read(24,0);so_read(64,0);so_width=1;return 1;}
     if op==0x220 || op==0x221 || op==0x209 {so_read(24,0);so_read(32,0);so_width=1;return 1;}
     if op==0x230 {so_read(24,0);so_read(32,0);so_width=1;return 1;}
@@ -31,8 +32,8 @@ fn so_metadata(low,high) {
     if op==0xb82 {so_read(24,0);so_width=2;return 1;}
     if op==0xf89 {so_read(24,0);so_width=1;return 1;}
     if op==0x589 {so_read(24,0);so_read(32,0);so_width=1;return 1;}
-    if op==0x984 {so_read(24,0);so_width=2;return 1;}
-    if op==0x388 {so_read(24,0);so_read(32,1);return 1;}
+    if op==0x984 {so_read(24,0);so_width=1;if high&512 {so_width=2;}return 1;}
+    if op==0x388 {so_read(24,0);so_read(32,(high&512)!=0);return 1;}
     if op==0x381 || op==0x386 {
         so_read(24,1);let n=1;let size=(high>>8)&15;if size==11 {n=2;}else if size==13 {n=4;}
         if op==0x381 {so_width=n;return n<=2;}
@@ -218,7 +219,7 @@ fn so_shared_forward() {
         let low=load64(output+at);let high=load64(output+at+8);let op=low&4095;
         if ((low>>12)&15)!=7 {address=255;}
         else if op==0x388 && (high&65535)==0xa00 {address=(low>>24)&255;value=(low>>32)&255;}
-        else if op==0x984 && address<255 && ((low>>24)&255)==address {
+        else if op==0x984 && (high&65535)==0x1a00 && address<255 && ((low>>24)&255)==address {
             let dest=(low>>16)&255;
             store64(output+at,0x7225|(dest<<16)|(255<<24)|(255<<32));
             store64(output+at+8,0x03ffcc00078e0000|value);address=255;
