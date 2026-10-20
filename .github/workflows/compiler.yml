@@ -124,6 +124,9 @@ jobs:
       - name: Test common subexpression elimination
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-ir-cse.py
 
+      - name: Test shared function effects and call barriers
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-ir-effects.py
+
       - name: Test CFG liveness and native register preservation
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-ir-liveness.py
 

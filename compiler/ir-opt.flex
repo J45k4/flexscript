@@ -1,3 +1,5 @@
+import "ir-effects.flex";
+import "ir-effect-targets.flex";
 import "ir-cse.flex";
 // Shared optimizations on resolved accumulator/stack word IR. No target
 // instruction encodings or register assumptions belong in these passes.
@@ -90,10 +92,12 @@ fn io_reach(start,end) {
     }return 0;
 }
 fn ir_optimize() {
+    ie_ready=0;
     ir_opt_before=output_size/16;ir_opt_after=ir_opt_before;ir_opt_folds=0;ir_opt_branches=0;ir_opt_dead=0;ir_opt_cse=0;
     // Source transformation snapshots and serialized FIR remain the original
     // validated representation. Native source emission has its own pipeline.
     if !ir_opt_enabled || tx_recording || frontend_ir_target {return 0;}
+    ir_effect_prepare();
     let size=output_size;let count=size/16;if !count {return 0;}
     // Reuse scratch without requiring a raw munmap capability when this
     // compiler itself runs inside a restricted VM or WebAssembly host.
@@ -138,5 +142,9 @@ fn ir_optimize() {
 fn ir_opt_stats() {
     print(2,"IR instructions: ");print_number(ir_opt_before);print(2," -> ");print_number(ir_opt_after);
     print(2,"; constant folds: ");print_number(ir_opt_folds);print(2,"; branch rewrites: ");print_number(ir_opt_branches);
-    print(2,"; dead instructions: ");print_number(ir_opt_dead);print(2,"; common expressions: ");print_number(ir_opt_cse);print(2,"\n");return 0;
+    print(2,"; dead instructions: ");print_number(ir_opt_dead);print(2,"; common expressions: ");print_number(ir_opt_cse);print(2,"\n");
+    if ie_ready {let pure=0;let traps=0;let diverge=0;let i=0;while i<ie_count {let effect=ir_effect_get(i);
+        if !effect {pure=pure+1;}if effect&256 {traps=traps+1;}if effect&512 {diverge=diverge+1;}i=i+1;}
+        print(2,"IR effects: ");print_number(pure);print(2," effect-free functions; ");print_number(traps);print(2," may trap; ");print_number(diverge);print(2," may not return\n");
+    }return 0;
 }

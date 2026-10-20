@@ -70,9 +70,13 @@ fn io_cse(start,end) {
                 else if op==17 {let arity=7;if arg==1 || arg==2 || arg==5 || arg==7 {arity=1;}else if arg==3 || arg==4 || arg==8 {arity=2;}depth=depth-arity;}
                 else if op==22 {depth=depth-1;}
                 if depth<0 {return 0;}
-                // Calls, loads, stores, globals, address literals and control
-                // flow are barriers. Never infer purity from a callee's name.
-                ic_reset(depth);value=ic_unknown();pure=0;
+                if op==8 && !ir_effect_get(arg) {
+                    // Retain local arithmetic identities across proven
+                    // effect-free calls, but never delete the call or its
+                    // argument evaluation as part of a producer span.
+                    let j=0;while j<depth {store64(ic_stack+j*32+24,0);j=j+1;}
+                }else {ic_reset(depth);}
+                value=ic_unknown();pure=0;
             }
         }pc=pc+16;
     }return 0;
