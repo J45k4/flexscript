@@ -20,6 +20,7 @@ fn sass_intrinsic_supported(kind) {
         || (kind>=30 && kind<=37) || (kind>=40 && kind<=47);
 }
 fn sass_load_offset(kind,first,offset) {
+    if kind==17 {sass_instruction(0x7984|(sass_acc<<16)|(first<<24)|(offset<<40),0x1a00,1);return 0;}
     if kind==103 {sass_instruction(0x7984|(sass_acc<<16)|(first<<24)|(offset<<40),0x1800,1);sass_immediate32(sass_acc+1,0);return 0;}
 
     let high=0x001ee900;if kind==59 {high=0x001eeb00;}else if kind==61 {high=0x001f4b00;}else if kind==55 || kind==60 {high=0x001ee500;}
@@ -396,9 +397,9 @@ fn sass_function(index,base,result) {
         store64(labels+(pc-start)/2,output_size);sass_acc=acc;
         let op=load64(p_code+pc);let arg=load64(p_code+pc+8);
         let load_kind=0;
-        if op==1 && arg>=0 && arg<=49152 && pc+48<end && load64(p_code+pc+16)==7 && load64(p_code+pc+24)==43 && load64(p_code+pc+32)==2 && load64(p_code+pc+48)==8
+        if op==1 && arg>=0 && arg<=8388607 && pc+48<end && load64(p_code+pc+16)==7 && load64(p_code+pc+24)==43 && load64(p_code+pc+32)==2 && load64(p_code+pc+48)==8
             && !load64(targets+(pc+16-start)/2) && !load64(targets+(pc+32-start)/2) && !load64(targets+(pc+48-start)/2) {
-            let kind=gpu_intrinsic(load64(p_code+pc+56));if kind==103 || (arg<=4095 && (kind==53 || kind==55 || kind==59 || kind==60 || kind==61)) {load_kind=kind;}
+            let kind=gpu_intrinsic(load64(p_code+pc+56));if ((kind==17 || kind==103) && arg<=49152) || kind==53 || kind==55 || kind==59 || kind==60 || kind==61 {load_kind=kind;}
         }
         let launch_load=0;
         if op==1 && pc+32<end && load64(p_code+pc+16)==2 && load64(p_code+pc+32)==8
@@ -470,7 +471,7 @@ fn sass_function(index,base,result) {
             if op==17 {sass_memory(arg,first);}
             else if gpu_intrinsic(arg) {
                 let kind=gpu_intrinsic(arg);let next=0;if pc+16<end {next=load64(p_code+pc+16);}
-                let direct=kind==124 || kind==121 || kind==122 || kind==103 || (kind>=105 && kind<=108) || (kind>=114 && kind<=120) || (kind>=53 && kind<=64 && kind!=54) || (kind>=30 && kind<=32) || kind==35;
+                let direct=kind==17 || kind==124 || kind==121 || kind==122 || kind==103 || (kind>=105 && kind<=108) || (kind>=114 && kind<=120) || (kind>=53 && kind<=64 && kind!=54) || (kind>=30 && kind<=32) || kind==35;
                 if direct && (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
                     if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
                     sass_intrinsic(kind,first);pc=pc+16;

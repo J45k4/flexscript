@@ -215,12 +215,12 @@ fn sass_optimize() {
 // Keep the store for other consumers. Any intervening address/data overwrite,
 // shared store, unknown operation or control-flow edge ends the candidate.
 fn so_shared_forward() {
-    let address=255;let value=255;let at=0;
+    let address=255;let value=255;let offset=0;let at=0;
     while at<output_size {
         let low=load64(output+at);let high=load64(output+at+8);let op=low&4095;
         if ((low>>12)&15)!=7 {address=255;}
-        else if op==0x388 && (high&65535)==0xa00 {address=(low>>24)&255;value=(low>>32)&255;}
-        else if op==0x984 && (high&65535)==0x1a00 && address<255 && ((low>>24)&255)==address {
+        else if op==0x388 && (high&65535)==0xa00 {address=(low>>24)&255;value=(low>>32)&255;offset=(low>>40)&16777215;}
+        else if op==0x984 && (high&65535)==0x1a00 && address<255 && ((low>>24)&255)==address && ((low>>40)&16777215)==offset {
             let dest=(low>>16)&255;
             store64(output+at,0x7225|(dest<<16)|(255<<24)|(255<<32));
             store64(output+at+8,0x03ffcc00078e0000|value);address=255;

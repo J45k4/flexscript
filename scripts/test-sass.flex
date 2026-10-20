@@ -76,6 +76,8 @@ fn suite(compiler) {
     t_program(h_cat(packed,"store64(output+i*8,gpu_load_u64(p+8)^gpu_load_u32(p+4)^gpu_load_u16(p+2)^gpu_load_bf16(p+6)^gpu_load_stream_u64(p+16));return 0;}"));ss_compile();
     t_program(h_cat(packed,"let base=p-4095;store64(output+i*8,gpu_load_u64(base+4095));return 0;}"));ss_compile();
     t_program(h_cat(packed,"let base=p-4096;store64(output+i*8,gpu_load_u64(base+4096));return 0;}"));ss_compile();
+    t_program(h_cat(packed,"let base=p-65536;store64(output+i*8,gpu_load_u64(base+65536));return 0;}"));ss_compile();
+    t_program(h_cat(packed,"let base=p-8388607;store64(output+i*8,gpu_load_u64(base+8388607));return 0;}"));ss_compile();
     t_program(h_cat(packed,"let base=p+8;gpu_load_u64(p+8);store64(output+i*8,gpu_load_u64(base-8));return 0;}"));ss_compile();
     ss_case("store64(output+i*8,(!x)^(x||1)^(x&&7));return 0;");
     ss_case("store64(output+i*8,x/3+x%3);return 0;");
