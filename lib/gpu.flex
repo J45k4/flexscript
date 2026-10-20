@@ -128,6 +128,7 @@ fn gpu_f32_mul(a,b){return gpu_f32_pack(f64_mul(gpu_f32_unpack(a),gpu_f32_unpack
 fn gpu_f32_div(a,b){return gpu_f32_pack(f64_div(gpu_f32_unpack(a),gpu_f32_unpack(b)));}
 fn gpu_f32_sqrt(a){return gpu_f32_pack(f64_sqrt(gpu_f32_unpack(a)));}
 fn gpu_f32_fma(a,b,c){return gpu_host_only();}
+fn gpu_f32x2_fma(a,b,c){return gpu_host_only();}
 fn gpu_f32_from_i64(a){
     if a==0x8000000000000000 {return 0xdf000000;}
     let sign=0;if a<0 {sign=0x80000000;a=-a;}if !a {return sign;}

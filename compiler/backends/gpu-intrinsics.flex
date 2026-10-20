@@ -3,6 +3,7 @@
 fn gpu_intrinsic(index) {
     let f=functions+index*32;let name=load64(f);let size=load64(f+8);
     let registered=lowering_lookup(name,size,1);if registered {return registered;}
+    if equal(name,size,"gpu_f32x2_fma",13) {return 125;}
     if equal(name,size,"gpu_u32_add",11) {return 105;}
     if equal(name,size,"gpu_u32_sub",11) {return 106;}
     if equal(name,size,"gpu_u32_mul",11) {return 107;}
@@ -114,6 +115,7 @@ fn gpu_intrinsic(index) {
     return 0;
 }
 fn gpu_intrinsic_arity(kind) {
+    if kind==125 {return 3;}
     if kind==124 {return 2;}
     if kind==108 {return 3;}if (kind>=105 && kind<=107) || (kind>=114 && kind<=120) {return 2;}
     if kind==103 {return 1;}if kind==104 {return 2;}
@@ -149,6 +151,11 @@ fn p_float_result(width) {
     else {p_text("mov.b64 ");p_reg(p_acc);p_text(", %d3;\n");}return 0;
 }
 fn p_intrinsic(kind,first) {
+    if kind==125 {
+        p_text("mov.b64 {%f0,%f1},");p_reg(first);p_text(";\nmov.b64 {%f2,%f3},");p_reg(first+1);p_text(";\nmov.b64 {%f4,%f5},");p_reg(first+2);
+        p_text(";\nfma.rn.f32 %f6,%f0,%f2,%f4;\nfma.rn.f32 %f7,%f1,%f3,%f5;\nmov.b64 ");p_reg(p_acc);p_text(",{%f6,%f7};\n");return 0;
+    }
+
     if kind==124 {p_text("cvt.u32.u64 %r0,");p_reg(first+1);p_text(";\nmul.wide.u32 %t,%r0,4;\nadd.u64 ");p_reg(p_acc);p_text(",");p_reg(first);p_text(",%t;\n");return 0;}
 
     if kind==121 || kind==122 {p_text("mov.b64 {%r0,%r1},");p_reg(first);p_text(";\nprmt.b32 %r2,%r0,%r1,");if kind==121 {p_text("0x5410");}else {p_text("0x7632");}p_text(";\ncvt.u64.u32 ");p_reg(p_acc);p_text(",%r2;\n");return 0;}

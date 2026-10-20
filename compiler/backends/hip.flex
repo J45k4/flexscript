@@ -30,6 +30,10 @@ fn hp_binary(op,left) {
     else {if signed {p_text("(long long)");}hp_reg(p_acc);}p_text(";\n");return 0;
 }
 fn hp_intrinsic(kind,first) {
+    if kind==125 {
+        hp_reg(p_acc);p_text("=hp_f32_5(");hp_reg(first);p_text(",");hp_reg(first+1);p_text(",");hp_reg(first+2);p_text(")|(hp_f32_5(");hp_reg(first);p_text(">>32,");hp_reg(first+1);p_text(">>32,");hp_reg(first+2);p_text(">>32)<<32);\n");return 0;
+    }
+
     if kind==124 {hp_reg(p_acc);p_text("=");hp_reg(first);p_text("+(W)(unsigned int)");hp_reg(first+1);p_text("*4;\n");return 0;}
 
     if kind==121 || kind==122 {hp_reg(p_acc);p_text("=((");hp_reg(first);if kind==121 {p_text("&65535)|((");hp_reg(first);p_text(">>16)&0xffff0000));\n");}else {p_text(">>16)&65535)|((");hp_reg(first);p_text(">>32)&0xffff0000);\n");}return 0;}

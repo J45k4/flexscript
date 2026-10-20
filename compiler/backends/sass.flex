@@ -16,7 +16,7 @@ global sass_math_base=0;
 fn sass_special(to,code) {sass_instruction(0x7919|(to<<16),code<<8,1);sass_immediate32(to+1,0);return 0;}
 fn sass_constant_word(to,offset) {sass_constant(to,offset);sass_immediate32(to+1,0);return 0;}
 fn sass_intrinsic_supported(kind) {
-    return kind==124 || kind==121 || kind==122 || (kind>=105 && kind<=108) || (kind>=114 && kind<=120) || kind==103 || kind==104 || kind<=18 || (kind>=20 && kind<=29) || (kind>=50 && kind<=71)
+    return kind==125 || kind==124 || kind==121 || kind==122 || (kind>=105 && kind<=108) || (kind>=114 && kind<=120) || kind==103 || kind==104 || kind<=18 || (kind>=20 && kind<=29) || (kind>=50 && kind<=71)
         || (kind>=30 && kind<=37) || (kind>=40 && kind<=47);
 }
 fn sass_load_offset(kind,first,offset) {
@@ -28,6 +28,11 @@ fn sass_load_offset(kind,first,offset) {
     if kind!=59 && kind!=61 {sass_immediate32(sass_acc+1,0);}return 0;
 }
 fn sass_intrinsic(kind,first) {
+    if kind==125 {
+        sass_instruction(0x7223|(10<<16)|(first<<24)|((first+2)<<32),first+4,0);
+        sass_instruction(0x7223|(11<<16)|((first+1)<<24)|((first+3)<<32),first+5,0);sass_move(sass_acc,10);return 0;
+    }
+
     if kind==124 {sass_instruction(0x7825|(sass_acc<<16)|((first+2)<<24)|(4<<32),0x078e0000|first,0);return 0;}
 
     if kind==121 || kind==122 {let selector=0x5410;if kind==122 {selector=0x7632;}sass_instruction(0x7816|(sass_acc<<16)|(first<<24)|(selector<<32),first+1,0);sass_immediate32(sass_acc+1,0);return 0;}
@@ -183,8 +188,8 @@ fn sass_test(value) {
     sass_instruction(0x720c|(6<<24)|(255<<32),0x03f25070,0);return 0;
 }
 fn sass_boolean(invert) {
-    sass_immediate(sass_acc,0);let predicate=1;if invert {predicate=9;}
-    sass_instruction(0x802|(predicate<<12)|(sass_acc<<16)|(1<<32),0xf00,0);return 0;
+    let predicate=9;if invert {predicate=1;}
+    sass_instruction(0x7807|(sass_acc<<16)|(255<<24)|(1<<32),predicate<<23,0);sass_immediate32(sass_acc+1,0);return 0;
 }
 fn sass_shift(left,right) {
     sass_immediate32(6,63);sass_logic32(10,sass_acc,6,0xc0);
@@ -229,11 +234,11 @@ fn sass_constant_binary(left,value,op) {
 }
 fn sass_stall(low) {
     let op=low&4095;
-    // Tested SM75 dependent chains: FMA four cycles, other FP32 math five,
-    // integer/move six. A branch drains scoreboards and flushes fixed results.
+    // Tested SM75 dependent chains: FMA and integer/move six cycles,
+    // other FP32 math five. A branch drains scoreboards and flushes fixed results.
     // Predicates and unclassified operations retain the original delay.
     if op==0x23c {return 14;}
-    if op==0x947 || op==0xa02 {return 6;}if op==0x223 {return 4;}
+    if op==0x947 || op==0xa02 || op==0x807 {return 6;}if op==0x223 {return 6;} // packed stores expose a six-clock result dependency
     if op==0x220 || op==0x221 || op==0x209 {return 5;}if op==0x230 {return 8;}
     if op==0x824 || op==0x825 || op==0x816 {return 6;}
     if op==0x202 || op==0x802 || op==0x210 || op==0x810 || op==0x212 || op==0x812 || op==0x219 || op==0x819
@@ -391,9 +396,9 @@ fn sass_function(index,base,result) {
         store64(labels+(pc-start)/2,output_size);sass_acc=acc;
         let op=load64(p_code+pc);let arg=load64(p_code+pc+8);
         let load_kind=0;
-        if op==1 && arg>=0 && arg<=4095 && pc+48<end && load64(p_code+pc+16)==7 && load64(p_code+pc+24)==43 && load64(p_code+pc+32)==2 && load64(p_code+pc+48)==8
+        if op==1 && arg>=0 && arg<=49152 && pc+48<end && load64(p_code+pc+16)==7 && load64(p_code+pc+24)==43 && load64(p_code+pc+32)==2 && load64(p_code+pc+48)==8
             && !load64(targets+(pc+16-start)/2) && !load64(targets+(pc+32-start)/2) && !load64(targets+(pc+48-start)/2) {
-            let kind=gpu_intrinsic(load64(p_code+pc+56));if kind==103 || kind==53 || kind==55 || kind==59 || kind==60 || kind==61 {load_kind=kind;}
+            let kind=gpu_intrinsic(load64(p_code+pc+56));if kind==103 || (arg<=4095 && (kind==53 || kind==55 || kind==59 || kind==60 || kind==61)) {load_kind=kind;}
         }
         let launch_load=0;
         if op==1 && pc+32<end && load64(p_code+pc+16)==2 && load64(p_code+pc+32)==8
@@ -504,8 +509,8 @@ fn sass_lower(kernel,code,size) {
     sass_constant(11,16);sass_logic32(10,10,11,0xfc);sass_constant(11,20);sass_logic32(10,10,11,0xfc);
     sass_immediate32(12,1);sass_instruction(0x720c|(10<<24)|(12<<32),0x03f22070,0);
     let multidimensional=sass_branch(9);
-    sass_special(2,37);sass_constant_word(10,0);sass_multiply(2,2,10);
-    sass_special(10,33);sass_add(2,2,10,0);let indexed=sass_branch(7);
+    sass_special(2,37);sass_constant_word(10,0);sass_special(12,33);
+    sass_instruction(0x7225|(2<<16)|(2<<24)|(10<<32),0x078e000c,0);let indexed=sass_branch(7);
     sass_patch(multidimensional,output_size);
     // Linear block number, then linear thread number; x is fastest in both.
     sass_special(2,39);sass_constant_word(10,16);sass_multiply(2,2,10);

@@ -18,6 +18,7 @@ fn so_metadata(low,high) {
         so_read(24,0);so_read(32,0);so_read(64,op==0x225);so_width=1;if op==0x225 {so_width=2;}return 1;
     }
     if op==0x20c {so_read(24,0);so_read(32,0);return 1;}
+    if op==0x807 {so_read(24,0);so_width=1;return 1;}
     if op==0xa0c || op==0x80c {so_read(24,0);return 1;}
     if op==0x824 || op==0x825 {so_read(24,0);so_read(64,op==0x825);so_width=1;if op==0x825 {so_width=2;}return 1;}
     if op==0x810 || op==0x812 {so_read(24,0);so_read(64,0);so_width=1;return 1;}

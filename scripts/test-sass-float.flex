@@ -63,7 +63,7 @@ fn ff_execute(ptx,cubin,width,root,nested) {
     ff_cuda(cuda_launch_threads(module,a,b,count,128));ff_cuda(cuda_download(actual,b,count*8));ff_cuda(cuda_unload(module));ff_runs=ff_runs+1;
     i=0;while i<count {
         let got=load64(actual+i*8);let want=load64(expected+i*8);
-        let same=ff_same(got,want,width);if nested {same=got==want;}
+        let same=ff_same(got,want,width);if nested==1 {same=got==want;}else if nested==2 {same=ff_same(got&0xffffffff,want&0xffffffff,32) && ff_same(got>>32,want>>32,32);}
         ff_check(same,h_cat3("PTX mismatch at ",h_int(i),h_cat3(" actual ",h_int(got),h_cat(" expected ",h_int(want)))));
         if width==32 {ff_check((got>>32)==0,"binary32 zero-extends its result");}
         if width==64 && !nested {
@@ -99,9 +99,17 @@ fn ff_case(width,root,nested) {
     if ff_gpu {ff_execute(ptx,cubin,width,root,nested);}
     return 0;
 }
+fn ff_pair() {
+    let prefix=h_cat3("import \"",h_real("lib/gpu.flex"),"\";\nfn kernel(i,input,output,count){let a=load64(input+i*16);let b=load64(input+i*16+8);");
+    t_program(h_cat(prefix,"store64(output+i*8,gpu_f32x2_fma(a,b,0x3f800000bf800000));return 0;}"));
+    let cubin=h_join(t_work,"pair.cubin");let ptx=h_join(t_work,"pair.ptx");h_ok(h_args(t_compiler,"--target","sass-sm75",t_fixture,"-o",cubin));
+    t_program(h_cat(prefix,"store64(output+i*8,gpu_f32_fma(a,b,0xbf800000)|(gpu_f32_fma(a>>32,b>>32,0x3f800000)<<32));return 0;}"));
+    h_ok(h_args(t_compiler,"--target","ptx",t_fixture,"-o",ptx));
+    if ff_gpu {ff_execute(ptx,cubin,64,0,2);}return 0;
+}
 fn suite(compiler) {
     t_init(compiler);
-    ff_case(32,0,0);ff_case(32,1,0);ff_case(64,0,0);ff_case(64,1,0);ff_case(64,0,1);
+    ff_pair();ff_case(32,0,0);ff_case(32,1,0);ff_case(64,0,0);ff_case(64,1,0);ff_case(64,0,1);
     let source="fn gpu_f64_sqrt(x){return x;}fn kernel(i,a,b,n){";let i=0;
     while i<100 {source=h_cat(source,h_cat3("let local",h_int(i),"=0;"));i=i+1;}
     t_program(h_cat(source,"return 0;}"));let path=h_join(t_work,"registers.cubin");
