@@ -53,6 +53,8 @@ fn main(argc,argv) {
     h_add(names,"test-harness");
     h_add(names,"install");
     h_add(names,"test-libraries");
+    h_add(names,"autotune");
+    h_add(names,"test-autotune");
     h_add(names,"build-monolith");
     h_add(names,"test-monolith-syntax");
     h_add(names,"monolith-assets");

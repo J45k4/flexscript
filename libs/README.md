@@ -3,6 +3,8 @@
 New multi-module libraries live in their own subdirectory here. Existing
 low-level adapters in `lib/` remain available and can be imported directly.
 
+- [`autotune`](autotune/README.md): native Flexscript kernel generators, compute
+  sweeps, correctness checks and GPU benchmark reports.
 - [`ml`](ml/README.md): tensors, reverse-mode autodiff, neural-network layers,
   optimizers and optional CUDA kernels, implemented in ordinary Flexscript.
 - [`compress`](compress/README.md): native Zstd-compatible streaming decoding
