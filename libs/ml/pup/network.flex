@@ -1,5 +1,6 @@
 // Platform-free named CNN graph. A training backend supplies kernel execution.
 import "graph.flex";
+import "inference.flex";
 global pn_names=0;
 global pn_name_count=0;
 global pn_source=0;
@@ -13,6 +14,7 @@ fn pn_conv(args,count,transpose) {
     if c<1 || c>4096 || k<1 || k>31 || s<1 || s>32 || p<0 || p>31 || (bias!=0 && bias!=1) || groups<1 || pg_dim(x,1)%groups || c%groups {pg_error("invalid convolution dimensions/groups/bias");}let h=(pg_dim(x,2)+2*p-k)/s+1;let w=(pg_dim(x,3)+2*p-k)/s+1;if transpose {h=(pg_dim(x,2)-1)*s-2*p+k;w=(pg_dim(x,3)-1)*s-2*p+k;}else if pg_dim(x,2)+2*p<k || pg_dim(x,3)+2*p<k {pg_error("kernel exceeds padded input");}let shape=alloc(32);store64(shape,pg_dim(x,0));store64(shape+8,c);store64(shape+16,h);store64(shape+24,w);let meta=alloc(64);store64(meta,name);store64(meta+8,c);store64(meta+16,k);store64(meta+24,s);store64(meta+32,p);store64(meta+40,bias);store64(meta+48,groups);store64(meta+56,transpose);return pg_node(12,x,0,4,shape,meta,0);
 }
 fn pn_call(name,args,count) {
+    let inference=pni_call(name,args,count);if inference {return inference;}
     if pg_eq(name,"config") && count==2 {let key=pn_name(load64(args));let value=load64(args+8);if load64(value)!=2 {pg_error("config default must be a numeric literal");}let node=pg_constant(load64(value+48),load64(value+88));store64(node+104,key);return node;}
     if pg_eq(name,"conv2d") {return pn_conv(args,count,0);}if pg_eq(name,"conv_transpose2d") {return pn_conv(args,count,1);}
     if pg_eq(name,"batchnorm") && count==2 {let x=load64(args);pn_nchw(x);let key=pn_name(load64(args+8));pn_unique(key);return pg_node(13,x,0,4,load64(x+40),key,0);}
@@ -31,8 +33,9 @@ fn pn_scalar(node) {let op=load64(node);if op==2 {let key=load64(node+104);if ke
 fn pn_dimension(node) {return pg_cat(pg_cat("pup_i64(",pn_scalar(node)),")");}
 fn pn_lower_host(function_name) {
     pn_source=alloc(2097152);pn_length=0;pn_emit(pg_cat(pg_cat("fn ",function_name),"(){\nlet inputs=h_vec();let outputs=h_vec();\n"));let i=0;
-    while i<pg_count {let node=load64(pg_nodes+i*8);let op=load64(node);if load64(node+112) && op!=2 && op<100 {pn_emit(pg_cat(pg_cat("let ",pn_variable(node)),"="));let a=load64(node+8);let b=load64(node+16);
-        if op==1 {if pg_rank(node)!=4 {pg_error("network inputs currently require NCHW");}pn_emit(pg_cat(pg_cat("pup_input(\"",load64(node+80)),"\","));let syntax=load64(node+96);let axis=0;while axis<4 {if axis {pn_emit(",");}pn_emit(pn_dimension(load64(load64(syntax+56)+axis*8)));axis=axis+1;}pn_emit(");\n");pn_emit(pg_cat(pg_cat("h_add(inputs,h_args(\"",load64(node+80)),"\","));pn_emit(pn_variable(node));pn_emit(",0,0,0,0));\n");}
+    while i<pg_count {let node=load64(pg_nodes+i*8);let op=load64(node);if load64(node+112) && (op!=2 || pn_inference_mode) && op<100 {pn_emit(pg_cat(pg_cat("let ",pn_variable(node)),"="));let a=load64(node+8);let b=load64(node+16);
+        if pn_inference_mode {pni_emit(node);}
+        else if op==1 {if pg_rank(node)!=4 {pg_error("network inputs currently require NCHW");}pn_emit(pg_cat(pg_cat("pup_input(\"",load64(node+80)),"\","));let syntax=load64(node+96);let axis=0;while axis<4 {if axis {pn_emit(",");}pn_emit(pn_dimension(load64(load64(syntax+56)+axis*8)));axis=axis+1;}pn_emit(");\n");pn_emit(pg_cat(pg_cat("h_add(inputs,h_args(\"",load64(node+80)),"\","));pn_emit(pn_variable(node));pn_emit(",0,0,0,0));\n");}
         else if op==3 {let axis=0;if pg_rank(a)!=pg_rank(b) {pg_error("network residual ranks differ");}while axis<pg_rank(a) {if pg_dim(a,axis)!=pg_dim(b,axis) {pg_error("network add currently requires equal shapes");}axis=axis+1;}pn_emit(pg_cat(pg_cat(pg_cat("pup_add(",pn_variable(a)),","),pg_cat(pn_variable(b),");\n")));}
         else if op==7 && load64(b)==2 && load64(b+48)==0 {pn_emit(pg_cat(pg_cat("pup_relu(",pn_variable(a)),");\n"));}
         else if op==12 {let meta=load64(node+48);pn_emit(pg_cat(pg_cat("pup_conv2d(",pn_variable(a)),",\""));pn_emit(load64(meta));pn_emit("\"");let word=1;while word<8 {pn_emit(",");pn_emit(pg_num(load64(meta+word*8)));word=word+1;}pn_emit(");\n");}

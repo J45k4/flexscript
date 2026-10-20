@@ -16,6 +16,7 @@ global pg_site=0;
 global pg_depths=0;
 global pg_material_flags=0;
 global pg_network_mode=0;
+global pn_inference_mode=0;
 fn pg_len(s) {let n=0;while load8(s+n) {n=n+1;}return n;}
 fn pg_copy(p,q,n) {let i=0;while i<n {store8(p+i,load8(q+i));i=i+1;}return p;}
 fn pg_str(p,n) {let s=alloc(n+1);if s<0 {syscall(60,1,0,0,0,0,0);}pg_copy(s,p,n);return s;}
@@ -40,7 +41,7 @@ fn pg_node(op,a,b,rank,shape,arg,axes) {
     if pg_count>=4096 || rank<0 || rank>8 {pg_error("Pup graph limit exceeded");}
     if (a && load64(a)>=100) || (b && load64(b)>=100) {pg_error("expected tensor operands");}
     let depth=1;if a {depth=load64(pg_depths+load64(a+120)*8)+1;}if b {let other=load64(pg_depths+load64(b+120)*8)+1;if other>depth {depth=other;}}
-    let depth_limit=64;if pg_network_mode {depth_limit=256;}if depth>depth_limit {if pg_network_mode {pg_error("network graph depth exceeds 256");}else {pg_error("tensor graph depth exceeds 64");}}store64(pg_depths+pg_count*8,depth);
+    let depth_limit=64;if pg_network_mode {depth_limit=256;}if pn_inference_mode {depth_limit=512;}if depth>depth_limit {if pn_inference_mode {pg_error("inference graph depth exceeds 512");}else if pg_network_mode {pg_error("network graph depth exceeds 256");}else {pg_error("tensor graph depth exceeds 64");}}store64(pg_depths+pg_count*8,depth);
     let n=1;let i=0;while i<rank {let d=load64(shape+i*8);if d<1 || d>16777216 || n>16777216/d {pg_error("invalid or excessive tensor shape");}n=n*d;i=i+1;}
     let v=alloc(128);store64(v,op);store64(v+8,a);store64(v+16,b);store64(v+24,n);store64(v+32,rank);
     let dims=alloc(rank*8+8);pg_copy(dims,shape,rank*8);store64(v+40,dims);store64(v+48,arg);store64(v+56,axes);

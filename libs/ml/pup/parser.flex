@@ -136,5 +136,7 @@ fn pp_parse(text,size,path) {
     }if pg_network_mode {pn_plan();}else {pg_plan();}return 0;
 }
 
-fn pup_parse(text,size,path) {pg_network_mode=0;return pp_parse(text,size,path);}
-fn pup_parse_network(text,size,path) {pg_network_mode=1;pn_names=alloc(2048*8);pn_name_count=0;return pp_parse(text,size,path);}
+fn pup_parse(text,size,path) {pn_inference_mode=0;pg_network_mode=0;return pp_parse(text,size,path);}
+fn pup_parse_network(text,size,path) {pn_inference_mode=0;pg_network_mode=1;pn_names=alloc(2048*8);pn_name_count=0;return pp_parse(text,size,path);}
+
+fn pup_parse_inference(text,size,path) {pn_inference_mode=1;pg_network_mode=1;pn_names=alloc(2048*8);pn_name_count=0;return pp_parse(text,size,path);}

@@ -285,3 +285,32 @@ build/pup-network-tests
 The device-free Pup suite also executes the named network checks.
 Actual ResNet training and malformed/modified-model checks live in Roboband's
 `flex/tests/test_training.py` and `flex/tests/test_pup.py`.
+
+
+## Static named inference graphs
+
+`pup_parse_inference(text,size,path)` reuses the named-network parser and emits
+factories with `pn_lower_host`. Existing `pup_parse` primitive inference and
+`pup_parse_network` training behavior remain separate. The host implements the
+emitted functions and owns tensor storage/execution. This path supports rank
+zero through four and a graph depth of 512; the existing training limit is 256.
+
+Additional operations are `tensor("name",[shape...])` for checkpoint constants,
+`sigmoid(x)`, `concat(a,b,axis)`, `slice(x,axis,start,end)` (unit-step, exclusive
+end), `upsample2d(x,integer_scale)` (nearest/asymmetric), `softmax(x,axis)` and
+`batch_matmul(a,b)` (equal batch prefixes). Negative softmax/concat/slice axes
+are normalized. Reshape, permutation and scalar/singleton broadcasting use the
+existing primitive shape rules. Invalid shapes/axes/intervals fail before a
+factory is emitted. Max pooling follows the host contract; the YOLO backend
+uses negative-infinity padding.
+
+Factories call `pup_tensor`, `pup_shape`, `pup_scalar`, `pup_binary`,
+`pup_reshape`, `pup_permute`, the existing convolution/pooling helpers, and
+`pup_sigmoid`, `pup_concat`, `pup_slice`, `pup_upsample2d`, `pup_softmax`,
+`pup_batch_matmul`. The input/output registration convention is unchanged.
+No gradients or training objective are inferred in this mode.
+
+Puppybot's `flex/vision/` supplies the first CPU/HIP backend and a real YOLO26n
+model, imported from an official checkpoint without Torch. Its small independent
+CPU/HIP fixture and full-model tinygrad comparisons live in Puppybot's
+`flex/tests/vision.py` and `flex/tests/yolo.py`.
