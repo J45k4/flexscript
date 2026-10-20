@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "candidates": [
+    {
+      "name": "gemm-tiled",
+      "family": "gemm",
+      "m": 32,
+      "n": 64,
+      "k": 16,
+      "threads": 128,
+      "laneColumns": 16
+    },
+    {
+      "name": "gemm-wide",
+      "family": "gemm",
+      "m": 64,
+      "n": 64,
+      "k": 16,
+      "threads": 128,
+      "laneColumns": 16
+    }
+  ],
+  "shapes": [
+    {
+      "name": "odd-grouped",
+      "m": 65,
+      "n": 67,
+      "k": 2051,
+      "flags": 3,
+      "groups": 2,
+      "chunk": 256
+    },
+    {
+      "name": "square",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "flags": 0,
+      "groups": 1,
+      "chunk": 0
+    }
+  ]
+}
