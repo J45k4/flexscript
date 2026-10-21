@@ -217,7 +217,7 @@ def main():
 
         for source, options, message in (
             ('fn main(){return ffi_open("libc.so");}', [], b"ARM64 dynamic FFI"),
-            ('fn main(){return ffi_call(1,0,0,0,0,0,0);}', [], b"ARM64 dynamic FFI"),
+            ('fn main(){return ffi_symbol(1,"symbol");}', [], b"ARM64 dynamic FFI"),
             ("fn main(){return 0;}", ["--word-io", "buffered"], b"buffered word I/O"),
         ):
             fixture.write_text(source)
@@ -226,6 +226,60 @@ def main():
             assert result.returncode == 1 and message in result.stderr, result
             assert arm.read_bytes() == b"unchanged"
         passed("unsupported features fail without overwriting output")
+
+        # Trusted embedding can call an existing host function pointer. Verify
+        # argument registers and signed/unsigned C int results independently.
+        fixture.write_text("fn pointer_call(p){return ffi_call(p,1,2,3,4,5,6);}fn signed_call(p){return ffi_call_i32(p,0,0,0,0,0,0);}fn unsigned_call(p){return ffi_call_u32(p,0,0,0,0,0,0);}fn main(){return 0;}")
+        obj = work / "pointer.o"
+        result = run([compiler, "--target", "android-arm64", fixture, "-o", obj])
+        assert result.returncode == 0, result.stderr
+        asm = work / "pointer.s"
+        asm.write_text(""".text
+.global _start
+_start:
+    adr x0,weighted
+    bl pointer_call
+    cmp x0,#91
+    b.ne pointer_failed
+    adr x0,negative
+    bl signed_call
+    cmn x0,#1
+    b.ne pointer_failed
+    adr x0,negative
+    bl unsigned_call
+    mov w1,#-1
+    cmp x0,x1
+    b.ne pointer_failed
+    mov x0,#0
+    b pointer_exit
+pointer_failed:
+    mov x0,#1
+pointer_exit:
+    mov x8,#93
+    svc #0
+weighted:
+    mov x9,#2
+    madd x0,x1,x9,x0
+    mov x9,#3
+    madd x0,x2,x9,x0
+    mov x9,#4
+    madd x0,x3,x9,x0
+    mov x9,#5
+    madd x0,x4,x9,x0
+    mov x9,#6
+    madd x0,x5,x9,x0
+    ret
+negative:
+    mov x0,#-1
+    ret
+.section .note.GNU-stack,"",@progbits
+""")
+        startup = work / "pointer-start.o"
+        run(["clang", "--target=aarch64-linux-gnu", "-c", asm, "-o", startup])
+        executable = work / "pointer-test"
+        run(["ld.lld", "-static", "-e", "_start", startup, obj, "-o", executable])
+        result_is(executable, 0)
+        passed("trusted indirect AAPCS64 calls: six arguments and signed/unsigned int returns")
 
         # Independent assembly caller checks ABI rules rather than trusting a
         # generated caller and callee that could share the same mistake.

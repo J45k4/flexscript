@@ -34,7 +34,15 @@ anonymous allocation, zero-filled memory, unaligned 64-bit access and unmapping
 inside Android. Android's process sandbox still governs available syscalls.
 Android framework APIs need a host binding: raw syscall IDs do not provide
 camera, activity, permission, storage-picker or other framework integration.
-Dynamic FFI builtins are still unsupported by the ARM64 backend.
+`ffi_call`, `ffi_call_i32` and `ffi_call_u32` can call trusted host-supplied
+integer/pointer function addresses using AAPCS64. `ffi_open` and `ffi_symbol`
+remain unsupported; Android library loading belongs to the host. Restricted
+VM programs still cannot use raw FFI.
+
+[Collie for Android](../apps/collie/android/README.md) embeds the shared
+compiler, checked interpreter, provider protocol and FlexDB in a native chat
+app. It includes ChatGPT auth.json import, native tool calling and an app-private
+filesystem; its guest dispatcher currently uses the interpreter.
 
 ## Build the Android demo
 

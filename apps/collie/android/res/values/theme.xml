@@ -1,0 +1,13 @@
+<resources>
+    <color name="collie_launcher_background">#25332B</color>
+    <style name="CollieTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">#C5E3AE</item>
+        <item name="android:windowBackground">#10151A</item>
+        <item name="android:statusBarColor">#10151A</item>
+        <item name="android:navigationBarColor">#10151A</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

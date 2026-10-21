@@ -86,7 +86,7 @@ fn a64_arity(op,arg) {
     if op!=17 {return 0;}
     if arg==1 || arg==2 || arg==5 {return 1;}
     if arg==3 || arg==4 {return 2;}
-    if arg==6 {return 7;}
+    if arg==6 || arg==9 || arg==10 || arg==11 {return 7;}
     fail("ARM64 dynamic FFI is not supported");return 0;
 }
 fn a64_binary(op) {
@@ -135,6 +135,13 @@ fn a64_builtin(kind,first) {
         // Raw Linux ARM64 syscall(number,a,b,c,d,e,f), not x86 syscall IDs.
         a64_mov(8,0);i=0;while i<6 {a64_mov(i,i+1);i=i+1;}
         a64_ins(0xd4000001);
+    }else if kind==9 || kind==10 || kind==11 {
+        // AAPCS64 integer/pointer call through a trusted host-supplied address.
+        // Dynamic library loading and symbol lookup remain host operations.
+        a64_mov(9,0);i=0;while i<6 {a64_mov(i,i+1);i=i+1;}
+        a64_ins(0xd63f0120); // BLR x9
+        if kind==10 {a64_ins(0x93407c00);} // SXTW x0,w0
+        else if kind==11 {a64_ins(0x2a0003e0);} // MOV w0,w0
     }return 0;
 }
 fn a64_word_io(reading) {

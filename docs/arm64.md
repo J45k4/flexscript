@@ -62,12 +62,17 @@ fn main() {
 ```
 
 The existing x86-64 Linux libraries, compiler-host runtime and FlexOS platform
-services have not been ported wholesale. Compiling the compiler into a working
-ARM64-hosted compiler is a separate runtime-porting milestone. The compiler
+services have not been ported wholesale. [Collie for Android](../apps/collie/android/README.md)
+now embeds the shared compiler frontend and checked interpreter behind an
+Android host adapter, compiling guest source on-device. That does not provide
+a standalone ARM64-hosted CLI or a port of every Linux library. The compiler
 containing this backend can still rebuild itself on its existing x86-64 host.
 
-`ffi_open`, `ffi_symbol`, and the `ffi_call` builtins are rejected, as are buffered
-word I/O and x86 bare-metal builtins. User-defined functions with FFI names still
+`ffi_open` and `ffi_symbol` are rejected, as are buffered word I/O and x86
+bare-metal builtins. Trusted hosts may use `ffi_call`, `ffi_call_i32` and
+`ffi_call_u32` with an existing integer/pointer function address. Calls pass six
+arguments with AAPCS64; the int variants sign/zero extend the 32-bit result.
+This does not enable dynamic library lookup or guest FFI in restricted VMs. User-defined functions with FFI names still
 resolve as ordinary functions. This Linux target produces static executables.
 The separate [`android-arm64` target](android.md) produces position-independent
 objects for shared-library linking and Android APK packaging.

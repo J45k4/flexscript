@@ -14,7 +14,8 @@ and session resume.
 The CLI, authentication, HTTPS/SSE transport, tool handling, agent loop, Linux
 execution adapter, and tests are all `.flex` sources. HTTPS uses Flexscript's
 existing OpenSSL FFI. Linux isolation uses Bubblewrap and prlimit. Android
-adapters are pending.
+now has a [native app](android/README.md) that embeds the same compiler, checked
+VM, provider protocol and FlexDB behind Android lifecycle, UI and HTTPS adapters.
 
 ## Build and run
 
@@ -274,7 +275,9 @@ jq -r '.[] | select(.source != "") | .source' collie-trace.json
 Programs are self-contained. Imports and compiler extensions are unavailable.
 Each round gets fresh memory. Programs can calculate, write stdout/stderr, and
 use the provided `db_*` functions to query and mutate their session workspace.
-Host files, user stdin, network, processes, and raw FFI remain unavailable.
+On Linux, host files, user stdin, network, processes, and raw FFI remain unavailable.
+The Android app additionally grants its private workspace filesystem and bounded
+HTTPS GET through `http_get(url)`; see the [Android API](android/README.md).
 
 The [guest API](guest/README.md) includes table/column discovery, typed values,
 transactions, row creation/update/deletion, paged scans, and adding, renaming or
