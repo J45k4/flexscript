@@ -38,7 +38,9 @@ again; OAuth login/token refresh is not yet implemented in this app.
 
 The default model is `gpt-6.1-sol`; Menu can change it. Prose streams as it
 arrives. Generated programs appear in expandable Flexscript cards, followed by
-real stdout, stderr, state and exit code. **Stop** cancels the current HTTP
+real stdout, stderr, state and exit code. Program source and VM result bodies
+are independently collapsed by default. **Show result** reveals the full captured
+stdout/stderr, including long single-line JSON. **Stop** cancels the current HTTP
 request or cooperatively stops compilation/VM execution. **New** creates a
 workspace; **Menu → Resume session** reopens one. Context shows tokens, with
 `~` for an estimate. **Menu → Compact context** and automatic compaction use the
@@ -93,9 +95,9 @@ Programs have bounded internet access using the preloaded `http_get(url)`:
 ```flexscript
 fn main(){
     let response=http_get("https://example.com/");
-    if !response {let error=db_error();syscall(1,2,error,db_len(error),0,0,0);return 1;}
+    if !response {let error=db_error();db_io(0,2,error,db_len(error));return 1;}
     let body=http_body(response);
-    syscall(1,1,db_word(body),db_bytes(body),0,0,0);
+    db_io(0,1,db_word(body),db_bytes(body));
     return 0;
 }
 ```

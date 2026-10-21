@@ -122,6 +122,10 @@ def main():
         assert 'internet: DENIED' in r['instructions'] and 'files_write: DENIED' in r['instructions'] and 'db_read: ALLOWED' in r['instructions']
         passed('model instructions report current granted and denied permissions')
         r=execute('fn main(){let b=alloc(3);store8(b,0);store8(b+1,255);store8(b+2,10);syscall(1,1,b,3,0,0,0);return 0;}');assert '\x00' not in r['stdout'] and '\ufffd' in r['stdout'],r;passed('binary VM output sanitized for JSON/UI')
+        text='z'*12000
+        r=execute('fn main(){let s="'+text+'";if !db_io(0,1,s,12000) {return 1;}return 0;}')
+        assert r['exit_code']==0 and r['stdout']==text,r
+        passed('preloaded full-write helper prints responses larger than one 4 KiB syscall')
         large='a'*40000
         r=execute('fn main(){let s="'+large+'";let at=0;while at<40000 {let n=syscall(1,1,s+at,40000-at,0,0,0);if(n<=0){return 2;}at=at+n;}return 0;}')
         assert len(r['stdout'])==32768 and r['output_truncated'],r;passed('bounded stdout reports truncation')

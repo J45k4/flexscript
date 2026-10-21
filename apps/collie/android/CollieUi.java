@@ -457,7 +457,7 @@ final class CollieUi {
         final LinearLayout header, details, results;
         final TextView state, action;
         final IconButton chevron;
-        boolean expanded;
+        boolean expanded, resultExpanded;
         ExecutionCard(String text) {
             super(activity);
             source = text;
@@ -578,11 +578,23 @@ final class CollieUi {
             View divider = new View(activity);
             divider.setBackgroundColor(BORDER);
             results.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+            LinearLayout resultHeader = row();
+            resultHeader.setPadding(dp(15), dp(10), dp(10), dp(10));
+            resultHeader.setMinimumHeight(dp(44));
+            resultHeader.setFocusable(true);
+            clickable(resultHeader, Color.TRANSPARENT, 0);
+            TextView resultLabel = label("VM result", 12, MUTED);
+            resultHeader.addView(resultLabel, new LinearLayout.LayoutParams(0, -2, 1));
+            TextView resultAction = label("", 11, ACCENT);
+            resultHeader.addView(resultAction);
+            IconButton resultChevron = new IconButton(activity, "down");
+            resultChevron.setClickable(false);
+            resultChevron.setFocusable(false);
+            resultChevron.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            resultHeader.addView(resultChevron, lp(26, 26));
+            results.addView(resultHeader);
             LinearLayout content = column();
-            content.setPadding(dp(15), dp(12), dp(15), dp(14));
-            TextView label = label("VM result", 10, MUTED);
-            label.setLetterSpacing(.06f);
-            content.addView(label);
+            content.setPadding(dp(15), 0, dp(15), dp(14));
             if (output.trim().isEmpty() && error.isEmpty()) {
                 TextView empty = label("Finished without output", 12, MUTED);
                 empty.setPadding(0, dp(7), 0, 0);
@@ -594,6 +606,18 @@ final class CollieUi {
                     output(content, error, ERROR);
             }
             results.addView(content);
+            Runnable updateResult = () -> {
+                content.setVisibility(resultExpanded ? View.VISIBLE : View.GONE);
+                resultAction.setText(resultExpanded ? "Hide result" : "Show result");
+                resultHeader.setContentDescription(resultExpanded ? "Hide VM result" : "Show VM result");
+                resultChevron.icon = resultExpanded ? "up" : "down";
+                resultChevron.invalidate();
+            };
+            updateResult.run();
+            resultHeader.setOnClickListener(v -> {
+                resultExpanded = !resultExpanded;
+                updateResult.run();
+            });
             toBottom(false);
         }
         private void output(LinearLayout parent, String value, int color) {
@@ -601,18 +625,7 @@ final class CollieUi {
             out.setTypeface(Typeface.MONOSPACE);
             out.setTextSize(13);
             out.setPadding(0, dp(7), 0, 0);
-            out.setMaxLines(8);
             parent.addView(out);
-            if (value.split("\n", -1).length > 8) {
-                TextView more = label("Show all output", 11, ACCENT);
-                more.setPadding(0, dp(9), 0, 0);
-                more.setOnClickListener(v -> {
-                    boolean all = out.getMaxLines() > 8;
-                    out.setMaxLines(all ? 8 : Integer.MAX_VALUE);
-                    more.setText(all ? "Show all output" : "Show less");
-                });
-                parent.addView(more);
-            }
         }
     }
     void sheet(String title, String subtitle, String[] items, Runnable[] actions) {
