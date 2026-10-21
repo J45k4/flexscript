@@ -8,7 +8,10 @@ Neither entry point requires a compiler extension or ML-specific syntax.
 For a static model blueprint that compiles to GPU kernels, use the optional
 [Pup domain frontend](pup/README.md). It includes a primitive F32 tensor graph,
 reference interpreter, scheduling, PTX/direct SASS lowering and a working
-MNIST inference runner with safetensors checkpoints. The eager binary64 API
+MNIST inference runner with safetensors checkpoints. The reusable
+[static tensor GPU compiler](pup/gpu/README.md) additionally supplies tiled
+CNN/matrix kernels, graph fusion and buffer placement through a native CLI.
+The eager binary64 API
 below remains a separate library; Pup graph autodiff and training are not yet
 connected to it.
 
