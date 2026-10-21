@@ -437,7 +437,7 @@ fn vm_help(fd) {
 fn vm_initialize() {
     vm_heap=alloc(vm_heap_limit);vm_stack=alloc(524288);vm_local_memory=alloc(8388608);
     vm_frames=alloc(1024*40);vm_time=alloc(16);vm_path=alloc(4096);vm_open_how=alloc(24);
-    vm_fds=alloc(67*8);vm_jit_cache=alloc(8192*32);vm_jit_context=alloc(64);
+    vm_fds=alloc(67*8);vm_jit_cache=alloc((ir_function_capacity+2048)*32);vm_jit_context=alloc(64);
     vm_poll_records=alloc(67*8);
     vm_file_stat=alloc(144);
     if vm_heap<0 || vm_stack<0 || vm_local_memory<0 || vm_frames<0 || vm_time<0

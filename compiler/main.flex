@@ -2105,7 +2105,8 @@ fn compiler_initialize() {
     source = source_arena;
     output = alloc(output_limit);
     globals = alloc(2048 * 32);
-    functions = alloc(8192 * 32);
+    // Portable FIR functions plus the existing 2,048 trusted platform functions.
+    functions = alloc((ir_function_capacity + 2048) * 32);
     locals = alloc(4096 * 32);
     calls = alloc(65536 * 32);
     lowering_entries=alloc(2048*32);lowering_count=0;

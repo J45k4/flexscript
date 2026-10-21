@@ -12,7 +12,7 @@ fn ir_accept(blob,size) {
     let profile=load64(blob);let state_count=load64(blob+56);
     if (profile!=0x31524946 && profile!=0x32524946 && profile!=0x33524946 && profile!=0x34524946 && profile!=0x35524946 && profile!=0x36524946) || load64(blob+8)!=size
         || state_count<0 || state_count>16777216 || (profile!=0x36524946 && (state_count>2097152 || size>33554432)) || (profile!=0x35524946 && profile!=0x36524946 && (state_count>1048576 || size>16777216)) || (profile!=0x34524946 && profile!=0x35524946 && profile!=0x36524946 && (state_count>262144 || size>4194304)) || (profile==0x32524946 && state_count>2048) || (profile==0x31524946 && state_count)
-        || count<1 || count>4096 || code_at!=64+count*64 || code_size<48 || code_size>16777216 || (profile!=0x36524946 && code_size>1048576) || code_size%16
+        || count<1 || count>ir_function_capacity || code_at!=64+count*64 || code_size<48 || code_size>16777216 || (profile!=0x36524946 && code_size>1048576) || code_size%16
         || code_size>size-code_at || names_at!=code_at+code_size || names_size<0 || names_size!=size-names_at-state_count*8 {ir_bad();}
     let code=blob+code_at;let heights=alloc(code_size/2);let visited=alloc(code_size/2);let queue=alloc(code_size/2);
     if heights<0 || visited<0 || queue<0 {fail("cannot validate frontend IR");}
@@ -28,7 +28,7 @@ fn ir_accept(blob,size) {
         // body a trusted --platform module supplies at link time.
         if load64(f+40) {
             if end!=start+48 || load64(code+start+32)!=9 || load64(code+start+40) {ir_bad();}
-            if !frontend_imports {frontend_imports=alloc(4096*8);if frontend_imports<0 {fail("cannot allocate platform imports");}}
+            if !frontend_imports {frontend_imports=alloc(count*8);if frontend_imports<0 {fail("cannot allocate platform imports");}}
             store64(frontend_imports+i*8,n);frontend_import_count=frontend_import_count+1;
         }
         let k=0;while k<n {let c=load8(blob+names_at+name+k);if (!letter(c) && (k==0 || !digit(c))) {ir_bad();}k=k+1;}

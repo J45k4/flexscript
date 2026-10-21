@@ -1,3 +1,5 @@
+// Shared portable FIR function bound; local slots retain their independent limit.
+global ir_function_capacity=16384;
 // Frontend SDK, FIR1 portable word IR. This module has no compiler dependency.
 global ir_source=0;
 global ir_source_size=0;
@@ -24,7 +26,7 @@ fn ir_error(message,offset) {
 fn ir_init(text,size,path,version) {
     ir_source=text;ir_source_size=size;ir_path=path;
     if version!=1 {ir_error("unsupported frontend API version",0);}
-    ir_code=alloc(16777216);ir_functions=alloc(4096*64);ir_names=alloc(524288);
+    ir_code=alloc(16777216);ir_functions=alloc(ir_function_capacity*64);ir_names=alloc(ir_function_capacity*255);
     if ir_code<0 || ir_functions<0 || ir_names<0 {ir_error("frontend allocation failed",0);}
     ir_code_size=0;ir_count=0;ir_names_size=0;ir_current=-1;
     ir_profile=1;ir_state=alloc(16777216*8);ir_state_count=0;
@@ -45,7 +47,7 @@ fn ir_patch(at,value) {
     store64(ir_code+at+8,value);return 0;
 }
 fn ir_begin(name,size,arity) {
-    if ir_current>=0 || ir_count>=4096 || size<1 || size>255 || arity<0 || arity>4096 {ir_error("invalid IR function",0);}
+    if ir_current>=0 || ir_count>=ir_function_capacity || size<1 || size>255 || arity<0 || arity>4096 {ir_error("invalid IR function",0);}
     ir_current=ir_count;ir_count=ir_count+1;let f=ir_functions+ir_current*64;
     store64(f,ir_names_size);store64(f+8,size);store64(f+16,ir_code_size);store64(f+24,arity);
     let i=0;while i<size {store8(ir_names+ir_names_size+i,load8(name+i));i=i+1;}

@@ -156,6 +156,9 @@ jobs:
       - name: Test frontend extensions across interpreter, JIT, native and WebAssembly
         run: build/tools/test-extensions build/stage2 --report build/extensions-tests.json
 
+      - name: Test large SetaScript function graphs across native, Wasm and VM/JIT
+        run: build/tools/test-seta-functions build/stage2 --report build/seta-functions-tests.json
+
       - name: Test SetaScript shader targets, OpenGL and WebGPU execution
         run: |
           build/tools/test-shaders build/stage2 --report build/shader-tests.json
@@ -232,6 +235,7 @@ jobs:
             build/sass-float-tests.json
             build/gpu-features.json
             build/extensions-tests.json
+            build/seta-functions-tests.json
             build/shader-tests.json
             build/transform-tests.json
             build/ml-tests.json

@@ -5,7 +5,7 @@ global native_link_records=0;
 global native_link_replay=0;
 global native_keep_unused=0;
 fn native_link_record(index,first,last) {
-    if !native_link_records {native_link_records=alloc(8192*24);if native_link_records<0 {fail("cannot allocate native call graph");}}
+    if !native_link_records {native_link_records=alloc((ir_function_capacity+2048)*24);if native_link_records<0 {fail("cannot allocate native call graph");}}
     let record=native_link_records+index*24;store64(record,first);store64(record+8,last);return 0;
 }
 fn native_link_live(index) {return load64(native_link_records+index*24+16);}

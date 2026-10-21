@@ -273,10 +273,6 @@ fn te_function_graphs() {
     te_language="ir";te_routes(artifact,42);te_language=0;
     te_frontend="examples/extensions/seta.flex";te_routes(t_fixture,42);te_compile(t_fixture,"ir",copy);te_frontend=0;
     t_assert(h_equal(h_sha(artifact),h_sha(copy)),"maximum-depth bundled/external IR equality");
-    let extra="";k=0;while k<3073 {extra=h_cat3(extra,"fn extra",h_cat3(h_int(k),"()->i32{return 1} ",""));k=k+1;}
-    let overflow=h_cat3(funcs,extra,"fn main()->i32{return 0}");
-    te_reject(overflow,"too many SetaScript functions");
-    te_frontend="examples/extensions/seta.flex";te_reject(overflow,"too many SetaScript functions");te_frontend=0;
     let direct=h_cat(h_replace(funcs,"fn f1022(value:i32)->i32{return value}","fn f1022(value:i32)->i32{return f1022(value)}"),"fn main()->i32{return f1022(42)}");
     te_reject(direct,"recursion");
     let mutual=h_cat(h_replace(funcs,"fn f1022(value:i32)->i32{return value}","fn f1022(value:i32)->i32{return main()}"),"fn main()->i32{return f1022(42)}");
@@ -401,8 +397,8 @@ fn te_imports() {
     te_import_bad(h_join(root,"uses-bool-main.seta"),"main must take no parameters and return i32",h_cat(lib,"/bool-main.seta:3:4: error"));
     // The restricted external frontend has no file access and says so.
     te_frontend="examples/extensions/seta.flex";te_bad(main,"imports require the bundled compiler frontend");te_frontend=0;
-    // The 4,096-function bound covers every imported file.
-    let many="";let k=0;while k<4096 {many=h_cat3(many,"fn g",h_cat3(h_int(k),"()->i32{return 1} ",""));k=k+1;}
+    // The 16,384-function bound covers every imported file.
+    let many_buffer=h_buffer();let k=0;while k<16384 {h_text(many_buffer,h_cat3("fn g",h_int(k),"()->i32{return 1} "));k=k+1;}let many=h_data(many_buffer);
     h_save(h_join(lib,"many.seta"),many);h_save(h_join(root,"many.seta"),"plugin test v1 {}\nimport \"lib/many.seta\"\nfn main()->i32{return 0}\n");
     te_import_bad(h_join(root,"many.seta"),"too many SetaScript functions","many.seta:3:4: error");
     // The 64 MiB SetaScript source bound is shared by the entry and its imports.
@@ -466,7 +462,7 @@ fn suite(compiler) {
     // Full-width word arithmetic matches the pre-existing SetaScript runtime.
     te_program("plugin test v1 {} fn main()->i32{let n=9223372036854775807+1 return n<0 ? 42 : 0}",42);
     // Malformed artifacts never reach native lowering, the VM or Wasm emission.
-    te_ir_bad(original,0,0);te_ir_bad(original,8,63);te_ir_bad(original,16,4097);
+    te_ir_bad(original,0,0);te_ir_bad(original,8,63);te_ir_bad(original,16,16385);
     te_ir_bad(original,24,64);te_ir_bad(original,32,-1);te_ir_bad(original,40,0);
     te_ir_bad(original,48,-1);te_ir_bad(original,56,1);te_ir_bad(original,64,-1);
     te_ir_bad(original,72,256);te_ir_bad(original,80,16);te_ir_bad(original,88,4097);
