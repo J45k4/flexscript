@@ -67,8 +67,17 @@ fn bt_fixture() {
 fn main(argc,argv) {
     h_environment(argc,argv);h_assert(argc==3 || (argc==4 && h_equal(load64(argv+24),"--source")),"Usage: test-browser TODO-BINARY-OR-COMPILER CHROMIUM [--source]");if argc==4 {bt_source=h_real("examples/monolith/todo.flex");}bt_name="Monolith Todo listening";bt_binary=h_real(load64(argv+8));let chromium=load64(argv+16);let temp=h_temp();bt_database=h_join(temp,"todo.db");bt_port=bt_free_port();let process=bt_start();
     let profile=h_join(temp,"chromium");let args=h_args(chromium,"--headless","--no-sandbox","--disable-gpu","--no-first-run","--no-default-browser-check");h_add(args,h_cat("--user-data-dir=",profile));h_add(args,"--remote-debugging-address=127.0.0.1");h_add(args,"--remote-debugging-port=0");h_add(args,"about:blank");let chrome=h_spawn(args,"",0);
-    cd_chrome=chrome;let port_file=h_join(profile,"DevToolsActivePort");let end=net_now()+10000;
-    while !h_exists(port_file) {h_pump(chrome,10);h_assert(h_status(chrome)==-999 && net_now()<end,h_cat("Chromium did not start: ",h_err(chrome)));}
+    // A fresh browser profile can need more time on a shared CI runner.
+    // Keep startup bounded and distinguish a slow launch from a crashed browser.
+    cd_chrome=chrome;let port_file=h_join(profile,"DevToolsActivePort");let end=net_now()+30000;
+    while !h_exists(port_file) {
+        h_pump(chrome,10);let status=h_status(chrome);
+        if status!=-999 || net_now()>=end {
+            let reason="timed out after 30 seconds";if status!=-999 {reason=h_cat("exited with status ",h_int(status));}
+            let diagnostic=h_cat3("Chromium ",reason,h_cat3(": ",h_err(chrome),h_out(chrome)));
+            h_stop(chrome);h_stop(process);h_die(diagnostic);
+        }
+    }
     let text=h_read(port_file);let newline=h_find(text,"\n");h_assert(newline>0,"DevTools port file invalid");cd_port=h_number(h_slice(text,newline));
     let url=h_cat3("http://127.0.0.1:",h_int(bt_port),"/");let a=cd_tab(url);let b=cd_tab(url);let live="document.querySelector('[data-mkey=\"connection\"]')?.textContent==='Live'";cd_wait(a,live);cd_wait(b,live);
     bt_check(a,"document.querySelectorAll('.task').length===0","initial UI not empty");
