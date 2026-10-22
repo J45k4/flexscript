@@ -25,6 +25,9 @@ global vm_error=0;
 global vm_denied_syscall=-1;
 global vm_denied_ffi=0;
 global vm_finished=0;
+// Embedders may enable explicit safe-point suspension; normal CLI guests cannot.
+global vm_yield_enabled=0;
+global vm_yielded=0;
 global vm_fuel=10000000;
 global vm_deadline=0;
 global vm_timeout=5000;
@@ -289,6 +292,7 @@ fn vm_poll_guest(pointer,count,timeout) {
 }
 fn vm_syscall(number,a,b,c,d,e,f) {
     vm_denied_syscall=number;
+    if number==10001 && vm_yield_enabled && a>0 {vm_yielded=a;return 0;}
     if number==60 {vm_acc=a;vm_finished=1;return a;}
     if !vm_restricted {
         if number==11 {return vm_native_unmap(a,b);}
@@ -358,7 +362,10 @@ fn vm_builtin(kind) {
 }
 fn vm_execute(main_index) {
     if vm_enter(main_index,-1) && vm_jit_enabled {vm_try_jit(main_index);}
-    while !vm_finished && !vm_error {
+    return vm_continue();
+}
+fn vm_continue(){
+    while !vm_finished && !vm_error && !vm_yielded {
         if vm_fuel<=0 {vm_error=1;}
         else {
             if vm_steps%4096==0 && vm_now()>=vm_deadline {vm_error=8;}

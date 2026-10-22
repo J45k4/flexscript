@@ -2,7 +2,6 @@ package org.flexscript.collie;
 
 import android.graphics.*;
 import android.util.AtomicFile;
-import android.util.Base64;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -185,111 +184,9 @@ final class VmViews {
         opaque.recycle();
     }
   }
-  static void modelInput(JSONObject request, File session) throws Exception {
-    JSONArray input = request.getJSONArray("input");
-    // Keep the newest snapshots under the request budget. Canonical history
-    // stores only IDs, so it stays compact and survives model compaction.
-    java.util.Map<String, byte[]> chosen = new java.util.HashMap<>();
-    int imageBytes = 0;
-    int baseline = request.toString().getBytes(StandardCharsets.UTF_8).length;
-    int budget =
-        Math.max(0, Math.min(4194304, (8388608 - baseline - 32768) * 3 / 4));
-    for (int i = input.length() - 1; i >= 0; i--) {
-      JSONObject item = input.getJSONObject(i);
-      if (!"custom_tool_call_output".equals(item.optString("type")) ||
-          !(item.opt("output") instanceof String))
-        continue;
-      try {
-        JSONArray views =
-            new JSONObject(item.getString("output")).optJSONArray("views");
-        if (views == null)
-          continue;
-        for (int n = views.length() - 1; n >= 0; n--) {
-          JSONObject view = views.getJSONObject(n);
-          if (!"image".equals(view.optString("type")))
-            continue;
-          String id = view.getString("image_id");
-          if (chosen.containsKey(id))
-            continue;
-          try {
-            byte[] data = bytes(image(session, id));
-            if (imageBytes + data.length <= budget) {
-              chosen.put(id, data);
-              imageBytes += data.length;
-            }
-          } catch (FileNotFoundException
-                       missing) { /* Continue with the remaining snapshots. */
-          }
-        }
-      } catch (JSONException malformed) {
-        throw new IOException("Invalid image view metadata.", malformed);
-      }
-    }
-    java.util.Set<String> sent = new java.util.HashSet<>();
-    for (int i = 0; i < input.length(); i++) {
-      JSONObject item = input.getJSONObject(i);
-      if (!"custom_tool_call_output".equals(item.optString("type")) ||
-          !(item.opt("output") instanceof String))
-        continue;
-      String raw = item.getString("output");
-      JSONObject observation;
-      try {
-        observation = new JSONObject(raw);
-      } catch (JSONException text) {
-        continue;
-      }
-      JSONArray views = observation.optJSONArray("views");
-      if (views == null)
-        continue;
-      JSONArray output = new JSONArray();
-      output.put(new JSONObject().put("type", "input_text").put("text", raw));
-      for (int n = 0; n < views.length(); n++) {
-        JSONObject view = views.getJSONObject(n);
-        if (!"image".equals(view.optString("type")))
-          continue;
-        String id = view.getString("image_id");
-        byte[] data = chosen.get(id);
-        if (data != null && sent.add(id)) {
-          output.put(new JSONObject()
-                         .put("type", "input_image")
-                         .put("detail", "auto")
-                         .put("image_url",
-                              "data:image/jpeg;base64," +
-                                  Base64.encodeToString(data, Base64.NO_WRAP)));
-        } else {
-          output.put(
-              new JSONObject()
-                  .put("type", "input_text")
-                  .put("text",
-                       sent.contains(id)
-                           ? "This exact image snapshot was already included " +
-                             "earlier in this request."
-                           : "Image snapshot omitted from this request " +
-                             "(unavailable or beyond the image budget). View " +
-                             "the workspace image again if needed."));
-        }
-      }
-      if (output.length() > 1)
-        item.put("output", output);
-    }
-  }
-  static int estimatedImageTokens(JSONArray messages, int anchor) {
-    int images = 0;
-    for (int i = Math.max(0, anchor); i < messages.length(); i++) {
-      JSONObject item = messages.optJSONObject(i);
-      if (item == null ||
-          !"custom_tool_call_output".equals(item.optString("type")))
-        continue;
-      try {
-        JSONArray views =
-            new JSONObject(item.getString("output")).optJSONArray("views");
-        if (views != null)
-          for (int n = 0; n < views.length(); n++)
-            if ("image".equals(views.getJSONObject(n).optString("type")))
-              images++;
-      } catch (JSONException ignored) {
-      }
-    }
-    return images * 4096;
+  static byte[] snapshotBytes(byte[] identifier) throws Exception {
+    File session = SESSION.get();
+    if (session == null) throw new IOException("No image workspace.");
+    return bytes(image(session, new String(identifier, StandardCharsets.UTF_8)));
   }
 }

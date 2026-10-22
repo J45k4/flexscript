@@ -65,7 +65,7 @@ static struct {
 static long maps_n, arena_bytes, deadline, operation, pool_at, pool_left;
 /* JNI references are borrowed only for the duration of nativeCall on its thread. */
 static void *jni_env, *jni_class;
-static long network_calls;
+static long network_calls, java_result_n;
 static int cleaning, active, truncated, executing;
 static const char *problem;
 static char root[4096];
@@ -445,11 +445,12 @@ static long files(long op, long *a) {
     return r;
 }
 static long java_bytes(const char *method_name, long data, long size) {
+    java_result_n = -1;
     if (!jni_env || !jni_class)
         return (long)"{\"error\":\"This operation requires the Android host.\"}";
     if (size < 0 || size > 2097152)
         return (long)"{\"error\":\"Invalid Android bridge payload length.\"}";
-    char *out = (char *)allocate(262145);
+    char *out = (char *)allocate(2097153);
     void *env = jni_env;
     const void *const *t = *(const void *const **)env;
     /* Standard JNINativeInterface slots, verified against JDK jni.h. jsize is
@@ -469,7 +470,7 @@ static long java_bytes(const char *method_name, long data, long size) {
         deadline += now() - started;
         if (result) {
             bytes = ((int (*)(void *, void *))t[171])(env, result);
-            if (bytes >= 0 && bytes <= 262144)
+            if (bytes >= 0 && bytes <= 2097152)
                 ((void (*)(void *, void *, int, int, B *))t[200])(env, result, 0, (int)bytes, (B *)out);
             else bytes = -1;
         }
@@ -483,6 +484,7 @@ static long java_bytes(const char *method_name, long data, long size) {
     tick();
     if (bytes < 0) return (long)"{\"error\":\"Android host bridge failed.\"}";
     out[bytes] = 0;
+    java_result_n = bytes;
     return (long)out;
 }
 static long network_get(long url, long size) {
@@ -520,12 +522,59 @@ static long callback(long n, long *a) {
         return output_n[a[0] == 2 ? 1 : 0];
     if (n == 1008)
         return truncated;
+    if (n == 1013 || n == 1014) {
+        long *budgets = (long *)a[0];
+        if (n == 1013) {
+            if (frame_n || reply_at != reply_n) return -16;
+            budgets[0] = calls; budgets[1] = response_bytes;
+            budgets[2] = network_calls; budgets[3] = output_total;
+        } else {
+            if (budgets[0] < 0 || budgets[0] > 1024 || budgets[1] < 0 || budgets[1] > 1048576 ||
+                budgets[2] < 0 || budgets[2] > 1048576 || budgets[3] < 0 || budgets[3] > 1048576) return -22;
+            calls = budgets[0]; response_bytes = budgets[1];
+            network_calls = budgets[2]; output_total = budgets[3];
+        }
+        return 0;
+    }
+    if (n == 1010 || n == 1011 || n == 1012) {
+        const char *path = (char *)a[0];
+        if (!trusted_path(path)) return -13;
+        if (n == 1012) return raw(35, -100, (long)path, 0, 0, 0, 0);
+        if (n == 1011) {
+            long fd = host_open(path, 0x80000, 0);
+            if (fd < 0) return fd;
+            B stat[144];
+            if (stat_fd(fd, (long)stat) < 0) { close_fd(fd); return -5; }
+            long size = *(long *)(stat + 48);
+            if (size < 160 || size > 16777216) { close_fd(fd); return -7; }
+            B *data = (B *)allocate(size); long at = 0;
+            while (at < size) { tick(); long r = raw(63, fd, (long)data + at, size - at, 0, 0, 0); if (r == -4) continue; if (r <= 0) { close_fd(fd); return -5; } at += r; }
+            close_fd(fd); *(long *)a[1] = size; return (long)data;
+        }
+        if (a[2] < 160 || a[2] > 16777216) return -7;
+        char temp[4096]; long len = length(path);
+        if (len > 4088) return -22;
+        copy(temp, path, len); copy(temp + len, ".tmp", 5);
+        long fd = host_open(temp, 0xa0241, 0600);
+        if (fd < 0) return fd;
+        long at = 0, result = 0;
+        while (at < a[2]) { tick(); long r = raw(64, fd, a[1] + at, a[2] - at, 0, 0, 0); if (r == -4) continue; if (r <= 0) { result = -5; break; } at += r; }
+        if (!result) result = raw(82, fd, 0, 0, 0, 0, 0);
+        close_fd(fd);
+        if (!result) result = raw(38, -100, (long)temp, -100, (long)path, 0, 0);
+        return result;
+    }
     if (n >= 2000 && n <= 2004)
         return files(n, a);
     if (n == 3000)
         return network_get(a[0], a[1]);
     if (n == 3001)
         return java_bytes("vmViewImage", a[0], a[1]);
+    if (n == 3002) {
+        long data = java_bytes("vmImageBytes", a[0], a[1]);
+        if (java_result_n < 0 || java_result_n > 524288) return -5;
+        *(long *)a[2] = java_result_n; return data;
+    }
     long x = a[0], y = a[1], z = a[2], d = a[3], e = a[4], f = a[5];
     if (n == 0) {
         if (x == 0) {

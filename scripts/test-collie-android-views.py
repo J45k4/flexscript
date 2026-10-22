@@ -96,8 +96,12 @@ def tap(label,reverse=False):
         horizontal=next((n for n in tree().iter('node') if n.get('class')=='android.widget.HorizontalScrollView'),None)
         if horizontal is not None and label.startswith(('Remove attachment:','Open attached image:')):
             a,b,c,d=map(int,re.findall(r'\d+',horizontal.get('bounds')))
-            adb('shell','input','swipe',c-20,(b+d)//2,a+20,(b+d)//2,250)
+            # Keep gestures inside the control: Android's edge gesture means
+            # Back and can close the activity instead of scrolling attachments.
+            inset=(c-a)//4
+            adb('shell','input','swipe',c-inset,(b+d)//2,a+inset,(b+d)//2,250)
         else:adb('shell','input','swipe',width//2,int(height*.78),width//2,int(height*.35),250)
+    tree('missing-control');shot('missing-control')
     raise AssertionError('Control not found: '+label)
 def shot(name):(out/(name+'.png')).write_bytes(adb('exec-out','screencap','-p'))
 def passed(name):checks.append(name);print('PASS',name,flush=True)

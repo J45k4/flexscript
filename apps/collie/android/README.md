@@ -1,8 +1,9 @@
 # Collie on Android
 
 A native Android chat app embedding Collie's existing Flexscript compiler,
-checked interpreter, native Responses tool protocol and FlexDB. Java owns the
-Android lifecycle, chat widgets, document picker and HTTPS/SSE transport. A
+checked interpreter, native Responses tool protocol and FlexDB. Flexscript owns
+every screen and UI interaction. Java supplies the generic widget renderer,
+Android lifecycle, document/photo/camera APIs and HTTPS/SSE transport. A
 freestanding C host translates the trusted runtime's Linux ABI, bounds native
 allocations and captures observations. The APK needs no terminal, shell,
 external compiler executable, Python runtime, Gradle dependency or NDK sysroot.
@@ -30,7 +31,7 @@ and the uncompressed APK library are aligned for 16-KiB pages. FlexDB read-only
 snapshot mappings use anonymous copies so database offsets need not match the
 Android kernel page size. Physical 16-KiB-page devices still need validation.
 
-Open **Menu → Import auth.json** and choose the ChatGPT login file created by
+Open **Menu → Connect ChatGPT** (or **Update ChatGPT login**) and choose the login file created by
 Codex. Collie uses `tokens.access_token` and `tokens.account_id`, not an API key.
 It sends HTTPS directly to the same Codex Responses backend as desktop Collie.
 Expired credentials require refreshing the file with Codex and importing it
@@ -38,11 +39,12 @@ again; OAuth login/token refresh is not yet implemented in this app.
 
 The default model is `gpt-6.1-sol`; Menu can change it. Prose streams as it
 arrives. Generated programs appear in expandable Flexscript cards, followed by
-real stdout, stderr, state and exit code. Program source and VM result bodies
+real stdout, stderr, state and exit code. Program source includes shared code
+highlighting, line numbers and a clipboard action. Source and VM result bodies
 are independently collapsed by default. **Show result** reveals the full captured
 stdout/stderr, including long single-line JSON. **Stop** cancels the current HTTP
 request or cooperatively stops compilation/VM execution. **New** creates a
-workspace; **Menu → Resume session** reopens one. Context shows tokens, with
+workspace; **Conversations** reopens one. Context shows tokens, with
 `~` for an estimate. **Menu → Compact context** and automatic compaction use the
 shared Codex checkpoint protocol and desktop limits (272,000 raw; 258,400 usable;
 244,800 automatic compaction threshold for the default model).
@@ -256,14 +258,14 @@ model → native tool → phone VM → assistant reply all passed. The VM printe
 ready to use. Deployment evidence is in `build/android-collie/phone/` for that
 local build. This validates physical-device integration, not JIT performance.
 
-The phone interface now has a custom dark theme and Collie launcher mark,
+The earlier native UI introduced a custom dark theme and Collie launcher mark,
 aligned chat bubbles, formatted assistant replies, syntax-colored expandable
-programs with line numbers/copy controls, compact VM result/error cards, a
+programs with copy controls, compact VM result/error cards, a
 keyboard-aware composer, a workspace sheet, and a full Conversations page with readable titles.
 The context meter stays separate from execution status. Scrolling to the latest
 message preserves composer focus; reading earlier messages pauses automatic
-scrolling. The native presentation lives in `CollieUi.java` and
-`MessageStyle.java`; the model/VM protocol remains in the shared engine.
+scrolling. The current presentation is entirely declared in `apps/collie/ui/`;
+`UiRenderer.java` maps the resulting records to Android widgets.
 
 Eight UI checks passed on the Galaxy A55: formatted replies and VM results,
 source expansion/collapse, keyboard input, workspace/conversation menus, the
@@ -272,11 +274,220 @@ Screenshots and the exact APK checksum are in `build/android-collie/ui/`.
 
 Conversations is now a dedicated full-screen page, opened from the chat header
 or workspace menu. It lists all saved chats newest first, with message previews,
-dates, a Current marker, search, and a New conversation button. Rows are recycled
-with Android ListView; metadata is loaded off the UI thread. Both the page’s
+dates, a Current marker, search, and a New conversation button. The shared view pages rows in batches of 50; metadata is loaded off the UI thread. Both the page’s
 Back button and Android system Back return to the active chat. Opening a row
 resumes that conversation. Search also handles empty results.
 
 Seven navigation checks passed on the Galaxy A55, including search/clear, both
 Back controls, opening a saved search result, creating a new chat, and preserving
 the original conversation. Evidence is in `build/android-collie/conversations/`.
+
+## Coordinator, workers and resumable VM programs
+
+Each workspace has a main conversation. It can delegate independent work to
+workers through the same single `flexscript` model tool. No additional model
+tools or markup protocol are involved:
+
+```flexscript
+fn main() {
+    let team = db_list();
+    db_add(team, db_int(worker_start("Reader", "Inspect the shared project files")));
+    db_add(team, db_int(worker_start("Checker", "Check the calculations")));
+    if !state_set("team", team) { return 1; }
+    let reader = worker_await(db_word(db_at(team, 0)));
+    let status = worker_status(reader);
+    let answer = worker_result(reader);
+    db_io(0, 1, status, db_len(status));
+    db_io(0, 1, db_word(answer), db_bytes(answer));
+    return 0;
+}
+```
+
+Check all returned IDs/handles and `db_error()` in production programs, and check
+terminal status before treating a worker's result as successful.
+
+- `worker_start(title,task)` returns a durable integer ID, or zero on failure.
+- `worker_list()` returns summary rows `[id,values]`. Columns: title, task,
+  status, result, error, revision, request_key, updated (monotonic milliseconds).
+  Summary text is truncated to 128 bytes, except titles (160). Use
+  `worker_get(id)` for complete fields. `worker_status(row)` returns a C string;
+  `worker_result(row)` returns a typed text value.
+- `worker_messages(id,after_message_id,limit)` returns up to 64 message rows.
+  Columns: worker ID, role, content, kind, deduplication key, revision.
+  Kinds include `message`, `source`, and `result`. Large public messages are
+  split into ordered rows; use the last returned row ID for the next page.
+- `worker_send(id,text)` queues a follow-up, including during a running turn.
+  `worker_cancel(id)` cancels it. Late completion cannot overwrite cancellation.
+- `worker_await(id)` returns a terminal worker row. While pending, the main VM
+  suspends at an explicit instruction boundary. The host releases its engine
+  lock while waiting, allowing worker model requests and VM programs to run.
+- `state_set(name,value)` saves a typed value, including nested lists and IDs;
+  `state_get(name)` returns it, or a typed null when missing. Values are private
+  to each agent, limited to 32 KiB encoded, with 512 named values per workspace.
+  Raw pointers and ordinary globals do not carry over to a *different* program.
+
+Workers have independent model histories and context compaction. They share the
+workspace files and FlexDB and inherit its current permission grants. Only the
+main coordinator can start, send to, cancel, or await running workers. There are
+at most three simultaneous worker model requests, eight active workers, and 64
+worker identities per workspace. Native compiler/VM/DB calls are serialized;
+model requests can overlap. Each worker turn allows up to 16 programs.
+
+The runtime owns `collie_workers`, `collie_messages`, and `collie_state`. The first
+two are queryable through ordinary `db_scan`/`db_get`; runtime tables cannot be
+modified or have their schemas changed by generated code. `collie_state` is
+accessible only through the owner-aware state functions. Other application
+schemas are still chosen by the agent. Worker APIs require **Manage workers**;
+message reads also require **Read past messages**. Named state uses the existing
+DB read/write grants. Older partial policies leave new grants off until enabled.
+
+Tap **Workers** below the chat status to see active, paused and finished workers,
+then tap one to inspect its messages, generated programs and VM results. Source
+and results start collapsed. The worker page remains available while the main
+conversation is busy. Running workers can be stopped; interrupted workers offer
+**Resume worker**.
+
+A VM continuation stores the checked bytecode, guest heap, locals, operand stack,
+call frames, program counter, fuel and output budgets. Guest offsets survive
+relocation. A versioned checksum and invocation/code checks reject corrupt,
+wrong-invocation or outdated-code snapshots. JIT code and host resources are not
+serialized. DB transactions must finish before awaiting. Checkpoints are private,
+atomically replaced, and capped at 16 MiB. Fuel, remaining execution time, and DB/network/output budgets are retained; external waiting does
+not consume the execution deadline.
+
+After process/activity interruption, in-flight workers become paused. The main
+conversation offers **Resume saved program** when it has a pending execution.
+A saved continuation resumes the same program and accumulates stdout/stderr
+across yields. An interrupted program without a safe checkpoint is reported,
+rather than replaying potentially completed side effects. Ordinary worker context
+and public journal writes are separate durable records; a crash between them can
+omit the last public display entry, but does not authorize replay of an uncertain
+program. This is not an Android foreground service: the OS can stop the process,
+and jobs resume when the app is reopened. Automatic long-term memory-tree
+summarization is separate from these execution checkpoints.
+
+Verification:
+
+```sh
+python3 scripts/test-collie-workers.py --out build/android-collie-workers
+python3 scripts/test-collie-workers-android.py \
+  --out build/android-collie-workers --serial emulator-5580
+```
+
+The first suite resumes snapshots in separate QEMU ARM64 processes. The second
+uses the actual Android scheduler and private prerecorded model fixtures to test
+concurrent delegation, shared files/messages, live worker inspection, process
+restart and continuation recovery. It does not require model credentials.
+
+The optional live-model check uses ChatGPT `auth.json` in a debug emulator:
+
+```sh
+python3 scripts/test-collie-workers-live.py --out build/android-collie-workers \
+  --serial emulator-5580 --auth "$HOME/.codex/auth.json"
+```
+
+## Shared application core
+
+The Android adapter no longer implements worker scheduling or separate main and
+worker conversation loops. These policies run in ordinary shared Flexscript:
+
+| Shared module | Responsibility |
+| --- | --- |
+| `apps/collie/core/session.flex` | Main/worker state transitions, history and tool-result correlation, compaction, output/view accumulation, persistence and safe restart policy |
+| `apps/collie/core/scheduler.flex` | Job selection, concurrency cap, cancellation, permission revocation and recovery |
+| `apps/collie/core/permissions.flex` | Grant schema, conservative policy loading and permission UI metadata |
+| `apps/collie/core/checkpoint.flex` | VM checkpoint format, validation, budgets and continuation |
+| `apps/collie/providers/stream.flex` | Streamed provider events and source/prose validation |
+| `apps/collie/providers/images.flex` | Image selection, deduplication, request budget, base64 wire format and token estimation |
+| `apps/collie/providers/codex.flex` | Authentication validation, endpoint/headers, model requests and provider errors |
+
+`PlatformTask.java` executes effects emitted by the core: HTTPS model exchange,
+native VM invocation, timer wait and UI notification. `WorkerManager.java` binds
+scheduler decisions to Android executors and activity shutdown. Neither chooses
+which worker to run nor mutates its conversation history. Java still owns native
+widgets, image decoding, storage/document/camera APIs, TLS, thread cancellation,
+and lifecycle. The small Flexscript Android adapter supplies storage, image-byte,
+capability-budget and native-execution hooks; credentials never enter the guest
+VM or model context.
+
+The core uses explicit JSON state/effects, so it can run on a different platform
+without an Android activity or a Java implementation of the agent loop. The
+standalone Linux test host imports the exact same source modules directly:
+
+```sh
+build/flex-collie-workers apps/collie/tests/shared-core.flex -o build/test-collie-shared-core
+python3 scripts/test-collie-core.py --out build/android-collie-core \
+  --core-driver build/test-collie-shared-core
+```
+
+The Android native entry points also exercise these transitions under QEMU. This
+refactor preserves existing workspace DBs, worker IDs, history JSON, named state,
+and VM checkpoint format; it does not change guest SDK source or its bytecode
+layout. Native engine globals remain temporary per call. Durable machine state
+lives in conversation/worker JSON and FlexDB, and suspended guest execution lives
+in its private VM checkpoint.
+
+
+### Shared declarative UI
+
+Every Collie screen is now compiled Flexscript, under `apps/collie/ui/`:
+
+| Module | Responsibility |
+| --- | --- |
+| `app.flex` | Root view, navigation, event validation, UI state and platform effects |
+| `chat.flex` | Welcome, suggestions, header/status/context, streaming, history and composer |
+| `components.flex` | Messages, source/result folding, error/output views, attachment tiles and previews |
+| `pages.flex` | Conversations/search/paging, workers/details/actions, model form, workspace and attachment menus, full-screen previews |
+| `permissions.flex` | Permission rows, summaries and grant actions |
+| `model.flex` | Filtering, display text, stable identity, history paging and derived state |
+| `libs/ui/richtext.flex` | Platform-independent Markdown and code-highlighting runs |
+
+Monolith and these screens share the AST compiler, keyed tree and generated
+update primitives. Android has no screen-specific view builders: the former
+`ConversationsPage`, `WorkersPage`, `PermissionsPage`, `AttachmentViews` and
+`MessageStyle` Java classes are removed. `CollieUi.java` only batches facts/events,
+retains the explicit UI model and applies returned operations. Android's window
+insets, IME, native spans, bitmap decoding/zoom, clipboard, lifecycle and
+file/gallery/camera APIs remain native services.
+
+`libcollie_ui.so` is a small, independently compiled UI image with its own globals,
+128-MiB bounded arena and JNI lock. It cannot read files, use the network or start
+processes. It evaluates the shared UI reducer while the separate `libcollie.so`
+agent/compiler/VM image is busy. UI memory is released after every call; models
+and operations are serialized JSON rather than live pointers. `ui-host.c` contains
+only the allocator, failure boundary and JNI plumbing. The native test executable
+`ui-native-test` exercises the exact same UI code; the agent's `native-test`
+remains independent.
+
+Navigation, drafts, selected workers and folds live in the shared UI model.
+Android saves its small navigation snapshot in the lifecycle bundle; the shared
+reducer requests fresh conversation/worker data after restoration. Source and VM results default
+to collapsed. Chat history is paged in batches of 40, conversation rows in batches
+of 50, so old content remains accessible without exceeding the keyed-tree limit.
+Permission/model changes emit persistence effects for the platform to acknowledge;
+failed permission saves restore the actual stored policy through shared state.
+
+This is trusted application UI. Model-generated guest programs have not gained
+UI privileges. The portable DOM adapter renders the same records; a browser test
+applies complete application traces, and the permissions example runs the actual
+shared permissions view through Monolith's HTTP/SSE host.
+
+```sh
+python3 scripts/test-collie-ui.py --compiler build/flex-collie-workers \
+  --out build/android-collie
+python3 scripts/test-ui.py --compiler build/flex-collie-workers \
+  --out build/android-collie --serial emulator-5580
+python3 scripts/test-collie-ui-android.py --out build/android-collie \
+  --serial emulator-5580
+python3 scripts/test-collie-workers-android.py --out build/android-collie \
+  --serial emulator-5580
+python3 scripts/test-collie-android-views.py --out build/android-collie \
+  --serial emulator-5580 --picker --media
+```
+
+The widget fixture (debug APKs only) verifies native identity, input focus,
+selection, drafts, action bindings, snapshots and an independent UI call while
+the agent engine lock is held. Full application state/effect tests compare Linux
+and the production ARM64 UI image. See [`docs/ui.md`](../../../docs/ui.md) for the
+DSL, wire ABI, platform differences and browser checks. Emulator evidence is not
+physical-phone deployment evidence.

@@ -26,7 +26,7 @@ fn j_array() {
     return j_node(3,h_vec_sized(16));
 }
 fn j_object() {
-    return j_node(4,h_vec());
+    return j_node(4,h_vec_sized(16));
 }
 fn j_bool(n) {
     return j_node(5,n!=0);
@@ -53,10 +53,15 @@ fn j_set(o,key,value) {
         }
         i=i+1;
     }
+    let n=h_count(fields);let capacity=load64(fields-8);
+    if n==capacity {
+        h_assert(capacity<4096,"JSON object field limit");let next=h_vec_sized(capacity*2);
+        h_copy(next,fields,(n+1)*8);store64(o+8,next);fields=next;
+    }
     let pair=h_take(16);
     store64(pair,key);
     store64(pair+8,value);
-    h_add(fields,pair);
+    h_add_sized(fields,pair);
     return o;
 }
 fn j_get(o,key) {

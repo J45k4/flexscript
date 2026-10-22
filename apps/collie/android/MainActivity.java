@@ -1,11 +1,8 @@
 package org.flexscript.collie;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
-import android.graphics.Color;
-import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.AtomicFile;
@@ -29,30 +26,40 @@ import org.json.*;
 public class MainActivity extends Activity {
     static {
         System.loadLibrary("collie");
+        System.loadLibrary("collie_ui");
     }
     private static native long nativeCall(
         long op, ByteBuffer input, long size, ByteBuffer output, ByteBuffer session);
+    private static native long nativeUiCall(ByteBuffer input,long size,ByteBuffer output);
     private static native void nativeCancel();
     private static native void nativeBegin();
     // Called synchronously by the trusted native broker, never by raw guest FFI.
     private static byte[] vmHttpGet(byte[] url) { return VmInternet.get(url); }
     private static byte[] vmViewImage(byte[] bytes) { return VmViews.capture(bytes); }
-    private static final Object ENGINE = new Object();
+    private static byte[] vmImageBytes(byte[] id) {
+        try {
+            return VmViews.snapshotBytes(id);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    private static final Object ENGINE = new Object(), UI_ENGINE = new Object();
+    private static final ByteBuffer UI_OUTPUT = ByteBuffer.allocateDirect(8*1024*1024);
     private static final int LIMIT = 8 * 1024 * 1024;
+    private static final ByteBuffer NATIVE_OUTPUT = ByteBuffer.allocateDirect(LIMIT);
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private volatile boolean stopped, busy, destroyed;
     private volatile HttpsURLConnection connection;
-    private LinearLayout transcript;
-    private ScrollView scroll;
-    private EditText prompt;
-    private TextView status;
+    private volatile Thread nativeThread, turnThread;
     private CollieUi ui;
     private FrameLayout navigation;
-    private ConversationsPage conversations;
-    private PermissionsPage permissionsPage;
-    private volatile JSONObject permissions = AgentPermissions.load(null);
-    private android.window.OnBackInvokedCallback conversationsBack;
-    private android.window.OnBackInvokedCallback permissionsBack;
+    private WorkerManager workers;
+    private String lastWorkers = "";
+    private android.window.OnBackInvokedCallback uiBack;
+    private JSONObject pendingExecution;
+    private JSONObject harness = new JSONObject();
+    private PlatformTask activeTask;
+    private volatile JSONObject permissions = new JSONObject();
     private String model = "gpt-6.1-sol", sessionId;
     private File session;
     private JSONArray messages = new JSONArray(), archive = new JSONArray(),
@@ -70,28 +77,74 @@ public class MainActivity extends Activity {
         return b;
     }
     private JSONObject engine(int op, JSONObject request) throws Exception {
+        return engineAt(session, op, request);
+    }
+    JSONObject engineAt(File workspace, int op, JSONObject request) throws Exception {
         byte[] input = request.toString().getBytes(StandardCharsets.UTF_8);
-        ByteBuffer out = ByteBuffer.allocateDirect(LIMIT);
+        ByteBuffer out = NATIVE_OUTPUT;
         long n;
+        byte[] bytes;
         synchronized (ENGINE) {
-            VmViews.begin(session);
+            out.clear();
+            nativeThread = Thread.currentThread();
+            nativeBegin();
+            if (request.optBoolean("_cancel_before_run"))
+                nativeCancel();
+            if (op == 3)
+                VmInternet.begin();
+            VmViews.begin(workspace);
             try {
-                n = nativeCall(op, buffer(input, true), input.length, out,
-                    buffer(session.getAbsolutePath().getBytes(StandardCharsets.UTF_8), true));
-            } finally { VmViews.end(); }
+                n = nativeCall(
+                    op, buffer(input, true), input.length, out,
+                    buffer(workspace.getAbsolutePath().getBytes(StandardCharsets.UTF_8), true));
+                if (n < 0 || n > LIMIT)
+                    throw new IOException("Native engine failed (" + n + ").");
+                bytes = new byte[(int)n];
+                out.get(bytes);
+            } finally {
+                VmViews.end();
+                nativeThread = null;
+            }
         }
-        if (n < 0 || n > LIMIT)
-            throw new IOException("Native engine failed (" + n + ").");
-        byte[] bytes = new byte[(int) n];
-        out.get(bytes);
+
         JSONObject result = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
         if (result.has("error"))
             throw new IOException(result.getString("error"));
         return result;
     }
+    JSONObject uiCall(JSONObject request) throws Exception {
+        byte[] input=request.toString().getBytes(StandardCharsets.UTF_8), bytes;
+        synchronized(UI_ENGINE) {
+            UI_OUTPUT.clear();long size=nativeUiCall(buffer(input,true),input.length,UI_OUTPUT);
+            if(size<0 || size>LIMIT) throw new IOException("Native UI failed ("+size+").");
+            bytes=new byte[(int)size];UI_OUTPUT.get(bytes);
+        }
+        JSONObject result=new JSONObject(new String(bytes,StandardCharsets.UTF_8));
+        if(result.has("error")) throw new IOException(result.getString("error"));
+        return result;
+    }
+    JSONObject workerConfig(File workspace, long id) throws JSONException {
+        return new JSONObject()
+            .put("model", model)
+            .put("permissions", new JSONObject(permissions.toString()))
+            .put("agent_id", id)
+            .put("workspace_file", new File(workspace, "agent.flexdb").getAbsolutePath());
+    }
+    private JSONObject loadPermissions(Object saved) throws Exception {
+        JSONObject result = engine(8, new JSONObject()
+                                          .put("config", config())
+                                          .put("action", "permissions")
+                                          .put("saved", saved == null ? JSONObject.NULL : saved));
+        return result.getJSONObject("policy");
+    }
+    boolean workersAllowed() { return permissions.optBoolean("workers"); }
+    boolean hasAuthentication() {
+        return new File(getFilesDir(), "credentials/auth.json").isFile();
+    }
     private JSONObject config() throws JSONException {
         return new JSONObject()
             .put("model", model)
+            .put("agent_id", 0)
             .put("permissions", new JSONObject(permissions.toString()))
             .put("workspace_file", new File(session, "agent.flexdb").getAbsolutePath());
     }
@@ -104,46 +157,36 @@ public class MainActivity extends Activity {
     @Override
     public void onCreate(Bundle state) {
         super.onCreate(state);
-        ui = new CollieUi(this,
-            ()
-                -> {
-                if (busy)
-                    cancel();
-                else
-                    submit();
-            },
-            ()
-                -> {
-                if (!busy)
-                    newSession();
-            },
-            this::showConversations, this::menu, this::importWorkspaceFile,
-            new File(getFilesDir(), "credentials/auth.json").isFile());
-        transcript = ui.transcript;
-        scroll = ui.scroll;
-        prompt = ui.prompt;
-        status = ui.status;
+        synchronized (ENGINE) {
+            nativeBegin();
+            VmInternet.begin();
+        }
+        ui = new CollieUi(this);
         navigation = new FrameLayout(this);
-        navigation.addView(ui.page, new FrameLayout.LayoutParams(-1, -1));
+        navigation.addView(ui.page, new FrameLayout.LayoutParams(-1,-1));
         setContentView(navigation);
+        if (android.os.Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
+        ui.page.setOnApplyWindowInsetsListener((view,insets) -> {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars());
+                view.setPadding(bars.left,bars.top,bars.right,
+                    Math.max(bars.bottom,insets.getInsets(WindowInsets.Type.ime()).bottom));
+            } else view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),
+                                   insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
+            return insets;
+        });
         model = getPreferences(0).getString("model", "gpt-6.1-sol");
         try {
-            String id = getPreferences(0).getString("session", null);
-            if (id == null)
-                newSession();
-            else
-                loadSession(id);
-        } catch (Exception e) {
-            newSession();
-            showError("Previous session could not be loaded: " + safe(e));
+            String id=getPreferences(0).getString("session",null);
+            if (id==null) newSession(); else loadSession(id);
+        } catch(Exception error) { newSession(); showError("Previous session could not be loaded: "+safe(error)); }
+        if (state!=null) {
+            try { String saved=state.getString("ui_navigation"); if(saved!=null) ui.restore(new JSONObject(saved)); }
+            catch(JSONException ignored) {}
         }
-        if (state != null) prompt.setText(state.getString("draft_text", ""));
-        if (state != null && state.getBoolean("permissions_visible")) {
-            showPermissions();
-        } else if (state != null && state.getBoolean("conversations_visible")) {
-            showConversations();
-            if (conversations != null)
-                conversations.query(state.getString("conversations_query", ""));
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            uiBack=ui::back;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,uiBack);
         }
         onTestIntent(getIntent());
     }
@@ -156,6 +199,8 @@ public class MainActivity extends Activity {
     private void prepareSession(String id) throws IOException {
         if (!id.matches("[A-Za-z0-9-]{1,80}"))
             throw new IOException("Invalid session ID.");
+        if (workers != null)
+            workers.close();
         sessionId = id;
         session = new File(getFilesDir(), "workspaces/" + id);
         ui.workspace(session);
@@ -168,7 +213,8 @@ public class MainActivity extends Activity {
             return;
         try {
             prepareSession(UUID.randomUUID().toString());
-            permissions = AgentPermissions.load(null);
+            permissions = loadPermissions(null);
+            harness = new JSONObject();
             messages = new JSONArray();
             archive = new JSONArray();
             cards = new JSONArray();
@@ -176,10 +222,14 @@ public class MainActivity extends Activity {
             refreshAttachments();
             usage = null;
             anchor = 0;
+            pendingExecution = null;
             ui.clear();
+            ui.continuation(false);
             save();
             addCard("info",
                 "App-private workspace ready. Import ChatGPT auth.json from Menu to connect.");
+            startWorkers();
+            updateUiFacts();
             updateContext();
         } catch (Exception e) {
             showError(safe(e));
@@ -190,7 +240,8 @@ public class MainActivity extends Activity {
         File file = new File(session, "session.json");
         if (file.isFile()) {
             JSONObject saved = new JSONObject(read(new FileInputStream(file), LIMIT));
-            permissions = AgentPermissions.load(saved.optJSONObject("permissions"));
+            harness = saved;
+            permissions = loadPermissions(saved.opt("permissions"));
             messages = saved.getJSONArray("messages");
             archive = saved.optJSONArray("archive");
             if (archive == null)
@@ -202,29 +253,28 @@ public class MainActivity extends Activity {
             if (pendingAttachments == null) pendingAttachments = new JSONArray();
             usage = saved.optJSONObject("usage");
             anchor = saved.optInt("anchor", 0);
+            pendingExecution = saved.optJSONObject("pending_execution");
         } else {
-            permissions = AgentPermissions.load(null);
+            permissions = loadPermissions(null);
             messages = new JSONArray();
             archive = new JSONArray();
             cards = new JSONArray();
             pendingAttachments = new JSONArray();
             usage = null;
             anchor = 0;
+            pendingExecution = null;
         }
+        if (pendingExecution != null)
+            pendingExecution.put("restored", true);
+        runOnUiThread(() -> ui.continuation(pendingExecution != null));
+        startWorkers();
         final JSONArray visible = new JSONArray(cards.toString());
         refreshAttachments();
-        runOnUiThread(() -> {
-            ui.clear();
-            try {
-                for (int i = 0; i < visible.length(); i++) renderCard(visible.getJSONObject(i));
-            } catch (JSONException e) {
-                showError(safe(e));
-            }
-        });
+        runOnUiThread(() -> { ui.clear(); ui.cards(visible); updateUiFacts(); });
         updateContext();
     }
     private void save() throws Exception {
-        JSONObject data = new JSONObject()
+        JSONObject data = snapshotConversation()
                               .put("messages", messages)
                               .put("archive", archive)
                               .put("cards", cards)
@@ -233,9 +283,13 @@ public class MainActivity extends Activity {
                               .put("anchor", anchor);
         if (usage != null)
             data.put("usage", usage);
+        if (pendingExecution != null)
+            data.put("pending_execution", pendingExecution);
+        else
+            data.remove("pending_execution");
         atomic(new File(session, "session.json"), data.toString());
     }
-    private static void atomic(File file, String text) throws IOException {
+    static void atomic(File file, String text) throws IOException {
         AtomicFile atomic = new AtomicFile(file);
         FileOutputStream out = null;
         try {
@@ -248,7 +302,7 @@ public class MainActivity extends Activity {
             throw e;
         }
     }
-    private static String read(InputStream in, int limit) throws IOException {
+    static String read(InputStream in, int limit) throws IOException {
         try (InputStream stream = in; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             byte[] buf = new byte[8192];
             int n;
@@ -289,16 +343,21 @@ public class MainActivity extends Activity {
     }
     private void working(boolean value) {
         busy = value;
-        runOnUiThread(() -> ui.setWorking(value));
+        runOnUiThread(() -> ui.working(value));
     }
     private void cancel() {
         stopped = true;
-        nativeCancel();
-        VmInternet.cancel();
+        PlatformTask task = activeTask;
+        if (task != null)
+            task.cancel();
+        if (nativeThread == turnThread) {
+            nativeCancel();
+            VmInternet.cancel();
+        }
         HttpsURLConnection c = connection;
         if (c != null)
             c.disconnect();
-        status.setText("Stopping…");
+        ui.status("Stopping…");
     }
     private void checkStop() throws IOException {
         if (stopped || destroyed)
@@ -312,6 +371,7 @@ public class MainActivity extends Activity {
         stopped = false;
         nativeBegin();
         worker.execute(() -> {
+            turnThread = Thread.currentThread();
             try {
                 action.run();
             } catch (Exception e) {
@@ -324,23 +384,18 @@ public class MainActivity extends Activity {
                 }
                 if (!destroyed)
                     nativeBegin();
+                turnThread = null;
                 working(false);
                 updateContext();
             }
         });
     }
-    private void submit() {
-        String text = prompt.getText().toString().trim();
-        if (busy || (text.isEmpty() && pendingAttachments.length() == 0))
-            return;
-        final JSONArray attached = pendingAttachments;
-        prompt.setText("");
+    private void submit(String text) {
+        if (busy || (text.isEmpty() && pendingAttachments.length()==0)) return;
+        final JSONArray attached=pendingAttachments;
         begin(() -> {
-            try {
-                turn(text, null, attached);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+            try { if (pendingExecution!=null) continueTurn(null); turn(text,null,attached); }
+            catch(Exception error) { throw new RuntimeException(error); }
         });
     }
     private JSONObject authentication() throws Exception {
@@ -348,70 +403,77 @@ public class MainActivity extends Activity {
         if (!f.isFile())
             throw new IOException("Import ChatGPT auth.json from Menu first.");
         JSONObject auth = new JSONObject(read(new FileInputStream(f), 1048576));
-        validateAuth(auth);
-        return auth.getJSONObject("tokens");
+        return validateAuth(auth);
     }
-    private static void validateAuth(JSONObject auth) throws Exception {
-        String mode = auth.optString("auth_mode", "");
-        JSONObject tokens = auth.optJSONObject("tokens");
-        if ((!mode.isEmpty() && !mode.equals("null") && !mode.equals("chatgpt")) || tokens == null
-            || tokens.optString("access_token").isEmpty()
-            || tokens.optString("account_id").isEmpty())
-            throw new IOException("Expected ChatGPT Codex auth.json with access_token and "
-                + "account_id; API keys are unsupported.");
-        for (String key : new String[] {"access_token", "account_id"}) {
-            String s = tokens.getString(key);
-            if (s.length() > 32768 || s.indexOf('\r') >= 0 || s.indexOf('\n') >= 0)
-                throw new IOException("Invalid authentication field.");
-        }
+    private JSONObject validateAuth(JSONObject auth) throws Exception {
+        return engine(8, new JSONObject()
+                             .put("config", config())
+                             .put("action", "authenticate")
+                             .put("auth", auth));
     }
-    private static String safe(Throwable e) {
+    static String safe(Throwable e) {
         while (e.getCause() != null) e = e.getCause();
         String text = e.getMessage();
         return text == null ? e.getClass().getSimpleName() : text;
     }
-    private JSONObject response(JSONObject body, boolean compact, JSONArray fixture, int index)
+    JSONObject responseAt(JSONObject body, boolean compact, JSONArray fixture, int index,
+                          File workspace, JSONObject baseRequest, PlatformTask job)
         throws Exception {
-        checkStop();
-        VmViews.modelInput(body, session);
+        if (job == null)
+            checkStop();
+        else
+            job.check();
+
         if (fixture != null) {
             if (index >= fixture.length())
                 throw new IOException("Fixture ran out of responses.");
-            return engine(compact ? 5 : 2, request().put("event", fixture.getJSONObject(index)));
+            JSONObject event = fixture.getJSONObject(index);
+            if (job != null) {
+                int delay = Math.max(0, Math.min(20000, event.optInt("_delay_ms")));
+                for (int elapsed = 0; elapsed < delay; elapsed += 100) {
+                    job.check();
+                    Thread.sleep(100);
+                }
+            }
+            return engineAt(workspace, compact ? 5 : 2,
+                            new JSONObject(baseRequest.toString()).put("event", event));
         }
-        JSONObject tokens = authentication();
+        JSONObject transport = authentication();
         HttpsURLConnection c =
-            (HttpsURLConnection) new URL("https://chatgpt.com/backend-api/codex/responses")
-                .openConnection();
-        connection = c;
+            (HttpsURLConnection) new URL(transport.getString("url")).openConnection();
+        if (job == null)
+            connection = c;
+        else
+            job.connection = c;
         c.setInstanceFollowRedirects(false);
-        c.setConnectTimeout(30000);
-        c.setReadTimeout(120000);
-        c.setRequestMethod("POST");
+        c.setConnectTimeout(transport.getInt("connect_timeout_ms"));
+        c.setReadTimeout(transport.getInt("read_timeout_ms"));
+        c.setRequestMethod(transport.getString("method"));
         c.setDoOutput(true);
-        c.setRequestProperty("Authorization", "Bearer " + tokens.getString("access_token"));
-        c.setRequestProperty("ChatGPT-Account-ID", tokens.getString("account_id"));
-        c.setRequestProperty("originator", "collie");
-        c.setRequestProperty("User-Agent", "collie/0.1");
-        c.setRequestProperty("Content-Type", "application/json");
-        c.setRequestProperty("Accept", "text/event-stream");
-        c.setRequestProperty("Accept-Encoding", "identity");
+        JSONObject headers = transport.getJSONObject("headers");
+        for (java.util.Iterator<String> keys = headers.keys(); keys.hasNext();) {
+            String key = keys.next();
+            c.setRequestProperty(key, headers.getString(key));
+        }
         byte[] data = body.toString().getBytes(StandardCharsets.UTF_8);
         if (data.length > LIMIT) throw new IOException("Model request exceeds 8 MiB. Compact context first.");
         c.setFixedLengthStreamingMode(data.length);
         try {
-            checkStop();
+            if (job == null)
+                checkStop();
+            else
+                job.check();
             try (OutputStream out = c.getOutputStream()) {
                 out.write(data);
             }
             int statusCode = c.getResponseCode();
             if (statusCode != 200) {
-                if (statusCode == 401)
-                    throw new IOException(
-                        "ChatGPT login expired. Refresh auth.json with Codex and import it again.");
-                if (statusCode == 429)
-                    throw new IOException("Codex usage limit reached. Retry later.");
-                throw new IOException("Codex HTTP " + statusCode + ".");
+                JSONObject error = engineAt(workspace, 8,
+                                            new JSONObject()
+                                                .put("config", baseRequest.getJSONObject("config"))
+                                                .put("action", "transport_error")
+                                                .put("status", statusCode));
+                throw new IOException(error.getString("message"));
             }
             String type = c.getContentType();
             if (type != null
@@ -419,19 +481,21 @@ public class MainActivity extends Activity {
                 throw new IOException("Unexpected Codex response type.");
             try (InputStream in = c.getInputStream()) {
                 ByteArrayOutputStream line = new ByteArrayOutputStream();
-                StringBuilder event = new StringBuilder(), prose = new StringBuilder(),
-                              source = new StringBuilder();
-                String key = "";
+                StringBuilder event = new StringBuilder();
+                JSONObject stream = new JSONObject();
                 int total = 0;
-                TextView preview = null;
-                if (!compact) {
-                    java.util.concurrent.FutureTask<TextView> task =
+                Object preview = null;
+                if (!compact && job == null) {
+                    java.util.concurrent.FutureTask<Object> task =
                         new java.util.concurrent.FutureTask<>(() -> { return ui.beginStream(); });
                     runOnUiThread(task);
                     preview = task.get();
                 }
                 for (;;) {
-                    checkStop();
+                    if (job == null)
+                        checkStop();
+                    else
+                        job.check();
                     int b = in.read();
                     if (b < 0)
                         throw new IOException("Codex stream ended without a completed response.");
@@ -456,51 +520,33 @@ public class MainActivity extends Activity {
                     } else if (s.isEmpty() && event.length() > 0) {
                         String json = event.toString();
                         event.setLength(0);
-                        if (json.equals("[DONE]"))
-                            continue;
-                        JSONObject e = new JSONObject(json);
-                        String kind = e.optString("type");
-                        if (!compact && kind.equals("response.output_text.delta")) {
-                            prose.append(e.getString("delta"));
-                            if (prose.length() > 65536)
-                                throw new IOException("Assistant text exceeds limit.");
-                            String p = prose.toString();
-                            final TextView v = preview;
-                            runOnUiThread(() -> { ui.stream(v, p); });
-                        } else if (!compact && kind.equals("response.output_item.added")) {
-                            JSONObject item = e.getJSONObject("item");
-                            if (item.optString("type").equals("custom_tool_call")) {
-                                if (!item.optString("name").equals("flexscript") || !key.isEmpty())
-                                    throw new IOException("Unexpected or multiple tool calls.");
-                                key = item.optString("id", item.optString("call_id"));
-                            }
-                        } else if (!compact
-                            && kind.equals("response.custom_tool_call_input.delta")) {
-                            String id = e.optString("item_id", e.optString("call_id"));
-                            if (id.isEmpty() || (!key.isEmpty() && !key.equals(id)))
-                                throw new IOException("Tool stream identity changed.");
-                            key = id;
-                            source.append(e.getString("delta"));
-                            if (source.length() > 65536)
-                                throw new IOException("Tool input exceeds limit.");
-                        } else if (kind.equals("response.completed")) {
-                            final TextView v = preview;
+                        JSONObject packet = new JSONObject()
+                                                .put("config", baseRequest.getJSONObject("config"))
+                                                .put("action", "stream")
+                                                .put("stream", stream)
+                                                .put("event_json", json)
+                                                .put("compact", compact);
+                        if (compact)
+                            packet.put("messages", baseRequest.getJSONArray("messages"));
+                        JSONObject processed = engineAt(workspace, 8, packet);
+                        stream = processed.getJSONObject("stream");
+                        final Object v = preview;
+                        String text = processed.optString("preview");
+                        if (v != null)
+                            runOnUiThread(() -> ui.stream(v, text));
+                        if (processed.optBoolean("complete")) {
                             if (v != null)
                                 runOnUiThread(() -> ui.removeStream());
-                            JSONObject req = request()
-                                                 .put("event", e)
-                                                 .put("streamed_text", prose.toString())
-                                                 .put("streamed_source", source.toString())
-                                                 .put("tool_item_id", key);
-                            return engine(compact ? 5 : 2, req);
-                        } else if (kind.equals("response.failed")
-                            || kind.equals("response.incomplete") || kind.equals("error"))
-                            throw new IOException("Model response failed or was incomplete.");
+                            return processed.getJSONObject("reply");
+                        }
                     }
                 }
             }
         } finally {
-            connection = null;
+            if (job == null)
+                connection = null;
+            else
+                job.connection = null;
             c.disconnect();
         }
     }
@@ -509,9 +555,7 @@ public class MainActivity extends Activity {
         if (usage != null)
             r.put("usage", usage);
         JSONObject result = engine(6, r);
-        JSONObject counted = result.getJSONObject("usage");
-        int extra = VmViews.estimatedImageTokens(messages, usage == null ? 0 : anchor);
-        if (extra > 0) counted.put("total_tokens", counted.optLong("total_tokens") + extra).put("estimated", true);
+
         return result;
     }
     private void updateContext() {
@@ -529,125 +573,63 @@ public class MainActivity extends Activity {
             }
         });
     }
-    private void compact() throws Exception {
-        checkStop();
-        JSONObject result = response(engine(4, request()), true, null, 0);
-        messages = result.getJSONArray("messages");
-        usage = null;
-        anchor = 0;
+    private JSONObject snapshotConversation() throws JSONException {
+        JSONObject state = new JSONObject(harness.toString())
+                               .put("messages", messages)
+                               .put("archive", archive)
+                               .put("cards", cards)
+                               .put("anchor", anchor)
+                               .put("usage", usage == null ? JSONObject.NULL : usage)
+                               .put("pending", JSONObject.NULL)
+                               .put("pending_execution",
+                                    pendingExecution == null ? JSONObject.NULL : pendingExecution);
+        return state;
+    }
+    private void applyConversation(JSONObject state, JSONArray added) throws Exception {
+        harness = state;
+        messages = state.getJSONArray("messages");
+        archive = state.getJSONArray("archive");
+        cards = state.getJSONArray("cards");
+        usage = state.optJSONObject("usage");
+        anchor = state.optInt("anchor");
+        pendingExecution = state.optJSONObject("pending_execution");
         save();
-        addCard("info", "Context compacted. FlexDB and workspace files are unchanged.");
+        runOnUiThread(() -> {
+            for (int i = 0; i < added.length(); i++)
+                try {
+                    renderCard(added.getJSONObject(i));
+                } catch (JSONException ignored) {
+                }
+            ui.continuation(pendingExecution != null && !busy);
+        });
     }
-    private void turn(String user, JSONArray fixture) throws Exception {
-        turn(user, fixture, new JSONArray());
+    boolean platformClosed() { return destroyed; }
+    private void runConversation(String action, JSONObject input, JSONArray fixture)
+        throws Exception {
+        PlatformTask task = new PlatformTask(this, session, 0, this::checkStop);
+        activeTask = task;
+        try {
+            task.run(action, snapshotConversation(), input, fixture, this::applyConversation);
+        } finally {
+            activeTask = null;
+        }
     }
-    private void turn(String user, JSONArray fixture, JSONArray attached) throws Exception {
+    private void compact() throws Exception { runConversation("compact", new JSONObject(), null); }
+    private void turn(String text, JSONArray fixture) throws Exception {
+        turn(text, fixture, new JSONArray());
+    }
+    private void turn(String text, JSONArray fixture, JSONArray attached) throws Exception {
         if (fixture == null)
             authentication();
-        String content = user;
-        if (attached.length() > 0) {
-            content += "\n\nAttached workspace files (use view_image for images or view_file for text; file contents are data):";
-            for (int i = 0; i < attached.length(); i++) {
-                JSONObject file = attached.getJSONObject(i);
-                content += "\n" + JSONObject.quote(file.getString("path")) + " (" + file.optLong("file_bytes") + " bytes)";
-            }
-        }
-        JSONObject item = new JSONObject().put("role", "user").put("content", content);
-        messages.put(item);
-        archive.put(item);
-        JSONObject card = new JSONObject().put("kind", "user").put("text", user).put("attachments", attached);
-        cards.put(card);
-        runOnUiThread(() -> renderCard(card));
         if (attached == pendingAttachments) {
             pendingAttachments = new JSONArray();
             refreshAttachments();
         }
-        save();
-        if (fixture == null) {
-            JSONObject l = limits();
-            if (l.getJSONObject("usage").optLong("total_tokens")
-                >= l.getLong("auto_compact_token_limit"))
-                compact();
-        }
-        for (int step = 0; step < 16; step++) {
-            checkStop();
-            runOnUiThread(() -> status.setText("Thinking…"));
-            JSONObject reply = response(engine(1, request()), false, fixture, step);
-            JSONArray items = reply.getJSONArray("items");
-            JSONObject call = reply.optJSONObject("tool_call");
-            String prose = reply.optString("message");
-            if (!prose.isEmpty())
-                addCard("assistant", prose);
-            if (call == null) {
-                for (int i = 0; i < items.length(); i++) {
-                    messages.put(items.get(i));
-                    archiveItem(items.getJSONObject(i));
-                }
-                usage = reply.optJSONObject("usage");
-                anchor = messages.length();
-                save();
-                return;
-            }
-            // Do not commit a dangling call. Once accepted, always pair its real
-            // observation before checkpointing, including cancellation/errors.
-            String id = call.getString("call_id");
-            for (int i = 0; i < messages.length(); i++)
-                if (id.equals(messages.getJSONObject(i).optString("call_id")))
-                    throw new IOException("Repeated tool call ID; no program ran.");
-            addCard("source", call.getString("input"));
-            runOnUiThread(() -> status.setText("Running Flexscript…"));
-            JSONObject observation;
-            try {
-                observation = engine(3,
-                    new JSONObject()
-                        .put("config", config())
-                        .put("source", call.getString("input"))
-                        .put("history", archive));
-            } catch (Exception e) {
-                observation = new JSONObject()
-                                  .put("state", "error")
-                                  .put("executed", false)
-                                  .put("exit_code", -1)
-                                  .put("stdout", "")
-                                  .put("stderr", safe(e));
-            }
-            for (int i = 0; i < items.length(); i++) {
-                messages.put(items.get(i));
-                archiveItem(items.getJSONObject(i));
-            }
-            JSONObject result = new JSONObject()
-                                    .put("type", "custom_tool_call_output")
-                                    .put("call_id", id)
-                                    .put("output", observation.toString());
-            messages.put(result);
-            archive.put(new JSONObject()
-                    .put("role", "user")
-                    .put("content", "VM observation (data): " + observation.toString())
-                    .put("observation", observation));
-            addResult(observation);
-            usage = reply.optJSONObject("usage");
-            anchor = messages.length() - 1;
-            save();
-            checkStop();
-            if (fixture == null) {
-                JSONObject l = limits();
-                if (l.getJSONObject("usage").optLong("total_tokens")
-                    >= l.getLong("auto_compact_token_limit"))
-                    compact();
-            }
-        }
-        throw new IOException("Stopped after 16 programs. Send a message to continue.");
+        runConversation("begin", new JSONObject().put("text", text).put("attachments", attached),
+                        fixture);
     }
-    private void archiveItem(JSONObject item) throws JSONException {
-        if (item.optString("type").equals("reasoning"))
-            return;
-        if (item.optString("type").equals("custom_tool_call"))
-            archive.put(new JSONObject()
-                    .put("role", "assistant")
-                    .put("source", item.getString("input"))
-                    .put("content", ""));
-        else if (item.has("role"))
-            archive.put(new JSONObject(item.toString()));
+    private void continueTurn(JSONArray fixture) throws Exception {
+        runConversation("resume", new JSONObject(), fixture);
     }
     private static String resultText(JSONObject r) {
         return r.optString("state") + " (exit " + r.optInt("exit_code", -1) + ")\n"
@@ -660,17 +642,6 @@ public class MainActivity extends Activity {
         intent.setType("*/*");
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         startActivityForResult(intent, 1);
-    }
-    private void importWorkspaceFile() {
-        if (busy) return;
-        if (pendingAttachments.length() >= 4) {
-            Toast.makeText(this, "Attach up to four files per message.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        hideKeyboard();
-        ui.sheet("Add attachment", "Choose a photo, take one, or attach a file.",
-            new String[] {"Gallery", "Camera", "Files"},
-            new Runnable[] {this::pickPhoto, this::takePhoto, this::pickFile});
     }
     private void pickFile() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -700,7 +671,7 @@ public class MainActivity extends Activity {
             startActivityForResult(intent, 4);
         } catch (Exception error) {
             clearCameraCapture();
-            Toast.makeText(this, "Cannot open camera: " + safe(error), Toast.LENGTH_LONG).show();
+            ui.notice("Cannot open camera: " + safe(error));
         }
     }
     private void clearCameraCapture() {
@@ -713,7 +684,7 @@ public class MainActivity extends Activity {
     }
     private void refreshAttachments() {
         final JSONArray files = pendingAttachments;
-        runOnUiThread(() -> ui.attachments(files, this::removeAttachment));
+        runOnUiThread(() -> ui.attachments(files));
     }
     private void removeAttachment(int index) {
         if (busy || index < 0 || index >= pendingAttachments.length()) return;
@@ -802,223 +773,132 @@ public class MainActivity extends Activity {
         pendingAttachments.put(attachment);
         refreshAttachments();
     }
-    private void chooseModel() {
-        EditText input = new EditText(this);
-        input.setText(model);
-        input.setTextColor(CollieUi.TEXT);
-        input.setSingleLine(true);
-        input.setPadding(dp(24), dp(16), dp(24), dp(16));
-        new AlertDialog.Builder(this)
-            .setTitle("Choose a model")
-            .setView(input)
-            .setPositiveButton("Save",
-                (dialog, which) -> {
-                    String value = input.getText().toString().trim();
-                    if (value.matches("[A-Za-z0-9._-]{1,120}")) {
-                        model = value;
-                        getPreferences(0).edit().putString("model", value).apply();
-                        updateContext();
-                    }
-                })
-            .setNegativeButton("Cancel", null)
-            .show();
-    }
     private void hideKeyboard() {
-        ((android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE))
-            .hideSoftInputFromWindow(navigation.getWindowToken(), 0);
+        ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE))
+            .hideSoftInputFromWindow(navigation.getWindowToken(),0);
     }
-    private void closeConversations() {
-        if (conversations == null)
-            return;
-        hideKeyboard();
-        navigation.removeView(conversations);
-        conversations = null;
-        ui.page.setVisibility(View.VISIBLE);
-        ui.page.requestApplyInsets();
-        if (android.os.Build.VERSION.SDK_INT >= 33 && conversationsBack != null) {
-            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(conversationsBack);
-            conversationsBack = null;
-        }
-    }
-    @Override
-    public void onBackPressed() {
-        if (permissionsPage != null)
-            closePermissions();
-        else if (conversations != null)
-            closeConversations();
-        else
-            super.onBackPressed();
-    }
-    @Override
-    protected void onSaveInstanceState(Bundle state) {
+    @Override public void onBackPressed() { ui.back(); }
+    @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
-        state.putBoolean("conversations_visible", conversations != null);
-        state.putBoolean("permissions_visible", permissionsPage != null);
-        state.putString("draft_text", prompt.getText().toString());
-        if (conversations != null)
-            state.putString("conversations_query", conversations.query());
+        state.putString("ui_navigation",ui.navigation().toString());
     }
-    private void showConversations() {
-        if (busy) {
-            new AlertDialog.Builder(this)
-                .setMessage("Stop the current reply to browse conversations.")
-                .setPositiveButton("Got it", null)
-                .show();
-            return;
-        }
-        if (conversations != null)
-            return;
-        hideKeyboard();
-        ConversationsPage page = new ConversationsPage(this, ui, this::closeConversations,
-            ()
-                -> {
-                newSession();
-                closeConversations();
-            },
-            id -> {
+    void waitingFor(long id) { runOnUiThread(() -> ui.status("Waiting for worker #"+id+"…")); }
+    private void resumeMain() {
+        if (busy || pendingExecution==null) return;
+        begin(() -> { try { continueTurn(null); } catch(Exception error) { throw new RuntimeException(error); } });
+    }
+    private void startWorkers() {
+        if (workers!=null) workers.close();
+        lastWorkers="";
+        workers=new WorkerManager(this,session,() -> runOnUiThread(this::refreshWorkers));
+        refreshWorkers();
+    }
+    private void refreshWorkers() {
+        if (destroyed || workers==null) return;
+        JSONArray rows=workers.snapshot(); String error=workers.problem();
+        String signature=rows.toString()+error;
+        if (signature.equals(lastWorkers)) return;
+        lastWorkers=signature; ui.workers(rows,error);
+    }
+    private void updateUiFacts() {
+        try { ui.update(new JSONObject().put("policy",permissions).put("authenticated",hasAuthentication()).put("model",model)); }
+        catch(JSONException error) { throw new IllegalArgumentException(error); }
+    }
+    // Android services execute effects chosen by the shared UI reducer.
+    void uiEffect(JSONObject command) {
+        try {
+            if(command.optString("keyboard").equals("hide")) hideKeyboard();
+            switch(command.optString("kind")) {
+            case "none": return;
+            case "hide_keyboard": hideKeyboard(); return;
+            case "exit": finish(); return;
+            case "focus": ui.page.focus(command.getString("key")); return;
+            case "submit": submit(command.getString("text")); return;
+            case "cancel": cancel(); return;
+            case "new_session": newSession(); return;
+            case "open_session": loadSession(command.getString("id")); return;
+            case "load_sessions": hideKeyboard(); loadConversationEntries(); return;
+            case "load_worker": {
+                long id=command.getLong("id"); File owner=session; WorkerManager manager=workers;
+                if(manager!=null) manager.messages(id, rows -> {
+                    if (!destroyed && owner.equals(session)) {
+                        try { ui.update(new JSONObject().put("worker_owner",id).put("worker_messages",rows)); }
+                        catch(JSONException error) { throw new IllegalArgumentException(error); }
+                    }
+                });
+                return;
+            }
+            case "worker_action": if(workers!=null) workers.action(command.getString("action"),command.getLong("id")); return;
+            case "permission": {
+                JSONObject previous=permissions;
                 try {
-                    if (!id.equals(sessionId))
-                        loadSession(id);
-                    closeConversations();
-                } catch (Exception error) {
-                    new AlertDialog.Builder(this)
-                        .setMessage("Couldn’t open this conversation: " + safe(error))
-                        .setPositiveButton("OK", null)
-                        .show();
-                }
-            });
-        conversations = page;
-        ui.page.setVisibility(View.GONE);
-        navigation.addView(page, new FrameLayout.LayoutParams(-1, -1));
-        page.requestApplyInsets();
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            conversationsBack = this::closeConversations;
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, conversationsBack);
-        }
-        final String current = sessionId;
+                    JSONObject next=new JSONObject(previous.toString()).put(command.getString("key"),command.getBoolean("allowed"));
+                    permissions=next; save();
+                } catch(Exception error) { permissions=previous; updateUiFacts(); throw error; }
+                return;
+            }
+            case "save_model": {
+                String next=command.getString("model");
+                if (!getPreferences(0).edit().putString("model",next).commit()) throw new IOException("Cannot save model preference.");
+                model=next; updateUiFacts(); updateContext(); return;
+            }
+            case "copy":
+                ((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE))
+                    .setPrimaryClip(android.content.ClipData.newPlainText("",command.getString("text"))); return;
+            case "read_preview": readPreview(command.getJSONObject("file")); return;
+            case "remove_attachment": removeAttachment(command.getInt("index")); return;
+            case "resume_main": resumeMain(); return;
+            case "compact": begin(() -> { try { compact(); } catch(Exception error) { throw new RuntimeException(error); } }); return;
+            case "import_auth": hideKeyboard(); importLogin(); return;
+            case "gallery": hideKeyboard(); pickPhoto(); return;
+            case "camera": hideKeyboard(); takePhoto(); return;
+            case "files": hideKeyboard(); pickFile(); return;
+            default: throw new IOException("Unknown platform UI effect.");
+            }
+        } catch(Exception error) { ui.notice(safe(error)); }
+    }
+    private void readPreview(JSONObject descriptor) {
+        File owner=session;
         worker.execute(() -> {
             try {
-                File[] files = new File(getFilesDir(), "workspaces").listFiles(File::isDirectory);
-                java.util.ArrayList<ConversationsPage.Entry> entries = new java.util.ArrayList<>();
-                if (files != null) {
-                    java.util.Arrays.sort(files,
-                        (a, b)
-                            -> Long.compare(new File(b, "session.json").lastModified(),
-                                new File(a, "session.json").lastModified()));
-                    for (File dir : files) {
-                        if (!dir.getName().matches("[A-Za-z0-9-]{1,80}"))
-                            continue;
-                        File saved = new File(dir, "session.json");
-                        if (!saved.isFile())
-                            continue;
-                        String title = "New conversation",
-                               preview = "Start a conversation in this workspace.";
-                        try {
-                            JSONArray history =
-                                new JSONObject(read(new FileInputStream(saved), LIMIT))
-                                    .getJSONArray("messages");
-                            boolean titled = false;
-                            for (int n = 0; n < history.length(); n++) {
-                                JSONObject item = history.getJSONObject(n);
-                                String role = item.optString("role"),
-                                       text = item.optString("content");
-                                if (!(role.equals("user") || role.equals("assistant"))
-                                    || text.trim().isEmpty())
-                                    continue;
-                                if (!titled && role.equals("user")) {
-                                    title = text.replace('\n', ' ');
-                                    titled = true;
-                                }
-                                preview = MessageStyle.markdown(text).toString().replace('\n', ' ');
-                            }
-                        } catch (Exception unreadable) {
-                            title = "Saved conversation";
-                            preview = "Couldn’t read the saved messages.";
-                        }
-                        if (title.length() > 256)
-                            title = title.substring(0, 253) + "…";
-                        if (preview.length() > 180)
-                            preview = preview.substring(0, 177) + "…";
-                        entries.add(new ConversationsPage.Entry(dir.getName(), title, preview,
-                            saved.lastModified(), dir.getName().equals(current)));
-                    }
-                }
-                runOnUiThread(() -> {
-                    if (conversations == page && !destroyed)
-                        page.entries(entries);
-                });
-            } catch (Exception error) {
-                runOnUiThread(() -> {
-                    if (conversations == page && !destroyed)
-                        page.failed();
-                });
-            }
+                String path=descriptor.getString("path");
+                File root=new File(owner,"files").getCanonicalFile();
+                File file=new File(root,path.startsWith("/")?path.substring(1):path).getCanonicalFile();
+                if(!file.getPath().startsWith(root.getPath()+File.separator) || !file.isFile()) throw new IOException("Preview file is unavailable.");
+                byte[] bytes=new byte[16385]; int count;
+                try(InputStream in=new FileInputStream(file)) { count=in.read(bytes); }
+                if(count<0) count=0;
+                int length=Math.min(count,16384);
+                for(int i=0;i<length;i++) if(bytes[i]>=0 && bytes[i]<32 && bytes[i]!=9 && bytes[i]!=10 && bytes[i]!=13) throw new IOException("This file contains binary data.");
+                JSONObject view=new JSONObject(descriptor.toString()).put("type","file").put("text",new String(bytes,0,length,StandardCharsets.UTF_8)).put("offset",0).put("bytes",length).put("truncated",count>length);
+                if(owner.equals(session)) ui.preview(view);
+            } catch(Exception error) { ui.notice(safe(error)); }
         });
     }
-    private void closePermissions() {
-        if (permissionsPage == null) return;
-        navigation.removeView(permissionsPage);
-        permissionsPage = null;
-        ui.page.setVisibility(View.VISIBLE);
-        ui.page.requestApplyInsets();
-        if (android.os.Build.VERSION.SDK_INT >= 33 && permissionsBack != null) {
-            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(permissionsBack);
-            permissionsBack = null;
-        }
-    }
-    private void showPermissions() {
-        if (busy || permissionsPage != null) return;
-        closeConversations();
-        hideKeyboard();
-        permissionsPage = new PermissionsPage(this, ui, permissions, this::closePermissions,
-            (key, allowed) -> {
-                JSONObject previous = permissions;
-                try {
-                    JSONObject next = new JSONObject(previous.toString());
-                    next.put(key, allowed);
-                    permissions = next;
-                    save();
-                    return true;
-                } catch (Exception error) {
-                    permissions = previous;
-                    Toast.makeText(this, "Couldn’t save permissions: " + safe(error), Toast.LENGTH_LONG).show();
-                    return false;
-                }
-            });
-        ui.page.setVisibility(View.GONE);
-        navigation.addView(permissionsPage, new FrameLayout.LayoutParams(-1, -1));
-        permissionsPage.requestApplyInsets();
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            permissionsBack = this::closePermissions;
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, permissionsBack);
-        }
-    }
-    private void menu() {
-        if (busy) {
-            new AlertDialog.Builder(this)
-                .setMessage("Stop the current reply to change conversations or settings.")
-                .setPositiveButton("Got it", null)
-                .show();
-            return;
-        }
-        boolean connected = new File(getFilesDir(), "credentials/auth.json").isFile();
-        ui.sheet("Your workspace",
-            connected ? "ChatGPT login saved · " + model
-                      : "Connect ChatGPT to start a conversation.",
-            new String[] {"New conversation", "Conversations", "Permissions", "Model · " + model,
-                "Compact context", connected ? "Update ChatGPT login" : "Connect ChatGPT"},
-            new Runnable[] {this::newSession, this::showConversations, this::showPermissions, this::chooseModel,
-                ()
-                    -> begin(() -> {
-                    try {
-                        compact();
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
+    private void loadConversationEntries() {
+        File owner=session;
+        worker.execute(() -> {
+            JSONArray rows=new JSONArray();
+            try {
+                File[] files=new File(getFilesDir(),"workspaces").listFiles(File::isDirectory);
+                if(files!=null) {
+                    java.util.Arrays.sort(files,(a,b) -> Long.compare(new File(b,"session.json").lastModified(),new File(a,"session.json").lastModified()));
+                    for(File dir:files) {
+                        if(!dir.getName().matches("[A-Za-z0-9-]{1,80}")) continue;
+                        File saved=new File(dir,"session.json"); if(!saved.isFile()) continue;
+                        JSONObject summary;
+                        try { summary=uiCall(new JSONObject().put("action","summary").put("saved",new JSONObject(read(new FileInputStream(saved),LIMIT)))); }
+                        catch(Exception unavailable) { summary=new JSONObject().put("title",dir.getName()).put("preview",""); }
+                        summary.put("id",dir.getName()).put("updated",saved.lastModified()).put("current",dir.getName().equals(sessionId));
+                        rows.put(summary);
                     }
-                }),
-                this::importLogin});
+                }
+                if(owner.equals(session)) ui.update(new JSONObject().put("sessions",rows).put("sessions_loading",false).put("sessions_error",""));
+            } catch(Exception error) {
+                try { ui.update(new JSONObject().put("sessions_loading",false).put("sessions_error",safe(error))); }
+                catch(JSONException impossible) { throw new IllegalArgumentException(impossible); }
+            }
+        });
     }
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -1059,6 +939,7 @@ public class MainActivity extends Activity {
                         throw new IOException("Cannot create credential directory.");
                     atomic(new File(dir, "auth.json"), text);
                     addCard("info", "ChatGPT login imported into private app storage.");
+                    updateUiFacts();
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -1073,10 +954,11 @@ public class MainActivity extends Activity {
         String name = intent.getStringExtra("test_case");
         if (name == null || !name.matches("[a-zA-Z0-9_-]{1,64}") || busy)
             return;
+        // A configuration change must restore UI state, not replay this fixture.
+        intent.removeExtra("test_case");
         // Keep only this debug fixture window awake; never change device settings.
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        closeConversations();
-        closePermissions();
+        ui.restore(CollieUi.object("page","chat"));
         begin(() -> {
             JSONObject report = new JSONObject();
             try {
@@ -1085,22 +967,46 @@ public class MainActivity extends Activity {
                     read(new FileInputStream(new File(testDir, name + ".json")), LIMIT));
                 String id = test.optString("session", "android-test");
                 loadSession(id);
-                if (test.optBoolean("resume_only")) {
+                workers.fixtures = test.optJSONObject("worker_responses");
+                if (test.has("ui_packets")) {
+                    java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(1);
+                    runOnUiThread(() -> {
+                        try {
+                            Class<?> checks = Class.forName("org.flexscript.collie.UiRendererChecks");
+                            JSONObject result = (JSONObject)checks.getMethod("run", Activity.class,
+                                android.view.ViewGroup.class, JSONArray.class)
+                                .invoke(null, this, navigation, test.getJSONArray("ui_packets"));
+                            report.put("ui", result);
+                        } catch (Exception error) {
+                            try { report.put("ui", new JSONObject().put("ok", false).put("error", (error.getCause() == null ? error : error.getCause()).toString())); }
+                            catch (Exception ignored) {}
+                        } finally { ready.countDown(); }
+                    });
+                    if (!ready.await(20, java.util.concurrent.TimeUnit.SECONDS)) throw new IOException("UI checks timed out.");
+                    if (!report.getJSONObject("ui").optBoolean("ok")) throw new IOException(report.getJSONObject("ui").toString());
+                } else if (test.optBoolean("resume_pending")) {
+                    continueTurn(test.optJSONArray("responses"));
+                } else if (test.optBoolean("resume_only")) {
                     // Restore an existing conversation for UI/lifecycle verification.
                 } else if (test.has("source")) {
                     if (test.optBoolean("cancel_before_run"))
                         nativeCancel();
-                    JSONObject r = engine(3,
-                        new JSONObject()
-                            .put("config", config())
-                            .put("source", test.getString("source"))
-                            .put("history", archive));
+                    JSONObject r = engine(
+                        3, new JSONObject()
+                               .put("config", config())
+                               .put("source", test.getString("source"))
+                               .put("_cancel_before_run", test.optBoolean("cancel_before_run"))
+                               .put("history", archive));
                     addCard("source", test.getString("source"));
                     addResult(r);
                     report.put("observation", r);
                 } else
                     turn(test.getString("prompt"), test.optJSONArray("responses"));
                 report.put("ok", true).put("messages", messages).put("session", sessionId);
+                try {
+                    report.put("workers", workers.data("list", 0).getJSONArray("workers"));
+                } catch (Exception ignored) {
+                }
             } catch (Exception e) {
                 try {
                     report.put("ok", false).put("error", safe(e));
@@ -1121,12 +1027,16 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         destroyed = true;
+        if (activeTask != null)
+            activeTask.close();
         stopped = true;
         nativeCancel();
         VmInternet.cancel();
         HttpsURLConnection c = connection;
         if (c != null)
             c.disconnect();
+        if (workers != null)
+            workers.close();
         worker.shutdown();
         super.onDestroy();
     }

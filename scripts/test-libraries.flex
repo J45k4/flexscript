@@ -31,6 +31,11 @@ fn suite(compiler) {
     h_compile(installed,source,t_binary);h_elf(t_binary,0);t_checks=t_checks+1;
     h_check(h_run(h_args(installed,"run",source,"--help",0,0)),0,"Usage: app [PORT [STATE-PATH]]\nBinds only 127.0.0.1.\n");t_checks=t_checks+1;
     h_save(source,h_read("examples/monolith/todo.flex"));h_compile(installed,source,t_binary);h_elf(t_binary,0);t_checks=t_checks+1;
+    h_save(h_join(h_dir(source),"counter-view.flex"),h_read("examples/ui/counter-view.flex"));
+    h_save(source,h_read("examples/ui/counter.flex"));h_compile(installed,source,t_binary);h_elf(t_binary,0);t_checks=t_checks+1;
+    h_save(source,h_read("examples/ui/desktop-counter.flex"));h_compile(installed,source,t_binary);h_check(h_run(h_args("env","SDL_VIDEODRIVER=dummy",t_binary,"2",0,0)),0,0);t_checks=t_checks+1;
+    h_save(source,h_read("examples/ui/counter.flex"));
+    h_check(h_run(h_args(installed,"run",source,"--help",0,0)),0,"Usage: app [PORT [STATE-PATH]]\nBinds only 127.0.0.1.\n");t_checks=t_checks+1;
     let link=h_join(t_work,"compiler-link");h_assert(syscall(88,installed,link,0,0,0,0)==0,"compiler symlink failed");
     h_compile(link,source,t_binary);h_elf(t_binary,0);t_checks=t_checks+1;
     // Installed libraries and a configured root work without URL downloads.

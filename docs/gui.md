@@ -234,3 +234,15 @@ only the examples: `build/gui-window.png`, `build/gui-input.png` and
 SDL ABI references: [window creation](https://wiki.libsdl.org/SDL2/SDL_CreateWindow),
 [events](https://wiki.libsdl.org/SDL2/SDL_Event),
 [OpenGL dispatch](https://wiki.libsdl.org/SDL2/SDL_GL_GetProcAddress).
+## Portable desktop views
+
+`libs/ui/desktop.flex` builds the portable declarative widget renderer on this
+library's windows, events and canvas. The same view syntax and update batches run
+on Android, Chromium and desktop. See [Portable views](ui.md#native-desktop-adapter)
+and [the native counter example](../examples/ui/desktop-counter.flex).
+
+The optional `libs/gui/draw.flex` module adds font/text layers, texture drawing,
+clipping, translucent fills, local image decoding and clipboard helpers. It loads
+SDL2_ttf, Fontconfig and GdkPixbuf lazily; existing window/canvas/OpenGL imports
+retain their original runtime dependencies. Fonts and textures have explicit
+close functions, and clipboard reads must be released with `gui_clipboard_release`.

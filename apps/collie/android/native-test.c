@@ -11,8 +11,11 @@ void start_c(long *sp) {
     long argc = *sp;
     char **argv = (char **)(sp + 1);
     long op = 3;
-    if (argc > 1)
-        op = argv[1][0] - '0';
+    if (argc > 1) {
+        op = 0;
+        for (const char *digit = argv[1]; *digit >= '0' && *digit <= '9'; digit++)
+            op = op * 10 + *digit - '0';
+    }
     long size = 0;
     while (size < 8388608) {
         long n = call(63, 0, (long)input + size, 8388608 - size);
