@@ -9,3 +9,6 @@ fn http_status(response){return db_word(db_at(response,0));}
 fn http_body(response){return db_at(response,1);}
 fn http_url(response){return db_at(response,2);}
 fn http_truncated(response){return db_word(db_at(response,3));}
+fn view_file(path){return view_file_range(path,0,16384);}
+fn view_file_range(path,offset,limit){let r=db_request("view_file");db_add(r,db_text(path));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_word(db_rpc(r));}
+fn view_image(path){let r=db_request("view_image");db_add(r,db_text(path));return db_word(db_rpc(r));}

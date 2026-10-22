@@ -18,6 +18,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.*;
 import java.util.Locale;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 /** Native phone presentation. No framework dependency or model/runtime logic. */
 final class CollieUi {
@@ -32,16 +33,21 @@ final class CollieUi {
     final TextView status;
     private final TextView context, modelLabel;
     private final Meter meter;
-    private final IconButton send, jump;
+    private final IconButton send, jump, attach;
+    private final HorizontalScrollView attachmentScroll;
+    private final LinearLayout attachmentRow;
+    private int attachmentCount;
     private final View stateDot;
     private final LinearLayout welcome;
     private final boolean authenticated;
     private boolean busy, followTail = true, scrollPending;
     private ExecutionCard lastExecution;
+    private java.io.File workspace;
+    void workspace(java.io.File value) { workspace = value; }
     private View streamRoot;
 
     CollieUi(Activity owner, Runnable submit, Runnable newChat, Runnable conversations,
-        Runnable menu, boolean connected) {
+        Runnable menu, Runnable attachFile, boolean connected) {
         activity = owner;
         authenticated = connected;
         page = column();
@@ -118,9 +124,17 @@ final class CollieUi {
         page.addView(conversation, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout footer = column();
         footer.setPadding(dp(16), dp(8), dp(16), dp(12));
+        attachmentScroll = new HorizontalScrollView(owner);
+        attachmentScroll.setHorizontalScrollBarEnabled(false);
+        attachmentRow = row();
+        attachmentScroll.addView(attachmentRow);
+        attachmentScroll.setVisibility(View.GONE);
+        footer.addView(attachmentScroll);
         LinearLayout composer = row();
         composer.setPadding(dp(8), dp(5), dp(6), dp(5));
         composer.setBackground(shape(SURFACE, 26, BORDER));
+        attach = iconButton("plus", "Attach file", attachFile, false);
+        composer.addView(attach, lp(44, 44));
         prompt = new EditText(owner);
         prompt.setTextColor(TEXT);
         prompt.setHintTextColor(MUTED);
@@ -321,7 +335,9 @@ final class CollieUi {
         updateSend();
     }
     private void updateSend() {
-        boolean enabled = busy || !prompt.getText().toString().trim().isEmpty();
+        boolean enabled = busy || attachmentCount > 0 || !prompt.getText().toString().trim().isEmpty();
+        attach.setEnabled(!busy);
+        attach.setAlpha(busy ? .35f : 1f);
         send.setEnabled(enabled);
         send.setAlpha(enabled ? 1f : .35f);
         send.icon = busy ? "stop" : "send";
@@ -329,6 +345,19 @@ final class CollieUi {
         send.setBackground(shape(busy ? ERROR : ACCENT, 22, 0));
         send.setContentDescription(busy ? "Stop response" : "Send message");
         send.invalidate();
+    }
+    void attachments(JSONArray files, java.util.function.IntConsumer remove) {
+        attachmentRow.removeAllViews();
+        attachmentCount = files.length();
+        attachmentScroll.setVisibility(attachmentCount == 0 ? View.GONE : View.VISIBLE);
+        for (int i = 0; i < files.length(); i++) {
+            final int index = i;
+            JSONObject file = files.optJSONObject(i);
+            if (file != null)
+                AttachmentViews.attachment(activity, attachmentRow, file, workspace,
+                    () -> { if (!busy) remove.accept(index); });
+        }
+        updateSend();
     }
     void context(String model, long used, long total, boolean estimated) {
         modelLabel.setText(model);
@@ -372,8 +401,15 @@ final class CollieUi {
             bubble.setPadding(dp(17), dp(14), dp(17), dp(14));
             bubble.setBackground(shape(USER, 20, 0));
             TextView content = body(value, TEXT);
-            bubble.addView(content);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
+            if (!value.isEmpty()) bubble.addView(content);
+            JSONArray files = card.optJSONArray("attachments");
+            if (files != null) for (int i = 0; i < files.length(); i++) {
+                JSONObject file = files.optJSONObject(i);
+                if (file != null) AttachmentViews.attachment(activity, bubble, file, workspace, null);
+            }
+            // Give text its final width before measuring its height alongside attachment tiles.
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                files != null && files.length() > 0 ? -1 : -2, -2);
             p.leftMargin = dp(30);
             alignment.addView(bubble, p);
             spaced(alignment, 12, 24);
@@ -605,6 +641,12 @@ final class CollieUi {
                 if (!error.isEmpty())
                     output(content, error, ERROR);
             }
+            if (observation != null) {
+                org.json.JSONArray views=observation.optJSONArray("views");
+                if (views != null) for(int i=0;i<views.length();i++) {
+                    JSONObject view=views.optJSONObject(i);if(view!=null)AttachmentViews.add(activity,content,view,workspace);
+                }
+            }
             results.addView(content);
             Runnable updateResult = () -> {
                 content.setVisibility(resultExpanded ? View.VISIBLE : View.GONE);
@@ -744,37 +786,24 @@ final class CollieUi {
     }
     private static final class Mark extends View {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.drawable.Drawable artwork;
         Mark(Context c) {
             super(c);
             setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            int id = getResources().getIdentifier("collie_border_collie", "drawable", c.getPackageName());
+            artwork = c.getDrawable(id);
+            if (artwork instanceof android.graphics.drawable.BitmapDrawable)
+                ((android.graphics.drawable.BitmapDrawable) artwork).setFilterBitmap(true);
         }
         @Override
         protected void onDraw(Canvas c) {
             float size = Math.min(getWidth(), getHeight());
             c.save();
             c.scale(size / 48, size / 48);
-            p.setColor(0xff29372b);
-            p.setStyle(Paint.Style.FILL);
+            p.setColor(USER);
             c.drawRoundRect(0, 0, 48, 48, 15, 15, p);
-            p.setColor(ACCENT);
-            Path head = new Path();
-            head.moveTo(11, 13);
-            head.lineTo(20, 17);
-            head.quadTo(24, 15, 28, 17);
-            head.lineTo(37, 13);
-            head.lineTo(34, 30);
-            head.quadTo(24, 42, 14, 30);
-            head.close();
-            c.drawPath(head, p);
-            p.setColor(BG);
-            c.drawCircle(19, 25, 1.3f, p);
-            c.drawCircle(29, 25, 1.3f, p);
-            Path nose = new Path();
-            nose.moveTo(21, 30);
-            nose.lineTo(27, 30);
-            nose.lineTo(24, 33);
-            nose.close();
-            c.drawPath(nose, p);
+            artwork.setBounds(5, 5, 43, 43);
+            artwork.draw(c);
             c.restore();
         }
     }

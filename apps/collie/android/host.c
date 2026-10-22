@@ -331,14 +331,19 @@ static long files(long op, long *a) {
     if (dir < 0)
         return dir;
     long r = -22;
-    if (op == 2000) {
+    if (op == 2000 || op == 2004) {
         long fd = track(raw(56, dir, (long)leaf, 0x8000 | 0x800, 0, 0, 0));
         if (fd >= 0) {
             B st[128];
             r = raw(80, fd, (long)st, 0, 0, 0, 0);
             if (r >= 0 && (*(unsigned int *)(st + 16) & 0170000) == 0100000) {
-                long p = allocate(a[2] + 1);
-                r = raw(67, fd, p, a[2], a[1], 0, 0);
+                long bytes = op == 2004 ? *(long *)(st + 48) : a[2];
+                if (bytes < 0 || (op == 2004 && bytes > 2097152)) {
+                    close_fd(fd);close_fd(dir);return -27;
+                }
+                long p = allocate(bytes + 1);
+                r = raw(67, fd, p, bytes, op == 2004 ? 0 : a[1], 0, 0);
+                if (op == 2004 && r >= 0 && r != bytes) r = -5;
                 if (r >= 0) {
                     *(long *)a[3] = r;
                     r = p;
@@ -439,13 +444,11 @@ static long files(long op, long *a) {
     close_fd(dir);
     return r;
 }
-static long network_get(long url, long size) {
-    if (++network_calls > 4)
-        return (long)"{\"error\":\"HTTPS request limit (4 per program) exceeded.\"}";
+static long java_bytes(const char *method_name, long data, long size) {
     if (!jni_env || !jni_class)
-        return (long)"{\"error\":\"HTTPS requires the Android host.\"}";
-    if (size < 1 || size > 4096)
-        return (long)"{\"error\":\"Invalid HTTPS URL length.\"}";
+        return (long)"{\"error\":\"This operation requires the Android host.\"}";
+    if (size < 0 || size > 2097152)
+        return (long)"{\"error\":\"Invalid Android bridge payload length.\"}";
     char *out = (char *)allocate(262145);
     void *env = jni_env;
     const void *const *t = *(const void *const **)env;
@@ -453,12 +456,12 @@ static long network_get(long url, long size) {
      * 32 bits; jvalue[] elements are 8 bytes on ARM64. No native abort may
      * cross a Java frame: check cancellation only after the call returns. */
     void *method = ((void *(*)(void *, void *, const char *, const char *))t[113])(
-        env, jni_class, "vmHttpGet", "([B)[B");
+        env, jni_class, method_name, "([B)[B");
     void *input = (void *)0, *result = (void *)0;
     long bytes = -1;
     if (method) input = ((void *(*)(void *, int))t[176])(env, (int)size);
     if (input) {
-        ((void (*)(void *, void *, int, int, const B *))t[208])(env, input, 0, (int)size, (B *)url);
+        ((void (*)(void *, void *, int, int, const B *))t[208])(env, input, 0, (int)size, (B *)data);
         void *arguments[1] = {input};
         long started = now();
         result = ((void *(*)(void *, void *, void *, const void *))t[116])(
@@ -478,9 +481,18 @@ static long network_get(long url, long size) {
     if (result) ((void (*)(void *, void *))t[23])(env, result);
     if (input) ((void (*)(void *, void *))t[23])(env, input);
     tick();
-    if (bytes < 0) return (long)"{\"error\":\"Android HTTPS bridge failed.\"}";
+    if (bytes < 0) return (long)"{\"error\":\"Android host bridge failed.\"}";
     out[bytes] = 0;
     return (long)out;
+}
+static long network_get(long url, long size) {
+    if (++network_calls > 4)
+        return (long)"{\"error\":\"HTTPS request limit (4 per program) exceeded.\"}";
+    if (!jni_env || !jni_class)
+        return (long)"{\"error\":\"HTTPS requires the Android host.\"}";
+    if (size < 1 || size > 4096)
+        return (long)"{\"error\":\"Invalid HTTPS URL length.\"}";
+    return java_bytes("vmHttpGet", url, size);
 }
 static long callback(long n, long *a) {
     tick();
@@ -508,10 +520,12 @@ static long callback(long n, long *a) {
         return output_n[a[0] == 2 ? 1 : 0];
     if (n == 1008)
         return truncated;
-    if (n >= 2000 && n <= 2003)
+    if (n >= 2000 && n <= 2004)
         return files(n, a);
     if (n == 3000)
         return network_get(a[0], a[1]);
+    if (n == 3001)
+        return java_bytes("vmViewImage", a[0], a[1]);
     long x = a[0], y = a[1], z = a[2], d = a[3], e = a[4], f = a[5];
     if (n == 0) {
         if (x == 0) {

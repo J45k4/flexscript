@@ -113,6 +113,67 @@ separate from the VM CPU deadline. Stop also cancels guest network requests.
 The transport never attaches Collie's model credentials or login cookies.
 Web content is data, not instructions. No additional model tools are exposed.
 
+### Viewing files and images
+
+The only model tool remains `flexscript`. Its preloaded viewing functions use
+the same **Read workspace files** permission and path confinement as `fs_read`:
+
+```flexscript
+fn main(){
+    if !view_file("/notes.txt") {db_io(0,2,db_error(),db_len(db_error()));return 1;}
+    if !view_image("/images/photo.png") {db_io(0,2,db_error(),db_len(db_error()));return 1;}
+    return 0;
+}
+```
+
+`view_file(path)` queues the first 16 KiB of a text file in the actual VM result.
+`view_file_range(path, byte_offset, limit)` reads another slice, with a limit of
+1–16,384 bytes. The observation's `views` field includes text, byte offset,
+byte count and a truncation flag. These are UTF-8 text previews; binary files
+require `fs_read` or a supported image decoder. Successful calls return 1;
+failures return 0 with `db_error()`. At most four views are queued per program.
+
+`view_image(path)` reads a regular PNG, JPEG or WebP file, up to 2 MiB and
+24 megapixels. Android decodes the pixels, applies EXIF orientation, composites
+transparency on white, and normalizes a JPEG snapshot to at most 1536 pixels per
+edge and 512 KiB. Animated WebP is viewed as a single decoded frame. The harness attaches the actual pixels as an
+[`input_image`](https://developers.openai.com/api/docs/guides/images-vision)
+part of the tool result sent to the model. It does not ask the model to interpret
+base64 text. Snapshots strip source metadata and live outside the guest root in
+`files/workspaces/SESSION/previews/`, keyed by their SHA-256. The canonical
+conversation stores only snapshot IDs, not base64. Old results keep their exact
+snapshot when the source file changes. There are at most 128 distinct snapshots
+per conversation. Requests include at most 4 MiB of normalized images, preferring
+newest snapshots and including repeated images only once; omitted images are
+explicitly identified to the model. Approximate context accounting adds a
+conservative 4096 tokens per newly viewed image until real usage is available.
+
+Expand **Show result** to see text/image preview cards. **Open file** displays
+selectable text with its byte range. **Open image** opens a full-screen image
+with pinch zoom and dragging. Files and images are treated as data, not HTML or
+instructions; no external viewer or remote URL is launched.
+
+Use the **+ button beside the message box** and choose **Gallery**, **Camera**
+or **Files**. Gallery opens Android's photo picker (or the image document picker
+on older Android); Camera opens the phone's camera to take a photo directly.
+These use [Android photo selection](https://developer.android.com/training/data-storage/shared/photo-picker)
+and [camera intents](https://developer.android.com/media/camera/camera-intents);
+Collie requests no broad photo-library or camera permission. Only the chosen
+image is imported. Photos up to 32 MiB / 100 megapixels are sampled, oriented,
+and converted to a metadata-free JPEG of at most 1536 pixels per edge and
+512 KiB before entering the workspace. Camera output uses a temporary private
+content URI, is never added to the shared gallery by Collie, and is deleted
+after import or cancellation. Files opens Android's document picker. Collie
+copies only that selected file into the current private workspace (up to 2 MiB), chooses an unused filename, and shows a draft
+attachment with an image thumbnail when supported. Attach up to four files,
+remove unwanted attachments with **×**, then press **Send** with or without text.
+Draft attachments survive app restarts and stay with their conversation. Removing
+one deletes only its imported workspace copy. The agent receives the attached
+paths when you send; selecting a file alone sends no message. Sent messages keep
+their attachment cards. Contents reach the model when a program reads/views them.
+The picker does not grant the VM access to the containing phone folder. Other
+apps, credentials and shared storage remain outside the VM's filesystem grant.
+
 Each source is compiled **on the phone** into checked VM bytecode. Guest memory
 is bounded to 4 MiB, execution to four million instructions/one second excluding
 network waits, source to
@@ -152,7 +213,17 @@ python3 scripts/test-collie-android-internet.py --out build/android-collie \
 # Exercise real UI switches, native denials, persistence and read-only access:
 python3 scripts/test-collie-android-permissions.py --out build/android-collie \
   --serial DEVICE_SERIAL
+# File/image previews, permission denials, document picker and live model vision:
+python3 scripts/test-collie-android-views.py --out build/android-collie \
+  --serial DEVICE_SERIAL --picker --media --live
 ```
+
+The viewing checks preserve the existing conversation and grants, and remove
+their temporary workspace and download fixtures. Omit `--live` for checks that
+do not need a signed-in model connection; `--picker` exercises Android's real
+document picker. `--media` also exercises Gallery and Camera: on an emulator
+it selects the synthetic fixture and captures an emulated photo; on a phone it
+opens and cancels both screens without selecting personal photos or taking one.
 
 The test suite also runs the exact native engine under `qemu-aarch64[-static]`,
 using an independent freestanding driver. It covers genuine compilation,

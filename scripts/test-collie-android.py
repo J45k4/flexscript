@@ -84,6 +84,26 @@ def main():
             r=execute('fn main(){let v=fs_read('+json.dumps(path)+',0,100);if(v){return 77;}return 0;}');assert r['exit_code']==0,r
         r=execute('fn main(){return fs_write("escape/forbidden",db_text("no"));}');assert r['exit_code']==0,r
         passed('parent traversal and symlink escapes denied')
+        r=execute('fn main(){return view_file("notes/a.txt")-1;}')
+        assert r['exit_code']==0 and r['views'][0]['text']=='private' and r['stdout']=='',r
+        (root/'files'/'long.txt').write_text('x'*20000)
+        r=execute('fn main(){view_file("long.txt");return view_file_range("long.txt",16384,16384)-1;}')
+        assert len(r['views'][0]['text'])==16384 and r['views'][0]['truncated'] and len(r['views'][1]['text'])==3616 and not r['views'][1]['truncated'],r
+        passed('text file views expose bounded content and support byte-offset paging')
+        r=execute('fn main(){let i=0;while i<5 {view_file("notes/a.txt");i=i+1;}let e=db_error();db_io(0,1,e,db_len(e));return 0;}')
+        assert len(r['views'])==4 and 'four' in r['stdout'],r
+        for path in ['../agent.flexdb','escape/agent.flexdb']:
+            r=execute('fn main(){view_file('+json.dumps(path)+');let e=db_error();db_io(0,1,e,db_len(e));return 0;}')
+            assert 'Cannot view' in r['stdout'] and not r.get('views'),r
+        (root/'files'/'image.png').write_bytes(b'\x89PNG\r\n\x1a\n')
+        r=execute('fn main(){view_file("image.png");let e=db_error();db_io(0,1,e,db_len(e));return 0;}')
+        assert 'binary data' in r['stdout'],r
+        r=execute('fn main(){view_image("image.png");let e=db_error();db_io(0,1,e,db_len(e));return 0;}')
+        assert 'requires the Android host' in r['stdout'],r
+        (root/'files'/'large.png').write_bytes(b'x'*2097153)
+        r=execute('fn main(){view_image("large.png");let e=db_error();db_io(0,1,e,db_len(e));return 0;}')
+        assert '2 MiB' in r['stdout'],r
+        passed('view limits, traversal, symlinks, binary text rejection and image input bounds enforced')
         r=execute('fn main(){let r=http_get("https://example.com/");let e=db_error();syscall(1,1,e,db_len(e),0,0,0);return 0;}')
         assert r['stdout']=='HTTPS requires the Android host.',r
         passed('HTTPS API compiles and reports missing Android transport under QEMU')
@@ -102,7 +122,7 @@ def main():
         assert (root/'files/notes/a.txt').read_text()=='private'
         assert execute(READ,permissions=dict(grants,db_write=False))['stdout']=='persistent'
         passed('six independent permission gates enforce denial; disabled writes preserve files and allow DB reads')
-        operations={'files_read':['fs_read','fs_list'],'files_write':['fs_write','fs_mkdir'],
+        operations={'files_read':['fs_read','fs_list','view_file','view_image'],'files_write':['fs_write','fs_mkdir'],
             'db_read':['tables','columns','get','scan'],'db_write':['begin','commit','rollback','create','insert','update','delete','add_column','rename_column','drop_column'],
             'history':['history','history_read'],'internet':['http_get']}
         for key,ops in operations.items():

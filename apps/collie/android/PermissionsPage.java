@@ -20,7 +20,7 @@ final class PermissionsPage extends LinearLayout {
         "Write workspace files", "Read database", "Write database", "Read past messages"};
     private static final String[] DETAILS = {
         "Fetch web pages and APIs over HTTPS. Your ChatGPT connection stays available when this is off.",
-        "Read files and list folders in this conversation’s private workspace.",
+        "Read files, list folders, and view text or images in this conversation’s private workspace.",
         "Create folders and create or replace workspace files.",
         "Read tables, columns and saved rows in this conversation’s FlexDB.",
         "Create tables, change schemas, and add, update or delete saved rows.",
