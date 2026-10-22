@@ -7,7 +7,7 @@ global dt_id=0;
 global dt_event=0;
 global dt_checks=0;
 view app_view(){use permission_screen();}
-fn dt_check(ok,text){h_assert(ok,text);dt_checks=dt_checks+1;return 0;}
+fn dt_check(ok,text){h_assert(ok,text);dt_checks=dt_checks+1;h_print(1,h_cat3("PASS ",text,"\n"));return 0;}
 fn dt_inject(kind,a,b,c,d){h_assert(ffi_call_i32(ffi_symbol(dt_fixture,"gui_fixture_event"),kind,dt_id,a,b,c,d)>0,"SDL event injection");h_assert(gui_poll(dt_event),"SDL poll");return ui_desktop_event(dt_event);}
 fn dt_text(text){h_assert(ffi_call_i32(ffi_symbol(dt_fixture,"ui_fixture_text"),dt_id,text,0,0,0,0),"SDL text input injection");h_assert(gui_poll(dt_event),"SDL text poll");return ui_desktop_event(dt_event);}
 fn dt_shot(path){let w=gui_pixel_width(ud_window);let h=gui_pixel_height(ud_window);let pixels=h_take(w*h*4);dt_check(gui_read_pixels(ud_window,pixels,w*4,w*h*4),"native rendered pixel capture");h_save_bytes(path,pixels,w*h*4,420);return 0;}
@@ -60,6 +60,6 @@ fn main(argc,argv){
     let scroll=ud_need("chat-scroll");let old_scroll=load64(scroll+136);ui_desktop_bounds("chat-scroll",bounds);dt_inject(1024,load64(bounds)+20,load64(bounds+8)+20,0,0);dt_inject(1027,0,2,0,0);ui_desktop_draw();dt_check(load64(scroll+136)<old_scroll,"native wheel input scrolls the clipped chat viewport");
     ui_desktop_bounds("composer-send",bounds);x=load64(bounds)+load64(bounds+16)/2;y=load64(bounds+8)+load64(bounds+24)/2;dt_inject(1025,1,x,y,0);dt_check(!dt_inject(1026,1,x,y,0),"disabled controls emit no action");
     gui_resize(ud_window,520,740);ui_desktop_draw();ui_desktop_bounds("composer",bounds);dt_check(load64(bounds+8)+load64(bounds+24)<=740 && load64(ud_need("app-root")+80)==520,"window resize reflows the shared layout and keeps the composer visible");
-    ui_desktop_close();gui_quit();
+    ui_desktop_close();gui_quit();ffi_call(ffi_symbol(dt_fixture,"ui_fixture_release"),0,0,0,0,0,0);
     h_print(1,h_cat3("PASS: ",h_int(dt_checks)," native desktop UI checks\n"));return 0;
 }
