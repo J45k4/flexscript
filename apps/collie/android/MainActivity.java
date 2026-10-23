@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
     private static native void nativeBegin();
     // Called synchronously by the trusted native broker, never by raw guest FFI.
     private static byte[] vmHttpGet(byte[] url) { return VmInternet.get(url); }
+    private static byte[] vmHardware(byte[] request) { return VmHardware.call(request); }
     private static byte[] vmViewImage(byte[] bytes) { return VmViews.capture(bytes); }
     private static byte[] vmImageBytes(byte[] id) {
         try {
@@ -59,7 +60,12 @@ public class MainActivity extends Activity {
     private JSONObject pendingExecution;
     private JSONObject harness = new JSONObject();
     private PlatformTask activeTask;
+    final HardwareConsent hardwareConsent = new HardwareConsent(this);
+    volatile boolean hardwareVisible;
+    final PermissionPrompts permissionPrompts = new PermissionPrompts(this);
     private volatile JSONObject permissions = new JSONObject();
+    private volatile HardwareNetwork.ModelRoute modelRoute;
+    private String modelNetwork = "default";
     private String model = "gpt-6.1-sol", sessionId;
     private File session;
     private JSONArray messages = new JSONArray(), archive = new JSONArray(),
@@ -90,9 +96,8 @@ public class MainActivity extends Activity {
             nativeBegin();
             if (request.optBoolean("_cancel_before_run"))
                 nativeCancel();
-            if (op == 3)
-                VmInternet.begin();
-            VmViews.begin(workspace);
+            if (op == 3) { VmInternet.begin();VmHardware.startProgram(); }
+            VmViews.begin(workspace);VmHardware.begin(this,workspace);
             try {
                 n = nativeCall(
                     op, buffer(input, true), input.length, out,
@@ -102,7 +107,7 @@ public class MainActivity extends Activity {
                 bytes = new byte[(int)n];
                 out.get(bytes);
             } finally {
-                VmViews.end();
+                VmViews.end();VmHardware.end();
                 nativeThread = null;
             }
         }
@@ -138,6 +143,25 @@ public class MainActivity extends Activity {
         return result.getJSONObject("policy");
     }
     boolean workersAllowed() { return permissions.optBoolean("workers"); }
+    boolean permissionNeedsPrompt(String key) { return "ask".equals(permissions.opt(key)); }
+    boolean ownsPermissionRequest(File workspace) { return workspace.equals(session) && !destroyed; }
+    void showPermissionRequest(JSONObject request) {
+        if (!destroyed) ui.update(CollieUi.object("permission_request",request));
+    }
+    void savePermission(String key,Object value) throws Exception {
+        JSONObject previous=permissions;
+        try {
+            permissions=new JSONObject(previous.toString()).put(key,value);
+            save();if(!Boolean.TRUE.equals(value)){
+                // A running VM holds a configuration snapshot. Stop it on an
+                // actual revocation so it cannot reopen devices with old grants.
+                // Permission dialogs resume outside nativeCall and keep their
+                // ordinary denied-call result rather than being cancelled.
+                if(Boolean.TRUE.equals(previous.opt(key))&&nativeThread!=null){nativeCancel();VmInternet.cancel();VmHardware.cancel();}
+                VmHardware.revoke(session,key);
+            }updateUiFacts();
+        } catch(Exception error) { permissions=previous;updateUiFacts();throw error; }
+    }
     boolean hasAuthentication() {
         return new File(getFilesDir(), "credentials/auth.json").isFile();
     }
@@ -176,6 +200,8 @@ public class MainActivity extends Activity {
             return insets;
         });
         model = getPreferences(0).getString("model", "gpt-6.1-sol");
+        modelNetwork=getPreferences(0).getString("model_network","default");
+        try{modelRoute=new HardwareNetwork.ModelRoute(this,modelNetwork);}catch(Exception error){modelNetwork="default";try{modelRoute=new HardwareNetwork.ModelRoute(this,modelNetwork);}catch(Exception ignored){}}
         try {
             String id=getPreferences(0).getString("session",null);
             if (id==null) newSession(); else loadSession(id);
@@ -188,19 +214,30 @@ public class MainActivity extends Activity {
             uiBack=ui::back;
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,uiBack);
         }
+        HardwareWifi.recoverAsync(this);
         onTestIntent(getIntent());
+        permissionRationale(getIntent());
     }
+    @Override
+    protected void onStart(){super.onStart();hardwareVisible=true;}
+    @Override
+    protected void onStop(){hardwareVisible=false;VmHardware.appHidden();super.onStop();}
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
         onTestIntent(intent);
+        permissionRationale(intent);
+    }
+    private void permissionRationale(Intent intent) {
+        if(intent!=null && ("android.intent.action.VIEW_PERMISSION_USAGE".equals(intent.getAction()) || "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE".equals(intent.getAction()))) ui.healthRationale();
     }
     private void prepareSession(String id) throws IOException {
         if (!id.matches("[A-Za-z0-9-]{1,80}"))
             throw new IOException("Invalid session ID.");
         if (workers != null)
             workers.close();
+        if(session!=null)VmHardware.closeWorkspace(session);
         sessionId = id;
         session = new File(getFilesDir(), "workspaces/" + id);
         ui.workspace(session);
@@ -352,7 +389,7 @@ public class MainActivity extends Activity {
             task.cancel();
         if (nativeThread == turnThread) {
             nativeCancel();
-            VmInternet.cancel();
+            VmInternet.cancel();VmHardware.cancel();
         }
         HttpsURLConnection c = connection;
         if (c != null)
@@ -460,7 +497,7 @@ public class MainActivity extends Activity {
         }
         JSONObject transport = authentication();
         HttpsURLConnection c =
-            (HttpsURLConnection) new URL(transport.getString("url")).openConnection();
+            (HttpsURLConnection) (modelRoute==null?new URL(transport.getString("url")).openConnection():modelRoute.open(new URL(transport.getString("url"))));
         if (job == null)
             connection = c;
         else
@@ -811,7 +848,7 @@ public class MainActivity extends Activity {
         lastWorkers=signature; ui.workers(rows,error);
     }
     private void updateUiFacts() {
-        try { ui.update(new JSONObject().put("policy",permissions).put("authenticated",hasAuthentication()).put("model",model)); }
+        try { ui.update(new JSONObject().put("policy",permissions).put("authenticated",hasAuthentication()).put("model",model).put("model_network",modelNetwork)); }
         catch(JSONException error) { throw new IllegalArgumentException(error); }
     }
     // Android services execute effects chosen by the shared UI reducer.
@@ -840,12 +877,14 @@ public class MainActivity extends Activity {
             }
             case "worker_action": if(workers!=null) workers.action(command.getString("action"),command.getLong("id")); return;
             case "permission": {
-                JSONObject previous=permissions;
-                try {
-                    JSONObject next=new JSONObject(previous.toString()).put(command.getString("key"),command.getBoolean("allowed"));
-                    permissions=next; save();
-                } catch(Exception error) { permissions=previous; updateUiFacts(); throw error; }
+                savePermission(command.getString("key"),command.get("allowed"));
                 return;
+            }
+            case "permission_decision": permissionPrompts.resolve(command); return;
+            case "save_model_network": {
+                String next=command.getString("network");HardwareNetwork.ModelRoute route=new HardwareNetwork.ModelRoute(this,next);
+                if(!getPreferences(0).edit().putString("model_network",next).commit()){route.close();throw new IOException("Cannot save model network preference.");}
+                HardwareNetwork.ModelRoute old=modelRoute;modelRoute=route;modelNetwork=next;if(old!=null)old.close();updateUiFacts();return;
             }
             case "save_model": {
                 String next=command.getString("model");
@@ -913,6 +952,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if(hardwareConsent.activityResult(requestCode,resultCode))return;
         if (requestCode == 4) {
             String name = getPreferences(0).getString("camera_file", null);
             String owner = getPreferences(0).getString("camera_session", "");
@@ -976,9 +1016,20 @@ public class MainActivity extends Activity {
                 JSONObject test = new JSONObject(
                     read(new FileInputStream(new File(testDir, name + ".json")), LIMIT));
                 String id = test.optString("session", "android-test");
-                loadSession(id);
+                boolean existingSession=new File(getFilesDir(),"workspaces/"+id+"/session.json").isFile();
+                if(!test.optBoolean("hardware_preserve_handles") || !id.equals(sessionId))loadSession(id);
+                // Explicit fixture grants keep transport-focused tests separate
+                // from the lazy-permission tests. Existing grants are untouched.
+                if (!existingSession && test.has("initial_permissions")) {
+                    permissions=loadPermissions(test.get("initial_permissions"));
+                    save();updateUiFacts();
+                }
                 workers.fixtures = test.optJSONObject("worker_responses");
-                if (test.has("ui_packets")) {
+                if (test.optBoolean("hardware_tests")) {
+                    Class<?> checks=Class.forName("org.flexscript.collie.HardwareNetworkChecks");
+                    JSONObject result=(JSONObject)checks.getMethod(test.optBoolean("hardware_aware_tests")?"runAware":test.optBoolean("hardware_revocation_tests")?"runRevocation":test.optBoolean("hardware_wifi_tests")?"runWifi":test.optBoolean("hardware_wifi_request_tests")?"runWifiRequest":test.optBoolean("hardware_wifi_recovery_tests")?"runWifiRecovery":test.optBoolean("hardware_cellular_tests")?"runCellular":test.optBoolean("hardware_microphone_tests")?"runMicrophone":test.optBoolean("hardware_vpn_tests")?"runVpn":"run",MainActivity.class,File.class).invoke(null,this,session);
+                    report.put("hardware",result);if(!result.optBoolean("ok"))throw new IOException(result.toString());
+                } else if (test.has("ui_packets")) {
                     java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(1);
                     runOnUiThread(() -> {
                         try {
@@ -1035,13 +1086,20 @@ public class MainActivity extends Activity {
         });
     }
     @Override
+    public void onRequestPermissionsResult(int requestCode,String[] requested,int[] results) {
+        super.onRequestPermissionsResult(requestCode,requested,results);
+        hardwareConsent.result(requestCode,requested,results);
+    }
+    @Override
     protected void onDestroy() {
         destroyed = true;
+        hardwareConsent.close();
         if (activeTask != null)
             activeTask.close();
         stopped = true;
         nativeCancel();
-        VmInternet.cancel();
+        VmInternet.cancel();VmHardware.cancel();VmHardware.closeWorkspace(null);
+        if(modelRoute!=null)modelRoute.close();
         HttpsURLConnection c = connection;
         if (c != null)
             c.disconnect();

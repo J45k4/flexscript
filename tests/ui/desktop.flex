@@ -44,9 +44,9 @@ fn main(argc,argv){
     let before=dt_pool_bytes();let i=0;while i<100{ui_desktop_apply(j_at(packets,9));i=i+1;}dt_check(dt_pool_bytes()<=before+1048576,"retained model arena remains bounded through repeated snapshots");
     ui_desktop_apply(j_parse("{\"version\":1,\"ops\":[{\"op\":\"remove\",\"key\":\"app\"}]}"));
     let policy=j_need(cp_permissions(0),"policy");let request=j_object();j_set(request,"policy",policy);j_set(request,"reset",j_bool(1));ui_desktop_apply(cu_permissions(request));ui_desktop_draw();
-    ui_desktop_bounds("permission-internet",bounds);x=load64(bounds)+30;y=load64(bounds+8)+load64(bounds+24)/2;dt_inject(1025,1,x,y,0);let permission=dt_inject(1026,1,x,y,0);
+    ui_desktop_bounds("deny-internet",bounds);x=load64(bounds)+30;y=load64(bounds+8)+load64(bounds+24)/2;dt_inject(1025,1,x,y,0);let permission=dt_inject(1026,1,x,y,0);
     let next=j_parse(j_dump(policy));j_set(next,"internet",j_bool(0));request=j_object();j_set(request,"policy",policy);j_set(request,"next_policy",next);j_set(request,"event",permission);let changed=cu_permissions(request);ui_desktop_apply(changed);ui_desktop_draw();
-    dt_check(h_equal(ui_desktop_value("permissions-summary"),"6 of 7 permissions enabled") && !j_value(j_need(j_need(changed,"command"),"allowed")),"actual desktop input round-trips through the compiled shared permission view/reducer");
+    dt_check(h_equal(ui_desktop_value("permissions-summary"),"0 allowed · 28 ask · 1 denied") && !j_value(j_need(j_need(changed,"command"),"allowed")),"actual desktop input round-trips through the compiled shared permission view/reducer");
     ui_desktop_close();dt_check(ui_desktop_open("Collie shared UI on desktop",430,932,GUI_RESIZABLE),"renderer can close and reopen");
     dt_id=load64(gui__record(ud_window)+32);
     ui_desktop_image("resource:mipmap/ic_launcher","apps/collie/android/res/drawable-nodpi/collie_border_collie.png");

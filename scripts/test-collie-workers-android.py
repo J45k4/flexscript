@@ -20,6 +20,7 @@ def completed(output):return {'type':'response.completed','response':{'status':'
 def message(text):return {'type':'message','role':'assistant','content':[{'type':'output_text','text':text}]}
 def tool(source,key):return {'type':'custom_tool_call','id':'ctc_'+key,'call_id':'call_'+key,'name':'flexscript','input':source,'status':'completed'}
 def start(name,case):
+ case.setdefault('initial_permissions',dict.fromkeys(['internet','files_read','files_write','db_read','db_write','history','workers'],True))
  write('files/test/'+name+'.json',case);adb('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name)
 def result(name):
  for _ in range(100):
@@ -119,16 +120,16 @@ click(lambda x:x.get('text','').lower()=='stop worker')
 r=result(name);observations=[json.loads(x['output']) for x in r['messages'] if x.get('type')=='custom_tool_call_output']
 assert observations[-1]['stdout']=='cancelled' and r['workers'][-1][1][2]=='cancelled',r
 passed('Stop worker cancels only that job, unblocks await and retains cancelled status')
-# Permissions are described by Flexscript and rendered as native switches.
+# Permissions and their three choices are described by Flexscript.
 adb('shell','input','keyevent','4');adb('shell','input','keyevent','4')
 click(lambda x:x.get('content-desc')=='Menu')
 click(lambda x:x.get('text')=='Permissions')
 texts=[n.get('text','') for n in dump().iter('node')]
-assert any('7 of 7 permissions enabled' in x for x in texts),texts
-click(lambda x:x.get('content-desc')=='Internet access' and x.get('class')=='android.widget.Switch')
-assert any('6 of 7 permissions enabled' in n.get('text','') for n in dump().iter('node'))
-click(lambda x:x.get('content-desc')=='Internet access' and x.get('class')=='android.widget.Switch')
-passed('shared permission metadata renders seven native switches and saves changes')
+assert any('7 allowed · 22 ask · 0 denied' in x for x in texts),texts
+click(lambda x:x.get('content-desc')=='Deny Internet access')
+assert any('6 allowed · 22 ask · 1 denied' in n.get('text','') for n in dump().iter('node'))
+click(lambda x:x.get('content-desc')=='Allow Internet access')
+passed('shared permission metadata renders seven Ask/Allow/Deny settings and saves changes')
 # Preserve evidence and avoid leaving synthetic jobs running.
 (out/'worker-android-report.json').write_text(json.dumps({'checks':checks,'serial':a.serial,'session':prefix},indent=2)+'\n')
 print(f'{len(checks)} Android worker checks passed')

@@ -1,0 +1,1 @@
+<devices><device manufacturer="Collie tests" product="Private loopback fixture" name="Collie MIDI test loopback" private="true"><input-port name="Loopback input" /><output-port name="Loopback output" /></device></devices>

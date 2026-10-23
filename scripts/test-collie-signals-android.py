@@ -28,7 +28,7 @@ def wait(test,seconds=30):
 def completed(items,delay=0):return {'type':'response.completed','_delay_ms':delay,'response':{'status':'completed','output':items}}
 def message(text):return {'type':'message','role':'assistant','content':[{'type':'output_text','text':text}]}
 def tool(source,key):return {'type':'custom_tool_call','id':'ctc_'+key,'call_id':'call_'+key,'name':'flexscript','input':source}
-def start(name,case):put(name,case);adb('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name)
+def start(name,case):case.setdefault('initial_permissions',dict.fromkeys(['internet','files_read','files_write','db_read','db_write','history','workers'],True));put(name,case);adb('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name)
 def result(name):
  value=wait(lambda:read('files/test/'+name+'.result.json'));assert value['ok'],value;return value
 def passed(text):checks.append(text);print('PASS',text,flush=True)

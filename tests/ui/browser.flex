@@ -16,11 +16,11 @@ fn main(argc,argv){
     let portfile=h_join(profile,"DevToolsActivePort");let end=net_now()+30000;
     while !h_exists(portfile){h_pump(chrome,10);if h_status(chrome)!= -999 || net_now()>end{h_stop(chrome);h_stop(server);h_die("headless browser failed to start");}}
     let text=h_read(portfile);cd_port=h_number(h_slice(text,h_find(text,"\n")));let url=h_cat3("http://127.0.0.1:",h_int(port),"/");let a=cd_tab(url);let b=cd_tab(url);
-    let ready="document.querySelector('[data-ui-key=\"permissions-summary\"]')?.textContent==='7 of 7 permissions enabled'";cd_wait(a,ready);cd_wait(b,ready);
-    cd_eval(b,"window.original=document.querySelector('[data-ui-key=\"toggle-internet\"]');true");
-    cd_eval(a,"document.querySelector('[data-ui-key=\"toggle-internet\"]').click();true");cd_wait(b,"document.querySelector('[data-ui-key=\"permissions-summary\"]').textContent==='6 of 7 permissions enabled'");
-    ub_check(b,"document.querySelector('[data-ui-key=\"toggle-internet\"]')===original && !original.checked");
-    cd_eval(a,"document.querySelector('[data-ui-key=\"toggle-internet\"]').click();true");cd_wait(b,ready);
+    let ready="document.querySelector('[data-ui-key=\"permissions-summary\"]')?.textContent==='0 allowed · 29 ask · 0 denied'";cd_wait(a,ready);cd_wait(b,ready);
+    cd_eval(b,"window.original=document.querySelector('[data-ui-key=\"deny-internet\"]');true");
+    cd_eval(a,"document.querySelector('[data-ui-key=\"deny-internet\"]').click();true");cd_wait(b,"document.querySelector('[data-ui-key=\"permissions-summary\"]').textContent==='0 allowed · 28 ask · 1 denied'");
+    ub_check(b,"document.querySelector('[data-ui-key=\"deny-internet\"]')===original && original.textContent==='Deny'");
+    cd_eval(a,"document.querySelector('[data-ui-key=\"ask-internet\"]').click();true");cd_wait(b,ready);
     cd_screenshot(a,"build/ui-permissions-browser.png",430,932,1);ub_check(a,"document.documentElement.scrollWidth<=430");
     let packets=h_read("build/ui-portable-packets.json");cd_eval(a,h_cat3("window.packets=",packets,";window.mount=document.createElement('div');document.body.append(mount);window.events=[];window.testUi=new FlexscriptUi(mount,e=>events.push(e));testUi.apply(packets[0]);window.field=testUi.need('input-2').el;field.value='local draft';field.focus();field.setSelectionRange(2,6);window.heading=testUi.need('heading').el;true"));
     cd_eval(a,"testUi.apply(packets[1]);testUi.apply(packets[2]);testUi.apply(packets[3]);true");

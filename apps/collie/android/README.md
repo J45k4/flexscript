@@ -49,17 +49,37 @@ workspace; **Conversations** reopens one. Context shows tokens, with
 shared Codex checkpoint protocol and desktop limits (272,000 raw; 258,400 usable;
 244,800 automatic compaction threshold for the default model).
 
-Open **Menu → Permissions** to control the agent's access for the current
-conversation. Seven independent switches grant internet access, workspace file
-reads, workspace file writes, database reads, database writes, and archived
-message access, and workers/model feedback. Settings save immediately and survive restart/resume. New and
-older conversations default to the existing enabled capabilities; changing one
-conversation does not affect another. The model receives the current grants in
-each request, and the native VM broker enforces them on every capability call.
-Denied operations return 0 with `db_error()` set to `Permission denied: NAME`.
-Computation/stdout/progress still work when all seven are off. The internet switch controls
-guest HTTPS requests; it does not disable Collie's model connection. Revoking
-access does not remove data already present in model context or chat history.
+Open **Menu → Permissions** to choose **Ask / Allow / Deny** independently for
+internet, workspace file reads/writes, database reads/writes, archived messages,
+workers/model feedback, and each exposed hardware family. Cellular diagnostics
+and Location have independent gates; Android asks separately for phone-state or
+precise-location permission on first use. New conversations start at **Ask**; existing explicit
+boolean grants are preserved. Partial or malformed stored policies fail closed.
+
+The first actual capability call pauses before doing its work and displays an
+access request. **Allow** or **Deny** saves the decision for this conversation and
+its workers, then resumes the original VM call. Denial returns 0 with `db_error()`
+set to `Permission denied: NAME`. **Stop this task** cancels without changing the
+grant. Settings and pending checkpoints survive restart; completed instructions
+and side effects are never replayed. Permission requests share the existing
+32-signal budget with progress and feedback. Commit or roll back a database
+transaction before invoking a capability that might need approval; an open
+transaction returns an actionable error rather than suspending unsafely.
+
+Computation/stdout/progress need no approval. The internet policy controls guest
+HTTPS requests; Collie's model connection remains available. Revoking access
+does not remove data already present in model context or chat history. Requests
+from workers use the same conversation grants; approving one prevents duplicate
+prompts for that capability in other queued workers.
+
+Policy normalization, broker gates, checkpoint transitions, prompt content and
+all permission UI live in Flexscript. Android only queues requests, delivers UI
+events and persists decisions. Android runtime and per-device USB permissions
+are requested at first use, after Collie approval, without holding the VM lock.
+Hardware features are optional in the manifest. The current adapter inventory,
+API limits and emulator/device verification status are tracked in
+[HARDWARE.md](HARDWARE.md); permission entries do not imply that every proposed
+adapter is implemented.
 
 ## Storage and execution
 
@@ -136,8 +156,10 @@ The preloaded Android filesystem API is:
 Use `db_error()` for failures. Paths are relative to the session's `files/`
 root, whether or not they begin with `/`. Parent traversal, symlinks, devices and
 other app/host files are denied. Credentials and raw database/session files
-are outside that capability. This version has no shared-storage folder picker,
-USB capability or Android UI API for programs.
+are outside that capability. Persisted shared-storage tree access and a guest
+Android UI API remain pending. USB primitives, Flexscript serial drivers,
+cellular diagnostics, Wi-Fi scans/leases/suggestions/hotspots, DNS-SD, raw VPN
+transport and other hardware functions are documented in [HARDWARE.md](HARDWARE.md).
 
 Programs have bounded internet access using the preloaded `http_get(url)`:
 
@@ -618,3 +640,16 @@ python3 scripts/test-collie-signals.py --out build/android-agent-signals
 python3 scripts/test-collie-signals-android.py --out build/android-agent-signals \
   --serial emulator-5580
 ```
+
+## Lazy-permission verification
+
+```sh
+python3 scripts/test-collie-lazy-permissions.py --out build/android-collie
+python3 scripts/test-collie-lazy-permissions-android.py --out build/android-collie \
+  --serial emulator-5580
+```
+
+The native suite covers every first-use gate, denial, nested frame restoration,
+restart, cancellation, worker inheritance, saved-policy compatibility and open
+transactions. The emulator suite uses synthetic model responses, taps the actual
+shared permission UI and verifies files and saved conversation state.

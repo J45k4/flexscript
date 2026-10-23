@@ -93,6 +93,14 @@ view model_screen(){
             text("model-title",text:"Choose a model",size:22,font:"medium",color:"#edf2ed");
             input("model-input",text:"Model",description:"Model",value:cu_s("model_input"),action:"model_input",single_line:1,color:"#edf2ed",hint_color:"#8e9d9f",size:16,padding:12,background:"#232c33",radius:12);
             if h_len(cu_s("model_error")){text("model-error",text:cu_s("model_error"),color:"#f1aaa6",size:13);}
+            text("model-network-label",text:"Model connection",size:14,color:"#8e9d9f");
+            text("model-network-detail",text:"Choose the internet connection Collie uses. Programs select their own networks separately.",size:12,color:"#8e9d9f");
+            row("model-network-choices",gap:6){
+                button("model-network-default",text:"Auto",action:"model_network",action_id:0,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("default"),radius:10,align:"center");
+                button("model-network-wifi",text:"Wi-Fi",action:"model_network",action_id:1,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("wifi"),radius:10,align:"center");
+                button("model-network-cellular",text:"Cellular",action:"model_network",action_id:2,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("cellular"),radius:10,align:"center");
+                button("model-network-ethernet",text:"Ethernet",action:"model_network",action_id:3,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("ethernet"),radius:10,align:"center");
+            }
             use cu_action("model-save","Save","save_model",0);
             use cu_action("model-cancel","Cancel","back",0);
         }

@@ -5,16 +5,19 @@ global cu_policy=0;
 global cu_entries=0;
 fn cu_key(prefix,key){return m_cat(prefix,key);}
 fn cu_rows(){let rows=ui_items();if !cu_entries{cu_entries=j_get(cp_permissions(0),"entries");}let entries=cu_entries;let i=0;while i<j_count(entries){ui_item_add(rows,j_at(entries,i));i=i+1;}return rows;}
-fn cu_allowed(key){let value=j_get(cu_policy,key);return value && j_value(value);}
-fn cu_summary(){let rows=cu_rows();let i=0;let count=0;while i<load64(rows){if cu_allowed(j_s(load64(rows+8+i*8),"key")){count=count+1;}i=i+1;}return m_cat(m_cat(m_int(count),m_cat(" of ",m_int(load64(rows))))," permissions enabled");}
+fn cu_allowed(key){return h_equal(cp_mode(cu_policy,key),"allow");}
+fn cu_permission_bg(key,mode){if h_equal(cp_mode(cu_policy,key),mode){return "#354b3a";}return "#242d34";}
+fn cu_summary(){let rows=cu_rows();let i=0;let allowed=0;let ask=0;while i<load64(rows){let key=j_s(load64(rows+8+i*8),"key");if cu_allowed(key){allowed=allowed+1;}if h_equal(cp_mode(cu_policy,key),"ask"){ask=ask+1;}i=i+1;}if ask{return m_cat(m_cat(m_cat(m_int(allowed)," allowed · "),m_cat(m_int(ask)," ask · ")),m_cat(m_int(load64(rows)-allowed-ask)," denied"));}return m_cat(m_cat(m_int(allowed),m_cat(" of ",m_int(load64(rows))))," permissions enabled");}
 view permission_row(entry){
     let key=j_s(entry,"key");
-    row(cu_key("permission-",key),action:key,description:j_s(entry,"title"),padding:16,gap:10,background:"#191f25",radius:16,border_width:1,border_color:"#2c353b"){
-        column(cu_key("labels-",key),weight:1,gap:6){
-            text(cu_key("title-",key),text:j_s(entry,"title"),size:16,color:"#edf2ed",font:"medium");
-            text(cu_key("detail-",key),text:j_s(entry,"detail"),size:13,color:"#8e9d9f");
+    column(cu_key("permission-",key),padding:16,gap:10,background:"#191f25",radius:16,border_width:1,border_color:"#2c353b"){
+        text(cu_key("title-",key),text:j_s(entry,"title"),size:16,color:"#edf2ed",font:"medium");
+        text(cu_key("detail-",key),text:j_s(entry,"detail"),size:13,color:"#8e9d9f");
+        row(cu_key("choices-",key),gap:8){
+            button(cu_key("ask-",key),text:"Ask",description:cu_key("Ask for ",j_s(entry,"title")),action:key,weight:1,min_height:48,align:"center",background:cu_permission_bg(key,"ask"),color:"#c5e3ae",radius:10);
+            button(cu_key("allow-",key),text:"Allow",description:cu_key("Allow ",j_s(entry,"title")),action:key,weight:1,min_height:48,align:"center",background:cu_permission_bg(key,"allow"),color:"#c5e3ae",radius:10);
+            button(cu_key("deny-",key),text:"Deny",description:cu_key("Deny ",j_s(entry,"title")),action:key,weight:1,min_height:48,align:"center",background:cu_permission_bg(key,"deny"),color:"#c5e3ae",radius:10);
         }
-        check(cu_key("toggle-",key),text:j_s(entry,"title"),checked:cu_allowed(key),action:key,min_height:48,color:"#c5e3ae");
     }
 }
 view permission_screen(){
@@ -26,10 +29,10 @@ view permission_screen(){
         text("permissions-summary",text:cu_summary(),size:13,color:"#c5e3ae",padding_x:22,padding_y:10);
         scroll("permissions-scroll",weight:1){
             column("permissions-content",padding:18,gap:10){
-                text("permissions-intro",text:"Choose what Collie can access in this conversation.",size:15,color:"#8e9d9f");
+                text("permissions-intro",text:"Ask when first used, allow future calls, or deny access in this conversation.",size:15,color:"#8e9d9f");
                 each entry in cu_rows(){use permission_row(entry);}
-                text("permissions-note",text:"Saved automatically for this conversation. Turning access off blocks future program calls; it does not erase information already in the chat.",size:12,color:"#8e9d9f",padding_y:10);
-                text("permissions-private",text:"Login credentials, other apps, shared storage, USB and host processes remain unavailable to programs.",size:12,color:"#8e9d9f");
+                text("permissions-note",text:"Saved automatically for this conversation and inherited by its workers. Denying access blocks future calls; it does not erase information already in the chat.",size:12,color:"#8e9d9f",padding_y:10);
+                text("permissions-private",text:"Login credentials remain private. Android may ask separately before opening a device, sharing a screen, or accessing files outside this workspace.",size:12,color:"#8e9d9f");
             }
         }
     }
@@ -45,9 +48,8 @@ fn cu_permissions(request){
     if h_len(action){
         if h_equal(action,"back") && h_equal(key,"permissions-back"){j_set(command,"kind",j_string("back"));}
         else {
-            let value=cj_get(event,"value");let found=j_get(old,action);
-            if found && h_equal(key,cu_key("permission-",action)) && h_equal(cj_text(event,"type"),"click"){value=j_bool(!j_value(found));}
-            else if !found || !h_equal(key,cu_key("toggle-",action)) || !h_equal(cj_text(event,"type"),"change") || !value || j_kind(value)!=5{return c_error("Invalid permissions UI event.");}
+            let value=cp_choice(action,key);let found=j_get(old,action);
+            if !found || !value || !h_equal(cj_text(event,"type"),"click"){return c_error("Invalid permissions UI event.");}
             j_set(command,"kind",j_string("permission"));j_set(command,"key",j_string(action));j_set(command,"allowed",value);
         }
     }

@@ -24,7 +24,7 @@ pkg = 'org.flexscript.collie'
 checks, requests = [], []
 labels = dict(internet='Internet access', files_read='Read workspace files',
     files_write='Write workspace files', db_read='Read database',
-    db_write='Write database', history='Read past messages')
+    db_write='Write database', history='Read past messages', workers='Manage workers')
 
 def adb(*command, data=b'', check=True):
     result = subprocess.run([args.adb, '-s', args.serial, *map(str, command)],
@@ -43,9 +43,12 @@ before = saved(original)
 session = 'perm-check-' + str(time.time_ns())
 other = session + '-other'
 
+def base_grants(sid):return {key:saved(sid)['permissions'][key] for key in labels}
+
 def case(name, request):
     requests.append(name)
     request.setdefault('session', session)
+    request.setdefault('initial_permissions', dict.fromkeys(labels, True))
     path = 'files/test/' + name
     adb('shell', 'run-as', pkg, 'mkdir', '-p', 'files/test')
     adb('shell', 'run-as', pkg, 'sh', '-c', "'cat > " + path + ".json'",
@@ -90,15 +93,19 @@ def scroll(down):
         width // 2, int(height * (.32 if down else .76)), 250)
 
 def toggle(key, checked):
-    for _ in range(5):
-        node = find(tree(), labels[key], True)
+    for _ in range(8):
+        node = find(tree(), ('Allow ' if checked else 'Deny ') + labels[key])
         if node is not None:
-            if (node.get('checked') == 'true') != checked:
+            left, top, right, bottom = map(int, re.findall(r'\d+', node.get('bounds')))
+            if right > left and bottom > top and bottom < height - 40:
                 tap(node)
-            assert saved(session)['permissions'][key] == checked
-            return
+                until = time.monotonic() + 2
+                while time.monotonic() < until:
+                    if saved(session)['permissions'][key] == checked:
+                        return
+                    time.sleep(.1)
         scroll(True)
-    raise AssertionError('Switch not visible: ' + key)
+    raise AssertionError('Permission choice not reachable: ' + key)
 
 def open_page():
     tap(find(tree(), 'Menu'))
@@ -119,14 +126,14 @@ let v=db_values();db_add(v,db_text("persistent"));db_insert("notes",v);
 return db_commit()-1;}'''
 try:
     assert run('perm_seed', seed)['exit_code'] == 0
-    assert all(saved(session)['permissions'].values())
+    assert all(base_grants(session).values())
     open_page()
     (out / 'all-enabled.png').write_bytes(adb('exec-out', 'screencap', '-p'))
-    passed('Dedicated permission page lists conversation grants with defaults enabled')
+    passed('Dedicated permission page lists conversation grants with explicit legacy grants enabled')
     for key in labels:
         toggle(key, False)
-    assert not any(saved(session)['permissions'].values())
-    passed('All six switches persist their settings immediately')
+    assert not any(base_grants(session).values())
+    passed('All seven settings persist their settings immediately')
 
     probes = dict(internet='http_get("https://example.com/")',
         files_read='fs_read("note.txt",0,100)',
@@ -142,9 +149,9 @@ try:
 
     adb('shell', 'am', 'force-stop', pkg)
     adb('shell', 'am', 'start', '-n', pkg + '/.MainActivity')
-    assert not any(saved(session)['permissions'].values())
+    assert not any(base_grants(session).values())
     open_page()
-    assert find(tree(), '0 of 6 permissions enabled') is not None
+    assert find(tree(), '0 allowed · 22 ask · 7 denied') is not None
     adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
     assert find(tree(), 'Message Collie') is not None
     open_page()
@@ -153,9 +160,9 @@ try:
     passed('Grants survive process restart; header Back and Android Back return to chat')
 
     case('perm_other', dict(session=other, source='fn main(){return 0;}'))
-    assert all(saved(other)['permissions'].values())
+    assert all(base_grants(other).values())
     case('perm_reopen', dict(resume_only=True))
-    assert not any(saved(session)['permissions'].values())
+    assert not any(base_grants(session).values())
     passed('Permissions belong to their conversation and do not affect another session')
 
     open_page()

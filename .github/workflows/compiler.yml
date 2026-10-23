@@ -92,10 +92,19 @@ jobs:
 
       - name: Verify Android worker broker and VM continuation checkpoints under ARM64 QEMU
         run: |
+          build/stage2 apps/collie/tests/hardware-core.flex -o build/test-collie-hardware-core
+          build/test-collie-hardware-core
+          build/stage2 apps/collie/tests/usb-serial.flex -o build/test-collie-usb-serial
+          build/test-collie-usb-serial
+          build/stage2 run --interpret apps/collie/tests/usb-serial.flex
+          build/stage2 apps/collie/tests/guest-copy.flex -o build/test-collie-guest-copy
+          build/test-collie-guest-copy
+          build/stage2 run --interpret --fuel=50000000 apps/collie/tests/guest-copy.flex
           python3 scripts/build-collie-android.py --compiler build/stage2 --native-only --out build/android-worker-tests
           python3 scripts/test-collie-android.py --out build/android-worker-tests
           python3 scripts/test-collie-workers.py --out build/android-worker-tests
           python3 scripts/test-collie-signals.py --out build/android-worker-tests
+          python3 scripts/test-collie-lazy-permissions.py --out build/android-worker-tests
           python3 scripts/test-collie-recall.py --out build/android-worker-tests
           python3 scripts/test-collie-thinking.py --out build/android-worker-tests
           python3 scripts/test-collie-core.py --out build/android-worker-tests

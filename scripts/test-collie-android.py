@@ -169,6 +169,7 @@ def main():
             device('shell','run-as',pkg,'sh','-c',"'umask 077; cat > "+path+"'",data=data)
         def read(path,check=False):return device('exec-out','run-as',pkg,'cat',path,check=check)
         def case(name,request,timeout=150):
+            request.setdefault('initial_permissions',dict.fromkeys(['internet','files_read','files_write','db_read','db_write','history','workers'],True))
             device('shell','am','force-stop',pkg)
             put('files/test/'+name+'.json',json.dumps(request).encode())
             device('shell','run-as',pkg,'rm','-f','files/test/'+name+'.result.json')

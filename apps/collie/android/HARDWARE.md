@@ -1,0 +1,751 @@
+# Android hardware adapter implementation and verification
+
+Objective: implement every app-accessible adapter in the hardware inventory,
+with ordinary Flexscript functions, first-use Collie/Android permissions and
+minimal platform transport code. This file is a completion checklist, not a
+claim that all listed features already work.
+
+A feature requires actual calls to Android, typed results/errors, bounded I/O,
+resource cleanup, permission denial/revocation handling and appropriate tests.
+A platform-unavailable result is valid only for a real hardware/OS restriction;
+it does not count as an implementation of an otherwise available adapter.
+
+| Family | Required operations | Implementation | Verification |
+| --- | --- | --- | --- |
+| Networks | enumerate/info/events, Wi-Fi/Ethernet/cellular selection, per-network DNS, TCP/client/server, UDP, HTTP(S), model transport selection | implemented; model route UI validation in progress | selected-network TCP/UDP/HTTP/listener and event I/O passed on emulator; multiple physical transports pending |
+| Wi-Fi | scans, connection requests/suggestions, Direct, Aware, local-only hotspot, RTT | status/scans, scoped network requests/suggestions and local-only hotspot SDK adapter implemented; Direct channel/group/service/socket bindings implemented with integration in progress; RTT AP and Aware attachment/discovery/message/data-path/peer RTT SDK bindings implemented; Aware radio integration pending | virtual-AP scans, actual precise Location/Nearby consent and TCP through an approved request passed; hotspot error callback passed, successful AP/device checks pending; orphan recovery after actual process death passed; P2P discovery/pairing/TCP/UDP passed in earlier headless runs, DNS-SD exchange unresolved; RTT unsupported/validation checks passed, measured distance pending; 10 Aware permission/unsupported/ownership/API-reference checks passed, NAN radio proof pending |
+| Network services | DNS-SD discovery/advertising, approved VPN IP transport | implemented | actual Android DNS-SD over virtual Wi-Fi and approved foreground TUN read/write/protection/teardown passed; encrypted mesh/gateway is separate work |
+| Cellular diagnostics | subscriptions, signal/service/cell data with platform permissions | implemented; read-only diagnostics, separate cellular + location gates | 19 headless Android scenarios passed, including real runtime prompts, NR cell data, refresh, roaming callbacks and both grants; physical SIM/multi-SIM/radio checks pending |
+| USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt, accessory mode, disconnect handling | implemented; device consent and transfers need a real fixture | UsbManager inventory/events, missing devices, invalid arguments and wrong handle types passed on emulator; physical device approval/transfers/detach pending |
+| USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
+| Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | pending | pending |
+| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | pending | pending |
+| Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | pending | pending |
+| NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | pending | pending |
+| NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | pending | pending |
+| Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | pending | pending |
+| UWB | supported-device sessions and ranging events through supported APIs | pending | pending |
+| Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
+| MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
+| Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
+| Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | pending | pending |
+| Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
+| Input | delivered touch/stylus/key/mouse/gamepad events | pending | pending |
+| Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
+| Device status | battery/charging/electrical data, thermal state/headroom/events | implemented | battery/thermal status and subscriptions passed; thermal-change injection pending |
+| Biometrics | system authentication result only | pending | pending |
+| Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
+| Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | pending | pending |
+| Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | pending | pending |
+| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/pickers exist; persisted tree access pending | existing tests; tree tests pending |
+| Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | pending capability reporting | pending |
+
+Cross-cutting requirements:
+
+- [x] Shared operation/permission registry and typed value/error transport, including checked 64-bit integers and binary data.
+- [ ] Hardware capability discovery distinguishes implemented/supported/available.
+- [x] Runtime permission consent happens on first use, outside the VM lock (GPS verified).
+- [ ] USB/device/system picker consent for the remaining adapters.
+- [ ] Opaque resource handles are scoped to a workspace, invalidated on close,
+      disconnect, process restart and permission revocation as appropriate.
+- [ ] Bounded asynchronous event queues; no callbacks into paused guest memory.
+- [ ] VM checkpoints preserve guest state, not live operating-system resources.
+- [x] Permission settings migrate existing conversations without enabling hardware.
+- [ ] Model bootstrap/API reference covers the actual implemented operations.
+- [ ] Native protocol and negative-path tests plus headless Android integration.
+- [ ] Physical-device checks distinguish actual I/O from advertised feature flags.
+
+Ongoing work is published through a draft PR on `codex/collie-hardware-adapters`.
+Keep the PR in draft until the inventory and verification gates are satisfied.
+No merge to master or phone deployment is implied.
+
+## Current build and repeatable checks
+
+Worktree: `build/collie-android`, branch `codex/collie-hardware-adapters`.
+Hardware output: `build/android-hardware`; compiler: `build/flex-hardware`.
+
+```sh
+build/flex-hardware apps/collie/tests/hardware-core.flex -o build/test-hardware-core
+build/test-hardware-core
+python3 scripts/build-collie-android.py --compiler build/flex-hardware \
+  --out build/android-hardware --debug --java-home /path/to/jdk-17
+python3 scripts/test-collie-hardware-android.py --out build/android-hardware \
+  --serial emulator-5580
+```
+
+The 38-scenario hardware run covers real local TCP/UDP/HTTP peers, per-network
+binding and DNS, network events, handle ownership/revocation, battery and thermal
+subscriptions, accelerometer events, lazy network grants, and actual Android
+location consent followed by an injected GPS fix, plus USB inventory/events and
+structured negative paths. Keystore cases include EC/RSA/HMAC signatures,
+independent JCA verification, authenticated AES-GCM with full-size binary frames,
+workspace isolation, required backing, alias protection and cleanup. It does not
+verify the still missing adapters or physical USB/NFC/Bluetooth/IR devices.
+Audio/MIDI, DNS-SD and the separate 8-scenario VPN run are documented below.
+
+The native codec test crosses the actual JSON wire representation, including
+19-digit signed integers, exact floating-point bits and all 32,768 binary bytes.
+
+Implementation boundaries:
+
+- `core/hardware.flex`: operation schema, permission bindings, typed wire codec.
+- `guest/hardware.flex`: ordinary functions inside the sole Flexscript tool.
+- `guest/usb-serial.flex`: serial discovery, control protocols, framing and buffering.
+- `android/HardwareKeystore.java`: Android Keystore objects and crypto operations.
+- `android/HardwareAudio.java`, `HardwareMidi.java`: audio/MIDI objects, streams, routes and callbacks.
+- `android/HardwareNsd.java`: Android DNS-SD objects and copied events.
+- `android/HardwareCellular.java`: Android subscriptions, radio/service callbacks and bounded cell snapshots.
+- `android/HardwareWifi.java`: Wi-Fi services/callbacks, scoped leases and platform-persistent suggestion recovery.
+- `android/HardwareVpn.java`, `CollieVpnService.java`: validated VPN configuration, owned TUN resources, socket protection and foreground lifecycle.
+- `android/VmHardware.java`: bounded I/O workers, scoped handles and event queues.
+- `android/HardwareConsent.java`: asynchronous Android runtime and per-device USB dialogs.
+- `android/HardwareUsb.java`, `UsbConsentReceiver.java`: USB objects, transfer/attach/detach transport and a private immutable approval callback.
+- `android/HardwareNetwork.java`: Network/socket objects and model connection leases.
+- `android/HardwareSensors.java`, `HardwareStatus.java`, `HardwareLocation.java`:
+  platform services and copied callback data.
+- The JNI endpoint is trusted host operation 3003; guest raw FFI remains disabled.
+
+Compiler dependency: full UI source export exhausted the former 50M transform
+fuel allowance. It now has a bounded 100M allowance with the existing 5-second
+deadline and explicit diagnostics for fuel, memory, output and deadline failures.
+
+Android 16 health sensors use granular permissions and the app exposes a shared
+privacy-rationale view via Android's required permission-usage activity alias.
+See [Android 16 behavior changes](https://developer.android.com/about/versions/16/behavior-changes-16)
+and [health permission rationale](https://developer.android.com/health-and-fitness/health-connect/get-started).
+
+
+## USB API and limits
+
+`usb_list(offset, limit)` returns `devices`, `next`, and `total`; the page limit is
+1..32 and `next == -1` ends enumeration. `usb_info(id)` returns identifiers,
+class/subclass/protocol, names and Android permission state. Configuration and
+interface pages use `usb_configurations(id, offset, limit)` and
+`usb_interfaces(id, configuration_id, offset, limit)` with limits 1..8.
+Interface descriptions include alternate settings and endpoint addresses,
+directions, transfer types, packet sizes and intervals.
+
+`usb_open(id)` asks for Collie USB access, then Android's permission for that
+specific device. Opening never implies an interface claim. Use
+`usb_claim(handle, interface_id, alternate, force)` and `usb_release`; force is
+explicitly 0 or 1. `usb_configure` requires releasing interfaces first.
+`usb_descriptors` returns a blob. `usb_control_in/out` take a direction-consistent
+request type, request, value, index, byte limit/blob, and 1..8000 ms timeout.
+`usb_transfer_in/out` take a claimed endpoint address, byte limit/blob, and timeout.
+Bulk and interrupt transfers preserve binary values and report actual byte counts;
+isochronous endpoints report an explicit unsupported-operation error.
+
+`usb_accessories()` inventories Android accessory-mode peers, and
+`usb_accessory_open(id)` returns a stream for `device_read/write`. These are
+Android Accessory Protocol peers, not arbitrary USB gadget emulation.
+`usb_watch()` is a bounded attach/detach event resource. Close every handle with
+`device_close`. Detach, Collie revocation, conversation closure and process death
+invalidate handles; Android grants are checked again on each operation. A timed-out
+interrupt request closes its device handle so a late completion cannot be mistaken
+for the next transfer. USB resources consume the common 32-handle workspace limit.
+
+The emulator has no attached USB target. No claim is made yet about physical
+control/bulk/interrupt/accessory traffic or Android's actual USB consent dialog.
+The development tests restore both conversation grants and Android location
+runtime grants/location-switch state after exercising first-use GPS consent.
+
+
+## USB serial
+
+The guest preloads `serial_ports(id)`, `serial_open(id, port, force)`,
+`serial_configure(state, baud, data_bits, parity, stop)`, `serial_lines(state, dtr, rts)`,
+`serial_break(state, enabled)`, `serial_read/write`, `serial_status`, `serial_info`
+and `serial_close`. A port description identifies the configuration, data/control
+interfaces and alternate setting; `serial_port(driver, configuration, data_interface,
+control_interface, alternate)` constructs an explicit description for a customized
+VID/PID. The host still validates every handle, interface and endpoint. Discovery
+recognizes common FTDI/CP210x/CH340/CH341 IDs and CDC ACM interfaces; a CDC Union
+descriptor supplies the actual control association when opening.
+
+Parity values are 0 none, 1 odd, 2 even, 3 mark and 4 space. Stop values are 0 one,
+1 one-and-a-half, 2 two; one-and-a-half requires five data bits. Requested baud must
+be representable within three percent; a driver/device may reject a narrower
+range. CH34x versions before 0x30 are limited to 8N1; older FTDI AM/SIO protocols
+and newer WCH families using a different protocol are explicitly outside these
+profiles. FTDI uses its standard 3 MHz baud clock, including on H-series devices;
+rates above 3 Mbaud and hardware/software flow-control configuration remain
+outside this API. Open initializes no-handshaking mode, 9600 8N1 and asserted
+DTR/RTS; callers can change framing/lines afterwards.
+
+Reads fetch whole USB packets, buffer excess data, and strip FTDI's status header
+from every packet. Small reads do not discard the rest of a received packet.
+Buffered data is delivered only after checking the live Android handle. Writes
+return the actual transferred byte count; callers must handle partial writes.
+State can be held in ordinary lists or FlexDB, but a saved OS handle is stale
+after a process restart and must be reopened.
+
+`apps/collie/tests/usb-serial.flex` checks setup traces against wire protocol
+values, multi-port FTDI baud addressing, CDC unions, all 256 binary values,
+small-read buffering, short/error responses, cleanup and stale ownership. It runs
+natively, in the interpreter, and with JIT; CI includes native/interpreter checks.
+No physical serial loopback has been measured yet.
+
+Protocol references: [Silicon Labs AN571](https://www.silabs.com/documents/public/application-notes/AN571.pdf),
+[FTDI baud documentation](https://ftdichip.com/Documents/AppNotes/AN_120_Aliasing_VCP_Baud_Rates.pdf),
+[WCH's CH341 driver](https://github.com/WCHSoftGroup/ch341ser_linux), and the
+[Linux CH341 protocol register reference](https://github.com/torvalds/linux/blob/master/drivers/usb/serial/ch341.c).
+
+## Android Keystore
+
+`key_generate(alias, kind, backing)` supports `ec_p256`, `rsa2048`, `hmac_sha256`
+and `aes256`. Backing is `any`, `hardware`, or `strongbox`; a hardware requirement
+never silently accepts software. `key_info` reports Android's actual key metadata,
+including security level. Emulator metadata is not proof of a physical secure
+processor. `key_list(offset, limit)` pages the current workspace's aliases and
+`key_delete(alias)` deletes explicitly. Generating an existing alias fails rather
+than replacing it; each workspace has a 32-key limit and a separate hashed alias
+namespace. Keys are durable and survive VM program boundaries. Revoking permission
+blocks further operations without silently deleting the keys.
+
+`key_sign`/`key_verify` use ECDSA-SHA256, RSA-PKCS1-SHA256, or HMAC-SHA256 according
+to the key type. `key_public` exports only X.509 SPKI public keys; symmetric and
+private key bytes are never exported. These keys do not require biometric
+confirmation; biometric-bound keys are not part of this API.
+
+`key_encrypt(alias, data, aad)` uses AES-256-GCM with a platform-generated nonce and
+returns `nonce` and `ciphertext` blobs. `key_decrypt(alias, nonce, ciphertext, aad)`
+verifies the tag and returns plaintext, or `authentication_failed`. Plaintext plus
+additional authenticated data is limited to 32752 bytes so the 16-byte tag fits
+the 32 KiB binary limit. Signing accepts 32 KiB messages; verification signatures
+are limited to 1024 bytes. Malformed signatures return false. No unverified
+plaintext is returned. See the [Android Keystore documentation](https://developer.android.com/privacy-and-security/keystore).
+
+
+The shared guest copy routine now copies complete words when safe, with a byte
+remainder and preserved overlap behavior. Alignment/canary tests cover lengths
+0..65 and every 0..7 source/destination offset in native code and the checked VM.
+An isolated eight-by-32-KiB copy benchmark reduced interpreter steps from
+6,291,701 to 885,117 before a final early-return guard was added. The actual
+full-size crypto workload passes Android with the existing 4M instruction and
+1-second CPU deadline limits; no production limit was raised for this change.
+
+
+## Audio and MIDI
+
+`audio_devices(offset, limit)` returns `devices`, `next`, `total`, with page limits
+1..16. Each row describes direction, Android device type, name, sample rates,
+channel counts and encodings. The current stream format is PCM16 little-endian,
+mono/stereo, at requested rates 8000..192000 Hz; Android may reject unsupported
+combinations. Use `audio_input_open(device, rate, channels)` or
+`audio_output_open(device, rate, channels)`, selecting an inventory ID or `default`.
+`device_read` and `device_write` transfer whole sample frames and return actual
+byte counts; writes can be partial. These are PCM recording/playback streams;
+compressed media/container encoding is not performed by the platform adapter.
+
+`audio_control(handle, action)` supports `start`, `pause`, and playback-only
+`flush` while paused. `audio_volume(handle, permille)` controls only that output
+stream, without changing global system volume. `audio_route` requests a preferred
+input/output device; `device_info` reports the actual routed device, format,
+position/timestamp (when available), underruns and input silencing state.
+`audio_watch` reports device additions/removals; stream event queues report route
+changes. Losing an explicitly selected device closes that stream.
+
+Microphone access asks for the Collie grant and then Android `RECORD_AUDIO`.
+Capture requires a visible Collie activity. Hiding the activity closes microphone
+resources; opening an input while hidden fails with `foreground_required`.
+Resource publication rechecks this lifecycle constraint under the registry lock,
+so a capture opened concurrently with `onStop` cannot escape cleanup. No
+microphone foreground service or background recording is introduced here.
+
+`midi_list(offset, limit)`, `midi_info(id)` and `midi_ports(id, offset, limit)`
+expose available MIDI devices and numbered ports. Page limits are 1..32.
+Byte-stream and UMP devices are inventoried on API33+; older versions use byte
+streams. Transport/protocol metadata tells the guest which wire representation
+to send. `midi_watch` reports device additions/removals and open-port status.
+
+`midi_open(id)` returns a parent device handle; `midi_port_open(device, direction,
+number)` uses `send` for a device input, and `receive` for a device output.
+`midi_send(port, data, timestamp_ns)` and `device_write` send binary messages;
+`device_wait` returns receive events with a data blob and exact timestamp.
+Timestamp 0 is immediate; future timestamps use Android's monotonic nano clock
+and are bounded to 60 seconds. UMP writes require complete 32-bit words, including
+when partitioned for the Android input-port packet limit. `midi_flush` forwards a
+flush event. Closing or losing a parent closes all its ports. Failed/late async
+opens release their Android objects; these resources are never restored from
+checkpointed handle text.
+
+`midi_bluetooth_open(address)` connects a known uppercase MAC using Android's
+BLE-MIDI service, with lazy Nearby devices consent on API31+. It neither scans nor
+turns on Bluetooth. Actual BLE/USB/UMP instruments remain physical test gates.
+
+The debug APK includes a private virtual loopback MIDI service to test actual
+Android framework ports. Release packaging excludes its class, XML and service
+manifest entry; `build/android-hardware/packaging-report.json` records those
+checks and exact APK hashes/sizes. The emulator runs with host audio disabled;
+playback tests send silence, and capture tests verify Android PCM delivery and
+lifecycle rather than claiming a physical microphone was measured. Platform
+permission grants, the location switch, saved conversations and fixture files
+are restored after the checks.
+
+References: [AudioRecord](https://developer.android.com/reference/android/media/AudioRecord),
+[AudioTrack](https://developer.android.com/reference/android/media/AudioTrack),
+[MidiManager](https://developer.android.com/reference/android/media/midi/MidiManager),
+[MidiDeviceService](https://developer.android.com/reference/android/media/midi/MidiDeviceService).
+
+
+Earlier audio/MIDI baseline: **35 headless Android hardware scenarios**
+passed, plus **10 native lazy-permission regression groups**. Debug APK:
+6,407,185 bytes (6.407 MB); non-debug APK: 6,374,338 bytes (6.374 MB).
+The report `build/android-hardware/hardware-android-report.json` binds the Android
+checks to debug APK SHA-256
+`6a7b369289274452ea8e8985c6353d13fab1e1bbc34d9f3362e7f588cb27d8ed`.
+The packaging report separately verifies that the non-debug APK has no MIDI test
+class, resource or service entry. No phone deployment or Git publication was done.
+
+
+## DNS-SD and VPN packet transport
+
+`nsd_browse(type, network)` creates a discovery resource for a DNS-SD type such as
+`_http._tcp.`. Network selectors are the existing default/transport/network-ID
+selectors. Selected-network operations require API33+; on older versions only
+`default` is accepted. DNS-SD needs a LAN transport. The test emulator initially
+had only cellular connectivity; connecting its built-in `AndroidWifi` access
+point allowed Android's mDNS service to create a LAN socket. This is a deliberate
+lab setup change inside the headless emulator, not a phone/host network change.
+
+`nsd_register(name, type, port, attributes, network)` advertises a service. TXT
+attributes are `[key, text]` pairs, limited to 255 bytes per record and 1300 bytes
+total; the public Android setter supports UTF-8 text values, so encode arbitrary
+binary values as base64 text. Resolved TXT values are returned as blobs. Names
+use 1..63 UTF-8 bytes; keys are unique case-insensitive ASCII tokens.
+
+Discovery events include `started`, `found`, `lost`, and `error`; registrations
+emit `registered` or an Android error. Found service IDs belong to that browser.
+`nsd_services(browser, offset, limit)` pages its bounded 128-entry cache (page
+limits 1..32), `nsd_resolve` returns addresses/port/TXT, and
+`nsd_watch_service` monitors updates on API34+. Closing a browser closes its child
+watches. Closing a registration unregisters the service. RPCs never hand the guest
+Android object references.
+
+VPN routing is a separate **28th permission category**. Missing saved VPN policy
+migrates to Ask. Its grant never follows from allowing ordinary network calls.
+`vpn_open(name, addresses, routes, dns, mtu, apps, network)` additionally yields
+for Android's system VPN approval, then starts an Android foreground service.
+`addresses`/`routes` are lists of `[numeric IP, prefix length]`; route host bits
+must be zero. DNS servers are numeric IP strings. MTU is 576..32768, at least1280
+for IPv6. App package names must be installed and visible to Collie. An empty app
+list means only Collie; `["*"]` explicitly selects all apps, and `!package`
+entries form an exclusion list. Allow and exclusion lists cannot be mixed.
+
+Only one Collie VPN lease may be active. Startup must occur while Collie is
+visible. The foreground notification provides Disconnect; OS revocation, closing
+the handle/owner conversation, activity destruction, or process death disposes of
+the interface. Always-on restart is explicitly disabled: no guest program or OS
+handle is silently recreated at boot. The service is protected by
+`BIND_VPN_SERVICE` and uses the actual active-VPN `systemExempted` foreground type.
+
+`device_read` returns one complete raw IP packet and requires a buffer at least
+the configured MTU; `device_write` injects one packet into Android. `device_info`
+reports addresses, routes, DNS, app scope and `encrypted=false`. The adapter
+provides **raw IP transport**, with no gateway, mesh pairing or encryption
+protocol. Those require a separate authenticated encrypted transport implementation.
+
+`vpn_protect(vpn, socket)` protects an owned TCP/UDP/listener handle from VPN
+routing. `net_tcp_open` lets guest code obtain an unconnected TCP handle, protect
+it, then use `net_tcp_dial` before ordinary reads/writes. `vpn_underlying` updates
+the selected physical transport. Model connections using Auto select a physical
+network outside Collie's own tunnel; another app's VPN is respected when Collie
+has no active tunnel.
+
+The VPN emulator fixture obtains the real Android approval, reads a real kernel
+UDP packet in Flexscript, swaps IP addresses/ports and computes an IP checksum in
+Flexscript, injects a reply, and verifies every byte independently from Java.
+Bounded UDP retries avoid assuming the first startup datagram is delivered.
+It also tests protect-before-dial, model-connection bypass, actual network removal
+before force-stop cleanup, and restoration of temporary Android authorization.
+No remote gateway or physical peer is used.
+
+Repeatable checks after installing the debug APK on the headless test emulator:
+
+```sh
+/opt/android-sdk/platform-tools/adb -s emulator-5580 shell cmd wifi connect-network AndroidWifi open
+python3 scripts/test-collie-hardware-android.py --out build/android-hardware --serial emulator-5580
+python3 scripts/test-collie-vpn-android.py --out build/android-hardware --serial emulator-5580
+python3 scripts/test-collie-android-packaging.py \
+  --debug build/android-hardware/collie.apk \
+  --release build/android-hardware-release/collie.apk
+```
+
+The DNS-SD/VPN baseline reports proved **38 Android hardware scenarios + 8 Android VPN
+scenarios**, plus **10 native lazy-permission groups** (including the new VPN
+gate) and **10 shared UI groups** (including all three VPN permission choices).
+The APK packaging verifier checks the compiled manifest, actual DEX/resource
+contents, VPN binding/type/always-on metadata, and APK hashes. These tests do not
+replace the outstanding adapters or physical-device gates in the main table.
+
+References: [Android NSD](https://developer.android.com/develop/connectivity/wifi/use-nsd),
+[VPN lifecycle](https://developer.android.com/develop/connectivity/vpn), and
+[foreground-service types](https://developer.android.com/develop/background-work/services/fgs/service-types).
+
+
+## Cellular diagnostics
+
+The new `cellular` permission is the **29th category**. Old conversations ask on
+first use. It controls diagnostics separately from network sockets or model
+traffic. Android `READ_PHONE_STATE` is requested only after the first Collie
+approval. Cell/service operations also require the independent `location` grant,
+Android precise Location and the Android Location switch. First-use checkpoints
+request each grant separately before Android I/O; a denied Android dialog updates
+only its matching Collie permission. Hardware denials now provide the same typed
+`device_error() = [code, message]` shape as SDK errors, with the existing human
+readable `db_error()` text preserved.
+
+- `cellular_subscriptions(offset, limit)` returns `subscriptions/next/total` and
+  default/data/voice subscription IDs; page limits are 1..16. Subscription fields
+  include slot/carrier/name/country/MCC/MNC and supported embedded/opportunistic
+  flags. No phone number, ICCID, IMSI or IMEI is exported.
+- `cellular_info(subscription)` returns SIM/radio/operator and cached signal
+  data. Use an active subscription ID from inventory, or `-1` for default.
+  `cellular_watch` streams signal/data changes and `cellular_watch_subscriptions`
+  reports subscription changes. Re-enumerate after changes; an inactive SIM ID
+  yields `disconnected` rather than silently selecting another SIM.
+- `cellular_service` and `cellular_watch_service` return explicit service-state
+  fields/events. Android registration objects and their `toString` output are
+  never exported.
+- `cellular_cells(subscription, refresh)` returns a snapshot handle. Mode 0 uses
+  Android's cache; mode 1 requests a fresh update on API29+. Android can rate limit
+  or reject updates. `device_wait` reports `cells` or `error`; a missing callback
+  becomes an error after 20 seconds. Closing/revoking ignores late callbacks.
+- `cellular_cell_page(snapshot, offset, limit)` returns `cells/next/total` plus
+  `reported_total/truncated`, with page limits 1..8 and at most128 retained cells.
+  GSM/WCDMA/TD-SCDMA/CDMA/LTE/NR use typed technology-specific identities and signal
+  values. `CellInfo.UNAVAILABLE` integer sentinels become null values; timestamps
+  are elapsed-realtime nanoseconds. Cached timestamps may be old. LTE timing
+  advance is included only with location-authorized cell snapshots.
+
+Cell/service handles carry **both** grants. Every handle operation checks both;
+revoking either closes the handle. Android runtime permissions and active SIM
+status are rechecked before reading data or events. VM checkpoints preserve only
+guest values: live Android watches and snapshot handles must be reopened after
+process restart. Callback queues and resources share the normal 128-event and
+32-handle bounds. Legacy Android uses PhoneStateListener on the event Looper;
+API31+ uses TelephonyCallback with only the interfaces needed by each watch.
+
+The adapter provides no phone calls, SMS, SIM modification or raw modem control.
+Physical radio/multi-SIM behavior remains a device-verification gate.
+
+```sh
+python3 scripts/test-collie-cellular-android.py \
+  --out build/android-hardware --serial emulator-5580
+```
+
+References: [TelephonyManager](https://developer.android.com/reference/android/telephony/TelephonyManager),
+[SubscriptionManager](https://developer.android.com/reference/android/telephony/SubscriptionManager),
+and [TelephonyCallback](https://developer.android.com/reference/android/telephony/TelephonyCallback).
+
+
+Cellular verification: **19 headless Android scenarios passed** through compiled
+Flexscript/JNI and actual Android services, including phone-state denial and
+approval, additional location denial/approval, independent SDK comparisons,
+NR cell identity and timestamp preservation, asynchronous explicit refresh,
+initial and injected-roaming service callbacks, dual-grant handle checks,
+revocation, the Location switch and cleanup. The final script restores simulated
+voice state, Android grants/user consent flags and the original conversation.
+The same build passed **11 native lazy-permission groups**, including independent
+checkpoints for a multi-grant operation, **10 shared UI groups** and **9 shared
+core groups**. Debug APK: 6,489,105 bytes (6.489 MB); non-debug APK: 6,439,874 bytes
+(6.440 MB). Debug SHA-256:
+`b4d45700fc455f7bd0d91ae3bc7eb99e7c034c60e32462327906afd3e93c1fb5`.
+The actual APK packaging verifier passed for both packages. The non-debug package
+is development-signed; it is not a published production release.
+
+Final cellular build regression audit: **38 existing hardware + 8 VPN + 19 cellular
+= 65 Android scenarios passed**, all three reports bound to the exact debug APK
+hash above. Emulator only; the remaining adapter families and physical-device
+gates in the inventory remain outstanding. No Git publication or phone deployment.
+
+
+## Wi-Fi infrastructure and local-only hotspot
+
+The guest now has `wifi_info`, `wifi_watch`, `wifi_connection`, `wifi_scan`,
+`wifi_scan_page`, `wifi_request`, `wifi_suggest`, `wifi_hotspot` and
+`wifi_hotspot_config`. `HardwareWifi.java` owns Android service objects/callbacks;
+operation signatures and all Collie permission decisions remain in Flexscript.
+The existing `wifi` category is reused; there is no new model tool or raw FFI.
+
+`wifi_info` returns radio state and SDK-reported feature support without SSID,
+BSSID or device MAC. `wifi_watch` reports ready/state/scan-availability events.
+`wifi_connection` reads the **primary** Wi-Fi connection, including Android's
+quoted SSID form, BSSID, signal/link values and supported security metadata.
+It does not change model routing or select a different transport.
+
+Scan/identity/request/hotspot operations require both Wi-Fi and Location grants.
+Actual scan/identity data also requires Android precise Location and its Location
+switch; API33+ requests/hotspots additionally request Android Nearby Wi-Fi on
+first use. A denied Nearby dialog updates only the Wi-Fi grant. A Location denial
+updates only Location. This app can expose location-bearing Wi-Fi data, so its
+Nearby permission does not make a `neverForLocation` assertion.
+
+`wifi_scan(0)` snapshots the Android cache. `wifi_scan(1)` asks Android to scan
+and yields a copied `scan` event, or an explicit throttle/error. It has a20-second
+completion deadline and unregisters the broadcast receiver on completion/close.
+Scan broadcasts are platform-wide and have no per-request identity: `updated`
+reports Android's freshness flag, not a guarantee that this request caused it.
+Use `wifi_scan_page(handle, offset, limit)` with limits1..16; at most128 APs are
+retained and `reported_total/truncated` make bounds explicit. Scan timestamps
+are elapsed-realtime **microseconds**, unlike cell-data nanoseconds. API33+
+returns raw SSID bytes as a blob as well as the platform display string.
+Both grants are rechecked on snapshot operations; revoking either closes it.
+
+`wifi_request(ssid, security, password, bssid, hidden, timeout_ms)` uses Android's
+Wi-Fi Network Specifier on API29+. Security is open/OWE/WPA2-personal/WPA3-personal;
+SSID1..32 UTF-8 bytes, BSSID is an exact unicast MAC or empty, hidden0/1, timeout
+1000..120000 ms. Open/OWE uses an empty password; personal passphrases require
+8..63 printable ASCII characters. The Android-owned picker can ask the user to
+select/approve the exact network. Android can remember this approval for later
+requests. The test selects only the emulator's built-in `AndroidWifi`; an Android
+picker approval may remain in the lab emulator, like a manually selected network.
+No physical phone/host Wi-Fi settings are changed.
+
+A request returns a **lease**, not a connected socket. `device_wait` reports
+available/link_changed/lost/unavailable events. The available event and
+`device_info` return a network selector for existing `net_*` APIs. Its network
+has no requested Internet capability and is intended for local peer traffic.
+The app/model process is never rebound. Closing/revoking the lease unregisters
+its callback; a late callback cannot republish a closed lease. Existing system
+Wi-Fi connections are not promised to disconnect when Collie closes its own
+request. Start requests and hotspots while Collie is visible.
+
+`wifi_suggest(ssid, security, password, hidden, metered, autojoin)` adds one Android
+network suggestion on API29+ and returns a Wi-Fi-owned lease. Its `accepted` event
+means the SDK accepted the configuration; it is **not** proof of approval or
+connection. API31+ approval events carry the actual Android status. Android
+controls per-app user approval and network choice. `autojoin=0` requires API30+.
+Credentials are not echoed through metadata/events. Suggestions consume a global
+32-entry recovery bound as well as the common32-handle workspace bound.
+
+Closing/revoking/conversation closure removes the exact suggestion from Android.
+Android otherwise persists suggestions after process death, so a bounded atomic
+app-private journal is written **before** adding. It stores the configuration
+(including its passphrase) outside all guest workspace roots; app backup is off.
+Startup uses a single bounded background recovery worker, keeping SDK recovery
+off the model worker. Later Wi-Fi calls also retry orphan cleanup. Live leases
+from any workspace are excluded. Cleanup failures remain in the journal and
+surface on later Wi-Fi access; no false removal success is returned. A cancelled
+suggestion call rechecks its operation before writing/adding after recovery.
+
+`wifi_hotspot()` uses Android LocalOnlyHotspot and emits started/error/stopped.
+A started hotspot is local only, with no Internet tethering. Metadata/events omit
+the passphrase; `wifi_hotspot_config(handle)` explicitly returns credentials.
+Only one active/pending Collie request is permitted. Android has no public API
+to cancel a pending request before its callback: closing marks the guest handle
+closed, retains that pending lease, and immediately closes any late reservation.
+Once the SDK reports failure/stop or releases the reservation, the slot is freed.
+
+**24 headless Android Wi-Fi scenarios passed**, including actual precise Location
+and Nearby consent/denial, scan cache/broadcasts, typed raw SSID/timestamps,
+dual-grant checks, exact suggestion installation/removal, the Android picker,
+TCP over the approved lease with all256 byte values, and an injected radio-state
+change through the actual state broadcast. The process-death case
+kills Collie with a live suggestion, restarts it, and independently checks both
+the actual Android network store and the private journal after automatic recovery.
+The local-hotspot test verified Android's real failure callback on this emulator;
+**successful AP creation, credential delivery and peer traffic remain unverified**
+and need an AP-capable fixture. This Wi-Fi-only snapshot predates the Direct and
+RTT additions described below. The Aware adapter was added after this snapshot; see its separate audit below.
+
+```sh
+python3 scripts/test-collie-wifi-android.py \
+  --out build/android-hardware --serial emulator-5580
+```
+
+The same build passed **11 lazy-permission groups** (now10 independent first-use
+capability probes), **10 shared UI groups**, **9 shared-core groups** and the shared
+binary hardware codec checks. APK packaging verification passed: debug6,538,257 bytes
+(6.538 MB), non-debug6,472,642 bytes (6.473 MB). Debug SHA-256:
+`09798d46e4daa9fe1afcf9b121cd1e2f3fe642e6c1637f4f45a59d2bcb559b78`.
+No Git publication or phone deployment was performed.
+
+References: [Wi-Fi permissions](https://developer.android.com/develop/connectivity/wifi/wifi-permissions),
+[network requests](https://developer.android.com/develop/connectivity/wifi/wifi-bootstrap),
+[network suggestions](https://developer.android.com/develop/connectivity/wifi/wifi-suggest),
+and [local-only hotspot](https://developer.android.com/develop/connectivity/wifi/localonlyhotspot).
+
+Earlier Wi-Fi-only build audit: **38 existing hardware +19 cellular +8 VPN +24 Wi-Fi
+=89 Android scenarios passed** on the exact debug APK above. The four report hashes
+were compared directly to the APK bytes. Remaining adapters and physical-device
+gates in the inventory are still outstanding; this does not complete the full
+hardware objective.
+
+
+## Wi-Fi Direct integration
+
+`p2p_open()` creates a channel with both Wi-Fi and Location grants and Android
+Nearby/precise Location consent. Peer IDs belong to that channel. Peer paging,
+PBC/display/keypad connection, cancellation, group creation/removal, configured
+API29+ ephemeral groups, and connection/group inspection use WifiP2pManager.
+Existing groups require explicit `p2p_group_attach()` for data access. Attaching
+does not grant group-removal rights or owner credentials. Only an owned local
+group owner can return `p2p_group_credentials()`; events omit its passphrase.
+
+DNS-SD/UPnP advertisements and service requests have child handles. Closing a
+child removes exactly its registration; rejecting a duplicate cannot remove a
+live registration. `p2p_dns_sd_browse(channel,type)` accepts an empty type for an
+all-services query. Type-specific PTR browsing and
+`p2p_dns_sd_txt(channel,instance,type)` are separate Android requests. Copied
+service/TXT/UPnP/raw response events arrive on the parent channel.
+
+TCP listeners/clients and UDP endpoints bind to the actual group interface.
+Numeric unicast destinations must belong to that interface's subnet; foreign
+IPv6 zones and subnet broadcast addresses are rejected. Group loss/replacement
+invalidates sockets. Channel closure removes its own discovery/registrations
+and matching owned group. Android26 has no public Channel.close; cleanup closes
+its own operations and drops references, while API27+ also closes the SDK channel.
+
+Earlier two-emulator runs verified real peer discovery, configured groups and
+owner credentials, Android PBC invitation consent, explicit incoming-group
+attachment, 32KiB TCP/UDP roundtrips with all bytes verified in both VMs, and
+actual group teardown invalidating sockets. These earlier runs are not a passing
+report for the current APK. **Reliable DNS-SD/TXT exchange remains unresolved**;
+a successful registration/discovery request is not treated as received data.
+UPnP/raw response exchange and physical peers also remain unverified.
+
+```sh
+python3 scripts/test-collie-p2p-android.py --out build/android-hardware \
+  --serial emulator-5580 --peer emulator-5582
+# Independent service diagnosis, still requiring real received PTR and TXT:
+python3 scripts/test-collie-p2p-android.py --out build/android-hardware \
+  --serial emulator-5580 --peer emulator-5582 --services-only --query-all
+```
+
+## Wi-Fi RTT AP ranging
+
+`wifi_rtt_info()` reports actual support/availability and Android's peer/burst
+limits. `wifi_rtt_watch()` returns an availability subscription with a Wi-Fi
+grant. `wifi_rtt_range(scan,bssids,burst)` selects distinct BSSIDs from an owned,
+completed `wifi_scan` snapshot and requires both Wi-Fi and Location grants plus
+Android precise Location/Nearby consent. Start ranging while Collie is visible
+with Android Location on. Burst0 uses the platform default; custom burst sizes
+require API31+. Only APs advertising 802.11mc or API35+ 802.11az NTB responder
+support can be selected. Aware peers use the owned discovery session via `aware_rtt`, described below.
+
+A range handle emits one `ranging` event containing peer status and, only for
+successful peers, distance/stddev in millimetres, RSSI, attempted/successful
+measurement counts and the elapsed-realtime timestamp. API35+ LCI/LCR reports
+are copied with explicit truncation beyond512 bytes each. Whole-request failure
+and the30-second deadline emit structured errors. Android's public app API has
+no request-cancellation primitive: closing/revoking discards late callbacks and
+removes the deadline; it does not claim to cancel the radio operation.
+
+The headless Wi-Fi suite now includes actual RTT hardware-feature comparison,
+empty/duplicate-target rejection through a real scan handle, and structured
+unsupported results for an emulator lacking RTT. **No measured distance or RTT
+radio callback has been verified on this emulator.** A capable phone and AP are
+required for successful/failed peer results, availability changes, timeout and
+late-callback/close tests.
+
+## Polling memory and live revocation
+
+The JNI byte-array bridge now allocates the actual returned length plus its NUL
+terminator, retaining the2MiB reply cap. Previously every reply allocated2MiB,
+including each small permission preflight and hardware poll. The shared hardware
+operation registry is also cached only within one native invocation, and reset
+with other native globals. One VM now completes100 actual hardware polls within
+the unchanged256MiB memory cap. These changes do not cache grant decisions.
+
+Allow-to-Ask/Deny changes cancel an executing native program before closing its
+resources, preventing reuse of the old configuration snapshot to reopen devices.
+An independent headless fixture has verified a real Wi-Fi watcher opening during
+a long-running VM, UI permission revocation cancelling that program, closure of
+the watcher, and structured denial on the next program. It preserves the original
+conversation and permissions and needs no location/runtime grants:
+
+```sh
+python3 scripts/test-collie-revocation-android.py \
+  --out build/android-hardware --serial emulator-5580
+```
+
+
+## Earlier P2P/RTT build audit
+
+Debug APK SHA-256:
+`67774785e192ed7a95dfd192c83d154fd63e4fa6807688c806bd7cccef33dc52`.
+Non-debug APK SHA-256:
+`7da5fe7e4cde4eb49b1929b5520a3a387ca9971aaf6a269104a937461bcf2d86`.
+Packaging checks verified protected VPN metadata and the absence of debug fixture
+classes/resources from the non-debug APK. Sizes are6,587,409 and6,538,178 bytes.
+
+**103 Android checks passed on this exact debug APK:**38 existing hardware,
+27 Wi-Fi/RTT,19 cellular,8 VPN,6 live revocation, and5 file/image-viewing checks.
+Every report's APK digest was compared with the actual APK bytes; the index is
+`build/android-hardware/hardware-audit.json`. Image tests crossed JNI and opened
+actual text/image previews, checked snapshot replacement/invalid images, and
+used the current collapsed Thinking and Allow/Deny controls. No live vision/model
+request, gallery or camera picker was needed for these regressions. The shared
+codec,9 core,11 lazy-permission and10 UI groups also passed.
+
+This audit does not include a passing full P2P suite. Both typed and all-services
+DNS-SD requests were accepted by Android and found the virtual peer, but delivered
+no service/TXT replies during these runs. The test continues to fail until actual
+service and correlated TXT events are received. Aware was implemented after this snapshot. Its radio verification and the other
+unfinished families in the table remain required; the hardware goal is active.
+
+
+## Wi-Fi Aware SDK adapter and draft PR baseline
+
+`aware_info()` exposes actual support/availability and device limits.
+`aware_watch()` subscribes to availability. `aware_open()` returns an attachment;
+wait for `attached` before starting `aware_publish` or `aware_subscribe`, then
+wait for `started`. Both grants and Android Nearby/precise Location consent are
+required for discovery, data paths and ranging. Start these operations while the
+app is visible. Availability disruption, attachment loss or revocation releases
+discovery children; late callbacks cannot resurrect closed sessions.
+
+Publish/subscribe accept a service name, typed information blob, binary match
+filters, kind0/1, and TTL0 for no expiry or1..86400 seconds. Publish can enable
+ranging; subscribe can set minimum/maximum distances (use-1 to omit each).
+Each discovery session owns up to128 opaque peer IDs, paged by `aware_peers`.
+Service and message events copy bounded binary data and explicit truncation.
+IDs expire when the service is lost or its session closes. Updates are
+asynchronous with one outstanding update and a15-second deadline. Sending uses
+strictly increasing message IDs and at most32 outstanding acknowledgements with
+10-second deadlines. `message_failed` never claims successful delivery.
+
+`aware_network` requests a peer-specific Android data path with open, passphrase
+or32-byte PMK security. API33+ callers may select a supported NCS_SK128/256 cipher;
+older supported releases use the platform default. Keys are never echoed.
+Passphrases require valid UTF-8. Only secured publishers advertise port/protocol
+metadata. A lease emits available/peer_info/lost/unavailable; metadata includes
+the Android network selector and peer IPv6 endpoint. Existing `net_*` operations
+use that selector with their separate Network grant; the model/process is not
+rebound. Both peers must request compatible links. Closing the lease unregisters
+its request. Starting and closing cannot race past registration.
+
+`aware_rtt(discovery,peer_ids,burst)` uses actual discovered Android PeerHandles
+and the existing bounded RTT result path. Results identify the original opaque
+peer IDs. Losing a peer or parent closes its data/ranging children; RTT close
+continues to discard late results rather than claiming to cancel radio requests.
+No live OS handles survive saved VM/process state. Aware pairing administration
+and newer optional discovery modes are not exposed by these functions.
+
+The current debug APK is
+`4042ce7269319f77ac1b7b397d51260d50b86aff58c19a4904553e37550834de`;
+the non-debug APK is
+`48c13018861e87c462d48b15acd2d12d4a2eb362c5e8478b800f6ae034fdc0f2`.
+On this debug APK, **43 Android checks passed**:10 Aware,27 Wi-Fi/RTT and6 live
+revocation. Aware tests exercise real VM checkpoints, independent Wi-Fi/Location
+denial, actual absence of NAN hardware, structured unsupported errors, rejection
+of wrong adapter handles, unchanged Android runtime grants, and the generated
+API reference. They do not manufacture sessions/peers or prove radio behavior.
+Earlier103-check baseline evidence is recorded with its distinct APK hash above.
+Shared validation also passed:153 compiler-transform checks, the binary codec,
+USB-serial protocols, unaligned/overlap copy checks in native/interpreted code,
+11 lazy-permission groups (including both Aware grants),9 core groups,10 Collie
+UI groups and6 portable UI groups matching Linux to production Android ARM64.
+
+**Aware positive attach/discovery/message exchange, data-path establishment and
+TCP/UDP traffic, peer ranging and real asynchronous loss/timeout cleanup remain
+unverified without NAN-capable devices.** Android36 headless emulators here do
+not advertise `android.hardware.wifi.aware`; unsupported results are not counted
+as radio proof. Wi-Fi Direct DNS-SD/TXT exchange also remains unresolved.
+
+```sh
+python3 scripts/test-collie-aware-android.py \
+  --out build/android-hardware --serial emulator-5580
+```

@@ -84,11 +84,31 @@ with tempfile.TemporaryDirectory(prefix='collie-ui-',dir=root/'build') as d:
  assert event('chat-continue')['kind']=='resume_main'
  passed('shared message, stream, context, source/result folding, real error display, clipboard and rich text views')
  event('chat-menu');event('menu-permissions');assert state['page']=='permissions' and widgets.nodes['chat']['hidden'] is True
- command=event('toggle-internet',False,type='change');assert command=={'kind':'permission','key':'internet','allowed':False} and not state['policy']['internet']
- assert widgets.text('permissions-summary')=='6 of 7 permissions enabled'
- step(data={'policy':dict(state['policy'],internet=True)});assert widgets.nodes['toggle-internet']['checked'] is True
+ command=event('deny-internet');assert command=={'kind':'permission','key':'internet','allowed':False} and not state['policy']['internet']
+ assert widgets.text('permissions-summary')=='0 allowed · 28 ask · 1 denied'
+ step(data={'policy':dict(state['policy'],internet=True)});assert widgets.nodes['allow-internet']['props']['background']=='#354b3a'
+ command=event('ask-internet');assert command=={'kind':'permission','key':'internet','allowed':'ask'}
+ for key in ['internet','files_read','files_write','db_read','db_write','history','workers','vpn','cellular']:
+  for choice,value in [('allow',True),('deny',False),('ask','ask')]:
+   assert event(choice+'-'+key)=={'kind':'permission','key':key,'allowed':value}
+   assert state['page']=='permissions' and state['policy'][key]==value
+
  event('permissions-back');assert state['page']=='chat'
+ # Hardware/capability approvals use the shared UI and bind to a live request ID.
+ prompt={'request_id':41,'key':'files_read','title':'Read workspace files','detail':'Read this conversation workspace.','operation':'fs_read'}
+ step(data={'permission_request':prompt,'busy':True})
+ assert widgets.text('permission-request-title')=='Read workspace files'
+ assert event('composer-send')['kind']=='none'
+ assert event('permission-request-allow')=={'kind':'permission_decision','request_id':41,'allowed':True,'stop':False}
+ assert step('back')=={'kind':'permission_decision','request_id':41,'allowed':False,'stop':False}
+ assert event('permission-request-stop')=={'kind':'permission_decision','request_id':41,'allowed':False,'stop':True}
+ stale=call({'state':state,'action':'event','event':{'key':'permission-request-allow','action':'permission_decision','action_id':40,'type':'click'}})
+ assert 'error' in stale
+ cleared=call({'state':state,'action':'clear'});assert cleared['state']['permission_request']=={}
+ step(data={'permission_request':{},'busy':False})
+ passed('lazy access prompts expose allow, deny and stop; background controls and stale requests cannot grant access')
  event('chat-menu');event('menu-model');event('model-input','invalid model!',type='change');event('model-save');assert 'model-error' in widgets.nodes
+ assert event('model-network-wifi')=={'kind':'save_model_network','network':'wifi'} and state['model_network']=='wifi'
  event('model-input','gpt-6.1-sol',type='change');assert event('model-save')=={'kind':'save_model','model':'gpt-6.1-sol','keyboard':'hide'}
  passed('permissions and model forms validate input, emit persistence effects and reconcile host acknowledgements')
  event('chat-conversations');assert state['page']=='conversations'

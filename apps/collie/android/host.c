@@ -450,7 +450,7 @@ static long java_bytes(const char *method_name, long data, long size) {
         return (long)"{\"error\":\"This operation requires the Android host.\"}";
     if (size < 0 || size > 2097152)
         return (long)"{\"error\":\"Invalid Android bridge payload length.\"}";
-    char *out = (char *)allocate(2097153);
+    char *out = (char *)0;
     void *env = jni_env;
     const void *const *t = *(const void *const **)env;
     /* Standard JNINativeInterface slots, verified against JDK jni.h. jsize is
@@ -470,9 +470,12 @@ static long java_bytes(const char *method_name, long data, long size) {
         deadline += now() - started;
         if (result) {
             bytes = ((int (*)(void *, void *))t[171])(env, result);
-            if (bytes >= 0 && bytes <= 2097152)
+            if (bytes >= 0 && bytes <= 2097152) {
+                /* Allocate the actual result after Java returns. Small hardware
+                 * replies must not retain a 2 MiB mapping on every poll. */
+                out = (char *)small_allocate(bytes + 1);
                 ((void (*)(void *, void *, int, int, B *))t[200])(env, result, 0, (int)bytes, (B *)out);
-            else bytes = -1;
+            } else bytes = -1;
         }
     }
     if (((unsigned char (*)(void *))t[228])(env)) {
@@ -639,6 +642,8 @@ static long callback(long n, long *a) {
         return network_get(a[0], a[1]);
     if (n == 3001)
         return java_bytes("vmViewImage", a[0], a[1]);
+    if (n == 3003)
+        return java_bytes("vmHardware", a[0], a[1]);
     if (n == 3002) {
         long data = java_bytes("vmImageBytes", a[0], a[1]);
         if (java_result_n < 0 || java_result_n > 524288) return -5;

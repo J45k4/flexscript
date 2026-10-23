@@ -8,6 +8,25 @@ view notice_screen(){
         column("notice-panel",padding:24,gap:16,background:"#191f25",radius:24){text("notice-message",text:cu_s("notice"),size:16,color:"#edf2ed");use cu_action("notice-close","Got it","back",0);}
     }
 }
+view permission_request_screen(){
+    let request=cj_get(cu_state,"permission_request");
+    column("permission-request-overlay",height:-1,background:"#cc10151a",padding:20,gap:16){
+        column("permission-request-spacer",weight:1);
+        column("permission-request-panel",padding:24,gap:16,background:"#191f25",radius:24){
+            text("permission-request-heading",text:"Allow access?",size:24,font:"medium",color:"#edf2ed");
+            text("permission-request-title",text:cj_text(request,"title"),size:18,font:"medium",color:"#c5e3ae");
+            text("permission-request-detail",text:cj_text(request,"detail"),size:15,color:"#edf2ed");
+            text("permission-request-operation",text:m_cat("Requested by: ",cj_text(request,"operation")),size:13,color:"#8e9d9f");
+            text("permission-request-scope",text:"Your choice applies to this conversation and its workers. Change it later in Permissions.",size:13,color:"#8e9d9f");
+            row("permission-request-actions",gap:12){
+                button("permission-request-deny",text:"Deny",description:"Deny requested access",action:"permission_decision",action_id:cj_int(request,"request_id"),weight:1,min_height:52,align:"center",background:"#242d34",color:"#edf2ed",radius:12);
+                button("permission-request-allow",text:"Allow",description:"Allow requested access",action:"permission_decision",action_id:cj_int(request,"request_id"),weight:1,min_height:52,align:"center",background:"#c5e3ae",color:"#10151a",radius:12);
+            }
+            button("permission-request-stop",text:"Stop this task",action:"permission_stop",action_id:cj_int(request,"request_id"),min_height:48,color:"#f1aaa6",align:"center");
+        }
+        column("permission-request-bottom",weight:1);
+    }
+}
 view app_view(){
     stack("app-root",height:-1,background:"#10151a"){
         use chat_screen();
@@ -19,12 +38,14 @@ view app_view(){
         if h_equal(cu_s("page"),"attachments"){use attachment_menu();}
         if h_equal(cu_s("page"),"model"){use model_screen();}
         if h_equal(cu_s("page"),"notice"){use notice_screen();}
+        if cj_int(cj_get(cu_state,"permission_request"),"request_id"){use permission_request_screen();}
     }
 }
 fn cu_prepare(){cu_policy=j_get(cp_permissions(cj_get(cu_state,"policy")),"policy");cu_previews=ui_items();cu_copies=ui_items();return app_view();}
 fn cu_command(kind){let command=j_object();j_set(command,"kind",j_string(kind));
     if h_equal(kind,"new_session") || h_equal(kind,"open_session") || h_equal(kind,"save_model") || h_equal(kind,"read_preview"){j_set(command,"keyboard",j_string("hide"));}return command;}
 fn cu_back(){
+    if cj_int(cj_get(cu_state,"permission_request"),"request_id"){return cu_permission_decision(0,0);}
     let page=cu_s("page");
     if h_equal(page,"workers") && cu_n("worker"){cu_int("worker",0);j_set(cu_state,"worker_messages",j_array());return cu_command("none");}
     if h_equal(page,"preview"){let back=cu_s("preview_back");if !h_len(back){back="chat";}cu_set("page",back);return cu_command("none");}
@@ -32,8 +53,22 @@ fn cu_back(){
     if !h_equal(page,"chat"){cu_set("page","chat");return cu_command("hide_keyboard");}
     return cu_command("exit");
 }
+fn cu_permission_decision(allow,stop){
+    let pending=cj_get(cu_state,"permission_request");let id=cj_int(pending,"request_id");if !id{return c_error("No access request is pending.");}
+    let command=cu_command("permission_decision");j_set(command,"request_id",j_int(id));j_set(command,"allowed",j_bool(allow));j_set(command,"stop",j_bool(stop));return command;
+}
 fn cu_event(event){
     let action=cj_text(event,"action");let key=cj_text(event,"key");let value=cj_get(event,"value");let id=cj_int(event,"action_id");let type=cj_text(event,"type");let command=cu_command("none");
+    let pending_id=cj_int(cj_get(cu_state,"permission_request"),"request_id");
+    if h_equal(action,"permission_decision") || h_equal(action,"permission_stop"){
+        if !pending_id || id!=pending_id{return c_error("Stale permission request.");}
+        return cu_permission_decision(h_equal(key,"permission-request-allow"),h_equal(action,"permission_stop"));
+    }
+    if pending_id{if h_equal(action,"back"){return cu_permission_decision(0,0);}return command;}
+    if h_equal(cu_s("page"),"permissions") && cj_get(cu_policy,action){
+        value=cp_choice(action,key);if !h_equal(type,"click") || !value{return c_error("Invalid permission choice.");}
+        let next=cu_copy(cu_policy);j_set(next,action,value);j_set(cu_state,"policy",next);command=cu_command("permission");j_set(command,"key",j_string(action));j_set(command,"allowed",value);return command;
+    }
     if h_equal(action,"fold"){cu_toggle(key);return command;}
     if h_equal(action,"back"){return cu_back();}
     if h_equal(action,"copy"){
@@ -76,15 +111,14 @@ fn cu_event(event){
     if h_equal(action,"remove_attachment"){
         if cu_n("busy"){return command;}if id<1 || id>j_count(cu_a("attachments")){return c_error("Invalid attachment binding.");}command=cu_command("remove_attachment");j_set(command,"index",j_int(id-1));return command;
     }
+    if h_equal(action,"model_network"){
+        if !h_equal(cu_s("page"),"model") || id<0 || id>3{return c_error("Invalid model network choice.");}
+        let modes=h_args("default","wifi","cellular","ethernet",0,0);let mode=h_at(modes,id);cu_set("model_network",mode);command=cu_command("save_model_network");j_set(command,"network",j_string(mode));return command;
+    }
     if h_equal(action,"model_input"){if !value || j_kind(value)!=2{return c_error("Model event requires text.");}cu_set("model_input",j_value(value));cu_set("model_error","");return command;}
     if h_equal(action,"save_model"){
         let model=h_trim(cu_s("model_input"));if !cu_model_valid(model){cu_set("model_error","Use 1–120 letters, digits, dots, underscores or hyphens.");return command;}
         command=cu_command("save_model");j_set(command,"model",j_string(model));cu_set("page","chat");return command;
-    }
-    if h_equal(cu_s("page"),"permissions") && cj_get(cu_policy,action){
-        if h_equal(type,"click"){value=j_bool(!cu_allowed(action));}
-        else if !value || j_kind(value)!=5{return c_error("Permission event requires a boolean.");}
-        let next=cu_copy(cu_policy);j_set(next,action,value);j_set(cu_state,"policy",next);command=cu_command("permission");j_set(command,"key",j_string(action));j_set(command,"allowed",value);return command;
     }
     // Settings/session changes and file pickers are gated by the shared model.
     if cu_n("busy"){cu_notice("Stop the current reply to change conversations or settings.");return command;}
@@ -124,9 +158,10 @@ fn cu_ui_host(request){
     if h_equal(action,"append") || cj_get(request,"append_cards"){
         let array=j_array();let prior=cu_a("cards");let i=0;while i<j_count(prior){j_push(array,j_at(prior,i));i=i+1;}let card=cj_get(request,"card");if card{j_push(array,card);}let added=cu_array(request,"append_cards");i=0;while i<j_count(added){j_push(array,j_at(added,i));i=i+1;}j_set(cu_state,"cards",array);
     }
-    if h_equal(action,"clear"){j_set(cu_state,"cards",j_array());j_set(cu_state,"expanded",j_object());j_set(cu_state,"worker_messages",j_array());j_set(cu_state,"worker_streams",j_object());j_set(cu_state,"live",j_object());cu_int("worker",0);cu_set("page","chat");cu_set("stream","");cu_set("draft","");cu_int("card_offset",0);}
+    if h_equal(action,"clear"){j_set(cu_state,"permission_request",j_object());j_set(cu_state,"cards",j_array());j_set(cu_state,"expanded",j_object());j_set(cu_state,"worker_messages",j_array());j_set(cu_state,"worker_streams",j_object());j_set(cu_state,"live",j_object());cu_int("worker",0);cu_set("page","chat");cu_set("stream","");cu_set("draft","");cu_int("card_offset",0);}
     if data && cj_get(data,"busy") && !cu_n("busy"){cu_set("status","");cu_set("stream","");j_set(cu_state,"live",j_object());}
     if h_equal(action,"notice"){cu_notice(cj_text(request,"text"));}
+    if h_equal(action,"health_rationale"){cu_notice("Collie reads health sensor data only after this conversation has Sensors access and Android grants the required permission. Programs can return readings to the AI model and save them in this conversation. Revoke access in Collie Permissions or Android settings. No health sensors are accessed just by opening Collie.");}
     if h_equal(action,"event"){
         let event=cj_get(request,"event");let key=cj_text(event,"key");let node=ui_find(index,key);let type=cj_text(event,"type");
         if !node || !h_equal(load64(node+32),cj_text(event,"action")) || load64(node+88)!=cj_int(event,"action_id"){return c_error("Stale or invalid UI event binding.");}

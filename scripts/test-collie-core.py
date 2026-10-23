@@ -64,9 +64,9 @@ with tempfile.TemporaryDirectory(prefix='core-',dir=out) as d:
  c=step('compacted',c['state'],reply=reply);assert c['command']['kind']=='done' and c['state']['messages'][-1]['encrypted_content']=='opaque' and len(c['state']['archive'])==len(t['state']['archive'])
  passed('shared compaction state preserves archived history and encrypted checkpoints')
  for policy in [{},{'workers':True},{'workers':'true'},False]:
-  r=call(8,dict(config=config,action='permissions',saved=policy));assert len(r['entries'])==7 and r['policy']['db_read'] is False,r
+  r=call(8,dict(config=config,action='permissions',saved=policy));assert len(r['entries'])==29 and r['policy']['db_read'] is False,r
   assert r['policy']['workers'] is (isinstance(policy,dict) and policy.get('workers') is True),r
- r=call(8,dict(config=config,action='permissions'));assert all(r['policy'].values())
+ r=call(8,dict(config=config,action='permissions'));assert set(r['policy'].values())=={'ask'}
  passed('permission schema and conservative normalization live in the shared core')
  # Revocation pauses an in-flight worker even when the host reports its cancelled transport.
  r=call(3,dict(config=config,source='fn main(){return worker_start("Pause","Wait")-2;}',history=[],call_id='pause-create'));assert r['exit_code']==0,r

@@ -51,10 +51,10 @@ with tempfile.TemporaryDirectory(prefix='ui-',dir=root/'build') as d:
  screen=temp/'permissions';run([compiler,'tests/ui/permissions.flex','-o',screen]);policy={key:True for key in ['internet','files_read','files_write','db_read','db_write','history','workers']}
  def call(req):return json.loads(run([screen],json.dumps(req).encode()))
  snapshot=call({'policy':policy,'reset':True});assert len(snapshot['ops'])==1
- request={'policy':policy,'next_policy':dict(policy,internet=False),'event':{'key':'toggle-internet','type':'change','action':'internet','value':False}}
- update=call(request);assert update['ops']==[{'op':'text','key':'permissions-summary','value':'6 of 7 permissions enabled'},{'op':'checked','key':'toggle-internet','value':False}]
+ request={'policy':policy,'next_policy':dict(policy,internet=False),'event':{'key':'deny-internet','type':'click','action':'internet'}}
+ update=call(request);assert {'op':'text','key':'permissions-summary','value':'6 allowed · 22 ask · 1 denied'} in update['ops'];assert len(update['ops'])==3,update
  assert update['command']=={'kind':'permission','key':'internet','allowed':False}
- for event in [{'key':'toggle-internet','type':'change','action':'db_write','value':True},{'key':'toggle-internet','type':'change','action':'internet','value':'true'}]:assert 'error' in call({'policy':policy,'event':event})
+ for event in [{'key':'deny-internet','type':'click','action':'db_write'},{'key':'allow-internet','type':'change','action':'internet','value':True}]:assert 'error' in call({'policy':policy,'event':event})
  passed('shared Collie screen validates events and returns minimal updates plus persistence effects')
  if a.out:
   qemu=shutil.which('qemu-aarch64-static') or shutil.which('qemu-aarch64');out=a.out.resolve()
