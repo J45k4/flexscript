@@ -101,6 +101,7 @@ def generate(out, compiler):
         ROOT / 'apps/collie/providers/codex.flex',
         ROOT / 'apps/collie/core/scheduler.flex',
         ROOT / 'apps/collie/core/checkpoint.flex',
+        ROOT / 'apps/collie/core/recall.flex',
         ROOT / 'apps/collie/providers/stream.flex',
         ROOT / 'apps/collie/providers/images.flex',
     ], transformed)
@@ -127,7 +128,7 @@ def generate(out, compiler):
     assert not (HERE / 'engine.flex').read_text().lstrip().startswith('import'), 'engine must use the shared flattened modules'
     globals_ += re.findall(r'\bglobal\s+([A-Za-z_]\w*)\s*=\s*([^;]+);', extra_globals)
     reset = 'fn ca_reset_globals(){\n' + '\n'.join(f'{n}={v};' for n,v in globals_) + '\n}\n'
-    guest = (HERE / 'guest-files.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/workers.flex').read_text()
+    guest = (HERE / 'guest-files.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/workers.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/memory.flex').read_text()
     embedded = 'fn ca_guest_extra(){return '+json.dumps(guest, ensure_ascii=False)+';}\n'
     source = out / 'engine-generated.flex'
     source.write_text(declarations+'\n'+extra_globals+'\n'+functions+'\n'+stubs+'\n'+

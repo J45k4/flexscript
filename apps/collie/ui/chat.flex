@@ -1,4 +1,4 @@
-import "components.flex";
+import "thinking.flex";
 fn cu_chat_hidden(){let page=cu_s("page");return h_equal(page,"conversations") || h_equal(page,"workers") || h_equal(page,"permissions") || h_equal(page,"preview");}
 fn cu_welcome(){let cards=cu_a("cards");let i=0;while i<j_count(cards){let card=j_at(cards,i);if !h_equal(cj_text(card,"kind"),"info") || !h_starts(cj_text(card,"text"),"App-private workspace ready."){return 0;}i=i+1;}return !h_len(cu_s("stream"));}
 view welcome_screen(){
@@ -29,7 +29,7 @@ view chat_screen(){
             column("chat-transcript",padding:18,gap:16){
                 if cu_welcome(){use welcome_screen();}
                 if cu_card_begin()>0{use cu_action("chat-older","Show earlier messages","older",0);}
-                each index in cu_indices(cu_a("cards"),cu_card_begin(),40){use cu_card(cu_k("card-",index),j_at(cu_a("cards"),index));}
+                use cu_timeline(cu_a("cards"),cu_card_begin(),40,cj_get(cu_state,"live"),"card-");
                 if cu_n("card_offset")>0{use cu_action("chat-newer","Show newer messages","newer",0);}
                 if h_len(cu_s("stream")){
                     column("chat-stream",gap:10){text("chat-stream-author",text:"Collie",size:13,color:"#c5e3ae");text("chat-stream-body",text:cu_s("stream"),runs:cu_text_runs(cu_s("stream")),size:16,color:"#edf2ed",line_height:5);}

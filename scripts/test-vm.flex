@@ -180,6 +180,8 @@ fn suite(compiler) {
     t_init(compiler);
     tv_frame_boundaries();
     tv_trap("fn main(){return syscall(10001,1,0,0,0,0,0);}","capability denied",0);
+    tv_trap("fn main(){return syscall(10001,-1,0,0,0,0,0);}","capability denied",0);
+    tv_trap("fn main(){return syscall(10001,-2,0,0,0,0,0);}","capability denied",0);
     let environment=h_env;
     h_setenv("PATH","/no/executables");
     let cases=j_parse(h_read("tests/cases.json"));

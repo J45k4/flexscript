@@ -73,6 +73,8 @@ with tempfile.TemporaryDirectory(prefix='collie-ui-',dir=root/'build') as d:
  step(data={'cards':cards,'authenticated':True,'continuation':True,'used':2200,'total':10000})
  assert widgets.text('chat-context')=='Context 2.2k / 10k' and 'chat-continue' in widgets.nodes
  assert 'card-1-source-body' not in widgets.nodes and 'card-2-result-stdout' not in widgets.nodes
+ assert 'card-1-source-toggle' not in widgets.nodes and widgets.text('card-thinking-0-title')=='Thinking'
+ event('card-thinking-0-toggle')
  event('card-1-source-toggle');assert widgets.text('card-1-source-body')==source
  assert widgets.text('card-1-source-numbers')=='1' and widgets.text('card-1-source-lines')=='1 line' and widgets.text('card-1-source-toggle')=='Hide program'
  assert event('card-1-source-copy')=={'kind':'copy','text':source}
@@ -101,6 +103,12 @@ with tempfile.TemporaryDirectory(prefix='collie-ui-',dir=root/'build') as d:
  assert event('worker-1')=={'kind':'load_worker','id':1}
  messages=[[1,[1,'user','Read this','message','a',1]],[2,[1,'assistant',source,'source','b',1]],[3,[1,'tool','42','result','c',1]]]
  step(data={'worker_owner':1,'worker_messages':messages});assert 'worker-message-2-source-body' not in widgets.nodes
+ event('worker-1thinking-0-toggle')
+ step(data={'worker_streams':{'1':{'summaries':[{'text':'Worker checking the source.'}],'text':'Worker reply stream'}}})
+ assert widgets.text('worker-1thinking-0-preview')=='Worker checking the source.' and widgets.text('worker-stream-reply')=='Worker reply stream'
+ step(data={'worker_streams':{'2':{'summaries':[{'text':'Another worker summary.'}]}}})
+ assert 'worker-stream-reply' not in widgets.nodes and widgets.text('worker-1thinking-0-preview')!='Another worker summary.'
+ step(data={'worker_streams':{}})
  event('worker-message-2-source-toggle');assert widgets.text('worker-message-2-source-body')==source
  assert event('worker-stop')=={'kind':'worker_action','action':'cancel','id':1}
  event('workers-back');event('worker-2');assert event('worker-resume')=={'kind':'worker_action','action':'resume','id':2}
@@ -120,6 +128,17 @@ with tempfile.TemporaryDirectory(prefix='collie-ui-',dir=root/'build') as d:
  passed('attachment tiles, image viewer, gallery/camera/files menu and authentication routing are shared views')
  invalid=call({'state':state,'action':'event','event':{'key':'composer-send','action':'permission','action_id':0,'type':'click'}});assert 'error' in invalid
  passed('events must match actual rendered action/key bindings before any host effect is emitted')
+ step('clear');thoughts=[{'kind':'user','text':'Remember my keyboard'}, {'kind':'thinking','text':'**Searching earlier conversations**'}, {'kind':'assistant','text':'I will check.'}, {'kind':'source','text':source}, {'kind':'result','observation':{'state':'continue','exit_code':0,'stdout':'Moonlander'}}, {'kind':'thinking','text':'Found the relevant preference.'}, {'kind':'assistant','text':'You mentioned Moonlander.'}]
+ step(data={'cards':thoughts,'busy':True});assert widgets.text('card-thinking-0-preview')=='Found the relevant preference.' and 'card-3-source-toggle' not in widgets.nodes
+ assert widgets.text('card-2-body')=='I will check.' and widgets.text('card-6-body')=='You mentioned Moonlander.'
+ event('card-thinking-0-toggle');assert widgets.text('card-1-body')=='**Searching earlier conversations**' and 'card-3-source-toggle' in widgets.nodes
+ step(data={'live':{'summaries':[{'text':'Checking the final details.'}],'source':'fn main(){return','text':'An ordinary reply'},'stream':'An ordinary reply'})
+ assert widgets.text('card-thinking-0-preview')=='Checking the final details.' and widgets.text('card-thinking-0-live-summary-0')=='Checking the final details.' and widgets.text('chat-stream-body')=='An ordinary reply'
+ event('card-thinking-0-toggle');assert 'card-1-body' not in widgets.nodes and 'card-thinking-0-live-source-toggle' not in widgets.nodes
+ step(data={'busy':False});assert 'chat-stream-body' not in widgets.nodes and widgets.text('card-thinking-0-preview')=='Found the relevant preference.'
+ step(data={'cards':thoughts+[{'kind':'user','text':'Next question'}, {'kind':'source','text':source}]});assert 'card-thinking-7-toggle' in widgets.nodes and 'card-8-source-toggle' not in widgets.nodes
+ event('card-thinking-7-toggle');assert 'card-8-source-toggle' in widgets.nodes and 'card-1-body' not in widgets.nodes
+ passed('thinking groups span tool cycles, stream the latest API summary, keep replies separate and start each turn collapsed')
  history=[{'kind':'assistant','text':f'Historical message {i}'} for i in range(180)]
  step(data={'cards':history,'attachments':[],'card_offset':0});assert 'card-179' in widgets.nodes and 'card-0' not in widgets.nodes
  for _ in range(4):event('chat-older')

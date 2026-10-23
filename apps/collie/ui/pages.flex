@@ -1,4 +1,4 @@
-import "components.flex";
+import "thinking.flex";
 view conversation_row(entry){
     let key=cu_key("session-",cj_text(entry,"id"));let bg=cu_session_bg(entry);
     column(key,padding:16,gap:9,background:bg,radius:16,border_width:1,border_color:"#2c353b",action:"open_session",description:cj_text(entry,"title")){
@@ -44,19 +44,6 @@ view worker_row(row){
         text(cu_k("worker-preview-",id),text:body,size:14,color:"#8e9d9f",max_lines:4);
     }
 }
-view worker_message(row){
-    let id=j_value(j_at(row,0));let v=j_at(row,1);let role=j_value(j_at(v,1));let body=j_value(j_at(v,2));let kind=j_value(j_at(v,3));let key=cu_k("worker-message-",id);let title=cu_role_title(role);
-    column(key,gap:8){
-        if h_equal(kind,"source"){use cu_fold(cu_key(key,"-source"),"▸ Flexscript program",body,1);}
-        else{if h_equal(kind,"result"){use cu_fold(cu_key(key,"-result"),"▸ VM result",body,0);}
-        else{
-            column(cu_key(key,"-message"),padding:16,gap:7,background:"#191f25",radius:16){
-                text(cu_key(key,"-role"),text:title,size:14,font:"medium",color:"#c5e3ae");
-                text(cu_key(key,"-body"),text:body,runs:cu_text_runs(body),selectable:1,size:15,color:"#edf2ed",line_height:4);
-            }
-        }}
-    }
-}
 view workers_screen(){
     let selected=cu_worker();let title=cu_worker_title();let subtitle=cu_worker_subtitle();
     column("workers-page",height:-1,background:"#10151a"){
@@ -73,7 +60,8 @@ view workers_screen(){
                 if h_len(cu_s("workers_error")){text("workers-problem",text:cu_s("workers_error"),color:"#f1aaa6",size:14);}
                 if selected{
                     if h_len(j_value(j_at(selected,4))){text("worker-error",text:j_value(j_at(selected,4)),color:"#f1aaa6",size:14);}
-                    each row in cu_items(cu_a("worker_messages")){use worker_message(row);}
+                    use cu_timeline(cu_worker_cards(),0,1000,cu_worker_live(),cu_k("worker-",cu_n("worker")));
+                    if h_len(cj_text(cu_worker_live(),"text")){text("worker-stream-reply",text:cj_text(cu_worker_live(),"text"),runs:cu_text_runs(cj_text(cu_worker_live(),"text")),size:15,color:"#edf2ed");}
                 }else{
                     if !j_count(cu_a("workers")){
                         text("workers-welcome",text:"A little help from the pack",color:"#c5e3ae",size:20);

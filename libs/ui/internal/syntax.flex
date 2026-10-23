@@ -35,6 +35,7 @@ fn sx_span(text,n) {let out=alloc(n+1);if out<0 {sx_fail("Monolith syntax alloca
 fn sx_cat(a,b) {let n=ext_len(a);let m=ext_len(b);let out=alloc(n+m+1);ext_copy(out,a,n);ext_copy(out+n,b,m);return out;}
 fn sx_buffer() {let out=alloc(1048584);if out<0 {sx_fail("Monolith generated source allocation failed");}return out;}
 fn sx_put(buffer,text) {let n=ext_len(text);let used=load64(buffer);if n>1048575-used {sx_fail("Monolith generated source exceeds 1 MiB");}ext_copy(buffer+8+used,text,n);store64(buffer,used+n);store8(buffer+8+used+n,0);return 0;}
+fn sx_put_bytes(buffer,text,n) {let used=load64(buffer);if n<0 || n>1048575-used {sx_fail("Monolith generated source exceeds 1 MiB");}ext_copy(buffer+8+used,text,n);store64(buffer,used+n);store8(buffer+8+used+n,0);return 0;}
 fn sx_is(text) {return ext_equal(sx_token,text);}
 fn sx_letter(c) {return (c>=65 && c<=90)||(c>=97 && c<=122)||c==95;}
 fn sx_word(c) {return sx_letter(c)||(c>=48 && c<=57);}
@@ -301,10 +302,10 @@ fn sx_print_bytes(text,n){while n>0{let size=syscall(1,2,text,n,0,0,0);if size<=
 fn sx_export() {
     let module=0;while module<ext_module_count(){let at=0;let changed=0;let out=sx_buffer();let used=alloc(ext_edit_count*8);let more=1;
         while more{let found=-1;let first=16777217;let i=0;while i<ext_edit_count{let e=ext_edits+i*40;if !load64(used+i*8) && load64(e)==module && load64(e+8)<first{found=i;first=load64(e+8);}i=i+1;}
-            if found<0{more=0;}else{changed=1;store64(used+found*8,1);let e=ext_edits+found*40;if first<at{ext_error("overlapping UI source export edits");}sx_put(out,sx_span(ext_module_text(module)+at,first-at));sx_put(out,sx_span(ext_data+load64(e+24),load64(e+32)));at=load64(e+16);}
+            if found<0{more=0;}else{changed=1;store64(used+found*8,1);let e=ext_edits+found*40;if first<at{ext_error("overlapping UI source export edits");}sx_put_bytes(out,ext_module_text(module)+at,first-at);sx_put_bytes(out,ext_data+load64(e+24),load64(e+32));at=load64(e+16);}
         }
         if changed{
-            sx_put(out,sx_span(ext_module_text(module)+at,ext_module_size(module)-at));
+            sx_put_bytes(out,ext_module_text(module)+at,ext_module_size(module)-at);
             let path=ext_module_path(module);ext_print("FLEXSCRIPT_UI_MODULE ");ext_print(ext_number(ext_len(path)));ext_print(" ");ext_print(ext_number(load64(out)));ext_print("\n");
             sx_print_bytes(path,ext_len(path));sx_print_bytes(out+8,load64(out));ext_print("\n");
         }module=module+1;

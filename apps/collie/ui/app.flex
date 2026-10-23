@@ -124,8 +124,8 @@ fn cu_ui_host(request){
     if h_equal(action,"append") || cj_get(request,"append_cards"){
         let array=j_array();let prior=cu_a("cards");let i=0;while i<j_count(prior){j_push(array,j_at(prior,i));i=i+1;}let card=cj_get(request,"card");if card{j_push(array,card);}let added=cu_array(request,"append_cards");i=0;while i<j_count(added){j_push(array,j_at(added,i));i=i+1;}j_set(cu_state,"cards",array);
     }
-    if h_equal(action,"clear"){j_set(cu_state,"cards",j_array());j_set(cu_state,"expanded",j_object());j_set(cu_state,"worker_messages",j_array());cu_int("worker",0);cu_set("page","chat");cu_set("stream","");cu_set("draft","");cu_int("card_offset",0);}
-    if data && cj_get(data,"busy") && !cu_n("busy"){cu_set("status","");cu_set("stream","");}
+    if h_equal(action,"clear"){j_set(cu_state,"cards",j_array());j_set(cu_state,"expanded",j_object());j_set(cu_state,"worker_messages",j_array());j_set(cu_state,"worker_streams",j_object());j_set(cu_state,"live",j_object());cu_int("worker",0);cu_set("page","chat");cu_set("stream","");cu_set("draft","");cu_int("card_offset",0);}
+    if data && cj_get(data,"busy") && !cu_n("busy"){cu_set("status","");cu_set("stream","");j_set(cu_state,"live",j_object());}
     if h_equal(action,"notice"){cu_notice(cj_text(request,"text"));}
     if h_equal(action,"event"){
         let event=cj_get(request,"event");let key=cj_text(event,"key");let node=ui_find(index,key);let type=cj_text(event,"type");

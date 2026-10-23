@@ -81,9 +81,17 @@ final class PlatformTask implements AutoCloseable {
                     boolean compact = command.getBoolean("compact");
                     JSONObject reply = host.responseAt(
                         host.engineAt(root, command.getInt("engine_op"), base), compact, fixture,
-                        command.getInt("step"), root, base, id == 0 ? null : this);
+                        command.getInt("response_index"), root, base, id == 0 ? null : this);
                     event.put("reply", reply);
                     action = compact ? "compacted" : "reply";
+                    break;
+                }
+                case "feedback": {
+                    JSONObject base = new JSONObject().put("config", config)
+                        .put("messages", command.getJSONArray("messages")).put("feedback", true);
+                    event.put("reply", host.responseAt(host.engineAt(root, 1, base), false, fixture,
+                        command.getInt("response_index"), root, base, this));
+                    action = "feedback";
                     break;
                 }
                 case "vm": {

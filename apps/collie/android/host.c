@@ -496,6 +496,73 @@ static long network_get(long url, long size) {
         return (long)"{\"error\":\"Invalid HTTPS URL length.\"}";
     return java_bytes("vmHttpGet", url, size);
 }
+/* Read-only sibling archives; these calls never widen the normal workspace root. */
+static int archive_id(const char *id) {
+    long n = length(id);
+    if (n < 1 || n > 80) return 0;
+    for (long i = 0; i < n; i++) {
+        char c = id[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-')) return 0;
+    }
+    return 1;
+}
+static int archive_compare(const char *a, const char *b) {
+    while (*a && *a == *b) { a++; b++; }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+static long archives(long op, long *a) {
+    const char *id = (const char *)a[0];
+    if ((!id[0] && op != 1020) || (id[0] && !archive_id(id))) return -22;
+    char parent[4096];long end = length(root);
+    while (end > 0 && root[end - 1] != '/') end--;
+    if (end < 2 || end > 4095) return -13;
+    copy(parent, root, end - 1);parent[end - 1] = 0;
+    long dir = track(raw(56, -100, (long)parent, 0x4000 | 0x8000 | 0x80000, 0, 0, 0));
+    if (dir < 0) return dir;
+    if (op == 1020) {
+        B data[8192];char best[81] = {0};long r = 0;
+        for (;;) {
+            tick();long n = raw(61, dir, (long)data, sizeof(data), 0, 0, 0);
+            if (n == -4) continue;
+            if (n < 0) { r = n;break; }
+            if (!n) break;
+            long at = 0;
+            while (at < n) {
+                unsigned short size = *(unsigned short *)(data + at + 16);
+                if (size < 20 || size > n - at) { r = -5;break; }
+                const char *name = (char *)data + at + 19;
+                long count = 0;while (count < size - 19 && name[count]) count++;
+                if (count == size - 19) { r = -5;break; }
+                if (count <= 80 && archive_id(name) && archive_compare(name,id) > 0 &&
+                    (!best[0] || archive_compare(name,best) < 0)) copy(best,name,count + 1);
+                at += size;
+            }
+            if (r < 0) break;
+        }
+        close_fd(dir);
+        if (r < 0) return r;
+        long p = small_allocate(length(best) + 1);copy((void *)p,best,length(best) + 1);return p;
+    }
+    long child = track(raw(56, dir, (long)id, 0x4000 | 0x8000 | 0x80000, 0, 0, 0));
+    close_fd(dir);if (child < 0) return child;
+    long fd = track(raw(56, child, (long)"session.json", 0x8000 | 0x80000 | 0x800, 0, 0, 0));
+    close_fd(child);if (fd < 0) return fd;
+    B st[128];long r = raw(80,fd,(long)st,0,0,0,0);
+    if (r < 0) { close_fd(fd);return r; }
+    long bytes = *(long *)(st + 48);
+    if ((*(unsigned int *)(st + 16) & 0170000) != 0100000 || bytes < 2 || bytes > 8388608) {
+        close_fd(fd);return -7;
+    }
+    long p = allocate(bytes + 1), at = 0;
+    while (at < bytes) {
+        tick();r = raw(63,fd,p + at,bytes - at,0,0,0);
+        if (r == -4) continue;
+        if (r <= 0) { close_fd(fd);return -5; }
+        at += r;
+    }
+    close_fd(fd);*(long *)a[1] = bytes;return p;
+}
 static long callback(long n, long *a) {
     tick();
     if (n == 1000)
@@ -522,6 +589,8 @@ static long callback(long n, long *a) {
         return output_n[a[0] == 2 ? 1 : 0];
     if (n == 1008)
         return truncated;
+    if (n == 1020 || n == 1021)
+        return archives(n,a);
     if (n == 1013 || n == 1014) {
         long *budgets = (long *)a[0];
         if (n == 1013) {

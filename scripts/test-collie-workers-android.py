@@ -65,7 +65,10 @@ passed('real scheduler runs independent worker tool loops while coordinator VM a
 adb('shell','input','keyevent','4')
 click(lambda x:'Calculator · done' in x.get('content-desc',''))
 tree=dump();texts=[x.get('text','') for x in tree.iter('node')];assert any('Calculator got 42' in x for x in texts),texts
-assert any('Flexscript program' in x for x in texts) and any('VM result' in x for x in texts),texts
+assert any(x.attrib.get('content-desc')=='Expand thinking' for x in tree.iter('node')),texts
+click(lambda x:x.get('content-desc')=='Expand thinking')
+tree=dump();texts=[x.get('text','') for x in tree.iter('node')]
+assert any('Show program' in x for x in texts) and any('Show result' in x for x in texts),texts
 adb('exec-out','screencap','-p')
 (out/'worker-detail.png').write_bytes(adb('exec-out','screencap','-p'))
 passed('tapping worker shows its real conversation with collapsed code and VM results')

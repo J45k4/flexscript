@@ -8,8 +8,8 @@ fn cp_permissions(saved){
     cp_permission(rows,"files_write","Write workspace files","Create folders and create or replace workspace files.");
     cp_permission(rows,"db_read","Read database","Read tables, columns and saved rows in this conversation's FlexDB.");
     cp_permission(rows,"db_write","Write database","Create tables, change schemas, and add, update or delete saved rows.");
-    cp_permission(rows,"history","Read past messages","Query archived messages, previous programs and their results from Flexscript.");
-    cp_permission(rows,"workers","Manage workers","Start and manage helper agents. Workers share this workspace and inherit its permissions.");
+    cp_permission(rows,"history","Read past messages","Search and read saved conversations, previous programs and results. Conversations with this permission off are excluded from recall.");
+    cp_permission(rows,"workers","Manage workers","Start helper agents and ask the model for feedback inside a running program. Workers share this workspace and inherit its permissions.");
     let policy=j_object();let i=0;while i<j_count(rows){let key=j_s(j_at(rows,i),"key");let value=cj_get(saved,key);let allowed=!saved || j_kind(saved)==0;if value{allowed=j_kind(value)==5 && j_value(value);}j_set(policy,key,j_bool(allowed));i=i+1;}
     let out=j_object();j_set(out,"policy",policy);j_set(out,"entries",rows);return out;
 }

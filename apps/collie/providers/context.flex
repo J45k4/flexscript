@@ -23,7 +23,7 @@ fn co_history_valid(items) {
 }
 fn co_item_tokens(item) {
     let cipher=c_string(item,"encrypted_content");if cipher && co_compaction(item) {return (h_len(cipher)+11)/12;}
-    if pt_reasoning(item) {return (h_len(cipher)+11)/12;}
+    if pt_reasoning(item) {let n=(h_len(cipher)+11)/12;let parts=j_get(item,"summary");let i=0;while parts && i<j_count(parts){n=n+(h_len(j_s(j_at(parts,i),"text"))+3)/4;i=i+1;}return n;}
     let call=pt_call(item);if call {return (h_len(j_s(call,"input"))+3)/4;}
     let result=pt_result(item);if result {return (h_len(j_s(result,"output"))+3)/4;}
     let text=c_string(item,"content");return (h_len(text)+3)/4;

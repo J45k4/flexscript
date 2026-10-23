@@ -292,7 +292,7 @@ fn vm_poll_guest(pointer,count,timeout) {
 }
 fn vm_syscall(number,a,b,c,d,e,f) {
     vm_denied_syscall=number;
-    if number==10001 && vm_yield_enabled && a>0 {vm_yielded=a;return 0;}
+    if number==10001 && vm_yield_enabled && (a>0 || a== -1 || a== -2) {vm_yielded=a;return 0;}
     if number==60 {vm_acc=a;vm_finished=1;return a;}
     if !vm_restricted {
         if number==11 {return vm_native_unmap(a,b);}

@@ -95,6 +95,9 @@ jobs:
           python3 scripts/build-collie-android.py --compiler build/stage2 --native-only --out build/android-worker-tests
           python3 scripts/test-collie-android.py --out build/android-worker-tests
           python3 scripts/test-collie-workers.py --out build/android-worker-tests
+          python3 scripts/test-collie-signals.py --out build/android-worker-tests
+          python3 scripts/test-collie-recall.py --out build/android-worker-tests
+          python3 scripts/test-collie-thinking.py --out build/android-worker-tests
           python3 scripts/test-collie-core.py --out build/android-worker-tests
           build/stage2 apps/collie/tests/shared-core.flex -o build/test-collie-shared-core
           python3 scripts/test-collie-core.py --out build/android-worker-tests --core-driver build/test-collie-shared-core

@@ -423,11 +423,31 @@ public class MainActivity extends Activity {
             checkStop();
         else
             job.check();
-
+        final long streamId=baseRequest.getJSONObject("config").optLong("agent_id");
+        final boolean feedback=baseRequest.optBoolean("feedback");
+        Object token=null;
+        if(!compact) {
+            java.util.concurrent.FutureTask<Object> start=new java.util.concurrent.FutureTask<>(() -> ui.beginStream(streamId));
+            runOnUiThread(start);token=start.get();
+        }
+        final Object preview=token;
+        try {
         if (fixture != null) {
             if (index >= fixture.length())
                 throw new IOException("Fixture ran out of responses.");
             JSONObject event = fixture.getJSONObject(index);
+            JSONArray events=event.optJSONArray("_events");
+            if(events!=null) {
+                JSONObject stream=new JSONObject();
+                for(int n=0;n<events.length();n++) {
+                    int delay=Math.max(0,Math.min(20000,event.optInt("_event_delay_ms")));
+                    for(int elapsed=0;elapsed<delay;elapsed+=100) { if(job==null) checkStop();else job.check();Thread.sleep(100); }
+                    JSONObject processed=streamPacket(workspace,baseRequest,compact,stream,events.getJSONObject(n).toString(),streamId,preview,feedback);
+                    stream=processed.getJSONObject("stream");
+                    if(processed.optBoolean("complete")) return processed.getJSONObject("reply");
+                }
+                throw new IOException("Fixture stream ended without a completed response.");
+            }
             if (job != null) {
                 int delay = Math.max(0, Math.min(20000, event.optInt("_delay_ms")));
                 for (int elapsed = 0; elapsed < delay; elapsed += 100) {
@@ -484,13 +504,6 @@ public class MainActivity extends Activity {
                 StringBuilder event = new StringBuilder();
                 JSONObject stream = new JSONObject();
                 int total = 0;
-                Object preview = null;
-                if (!compact && job == null) {
-                    java.util.concurrent.FutureTask<Object> task =
-                        new java.util.concurrent.FutureTask<>(() -> { return ui.beginStream(); });
-                    runOnUiThread(task);
-                    preview = task.get();
-                }
                 for (;;) {
                     if (job == null)
                         checkStop();
@@ -520,23 +533,9 @@ public class MainActivity extends Activity {
                     } else if (s.isEmpty() && event.length() > 0) {
                         String json = event.toString();
                         event.setLength(0);
-                        JSONObject packet = new JSONObject()
-                                                .put("config", baseRequest.getJSONObject("config"))
-                                                .put("action", "stream")
-                                                .put("stream", stream)
-                                                .put("event_json", json)
-                                                .put("compact", compact);
-                        if (compact)
-                            packet.put("messages", baseRequest.getJSONArray("messages"));
-                        JSONObject processed = engineAt(workspace, 8, packet);
+                        JSONObject processed = streamPacket(workspace,baseRequest,compact,stream,json,streamId,preview,feedback);
                         stream = processed.getJSONObject("stream");
-                        final Object v = preview;
-                        String text = processed.optString("preview");
-                        if (v != null)
-                            runOnUiThread(() -> ui.stream(v, text));
                         if (processed.optBoolean("complete")) {
-                            if (v != null)
-                                runOnUiThread(() -> ui.removeStream());
                             return processed.getJSONObject("reply");
                         }
                     }
@@ -549,6 +548,17 @@ public class MainActivity extends Activity {
                 job.connection = null;
             c.disconnect();
         }
+        } finally { if(preview!=null) runOnUiThread(() -> ui.removeStream(streamId,preview)); }
+    }
+    private JSONObject streamPacket(File workspace,JSONObject base,boolean compact,JSONObject stream,
+                                    String event,long id,Object preview,boolean feedback) throws Exception {
+        JSONObject packet=new JSONObject().put("config",base.getJSONObject("config"))
+            .put("action","stream").put("stream",stream).put("event_json",event).put("compact",compact).put("feedback",feedback);
+        if(compact) packet.put("messages",base.getJSONArray("messages"));
+        JSONObject result=engineAt(workspace,8,packet);
+        JSONObject visible=result.getJSONObject("display");
+        if(preview!=null) runOnUiThread(() -> ui.stream(id,preview,visible));
+        return result;
     }
     private JSONObject limits() throws Exception {
         JSONObject r = request().put("anchor", anchor);

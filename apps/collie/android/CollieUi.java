@@ -12,7 +12,8 @@ final class CollieUi {
     private JSONObject state=new JSONObject(), pending=new JSONObject();
     private JSONArray appended=new JSONArray();
     private boolean scheduled, initialized;
-    private Object streamToken;
+    private final java.util.Map<Long,Object> streamTokens=new java.util.HashMap<>();
+    private JSONObject workerStreams=new JSONObject();
 
     CollieUi(MainActivity owner) {
         host=owner;
@@ -61,7 +62,7 @@ final class CollieUi {
         catch(JSONException error) { throw new IllegalArgumentException(error); }
         pending=new JSONObject(); appended=new JSONArray(); call("update",request);
     }
-    void clear() { onMain(() -> { flush(); streamToken=null; call("clear",new JSONObject()); }); }
+    void clear() { onMain(() -> { flush(); streamTokens.clear(); workerStreams=new JSONObject(); call("clear",new JSONObject()); }); }
     void cards(JSONArray cards) { onMain(() -> { appended=new JSONArray(); update(object("cards",cards)); }); }
     void render(JSONObject card) { onMain(() -> { appended.put(card); schedule(); }); }
     void working(boolean value) { update(object("busy",value)); }
@@ -77,9 +78,20 @@ final class CollieUi {
         try { update(new JSONObject().put("workers",rows).put("workers_error",error)); }
         catch(JSONException failure) { throw new IllegalArgumentException(failure); }
     }
-    Object beginStream() { streamToken=new Object(); return streamToken; }
-    void stream(Object token,String text) { if (token==streamToken) update(object("stream",text)); }
-    void removeStream() { streamToken=null; update(object("stream","")); }
+    Object beginStream(long id) { Object token=new Object();streamTokens.put(id,token);return token; }
+    void stream(long id,Object token,JSONObject live) {
+        if (streamTokens.get(id)!=token) return;
+        try {
+            // Flexscript supplies the public display state; Android forwards it.
+            if(id==0) update(new JSONObject().put("stream",live.getString("text")).put("live",live));
+            else { workerStreams.put(Long.toString(id),live);update(object("worker_streams",new JSONObject(workerStreams.toString()))); }
+        } catch(JSONException error) { throw new IllegalArgumentException(error); }
+    }
+    void removeStream(long id,Object token) {
+        if(streamTokens.get(id)!=token) return;streamTokens.remove(id);
+        if(id==0) { update(object("stream",""));update(object("live",new JSONObject())); }
+        else { workerStreams.remove(Long.toString(id));update(object("worker_streams",workerStreams)); }
+    }
     void toBottom(boolean force) { page.bottom("chat-scroll",force); }
     void back() { flush(); call("back",new JSONObject()); }
     void notice(String text) { onMain(() -> { flush(); call("notice",object("text",text)); }); }

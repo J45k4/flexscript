@@ -50,14 +50,14 @@ shared Codex checkpoint protocol and desktop limits (272,000 raw; 258,400 usable
 244,800 automatic compaction threshold for the default model).
 
 Open **Menu → Permissions** to control the agent's access for the current
-conversation. Six independent switches grant internet access, workspace file
+conversation. Seven independent switches grant internet access, workspace file
 reads, workspace file writes, database reads, database writes, and archived
-message access. Settings save immediately and survive restart/resume. New and
+message access, and workers/model feedback. Settings save immediately and survive restart/resume. New and
 older conversations default to the existing enabled capabilities; changing one
 conversation does not affect another. The model receives the current grants in
 each request, and the native VM broker enforces them on every capability call.
 Denied operations return 0 with `db_error()` set to `Permission denied: NAME`.
-Computation/stdout still work when all six are off. The internet switch controls
+Computation/stdout/progress still work when all seven are off. The internet switch controls
 guest HTTPS requests; it does not disable Collie's model connection. Revoking
 access does not remove data already present in model context or chat history.
 
@@ -72,11 +72,58 @@ files/workspaces/SESSION/agent.flexdb    real persistent FlexDB
 files/workspaces/SESSION/files/          agent's private filesystem root /
 ```
 
-There is no initial database schema. Programs use the existing `db_*` API.
+Application tables start empty. The runtime reserves read-only `collie_` tables
+for workers, messages, and private named state. Programs use the existing `db_*` API.
 Committed transactions persist; uncommitted transactions roll back after each
 execution. The visible archive is queryable with `db_history` and
 `db_history_read`, including source and actual observations. Encrypted model
 reasoning stays in the provider history and is not exposed through that archive.
+
+### Remembering across conversations
+
+Collie can search saved conversations from Flexscript when you ask about earlier
+discussions or preferences. The model instructions tell it to search before
+guessing, try relevant keywords, and read the original context. Recall uses the
+durable visible archive, so it also works after restart or model-context
+compaction. It is keyword retrieval; the model interprets the retrieved facts.
+
+- `memory_search(query, session_after, message_after, limit)` returns
+  `[matches, next_session, next_message]`. Start with `""`, `0` and a limit of
+  1–20. Each match is `[session_id, message_id, role, field, excerpt]`; excerpts
+  are at most 512 UTF-8 bytes and include the matching text. Queries are 1–256
+  bytes, ASCII case-insensitive substrings; other UTF-8 bytes match exactly.
+- Continue with the returned cursors until `next_session` is empty. An empty
+  match list can still have a continuation. Each call scans at most eight
+  sessions or 1024 messages and stops after reading at least 8 MiB of archives.
+  Results follow session/message ID order, rather than relevance or date.
+- `memory_history(session_id, after_id, limit)` reads surrounding messages in
+  the same row format and limits as `db_history`.
+- `memory_read(session_id, message_id, field, offset, limit)` reads a full field
+  in chunks, like `db_history_read`. Fields are `role`, `content`, `source`, and
+  `observation`; reads return blob values.
+
+For example, `memory_search("keyboard", "", 0, 10)` can locate an earlier
+preference. Inspect the matches, then use `memory_read` or `memory_history` to
+check what was actually said before answering.
+
+The existing **Read past messages** permission controls recall. Disabling it in
+the current conversation blocks searching and reading; disabling it in another
+conversation excludes that conversation as a source. Older conversations without
+a saved policy retain the existing default grants. Only `session.json` archives
+under Collie's workspaces are accessible. Files, other databases, credentials,
+hidden reasoning and worker-private histories are not exposed by these APIs.
+Recall is read-only, and does not grant general access to other workspaces.
+Saved archives larger than the app's 8 MiB session limit cannot be loaded.
+
+Search/paging/policy code lives in `core/recall.flex`; the native storage adapter
+only enumerates sibling session IDs and reads their archives without following
+symlinks. No Android Java agent policy is added. Verification:
+
+```sh
+python3 scripts/test-collie-recall.py --out build/android-agent-signals
+python3 scripts/test-collie-recall-android.py --out build/android-agent-signals \
+  --serial emulator-5580
+```
 
 The preloaded Android filesystem API is:
 
@@ -421,9 +468,9 @@ python3 scripts/test-collie-core.py --out build/android-collie-core \
 ```
 
 The Android native entry points also exercise these transitions under QEMU. This
-refactor preserves existing workspace DBs, worker IDs, history JSON, named state,
-and VM checkpoint format; it does not change guest SDK source or its bytecode
-layout. Native engine globals remain temporary per call. Durable machine state
+core preserves existing workspace DBs, worker IDs, history JSON and named state.
+Checkpoints require the same SDK and checkpoint version that created them.
+Native engine globals remain temporary per call. Durable machine state
 lives in conversation/worker JSON and FlexDB, and suspended guest execution lives
 in its private VM checkpoint.
 
@@ -491,3 +538,83 @@ the agent engine lock is held. Full application state/effect tests compare Linux
 and the production ARM64 UI image. See [`docs/ui.md`](../../../docs/ui.md) for the
 DSL, wire ABI, platform differences and browser checks. Emulator evidence is not
 physical-phone deployment evidence.
+
+## Thinking summaries and tool activity
+
+Model requests enable `reasoning.summary: "auto"`. The shared provider processes
+`response.reasoning_summary_text.delta` and completed summary/part events, and
+keeps public summary text separate from assistant prose and encrypted reasoning.
+These are the [Responses API summary events](https://developers.openai.com/api/reference/resources/responses/streaming-events).
+Completed summaries are saved with the conversation and in worker journals.
+Encrypted continuation data stays in provider history and never enters UI state.
+
+The portable Flexscript view groups summaries, Flexscript calls/results, progress,
+and model-feedback records into one **Thinking** panel per user turn. Panels
+start collapsed and show the latest API summary as their preview. Expanding the
+panel shows the history, with existing controls for viewing code and results.
+Assistant messages stream and remain outside the panel. The same grouping is
+used in worker conversations. Older conversations with tool activity but no API
+summary get a generic activity preview.
+
+Android Java continues to own HTTPS and frame delivery. Summary parsing, display
+field selection, persistent cards, grouping and expansion are shared Flexscript.
+The debug fixture can feed actual API-shaped events through the same processing
+path with a delay between events; it does not fabricate summary text in the UI.
+The native and headless Android checks use synthetic provider replies:
+
+```sh
+python3 scripts/test-collie-thinking.py --out build/android-agent-signals
+python3 scripts/test-collie-ui.py --compiler build/flex-collie-signals \
+  --out build/android-agent-signals
+python3 scripts/test-collie-thinking-android.py --out build/android-agent-signals \
+  --serial emulator-5580
+```
+
+## Progress and model feedback inside a program
+
+The preloaded `progress(text)` function publishes a visible conversation card
+before the program finishes, then continues the same program. It returns 1 on
+success or 0 with `db_error()`. `agent_ask(prompt)` suspends the VM for a separate
+model request and returns its plain-text answer as a `db_text` value, or 0 with
+an error. Both are ordinary functions inside the existing `flexscript` tool:
+
+```flex
+fn main(){
+    progress("Loaded the data; deciding what to do next");
+    let answer=agent_ask("The measured values were 12, 19 and 23. Which should I inspect first?");
+    if !answer {db_io(0,2,db_error(),db_len(db_error()));return 1;}
+    fs_write("decision.txt",answer);
+    progress("Saved the decision");
+    return 0;
+}
+```
+
+Each signal is an explicit safe point. The native VM saves its heap, local
+variables, frames, instruction position, fuel, remaining CPU deadline and
+capability budgets before returning control to the harness. Resumption restores
+that state; completed code is not replayed. The original model tool call remains
+pending until the program finishes, when one correlated result collects stdout,
+stderr, file/image views and the progress/feedback records.
+
+Feedback branches from completed conversation items and supplied program/output
+facts. It never submits the pending parent tool call without a result. The branch
+has no tools and cannot execute nested generated code; its answer is data for the
+caller. Failed/oversized/tool-bearing feedback returns an error to the paused
+program. Cancellation completes the original call with an explicit observation.
+Worker permission is required for feedback and is checked again after suspension.
+Progress, like stdout, remains available without worker permission.
+
+Commit or roll back DB transactions before either function. There are at most 32
+combined signals per program, including across restarts: progress is 1–4096 bytes,
+questions 1–16384 bytes, and answers at most 32768 bytes. Suspension does not reset
+the ordinary VM limits. Upgrading the embedded SDK invalidates older checkpoints;
+Collie reports that mismatch instead of replaying their code.
+
+Verification uses synthetic model replies and fresh native processes, plus a
+headless Android emulator for visible progress, restart, worker and Stop checks:
+
+```sh
+python3 scripts/test-collie-signals.py --out build/android-agent-signals
+python3 scripts/test-collie-signals-android.py --out build/android-agent-signals \
+  --serial emulator-5580
+```
