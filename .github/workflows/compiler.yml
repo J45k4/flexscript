@@ -28,6 +28,12 @@ jobs:
 
       - name: Install verification dependencies
         run: |
+          # The Azure mirror can stream large font packages too slowly to fit
+          # this job's deadline. Keep the same signed Ubuntu repositories and
+          # packages, using the main archive on runners with mirrorlist sources.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
           sudo apt-get update
           sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libgdk-pixbuf-2.0-0 libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 qemu-user lld
           # Ubuntu's default unconfined user-namespace policy denies the
