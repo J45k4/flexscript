@@ -174,3 +174,17 @@ fn aware_peers(discovery,offset,limit){let r=db_request("aware_peers");db_add(r,
 fn aware_send(discovery,peer,id,bytes){let r=db_request("aware_send");db_add(r,db_text(discovery));db_add(r,db_text(peer));db_add(r,db_int(id));db_add(r,bytes);return db_rpc(r);}
 fn aware_network(discovery,peer,security,key,cipher,port,protocol,timeout){let r=db_request("aware_network");db_add(r,db_text(discovery));db_add(r,db_text(peer));db_add(r,db_text(security));db_add(r,key);db_add(r,db_int(cipher));db_add(r,db_int(port));db_add(r,db_int(protocol));db_add(r,db_int(timeout));return db_rpc(r);}
 fn aware_rtt(discovery,peers,burst){let r=db_request("aware_rtt");db_add(r,db_text(discovery));db_add(r,peers);db_add(r,db_int(burst));return db_rpc(r);}
+
+fn bt_info(){return db_rpc(db_request("bt_info"));}
+fn bt_watch(){return db_rpc(db_request("bt_watch"));}
+fn bt_bonded(offset,limit){let r=db_request("bt_bonded");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn bt_device(address){let r=db_request("bt_device");db_add(r,db_text(address));return db_rpc(r);}
+fn bt_request_enable(){return db_rpc(db_request("bt_request_enable"));}
+fn bt_request_discoverable(seconds){let r=db_request("bt_request_discoverable");db_add(r,db_int(seconds));return db_rpc(r);}
+fn bt_scan(duration_ms){let r=db_request("bt_scan");db_add(r,db_int(duration_ms));return db_rpc(r);}
+fn bt_scan_page(scan,offset,limit){let r=db_request("bt_scan_page");db_add(r,db_text(scan));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn bt_bond(device){let r=db_request("bt_bond");db_add(r,db_text(device));return db_rpc(r);}
+fn bt_uuids(device,refresh){let r=db_request("bt_uuids");db_add(r,db_text(device));db_add(r,db_int(refresh));return db_rpc(r);}
+fn bt_rfcomm_listen(name,uuid,secure){let r=db_request("bt_rfcomm_listen");db_add(r,db_text(name));db_add(r,db_text(uuid));db_add(r,db_int(secure));return db_rpc(r);}
+fn bt_rfcomm_connect(device,uuid,secure,timeout_ms){let r=db_request("bt_rfcomm_connect");db_add(r,db_text(device));db_add(r,db_text(uuid));db_add(r,db_int(secure));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn bt_rfcomm_accept(listener,timeout_ms){let r=db_request("bt_rfcomm_accept");db_add(r,db_text(listener));db_add(r,db_int(timeout_ms));return db_rpc(r);}

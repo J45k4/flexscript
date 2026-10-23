@@ -42,6 +42,11 @@ final class HardwareConsent {
             pending.task.check();if(!host.ownsPermissionRequest(pending.task.root))throw new IOException("Conversation closed.");
             JSONObject request=pending.signal.getJSONObject("request");
             String type=request.getString("type");
+            if(type.equals("bluetooth_enable")||type.equals("bluetooth_discoverable")){
+                Intent intent=new Intent(type.equals("bluetooth_enable")?android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE:android.bluetooth.BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+                if(type.equals("bluetooth_discoverable")){int seconds=request.getInt("seconds");if(seconds<1||seconds>300)throw new IOException("Invalid Bluetooth discoverability duration.");intent.putExtra(android.bluetooth.BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION,seconds);}
+                pending.code=++sequence;host.startActivityForResult(intent,pending.code);return;
+            }
             if(type.equals("vpn")){
                 Intent intent=android.net.VpnService.prepare(host);if(intent==null){complete(pending);return;}
                 pending.code=++sequence;host.startActivityForResult(intent,pending.code);return;
@@ -72,8 +77,8 @@ final class HardwareConsent {
     }
     void close(){for(Pending pending:queue){pending.error=new IOException("Android permission request cancelled because the activity closed.");if(pending.token!=null)USB_REQUESTS.remove(pending.token);if(pending.callback!=null)pending.callback.cancel();pending.ready.countDown();}queue.clear();}
     boolean activityResult(int code,int resultCode){
-        Pending pending=queue.peek();if(pending==null||pending.code!=code||!pending.signal.optJSONObject("request").optString("type").equals("vpn"))return false;
-        try{if(!pending.abandoned){pending.task.check();if(!host.ownsPermissionRequest(pending.task.root))throw new IOException("Conversation closed.");if(resultCode!=android.app.Activity.RESULT_OK||android.net.VpnService.prepare(host)!=null)host.savePermission(pending.signal.getString("key"),false);}}
+        Pending pending=queue.peek();if(pending==null||pending.code!=code)return false;String type=pending.signal.optJSONObject("request").optString("type");if(!type.equals("vpn")&&!type.equals("bluetooth_enable")&&!type.equals("bluetooth_discoverable"))return false;
+        try{if(!pending.abandoned){pending.task.check();if(!host.ownsPermissionRequest(pending.task.root))throw new IOException("Conversation closed.");boolean denied=type.equals("bluetooth_discoverable")?resultCode<=0:resultCode!=android.app.Activity.RESULT_OK;if(type.equals("vpn")&&android.net.VpnService.prepare(host)!=null)denied=true;if(denied)host.savePermission(pending.signal.getString("key"),false);}}
         catch(Exception error){pending.error=error;}
         complete(pending);return true;
     }

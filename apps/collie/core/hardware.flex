@@ -161,6 +161,20 @@ fn hw_operations(){
     hw_operation(rows,"aware_send","hardware_handle",4,4);
     hw_operation(rows,"aware_network","hardware_handle",8,8);
     hw_operation(rows,"aware_rtt","hardware_handle",3,3);
+    hw_operation(rows,"bt_info","bluetooth",0,0);
+    hw_operation(rows,"bt_watch","bluetooth",0,0);
+    hw_operation(rows,"bt_bonded","bluetooth",2,2);
+    hw_operation(rows,"bt_device","bluetooth",1,1);
+    hw_operation(rows,"bt_request_enable","bluetooth",0,0);
+    hw_operation(rows,"bt_request_discoverable","bluetooth",1,1);
+    hw_operation(rows,"bt_scan","bluetooth",1,1);
+    j_set(j_at(rows,j_count(rows)-1),"also",j_string("location"));
+    hw_operation(rows,"bt_scan_page","hardware_handle",3,3);
+    hw_operation(rows,"bt_bond","hardware_handle",1,1);
+    hw_operation(rows,"bt_uuids","hardware_handle",2,2);
+    hw_operation(rows,"bt_rfcomm_listen","bluetooth",3,3);
+    hw_operation(rows,"bt_rfcomm_connect","hardware_handle",4,4);
+    hw_operation(rows,"bt_rfcomm_accept","hardware_handle",2,2);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

@@ -18,7 +18,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Cellular diagnostics | subscriptions, signal/service/cell data with platform permissions | implemented; read-only diagnostics, separate cellular + location gates | 19 headless Android scenarios passed, including real runtime prompts, NR cell data, refresh, roaming callbacks and both grants; physical SIM/multi-SIM/radio checks pending |
 | USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt, accessory mode, disconnect handling | implemented; device consent and transfers need a real fixture | UsbManager inventory/events, missing devices, invalid arguments and wrong handle types passed on emulator; physical device approval/transfers/detach pending |
 | USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
-| Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | pending | pending |
+| Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 15 baseline SDK/VM/consent checks passed; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | pending | pending |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | pending | pending |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | pending | pending |
@@ -724,7 +724,7 @@ continues to discard late results rather than claiming to cancel radio requests.
 No live OS handles survive saved VM/process state. Aware pairing administration
 and newer optional discovery modes are not exposed by these functions.
 
-The current debug APK is
+The draft PR baseline debug APK was
 `4042ce7269319f77ac1b7b397d51260d50b86aff58c19a4904553e37550834de`;
 the non-debug APK is
 `48c13018861e87c462d48b15acd2d12d4a2eb362c5e8478b800f6ae034fdc0f2`.
@@ -748,4 +748,100 @@ as radio proof. Wi-Fi Direct DNS-SD/TXT exchange also remains unresolved.
 ```sh
 python3 scripts/test-collie-aware-android.py \
   --out build/android-hardware --serial emulator-5580
+```
+
+
+## Bluetooth Classic adapter
+
+The Classic adapter exposes ordinary `bt_*` Flexscript functions. `bt_info`,
+`bt_watch`, and paged `bt_bonded(offset,limit)` use the Bluetooth grant and actual
+Android CONNECT permission on API 31+. Inventory does not request Location or
+SCAN: `scan_mode` and `discovering` remain null until SCAN is granted. No local
+hardware address is exported. `bt_device(address)` creates a workspace-owned
+cached device handle without connecting. Its info and events carry name, type,
+bond state and class. `bt_uuids(device,refresh)` optionally starts actual SDP;
+the later `uuids` event carries the refreshed cache.
+
+`bt_request_enable()` and `bt_request_discoverable(seconds)` suspend the VM for
+Android's own confirmation, outside the VM lock. Discoverability accepts 1..300
+seconds and requires ADVERTISE/SCAN. Its timer is global and controlled by
+Android; there is no public SDK operation to cancel it on handle close.
+`bt_bond(device)` starts Android pairing; observe bond events for its outcome.
+Neither pairing confirmation nor removal of saved pairings is bypassed.
+
+`bt_scan(duration_ms)` additionally needs the independent Location grant,
+Android SCAN/precise Location and the enabled Location switch. It runs a real
+Classic inquiry, capped at 30 seconds, 128 peers and 16 records per page. A single
+Collie inquiry lease refuses existing discovery; it cancels only after its own
+request was accepted. The finished snapshot remains permission-gated until
+closed. Close/revocation unregister receivers and discard retained data.
+
+`bt_rfcomm_listen(name,uuid,secure)` registers actual Android SDP, with one
+Collie listener per canonical UUID. `bt_rfcomm_accept(listener,timeout_ms)`
+returns an already connected stream or a structured timeout (1..8000ms), leaving
+the listener usable. Closing a listener does not close accepted sockets.
+`bt_rfcomm_connect(device,uuid,secure,timeout_ms)` returns a pending socket;
+wait for `connected` or `error` before I/O. At most two connections may be
+pending in the app. Its1..120-second deadline allows time for Android pairing.
+
+Use `device_read/write` with at most 32768 bytes. A read timeout closes its
+stream to prevent a late read consuming future data. Writes have an 8-second
+cap and may have partially completed when interrupted. EOF, Classic ACL loss
+and adapter shutdown close the endpoint; error events remain readable until
+explicit close. Handles are scoped to their conversation and Bluetooth grant,
+and do not survive process snapshots. Bluetooth capability reporting now
+separates SDK implementation, hardware support and actual availability.
+
+The Bluetooth debug APK is
+`323723905dc10663ba4a5ea28b453c88e1aea2ff7aef20d844df0fd8494e61f7`
+(**6,669,329 bytes**). The corresponding non-debug APK is
+`06cdf06f137b270585c2138bb74637b6fd210192d190c25950fef323a2a010ee`
+(**6,587,330 bytes**). Packaging verification confirms that test fixtures remain
+excluded from the non-debug build. Earlier checks above belong to their stated
+APK digests, not automatically to this build.
+
+On this exact debug APK, **49 Android checks passed**: 15 Bluetooth baseline,
+5 insecure peer, 5 secure peer, 8 VPN, 10 Aware and 6 live revocation. The two peer
+reports independently record their security mode and observed encryption.
+Shared validation passed the hardware codec/registry, 9 core groups and 11 lazy
+permission groups, now including Bluetooth denial and its separate Location gate.
+
+The baseline 15-check suite uses actual Android consent denial/approval, radio
+enable confirmation, Classic inquiry, adapter/watch/bonded inventory, cached
+device/UUID handles, input validation, secure SDP listener registration,
+duplicate UUID preservation, actual accept timeout, foreign-workspace rejection
+and revocation/reopen. It preserves the original conversation, grants and radio
+state. The shared native tests additionally exercise Bluetooth first-use denial
+and separate Bluetooth/Location checkpoints.
+
+The controlled peer fixture uses Google's `bumble[android]==0.0.236` stack
+through the SDK's local Netsim. It is a host-only test dependency and adds no
+Python or libraries to the APK. Outgoing secure and insecure RFCOMM each
+transferred 32768 bytes in both directions. The VM and independent peer byte
+oracle validate the payload. Secure-mode verification also observes actual
+link encryption. A real empty read timeout closes the SDK stream and reaches
+the peer as channel closure. Pairing confirmation uses Android's UI for the
+unique fixture name; cleanup checks its exact address before forgetting it
+and then confirms the unpaired state through the actual BluetoothDevice SDK.
+These are virtual-controller results, not physical radio evidence.
+
+**Still unverified:** incoming RFCOMM payload/accepted-child lifetime, explicit
+`bt_bond` and discoverability confirmation paths, radio/ACL loss during pending
+I/O, and physical devices. BLE scan/GATT/client/server/advertising and Bluetooth
+HID remain separate pending adapters. P2P DNS-SD/TXT and Aware radio gates remain
+open as documented above.
+
+```sh
+python3 scripts/test-collie-bluetooth-android.py \
+  --out build/android-hardware --serial emulator-5580
+# Read the running emulator's grpc.port from $XDG_RUNTIME_DIR/netsim.ini.
+# In a separate host virtual environment: pip install 'bumble[android]==0.0.236'
+# Start a fresh uniquely named peer for each --secure 0 / --secure 1 run:
+python scripts/fixtures/collie-bluetooth-peer.py \
+  --transport android-netsim:127.0.0.1:PORT,name=collie-test-UNIQUE \
+  --out build/android-hardware/bluetooth-peer.json \
+  --uuid ed079c58-e558-4256-b89b-69adadbfdf8c
+python3 scripts/test-collie-bluetooth-peer-android.py \
+  --out build/android-hardware --serial emulator-5580 \
+  --peer-state build/android-hardware/bluetooth-peer.json --secure 1
 ```

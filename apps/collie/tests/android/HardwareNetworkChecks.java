@@ -58,6 +58,32 @@ public final class HardwareNetworkChecks {
     public static JSONObject runWifiRecovery(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).wifiRecovery();}
     public static JSONObject runRevocation(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).revocation();}
     public static JSONObject runAware(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).aware();}
+    public static JSONObject runBluetooth(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).bluetooth();}
+    private JSONObject bluetooth()throws Exception{
+        android.bluetooth.BluetoothAdapter adapter=HardwareBluetooth.adapter(new VmHardware.Context(host,root));check(adapter.isEnabled(),"the test emulator provides an enabled real Android Bluetooth adapter");
+        JSONObject info=vm(PRINT+"fn main(){let info=bt_info();if !info || !db_word(device_field(info,\"enabled\")) || db_kind(device_field(info,\"address\"))!=0{return 1;}emit(device_field(info,\"name\"));return 0;}");
+        check(info.getString("stdout").equals(adapter.getName()),"Bluetooth VM metadata matches Android and does not export the local hardware MAC");
+        vm("fn main(){let h=bt_watch();if !h{return 1;}let e=device_wait(db_word(h),1000);if !worker_equal(db_word(device_field(e,\"event\")),\"adapter\"){return 2;}if !db_word(device_field(device_field(e,\"value\"),\"enabled\")){return 3;}return device_close(db_word(h))-1;}");
+        check(true,"adapter snapshots and copied state events cross the actual Bluetooth SDK/VM bridge");
+        vm("fn main(){let list=bt_bonded(0,16);if !list || db_word(device_field(list,\"total\"))!="+adapter.getBondedDevices().size()+"{return 1;}let d=bt_device(\"02:00:00:00:00:01\");if !d{return 2;}let info=device_info(db_word(d));if !worker_equal(db_word(device_field(info,\"address\")),\"02:00:00:00:00:01\"){return 3;}let ids=bt_uuids(db_word(d),0);if !ids || db_word(device_field(ids,\"requested\")){return 4;}return device_close(db_word(d))-1;}");
+        check(true,"bonded inventory matches Android; explicit device and cached UUID handles perform no pairing or remote connection");
+        vm("fn main(){if bt_device(\"invalid\"){return 1;}let e=device_error();if !worker_equal(db_word(db_at(e,0)),\"invalid_argument\"){return 2;}if bt_scan(0) || bt_request_discoverable(0) || bt_request_discoverable(301) || bt_rfcomm_listen(\"fixture\",\"1101\",1){return 3;}e=device_error();if !worker_equal(db_word(db_at(e,0)),\"invalid_argument\"){return 4;}return 0;}");
+        check(true,"invalid Bluetooth addresses, discovery durations and noncanonical service UUIDs fail before radio operations");
+        String service=UUID.randomUUID().toString();
+        try{
+            vm("fn main(){let h=bt_rfcomm_listen(\"Collie emulator fixture\","+quoted(service)+",1);if !h{return 1;}state_set(\"bt_listener\",h);if bt_rfcomm_listen(\"duplicate\","+quoted(service)+",1){return 2;}let e=device_error();if !worker_equal(db_word(db_at(e,0)),\"busy\"){return 3;}let info=device_info(db_word(h));if !db_word(device_field(info,\"secure\")) || !worker_equal(db_word(device_field(info,\"uuid\")),"+quoted(service)+"){return 4;}return 0;}");
+            check(true,"Android registers a real secure RFCOMM SDP listener and rejecting duplicate UUIDs preserves its owner");
+            vm("fn main(){if bt_rfcomm_accept(db_word(state_get(\"bt_listener\")),150){return 1;}let e=device_error();if !worker_equal(db_word(db_at(e,0)),\"timeout\"){return 2;}if !device_info(db_word(state_get(\"bt_listener\"))){return 3;}return 0;}");
+            check(true,"a real BluetoothServerSocket accept deadline reports timeout and preserves the listener for another accept");
+            JSONObject handle=vm(PRINT+"fn main(){emit(state_get(\"bt_listener\"));return 0;}");File other=new File(root,"foreign-fixture");if(!other.isDirectory()&&!other.mkdirs())throw new IOException("Cannot create foreign Bluetooth fixture workspace.");JSONObject config=host.workerConfig(other,0);config.put("permissions",new JSONObject().put("bluetooth",true));
+            JSONObject foreign=host.engineAt(other,3,new JSONObject().put("config",config).put("call_id","foreign-bluetooth").put("history",new JSONArray()).put("source","fn main(){if device_info("+quoted(handle.getString("stdout"))+"){return 1;}let e=device_error();if !worker_equal(db_word(db_at(e,0)),\"stale_handle\"){return 2;}return 0;}"));
+            if(foreign.optInt("exit_code",-1)!=0)throw new IOException("Foreign Bluetooth VM: "+foreign);check(true,"an RFCOMM listener cannot be read or accepted from another conversation");
+            VmHardware.revoke(root,"bluetooth");
+            vm("fn main(){if device_info(db_word(state_get(\"bt_listener\"))){return 1;}let e=device_error();if !worker_equal(db_word(db_at(e,0)),\"stale_handle\"){return 2;}let h=bt_rfcomm_listen(\"Collie reopened fixture\","+quoted(service)+",1);if !h{return 3;}return device_close(db_word(h))-1;}");
+            check(true,"revoking Bluetooth invalidates handles and releases the real SDP registration so the same UUID can be reopened");
+        }finally{VmHardware.closeWorkspace(root);}
+        return new JSONObject().put("ok",true).put("checks",checks).put("count",checks.length());
+    }
     private JSONObject aware()throws Exception{
         check(!host.getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_WIFI_AWARE),"the headless Aware fixture confirms this emulator lacks NAN hardware");
         vm("fn main(){let info=aware_info();if !info || db_word(device_field(info,\"supported\")) || db_word(device_field(info,\"available\")){return 1;}let caps=hardware_capabilities();let i=0;let found=0;while i<db_count(caps){let c=db_at(caps,i);if worker_equal(db_word(device_field(c,\"id\")),\"wifi_aware\"){if !db_word(device_field(c,\"implemented\")) || db_word(device_field(c,\"supported\")) || db_word(device_field(c,\"available\")){return 2;}found=found+1;}i=i+1;}if found!=1{return 3;}return 0;}");
