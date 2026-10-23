@@ -20,7 +20,7 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
   dex=apk.read('classes.dex')
-  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','UiRendererChecks']:
+  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
   fixture_resource=any('midi_loopback_fixture' in name for name in apk.namelist());assert fixture_resource==debug,(label,'test resource')
  services=list(sections(manifest,'service'));assert any('MidiLoopbackFixture' in service for service in services)==debug
@@ -28,7 +28,8 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert 'android.permission.BIND_VPN_SERVICE' in vpn,(label,'VPN binding permission')
  assert re.search(r'foregroundServiceType[^=]*=0x0*400\b',vpn),(label,'VPN foreground type')
  assert 'android.net.VpnService.SUPPORTS_ALWAYS_ON' in vpn and re.search(r':value[^=]*=false',vpn),(label,'always-on opt-out')
- for permission in ['android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED','android.permission.USE_BIOMETRIC']:assert '"'+permission+'"' in manifest,(label,permission)
+ for permission in ['android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED','android.permission.USE_BIOMETRIC','android.permission.RANGING']:assert '"'+permission+'"' in manifest,(label,permission)
+ uwb=next(feature for feature in sections(manifest,'uses-feature') if '"android.hardware.uwb"' in feature);assert re.search(r':required[^=]*=false',uwb),(label,'UWB remains optional')
  sha=hashlib.sha256(path.read_bytes()).hexdigest();assert sha==json.loads((path.parent/'build.json').read_text())['sha256']
  report[label]={'path':str(path),'bytes':path.stat().st_size,'MB':round(path.stat().st_size/1e6,3),'MiB':round(path.stat().st_size/2**20,3),'sha256':sha,'debug_fixtures':debug,'vpn_binding':'BIND_VPN_SERVICE','vpn_foreground_type':'systemExempted','vpn_always_on':False}
 (a.debug.resolve().parent/'packaging-report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2));print('PASS APK fixture isolation and protected VPN service metadata')

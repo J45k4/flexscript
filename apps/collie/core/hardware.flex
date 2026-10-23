@@ -246,6 +246,13 @@ fn hw_operations(){
     hw_operation(rows,"biometric_info","biometrics",1,1);
     hw_operation(rows,"biometric_auth","biometrics",6,6);
     hw_operation(rows,"biometric_cancel","hardware_handle",1,1);
+    hw_operation(rows,"uwb_info","uwb",0,0);
+    hw_operation(rows,"uwb_watch","uwb",0,0);
+    hw_operation(rows,"uwb_range","uwb",3,3);
+    hw_operation(rows,"uwb_stop","hardware_handle",1,1);
+    hw_operation(rows,"uwb_add","hardware_handle",2,2);
+    hw_operation(rows,"uwb_remove","hardware_handle",2,2);
+    hw_operation(rows,"uwb_interval","hardware_handle",2,2);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

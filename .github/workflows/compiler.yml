@@ -103,6 +103,9 @@ jobs:
           build/stage2 apps/collie/tests/nfc.flex -o build/test-collie-nfc
           build/test-collie-nfc
           build/stage2 run --interpret --fuel=10000000 apps/collie/tests/nfc.flex
+          build/stage2 apps/collie/tests/uwb.flex -o build/test-collie-uwb
+          build/test-collie-uwb
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/uwb.flex
           build/stage2 apps/collie/tests/usb-serial.flex -o build/test-collie-usb-serial
           build/test-collie-usb-serial
           build/stage2 run --interpret apps/collie/tests/usb-serial.flex

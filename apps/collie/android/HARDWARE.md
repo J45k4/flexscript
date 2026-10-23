@@ -24,7 +24,7 @@ it does not count as an implementation of an otherwise available adapter.
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | pending | pending |
 | Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | SDK service/readers/sessions/channels and extended APDU byte transport implemented | actual independent service bindings, empty reader inventory, owned asynchronous shutdown and first-use consent verified; real applet/channel/APDU and access-control fixtures pending |
-| UWB | supported-device sessions and ranging events through supported APIs | pending | pending |
+| UWB | supported-device sessions and ranging events through supported APIs | Android16 public raw-session, capability, peer and interval bindings implemented; older SDK integration pending | actual two-emulator measurements and SDK peer callbacks verified; strict effective-interval check remains failing; physical/older-device checks pending |
 | Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
@@ -1601,3 +1601,149 @@ UI and compiler evidence remains attached to its own artifacts. The separate
 strict HID missing public-unplug-callback failure remains open. Physical/vendor
 biometrics, face/iris, real lockout, confirmation/Identity Check policy and older
 SDKs still require appropriate fixtures. The full hardware inventory remains open.
+
+## Public UWB ranging
+
+`uwb_info()` returns `{sdk,feature,public_ranging_api,snapshot}` and
+`uwb_watch()` observes actual Android16 RangingManager capabilities. The separate
+Collie UWB grant is lazy; Android's RANGING runtime permission is unnecessary
+for capability queries and requested only when a program starts ranging.
+Availability comes from the actual SDK callback:0 unsupported,1 user-disabled,
+2 regulatory-disabled,3 enabled,4 user-restrictions. Feature flags and enabled
+state do not prove a measurement. Each capability list has at most256 values.
+Global capability discovery reports availability unknown, rather than inferring
+it from a feature flag; explicit snapshots/observers provide actual state.
+
+`guest/uwb.flex` contains portable typed constructors, without platform effects.
+`uwb_peer(uuid,session_id,config_id,local_address,peer_address,channel,preamble,
+rate,slot,key,sub_session_id,sub_key)` constructs12 fields. Addresses are2/8-byte
+blobs; keys are bounded32-byte blobs, with empty meaning unset. IDs preserve
+unsigned32-bit values; sub-session-1 means unset. SDK profiles1..6 differ from
+older Jetpack profile numbering. The caller negotiates matching addresses,
+channels, security and sessions in Flexscript; the adapter does not substitute
+weaker profiles or replay uncertain requests. `uwb_options` carries angles,
+measurement limit0..65535, fusion, notification mode0..3, near/far0..20000cm,
+and a500..120000ms opening deadline. Native/interpreter tests exercise exact
+IDs, binary fields, the12-argument record and its complete codec round trip.
+
+`uwb_range(role,peers,options)` uses Android's public raw configuration and
+returns an owned pending handle. An initiator(role1) accepts1..8 peer records;
+a responder(role0) accepts exactly1. SDK callbacks yield opened, started,
+ranging, stopped, open_failed and closed. A session-open event is distinct from
+measured distance. Ranging events retain peer UUID, technology0, elapsed-time
+millisecond timestamps, nullable measurement/confidence objects for distance
+in meters and azimuth/elevation in degrees, and nullable RSSI. Measurement
+values use the explicit bit-preserving db_real transport. Confidence values
+remain the actual SDK0/1/2. Invalid nonfinite measurements are rejected.
+`device_info` also exposes the current elapsed-time clock, known peer UUIDs,
+state and cleanup status. A configured UUID is not proof of connection.
+
+After opened, `uwb_add`, `uwb_remove` and `uwb_interval(skip0..255)` request SDK
+changes. The session retains at most8 known UUIDs, including removed ones, to
+bound identity history and reject unknown late peers. SDK method acceptance is
+not proof of a radio change. onOpenFailed after a session already opened is
+reported as operation_failed and does not free an existing session prematurely.
+`uwb_stop` keeps the handle observable until actual SDK terminal confirmation;
+`device_close` invalidates locally and schedules SDK stop. Actual closed events
+or confirmation that no radio request started release a slot. A returned SDK
+close call is distinct from the actual terminal callback. Pending vendor cleanup
+and errors retain their leases instead of claiming teardown completed.
+
+There are8 observer and8 session leases globally. Both include pending cleanup.
+Two bounded SDK cleanup workers keep close/revocation off the Android UI thread.
+Controlled queue tests verify that local close returns on the real UI thread
+while cleanup workers are held. Opening deadlines use elapsed time independently
+of the scheduled callback queue; delayed opened callbacks cannot revive an
+expired request. A different workspace cannot inspect/stop a handle. The actual
+permission-save path cancels a VM already observed waiting in hardware I/O,
+closes its request and prevents subsequent reopening. Android controls supported
+background behavior and radio/system-policy restrictions. No SDK resource is
+snapshotted into guest state.
+
+Android16's framework RangingSessionManager retains its session map. Each owned
+resource therefore gets an independent SDK service cache using a scoped Context;
+actual SDK identity checks verify it is separate from the app-global manager.
+The scoped manager is dropped after confirmed teardown. No hidden UwbManager,
+raw host FFI, new model tool or bundled Android framework is introduced.
+
+**Older SDK integration remains unimplemented.** Android12..15 UWB access through
+Jetpack/Play services is separate work; this public Android16 binding does not
+complete that requirement. On older devices, uwb_info explicitly reports
+public_ranging_api=false/older_binding_implemented=false and other UWB operations
+reject the missing binding. Physical devices, distance/angle accuracy, nonzero
+position oracles, background support, vendor radios and the remaining profile/
+security/extended-address configurations still need appropriate fixtures.
+
+The emulator peer suite remains strict about effective interval reconfiguration.
+The SDK accepts skip1 and Android logs the request through RangingSession,
+UwbAdapter and UwbSessionManager, but observed SDK timestamps remain about201ms
+apart before/after. The report retains ok=false with
+missing_gates=["effective_interval_reconfiguration"], while independently testing
+peer changes and cleanup. A successful SDK method return is not substituted for
+the missing timing effect. The separate older HID missing-unplug-callback failure
+also remains open. These are independent gates, not passes hidden by compiler CI.
+
+The two headless peers use actual SDK controller/responder sessions with mirrored
+binary addresses and matching explicit session/security values. Both deliver
+0.0m in the current virtual setup. This proves copied SDK measurement transport,
+not physical ranging accuracy or an independently controlled virtual distance.
+Netsim's installed frontend GetVersion/ListDevice return UNIMPLEMENTED, so its
+positions are not claimed as an independently verified oracle. A clearly labelled
+constructed SDK Parcelable tests fractional binary64 bits through the VM; no
+successful SDK ranging callback is manufactured for that fixture. A configured
+extra virtual peer yields actual started/stopped callbacks, while the original
+peer keeps measuring; no third physical device is claimed.
+
+```sh
+build/flex-hardware apps/collie/tests/uwb.flex -o build/test-collie-uwb
+build/test-collie-uwb
+build/flex-hardware run --interpret --fuel=10000000 apps/collie/tests/uwb.flex
+python3 scripts/test-collie-uwb-android.py --out build/android-uwb \
+  --serial emulator-5580
+# Separately owned peer AVD, already unlocked and installed with the same APK:
+python3 scripts/test-collie-uwb-peer-android.py --out build/android-uwb \
+  --serial emulator-5580 --peer-serial emulator-5582
+# Strict peer suite remains nonzero until its effective-interval gate passes.
+```
+
+SDK contracts: [ranging module](https://developer.android.com/develop/connectivity/ranging),
+[manager](https://developer.android.com/reference/android/ranging/RangingManager),
+[session](https://developer.android.com/reference/android/ranging/RangingSession),
+[UWB parameters](https://developer.android.com/reference/android/ranging/uwb/UwbRangingParams),
+and [Android16 framework lifecycle](https://android.googlesource.com/platform/packages/modules/Uwb/+/refs/heads/android16-release/ranging/framework/java/android/ranging/RangingSessionManager.java).
+
+
+### UWB batch artifacts and verification
+
+Debug `build/android-uwb/collie.apk`: **6,947,857 bytes**
+(6.948 MB /6.626 MiB), SHA-256
+`ad58f7374b84877a48da841887c46aa40728b7e4cb6b8eea235a52f4f513deaf`.
+Non-debug `build/android-uwb-release/collie.apk`: **6,816,706 bytes**
+(6.817 MB /6.501 MiB), SHA-256
+`5c8c98f1079b2d579655cedaa1462d7855a26bf6f9a24d79ab93994bc203f9fb`.
+Packaging verifies RANGING/USE_BIOMETRIC, optional UWB hardware, protected VPN
+metadata and exclusion of HardwareUwbChecks and all debug fixtures from non-debug.
+
+On those installed debug bytes, **150 SDK/regression assertions passed**:
+42 UWB baseline,36 enrolled biometric,15 unenrolled biometric,24 Input and33
+NFC/OMAPI. The UWB baseline includes independent real SDK capabilities and
+manager identities, actual radio-off/on callbacks, first-use Collie consent,
+actual Android Nearby denial/approval, opened/closed callbacks, eight-observer
+capacity/release, foreign-workspace rejection, controlled blocked callback and
+cleanup queues, fractional SDK Parcelable transport and live UI revocation.
+It records ranging_io_verified=false separately from the peer suite.
+
+The strict peer suite separately records actual two-emulator measurement I/O
+and dynamic peer started/stopped callbacks, while retaining its failing
+**effective_interval_reconfiguration** gate. Its partial passes are not added
+to the150 baseline/regression assertions or described as a passing suite.
+Reports preserve original conversations, runtime grants/user flags, radio state
+and temporary fixture ownership and guard the installed APK before/after.
+Physical/position-oracle evidence remains false.
+
+Native/interpreter pure UWB records, shared hardware codec/registry,4 complete
+reference checks (52,386 detailed bytes/8,548 index bytes),13 lazy-permission
+groups covering16 first-use gates, and9 shared-core groups also passed. CI now
+runs the portable UWB record test in native and interpreter modes. Earlier
+Bluetooth, editor/UI and other artifact evidence remains under its own digests.
+The complete hardware goal, older UWB binding and separate HID failure stay open.
