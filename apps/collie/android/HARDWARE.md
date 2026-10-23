@@ -29,7 +29,7 @@ it does not count as an implementation of an otherwise available adapter.
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
-| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | pending | pending |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed request/result metadata, bounded JPEG/YUV/SDK planes, MediaRecorder and owned torch SDK bindings implemented; per-physical overrides and additional metadata types pending | actual headless JPEG/YUV bytes, applied manual ISO/exposure, silent/audio video, consent, callback delays, capacity and revocation passed; RAW/depth, torch, physical/older-device and remaining lifecycle gates below |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
@@ -1866,3 +1866,142 @@ Locally,6 portable UI groups,10 complete Collie UI groups (Linux/ARM64 agreement
 suite passed; browser and native permission screenshots were inspected. This
 fixture-only follow-up does not change the APK bytes or reuse the UI failure as
 evidence about physical hardware. CI's mapped X11 check remains a separate gate.
+
+
+## Camera2, retained frames and recording
+
+Twenty-five ordinary Flexscript functions expose the public Camera2 SDK. The
+existing Camera permission remains a lazy per-conversation Ask/Allow/Deny grant;
+the permission schema stays at31 entries. Public device/characteristic inventory
+does not require Android CAMERA. Opening a camera or torch asks for that runtime
+grant and requires a visible Collie Activity. Audio recording separately requires
+Collie Microphone and Android RECORD_AUDIO. The human take-photo attachment
+action has its own Android consent and never enables the agent Camera grant.
+No new model tool, arbitrary host method, broad filesystem grant or Android
+framework dependency is introduced.
+
+`camera_list/info/keys/value/formats/output_sizes` page actual SDK metadata.
+Request/result values preserve signed integer64 and binary floating-point bits;
+explicit typed codecs cover primitive/array, rational, rectangle/size/range,
+metering, color transform/RGGB/tonemap and user-supplied geotag values. Lens
+shading gains are paged. Unimplemented SDK value classes are identified as
+`unsupported_sdk_type`, a software coverage gap rather than hardware absence.
+Physical output selection uses Android9+ public APIs; per-physical request-key
+overrides remain unimplemented. No camera geometry is silently substituted.
+
+`camera_open(id,timeout_ms)` returns an owned pending handle. Wait for the actual
+`opened` callback, configure1..3 `camera_output` / `camera_physical_output` records,
+and wait for actual `configured` before submitting a capture. Templates1..6,
+advertised typed settings and one-shot/repeating requests use the real SDK.
+Returned sequence IDs may be zero. `capture_completed` reports its actual SDK
+sequence ID, frame number, sensor timestamp and retained result ID. Up to16
+submitted sequences may await actual terminal callbacks and8 result snapshots
+are retained. Metadata is available through `camera_result_keys/value`.
+
+SDK images and ByteBuffers stay outside VM memory. Each output retains at most2
+frames and each camera at most6; eviction invalidates old opaque IDs. The128MiB
+image budget includes pending SDK close. `camera_frame_info` exposes actual
+format/dimensions/crop/timestamp and per-plane byte length, row stride and pixel
+stride. Read all bytes through `camera_frame_read` pages of at most32768 bytes;
+`next=-1` ends a plane. Padding/strides are significant. JPEG bytes are encoded;
+YUV/RAW/depth follow the actual SDK format. PRIVATE surfaces have no CPU planes
+and are rejected by the frame reader; recording uses its own SDK surface.
+Reconfiguration, close or permission revocation invalidates frame/result IDs.
+
+Capture/torch ownership is bounded to4 camera IDs, including cleanup; availability
+and torch observation has8 leases. SDK stop/close/unregister work runs off the UI
+thread, with separate bounded image cleanup workers. Elapsed-time startup guards
+reject expired opens/configuration even while the callback queue is blocked.
+`camera_shutdown` preserves state/events so callers can wait for actual
+`sdk_terminal` and `lease_released`; `device_close` invalidates immediately. A late
+SDK callback cannot reopen a closed or expired resource. Camera resources close
+when the Activity is hidden or the relevant conversation permission is revoked.
+No live SDK resource survives VM snapshots or process death.
+
+`camera_video_start` records silent MPEG4; `camera_video_audio_start` also records
+microphone audio. Options select an advertised recorder size,1..120fps,64k..50M
+bitrate,500..120000ms,65536..67108864 bytes, and default/H264/HEVC/Android14+ AV1.
+Unsupported combinations fail in the actual SDK. Pause/resume and asynchronous
+stop use MediaRecorder; only a successfully finalized `stopped` resource is
+readable with `device_read` / `camera_video_seek`. SDK duration/size notifications
+alone are not proof of a finalized container. A private SDK-owned temporary spool
+has no guest-selected host path. Two recording/spool slots include finalized
+bytes and pending cleanup; close the video handle to delete its spool and release
+the slot. Persist larger output through an approved document stream. Before the
+first recorder in a new process, recovery deletes only this adapter's interrupted
+private spool names. Actual crash/recovery and automatic limit tests remain open.
+
+`camera_torch_open` uses real public mode/strength APIs and rejects absent flash
+or unsupported/out-of-range strength. Its observer distinguishes global SDK
+mode/unavailability from physical LED evidence. If a confirmed-on torch is lost,
+closing that old owner does not turn off a replacement request.
+
+Java owns CameraManager/CameraDevice/session/readers/planes/recorder objects,
+explicit SDK value codecs, callbacks and lifecycle. Operation schema, typed RPC,
+permission policy, guest functions and complete paged API reference stay in
+Flexscript. No UI or worker scheduling logic moved into the adapter.
+
+### Camera verification and remaining gates
+
+The owned Android16 headless emulator delivered real JPEG and YUV420 frames.
+An independent JPEG decoder verified actual dimensions, and SDK buffer lengths
+and per-page Adler32 checks verified every YUV byte and stride, including a plane
+larger than32768 bytes. The exact manual-template result confirmed requested ISO,
+exposure and disabled auto-exposure, correlated by its SDK sequence ID. This is
+emulator sensor evidence, not an independent physical exposure measurement.
+
+Actual silent and microphone recordings passed independent MediaExtractor
+dimensions/track/sample checks. Every finalized container byte crossed the VM and
+matched independent whole-file length/Adler32; EOF, seek bounds, read-only access
+and actual private-spool deletion were checked. Tests use the real Android camera
+and microphone dialogs and the real system take-photo app, not synthesized
+success callbacks or photo Activity results. Tests preserve original conversations
+and OS permission choices and remove only uniquely owned workspaces/artifacts.
+
+Delayed callback/deadline queues, UI-thread close, actual terminal lease release,
+sixteen submitted requests, observer capacity, workspace isolation and revocation
+of a VM observed waiting in camera I/O are covered. The original whole-plane
+checksum fixture exhausted the production VM instruction budget; it was changed
+to verify every bounded page in separate programs, without increasing that budget.
+
+Still open: per-physical setting overrides, further public SDK metadata codecs,
+actual RAW/depth capture and combinations, logical/multi-camera output, physical
+focus/exposure/flash/torch-strength oracles, front/rear/vendor/older Android
+coverage, disconnect/hotplug and resource-pressure fixtures, background/process
+death and interrupted-spool recovery, retained-spool capacity, automatic duration/
+size limits and codec/rate combinations. An advertised capability or accepted
+request does not close any of those gates. The full inventory above and the
+separate strict UWB interval/HID virtual-cable-unplug failures remain open.
+
+
+### Camera batch artifacts
+
+Debug `build/android-camera/collie.apk`: **7,095,313 bytes**
+(7.095MB/6.767MiB), SHA-256
+`0a16e460ad9aaeacc31fd8dc1ec2eaa059b7fd9490cb57d4a367c01c19c0e2c1`.
+Non-debug `build/android-camera-release/collie.apk`: **6,931,394 bytes**
+(6.931MB/6.61MiB), SHA-256
+`b314d4f61b6b408a79d3192c5f7298ef1c3b623d576d666ca0eae55f06d4222d`.
+Both builds and packaging passed. Camera features remain optional; CAMERA is
+declared for lazy runtime consent. HardwareCameraChecks and all other debug
+fixtures are absent from non-debug. Native engine/generated Flexscript bytes
+match between both outputs.
+
+`camera-android-report.json` records **55 passing checks** on that exact
+installed debug digest; `camera-manual-android-report.json` records **4** actual
+manual-photo checks on the same digest. Both guard installed bytes before/after
+and restore original conversation/permission choices. The camera report records
+`manual_sensor_verified=true`, `physical_devices_verified=false`.
+
+Shared32KiB hardware codec/registry,9 core groups,14 native lazy-permission
+groups covering18 first-use gates and4 complete API-reference checks passed.
+The full reference is62,680 bytes and the index10,219 bytes; every
+reference byte crosses actual bounded VM pages with every grant denied. The
+additional audio-video probe verifies Camera then Microphone checkpoint/denial.
+No camera-specific permission schema entry or UI count changed.
+
+On the same camera APK,10 Android lazy-permission groups and8 VPN scenarios
+passed, including the actual shared system-consent dispatcher, foreground TUN
+and binary kernel packet response. Those suites restored original conversation/
+permission choices and removed their temporary VPN authorization. No phone was
+deployed. Compiler/application CI for this batch is recorded in the PR.

@@ -269,6 +269,32 @@ fn hw_operations(){
     hw_operation(rows,"document_copy","documents",3,3);
     hw_operation(rows,"document_move","documents",4,4);
     hw_operation(rows,"document_remove","documents",3,3);
+    hw_operation(rows,"camera_list","camera",2,2);
+    hw_operation(rows,"camera_info","camera",1,1);
+    hw_operation(rows,"camera_keys","camera",4,4);
+    hw_operation(rows,"camera_value","camera",4,4);
+    hw_operation(rows,"camera_formats","camera",3,3);
+    hw_operation(rows,"camera_output_sizes","camera",4,4);
+    hw_operation(rows,"camera_watch","camera",0,0);
+    hw_operation(rows,"camera_open","camera",2,2);
+    hw_operation(rows,"camera_torch_open","camera",2,2);
+    hw_operation(rows,"camera_configure","hardware_handle",3,3);
+    hw_operation(rows,"camera_capture","hardware_handle",4,4);
+    hw_operation(rows,"camera_stop","hardware_handle",1,1);
+    hw_operation(rows,"camera_frames","hardware_handle",3,3);
+    hw_operation(rows,"camera_frame_info","hardware_handle",2,2);
+    hw_operation(rows,"camera_frame_read","hardware_handle",5,5);
+    hw_operation(rows,"camera_frame_close","hardware_handle",2,2);
+    hw_operation(rows,"camera_result_keys","hardware_handle",4,4);
+    hw_operation(rows,"camera_result_value","hardware_handle",5,5);
+    hw_operation(rows,"camera_video_start","camera",3,3);
+    hw_operation(rows,"camera_video_audio_start","camera",3,3);
+    j_set(j_at(rows,j_count(rows)-1),"also",j_string("microphone"));
+    hw_operation(rows,"camera_video_stop","hardware_handle",1,1);
+    hw_operation(rows,"camera_video_pause","hardware_handle",1,1);
+    hw_operation(rows,"camera_video_resume","hardware_handle",1,1);
+    hw_operation(rows,"camera_video_seek","hardware_handle",2,2);
+    hw_operation(rows,"camera_shutdown","hardware_handle",1,1);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

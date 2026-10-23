@@ -710,6 +710,18 @@ public class MainActivity extends Activity {
         }
     }
     private void takePhoto() {
+        // A new explicit photo action replaces any interrupted pending capture,
+        // including when its next Android permission request is declined.
+        clearCameraCapture();
+        if(checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            // This is the user's attachment action, independent of the agent's
+            // conversation Camera grant. Do not create an output before consent.
+            if(!getPreferences(0).edit().putString("manual_camera_session",sessionId).commit()){ui.notice("Cannot save the pending camera action.");return;}
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA},57);return;
+        }
+        takePhotoGranted();
+    }
+    private void takePhotoGranted() {
         String name = UUID.randomUUID().toString() + ".jpg";
         try {
             clearCameraCapture();
@@ -1032,8 +1044,8 @@ public class MainActivity extends Activity {
                 }
                 workers.fixtures = test.optJSONObject("worker_responses");
                 if (test.optBoolean("hardware_tests")) {
-                    Class<?> checks=Class.forName(test.optBoolean("hardware_document_tests")?"org.flexscript.collie.HardwareDocumentChecks":test.optBoolean("hardware_uwb_tests")?"org.flexscript.collie.HardwareUwbChecks":test.optBoolean("hardware_biometric_tests")?"org.flexscript.collie.HardwareBiometricChecks":test.optBoolean("hardware_input_tests")?"org.flexscript.collie.HardwareInputChecks":"org.flexscript.collie.HardwareNetworkChecks");
-                    JSONObject result=(JSONObject)checks.getMethod(test.optBoolean("hardware_document_read_grant_tests")?"runReadGrant":test.optBoolean("hardware_document_live_tests")?"runLive":test.optBoolean("hardware_document_revoke_tests")?"runRevoke":test.optBoolean("hardware_uwb_lifecycle_tests")?"runLifecycle":test.optBoolean("hardware_biometric_late_tests")?"runLate":test.optBoolean("hardware_biometric_live_tests")?"runLive":test.optBoolean("hardware_nfc_tests")?"runNfc":test.optBoolean("hardware_bluetooth_tests")?"runBluetooth":test.optBoolean("hardware_aware_tests")?"runAware":test.optBoolean("hardware_revocation_tests")?"runRevocation":test.optBoolean("hardware_wifi_tests")?"runWifi":test.optBoolean("hardware_wifi_request_tests")?"runWifiRequest":test.optBoolean("hardware_wifi_recovery_tests")?"runWifiRecovery":test.optBoolean("hardware_cellular_tests")?"runCellular":test.optBoolean("hardware_microphone_tests")?"runMicrophone":test.optBoolean("hardware_vpn_tests")?"runVpn":"run",MainActivity.class,File.class).invoke(null,this,session);
+                    Class<?> checks=Class.forName(test.optBoolean("hardware_camera_tests")?"org.flexscript.collie.HardwareCameraChecks":test.optBoolean("hardware_document_tests")?"org.flexscript.collie.HardwareDocumentChecks":test.optBoolean("hardware_uwb_tests")?"org.flexscript.collie.HardwareUwbChecks":test.optBoolean("hardware_biometric_tests")?"org.flexscript.collie.HardwareBiometricChecks":test.optBoolean("hardware_input_tests")?"org.flexscript.collie.HardwareInputChecks":"org.flexscript.collie.HardwareNetworkChecks");
+                    JSONObject result=(JSONObject)checks.getMethod(test.optBoolean("hardware_camera_yuv_tests")?"runYuv":test.optBoolean("hardware_camera_lifecycle_tests")?"runLifecycle":test.optBoolean("hardware_camera_manual_tests")?"runManual":test.optBoolean("hardware_camera_video_tests")?"runVideo":test.optBoolean("hardware_document_read_grant_tests")?"runReadGrant":test.optBoolean("hardware_document_live_tests")?"runLive":test.optBoolean("hardware_document_revoke_tests")?"runRevoke":test.optBoolean("hardware_uwb_lifecycle_tests")?"runLifecycle":test.optBoolean("hardware_biometric_late_tests")?"runLate":test.optBoolean("hardware_biometric_live_tests")?"runLive":test.optBoolean("hardware_nfc_tests")?"runNfc":test.optBoolean("hardware_bluetooth_tests")?"runBluetooth":test.optBoolean("hardware_aware_tests")?"runAware":test.optBoolean("hardware_revocation_tests")?"runRevocation":test.optBoolean("hardware_wifi_tests")?"runWifi":test.optBoolean("hardware_wifi_request_tests")?"runWifiRequest":test.optBoolean("hardware_wifi_recovery_tests")?"runWifiRecovery":test.optBoolean("hardware_cellular_tests")?"runCellular":test.optBoolean("hardware_microphone_tests")?"runMicrophone":test.optBoolean("hardware_vpn_tests")?"runVpn":"run",MainActivity.class,File.class).invoke(null,this,session);
                     report.put("hardware",result);if(!result.optBoolean("ok"))throw new IOException(result.toString());
                 } else if (test.has("ui_packets")) {
                     java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(1);
@@ -1094,6 +1106,13 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode,String[] requested,int[] results) {
         super.onRequestPermissionsResult(requestCode,requested,results);
+        if(requestCode==57){
+            String owner=getPreferences(0).getString("manual_camera_session","");getPreferences(0).edit().remove("manual_camera_session").commit();
+            if(!destroyed&&owner.equals(sessionId)){
+                if(checkSelfPermission(android.Manifest.permission.CAMERA)==android.content.pm.PackageManager.PERMISSION_GRANTED)takePhotoGranted();
+                else ui.notice("Camera permission was not granted.");
+            }return;
+        }
         hardwareConsent.result(requestCode,requested,results);
     }
     @Override
