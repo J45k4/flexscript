@@ -50,6 +50,15 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
   t=step('observation',t['state'],observation=o);config['permissions']['location']=False;t=step('next',t['state']);o=vm(t)
   assert o['state']=='continue' and o['exit_code']==0 and 'denied' in o['stdout'].lower(),o
  passed('multi-permission hardware calls checkpoint separately for each grant before Android I/O and propagate secondary denial')
+ for approved in [False,True]:
+  config['permissions']=dict.fromkeys(keys,'ask');config['permissions']['location']=False
+  t=begin('fn main(){ble_connect("02:00:00:00:00:01",1000,1000);let e=db_error();db_io(0,1,e,db_len(e));return 0;}','direct-gatt-'+str(approved));o=vm(t)
+  assert o['state']=='permission' and o['signal']['key']=='bluetooth',o
+  t=step('observation',t['state'],observation=o);config['permissions']['bluetooth']=approved;t=step('next',t['state']);o=vm(t)
+  assert o['state']=='continue' and o['exit_code']==0,o
+  assert ('requires the Android host' in o['stdout']) if approved else o['stdout']=='Permission denied: bluetooth',o
+ passed('direct GATT connect checkpoints only Bluetooth and reaches the real non-Android host boundary after approval even with Location denied')
+
  config['permissions']=dict.fromkeys(keys,'ask')
  # A completed write must never be replayed when the following read needs access.
  config['permissions']['files_write']=True

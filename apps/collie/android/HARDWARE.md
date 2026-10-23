@@ -19,7 +19,7 @@ it does not count as an implementation of an otherwise available adapter.
 | USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt, accessory mode, disconnect handling | implemented; device consent and transfers need a real fixture | UsbManager inventory/events, missing devices, invalid arguments and wrong handle types passed on emulator; physical device approval/transfers/detach pending |
 | USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
 | Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 15 baseline SDK/VM/consent checks passed; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
-| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan and legacy advertising implemented; GATT client/server and extended/periodic advertising pending | 12 headless checks passed, including independent raw packet oracles in both directions, actual Android oversize callback, SDK stop, separate denials and permission-free capability discovery; GATT/physical checks pending |
+| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy advertising and GATT client SDK bindings implemented; GATT server and extended/periodic advertising pending | 26 checks passed on the GATT APK:14 client and12 raw transport, including duplicate UUIDs, 512-byte values, descriptors, notifications/indications, client isolation and late-response timeout; server/physical checks pending |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | pending | pending |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | pending | pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | pending | pending |
@@ -916,7 +916,7 @@ above remains a separate APK, not a claim about these current bytes.
 The Classic CI run `39959157664` timed out during dependency installation before
 compiler tests ran: Azure's package mirror spent over11 minutes fetching the
 61.2MB CJK font archive. CI now selects Ubuntu's main archive on mirrorlist-based
-runners, retaining all packages and checks. Its replacement run must still pass.
+runners, retaining all packages and checks. The replacement run `39962130928` passed on the BLE commit `d608635`, including the full compiler/application suite. The GATT additions below require their own CI run.
 
 ```sh
 # Use a separate virtual environment with bumble[android]==0.0.236.
@@ -926,4 +926,105 @@ python scripts/fixtures/collie-ble-peer.py \
 python3 scripts/test-collie-ble-android.py \
   --out build/android-ble --serial emulator-5580 \
   --peer-state build/android-ble/ble-peer.json
+```
+
+
+## BLE GATT client
+
+`ble_connect(address,connect_timeout_ms,operation_timeout_ms)` opens an actual
+asynchronous Android LE GATT client to an explicit address. Both deadlines are
+1000..120000ms. It requires Bluetooth/Android CONNECT and a visible start;
+it neither scans nor asks for Location. Wait for `connected` or `error` before
+operations. SDK connections are workspace-owned resources; saved guest strings
+do not restore them after a process restart.
+
+`ble_gatt_discover(connection,id)` requests real service discovery. Subsequent
+`ble_gatt_items(connection,parent,offset,limit)` pages up to16 records: empty
+parent lists services, a service ID lists characteristics, a characteristic ID
+lists descriptors. Up to4096 records are accepted. IDs are opaque and owned by
+that connection; repeated UUIDs remain distinct. Every discovery attempt and
+service-change event invalidates old IDs. Records include parent/kind/UUID/
+revision and actual SDK instance, properties, permissions and service type.
+
+All asynchronous request IDs are0..2147483647 and strictly increase within a
+connection. Only one request may be outstanding. A request ID is consumed on
+begin, including an immediate SDK refusal; `device_info` exposes
+`last_request_id`, `pending_id`, `pending_operation` and `last_result`. The last
+completion is retained separately from the bounded event queue so an overflow
+does not erase the latest request result. Notifications retain attribute IDs
+and revisions. Check `db_kind(event)==5` after polling: timeout returns a typed
+`db_null`, and it is not safe to treat its word as a text pointer.
+
+`ble_gatt_read(connection,attribute,id)` accepts a characteristic or descriptor
+and emits a copied `read` event with ID, attribute, status and actual value blob
+on success. Failed reads carry no fabricated bytes. `ble_gatt_write(connection,
+attribute,bytes,kind,id)` emits write status. Values are at most512 bytes; write
+kind1 is no-response,2 acknowledged and4 signed. Descriptors require kind2.
+No-response/signed payloads must fit the observed ATT MTU minus3/15. The initial
+23-byte bound is conservative; `mtu_observed` becomes true only on an actual
+successful SDK MTU callback. A no-response write callback alone is not proof of
+peer delivery. API33+ uses copied-value callbacks and byte-array write APIs;
+older versions use the compatibility SDK object values, copied on callback
+entry. That older-SDK path has not been positively exercised here.
+
+`ble_gatt_local_notify(connection,characteristic,enabled)` controls only Android
+notification routing. Flexscript configures the discovered CCCD descriptor
+`00002902-0000-1000-8000-00805f9b34fb` separately: bytes `[1,0]` for notification,
+`[2,0]` for indication, `[0,0]` to disable, followed by an acknowledged write and
+its real success event. Protocol bytes and subscription policy stay in the VM.
+Copied `notification` events cover both SDK notification and indication updates;
+the public callback does not distinguish the two. Android handles indication
+confirmation, which the independent peer test observes.
+
+`ble_gatt_mtu`, `ble_gatt_rssi`, `ble_gatt_phy_read` and `ble_gatt_phy` use the
+same serialized event channel. PHY masks1/2/4 select1M/2M/Coded. MTU requests
+accept23..517; callers must use the actual reported result (Android14+ may
+negotiate517 for a first request for64 and ignore later requests).
+`ble_gatt_priority(connection,0..2)` requests balanced/high/low-power priority;
+SDK acceptance does not prove changed radio parameters.
+
+An operation timeout closes the SDK client, unregisters callbacks and discards
+its attributes. Late callbacks cannot complete a different request. Adapter
+shutdown, disconnect, callback mismatch and service change during a pending
+request similarly fail the endpoint; its final error remains readable until
+explicit close. With no pending operation, service change emits
+`services_changed` and requires rediscovery. Close/revocation releases the
+owned SDK connection; no operating-system objects are snapshotted by the VM.
+
+The GATT debug APK is
+`afe6721ac05c34b28f37ac074963b3a0afa0b7424bdd6a81a26235abb75dd746`
+(**6,718,481 bytes**); its non-debug counterpart is
+`6488c4ff41efcc9c96743d4db2f1889e06ebf43f025ceb2f42ced9644030439e`
+(**6,636,482 bytes**). Packaging checks passed with debug fixtures excluded.
+On these exact debug bytes, **26 Android checks passed**:14 GATT client plus12
+scan/advertising regressions. The GATT peer is a controlled host-only
+Bumble/Netsim server, with no Python added to the APK. It independently verifies
+512-byte acknowledged/no-response writes, emits matching notifications and
+confirmed indications, serves binary descriptors and duplicate-UUID values,
+returns a real ATT authorization error8 and deliberately delays a read. Tests
+observe request serialization, peer disconnection before that delayed response,
+and preservation of the timeout afterward. Two real SDK clients reject each
+other's attribute IDs; closing one preserves the other. Runtime SCAN/ADVERTISE
+and Location remain denied throughout GATT I/O. Test conversations, grants/flags
+and resources are restored or removed afterward.
+
+Shared validation also passed:9 core and12 lazy-permission groups. The new native
+check proves direct GATT connect checkpoints only Bluetooth and, after approval,
+reaches the actual non-Android host boundary despite Location denial. It is not
+substituted for the Android connection proof above.
+
+**Still pending:** the GATT server adapter, reliable-write transactions,
+included-service links, PHY-set/radio-loss/service-change/queue-overflow/live
+revocation fixtures, older-SDK compatibility and physical peripherals. Extended/
+periodic advertising and the rest of the hardware inventory also remain open.
+This client batch does not complete the BLE family or the overall objective.
+
+```sh
+# Host-only venv dependency: bumble[android]==0.0.236.
+python scripts/fixtures/collie-gatt-peer.py \
+  --transport android-netsim:127.0.0.1:PORT,name=collie-test-UNIQUE \
+  --out build/android-gatt/gatt-peer.json
+python3 scripts/test-collie-gatt-android.py \
+  --out build/android-gatt --serial emulator-5580 \
+  --peer-state build/android-gatt/gatt-peer.json
 ```

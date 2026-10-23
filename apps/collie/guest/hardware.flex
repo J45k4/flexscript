@@ -193,3 +193,15 @@ fn ble_info(){return db_rpc(db_request("ble_info"));}
 fn ble_scan(service,address,duration,mode){let r=db_request("ble_scan");db_add(r,db_text(service));db_add(r,db_text(address));db_add(r,db_int(duration));db_add(r,db_int(mode));return db_rpc(r);}
 fn ble_scan_page(scan,offset,limit){let r=db_request("ble_scan_page");db_add(r,db_text(scan));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
 fn ble_advertise(service,service_data,manufacturer,manufacturer_data,connectable,power,mode,duration){let r=db_request("ble_advertise");db_add(r,db_text(service));db_add(r,service_data);db_add(r,db_int(manufacturer));db_add(r,manufacturer_data);db_add(r,db_int(connectable));db_add(r,db_int(power));db_add(r,db_int(mode));db_add(r,db_int(duration));return db_rpc(r);}
+
+fn ble_connect(address,timeout,operation_timeout){let r=db_request("ble_connect");db_add(r,db_text(address));db_add(r,db_int(timeout));db_add(r,db_int(operation_timeout));return db_rpc(r);}
+fn ble_gatt_discover(connection,id){let r=db_request("ble_gatt_discover");db_add(r,db_text(connection));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_gatt_items(connection,parent,offset,limit){let r=db_request("ble_gatt_items");db_add(r,db_text(connection));db_add(r,db_text(parent));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn ble_gatt_read(connection,attribute,id){let r=db_request("ble_gatt_read");db_add(r,db_text(connection));db_add(r,db_text(attribute));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_gatt_write(connection,attribute,bytes,kind,id){let r=db_request("ble_gatt_write");db_add(r,db_text(connection));db_add(r,db_text(attribute));db_add(r,bytes);db_add(r,db_int(kind));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_gatt_local_notify(connection,characteristic,enabled){let r=db_request("ble_gatt_local_notify");db_add(r,db_text(connection));db_add(r,db_text(characteristic));db_add(r,db_int(enabled));return db_rpc(r);}
+fn ble_gatt_mtu(connection,mtu,id){let r=db_request("ble_gatt_mtu");db_add(r,db_text(connection));db_add(r,db_int(mtu));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_gatt_rssi(connection,id){let r=db_request("ble_gatt_rssi");db_add(r,db_text(connection));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_gatt_phy_read(connection,id){let r=db_request("ble_gatt_phy_read");db_add(r,db_text(connection));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_gatt_phy(connection,tx,rx,options,id){let r=db_request("ble_gatt_phy");db_add(r,db_text(connection));db_add(r,db_int(tx));db_add(r,db_int(rx));db_add(r,db_int(options));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_gatt_priority(connection,priority){let r=db_request("ble_gatt_priority");db_add(r,db_text(connection));db_add(r,db_int(priority));return db_rpc(r);}

@@ -180,6 +180,17 @@ fn hw_operations(){
     j_set(j_at(rows,j_count(rows)-1),"also",j_string("location"));
     hw_operation(rows,"ble_scan_page","hardware_handle",3,3);
     hw_operation(rows,"ble_advertise","bluetooth",8,8);
+    hw_operation(rows,"ble_connect","bluetooth",3,3);
+    hw_operation(rows,"ble_gatt_discover","hardware_handle",2,2);
+    hw_operation(rows,"ble_gatt_items","hardware_handle",4,4);
+    hw_operation(rows,"ble_gatt_read","hardware_handle",3,3);
+    hw_operation(rows,"ble_gatt_write","hardware_handle",5,5);
+    hw_operation(rows,"ble_gatt_local_notify","hardware_handle",3,3);
+    hw_operation(rows,"ble_gatt_mtu","hardware_handle",3,3);
+    hw_operation(rows,"ble_gatt_rssi","hardware_handle",2,2);
+    hw_operation(rows,"ble_gatt_phy_read","hardware_handle",2,2);
+    hw_operation(rows,"ble_gatt_phy","hardware_handle",5,5);
+    hw_operation(rows,"ble_gatt_priority","hardware_handle",2,2);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}
