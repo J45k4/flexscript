@@ -21,9 +21,9 @@ it does not count as an implementation of an otherwise available adapter.
 | Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 16 baseline SDK/VM/consent checks passed on the current server APK; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy advertising, GATT client and GATT server SDK bindings implemented; extended/periodic advertising pending | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | public Classic HID device SDK bindings implemented; remaining verification gates below | encrypted510-byte control/interrupt report exchange, registration ownership and reconnect verified against a controlled host; public unplug callback gate remains failing on this emulator |
-| NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | pending | pending |
+| NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | pending | pending |
-| Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | pending | pending |
+| Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | SDK service/readers/sessions/channels and extended APDU byte transport implemented | actual independent service bindings, empty reader inventory, owned asynchronous shutdown and first-use consent verified; real applet/channel/APDU and access-control fixtures pending |
 | UWB | supported-device sessions and ranging events through supported APIs | pending | pending |
 | Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
@@ -92,6 +92,9 @@ Implementation boundaries:
 - `core/hardware.flex`: operation schema, permission bindings, typed wire codec.
 - `guest/hardware.flex`: ordinary functions inside the sole Flexscript tool.
 - `guest/usb-serial.flex`: serial discovery, control protocols, framing and buffering.
+- `guest/nfc.flex`: portable NDEF record validation, encoding and chunk reassembly.
+- `android/HardwareNfc.java`: NFC reader, tag technology, copied events and SDK NDEF transport.
+- `android/HardwareSecureElement.java`: owned OMAPI services/readers/sessions/channels and raw APDU transport.
 - `android/HardwareKeystore.java`: Android Keystore objects and crypto operations.
 - `android/HardwareAudio.java`, `HardwareMidi.java`: audio/MIDI objects, streams, routes and callbacks.
 - `android/HardwareNsd.java`: Android DNS-SD objects and copied events.
@@ -1284,3 +1287,100 @@ python3 scripts/test-collie-hid-android.py \
 # Strict: remains nonzero if Android omits its public unplug callback.
 # hid-android-report.json records partial passes with ok=false and missing_gates.
 ```
+
+## NFC reader, portable NDEF and OMAPI
+
+`nfc_info()`/`nfc_watch()` use actual adapter state. `nfc_reader(flags,delay)`
+requests foreground reader mode with explicit technology and SDK option flags;
+`reader_requested` does not assert that any RF discovery happened. One app-owned
+reader holds up to16 tag references with omission counts. `nfc_tags` pages their
+opaque IDs, binary UID and SDK technologies. `nfc_connect` opens one technology
+per tag; `device_info` exposes actual protocol metadata and transceive limits.
+Raw transceive/ISO-DEP bytes, supported timeouts and MIFARE authentication use
+SDK technology methods. Cached discovery NDEF is distinct from a fresh read.
+NDEF read/write/format/read-only operations pass encoded blobs to Android;
+format/read-only can permanently change a real tag. Ignore acceptance is distinct
+from the actual tag-removal callback. Close, backgrounding, radio loss and expired
+SDK tags invalidate their owned resources. Failed writes report uncertain
+completion instead of replaying them. HCE/HCE-F remains a separate pending row.
+
+`guest/nfc.flex` owns the portable record/codec logic. `ndef_record` builds a
+four-field typed record, `ndef_encode` writes canonical short/long message lengths
+and optional binary IDs, and `ndef_parse` validates headers/bounds and reassembles
+chunked payloads. Pure computation needs no NFC, secure-element or database grant.
+Native and interpreter tests cover independent wire vectors, binary bytes, chunk
+IDs, malformed messages and the complete32768-byte message boundary. Android's
+independent `NdefMessage` parser cross-checks actual guest-generated bytes; this is
+codec evidence, not RF tag I/O.
+
+`se_open` binds a real Android OMAPI service asynchronously; each binding owns its
+reader IDs, sessions and channels. SDK reader presence is not inferred from
+feature flags. Applet certificate/access rules stay under Android/secure-element
+control. `se_transmit` returns actual data and raw status words; extended commands
+use sequential `se_command`/`se_command_write`/`se_send`, up to65544 bytes.
+`se_response` pages a cached response up to65538 bytes without repeating a command.
+Response IDs reject another exchange's data; applet selection cannot overlap an
+in-flight exchange. Interrupted commands are never automatically replayed.
+
+Local close invalidates handles immediately. SDK close/shutdown may wait for an
+APDU and runs on bounded background cleanup workers. The8-service lease and
+16-session/32-channel per-service limits include pending cleanup; vendor calls
+that have not returned do not free a slot prematurely. Timeout invalidates the
+entire owned service because OMAPI provides no reliable per-call interruption.
+Tests deliberately block one cleanup task, close on the actual Android UI thread,
+then verify a second actual SDK service before and after the first shuts down.
+Byte-buffer fixtures are explicitly separate from SDK APDU evidence.
+
+The headless emulator has no NFC reader adapter and reports zero OMAPI readers.
+Physical discovery/transceive/NDEF mutation/tag-loss, actual applet access-control
+failures, sessions/channels/APDUs and older-device behavior remain unverified.
+Normal manifest NFC permission does not replace the conversation's lazy NFC gate;
+secure-element access has its own first-use gate and real Android applet rules.
+
+### Bounded API documentation
+
+The detailed hardware reference now exceeds the single-value32768-byte bound.
+`hardware_api()` returns a compact signature index; `hardware_api_page(offset,
+limit)` returns `{text,total,next}`, where limit is1..32768 and next=-1 means EOF.
+Both are available without hardware grants. The reference verifier reads every
+actual generated byte through VM RPC, checks the maximum-size page, and rejects
+invalid bounds rather than silently truncating documentation. The bootstrap and
+older Aware reference test use the paged contract.
+
+```sh
+build/flex-hardware apps/collie/tests/nfc.flex -o build/test-collie-nfc
+build/test-collie-nfc
+build/flex-hardware run --interpret --fuel=10000000 apps/collie/tests/nfc.flex
+python3 scripts/test-collie-hardware-reference.py --out build/android-nfc
+python3 scripts/test-collie-nfc-android.py --out build/android-nfc \
+  --serial emulator-5580
+```
+
+Primary SDK contracts: [reader mode](https://developer.android.com/reference/android/nfc/NfcAdapter#enableReaderMode(android.app.Activity,android.nfc.NfcAdapter.ReaderCallback,int,android.os.Bundle)),
+[NDEF messages](https://developer.android.com/reference/android/nfc/NdefMessage),
+[OMAPI service](https://developer.android.com/reference/android/se/omapi/SEService),
+and [OMAPI channels](https://developer.android.com/reference/android/se/omapi/Channel).
+
+### NFC batch artifact evidence
+
+The final debug APK `build/android-nfc/collie.apk` is **6,849,553 bytes**
+(6.850 MB /6.532 MiB), SHA-256
+`1bd228a3b8cad609ce952c409c4e73d6e7b4dc006868925ebbaa4b338680d38e`.
+The non-debug `build/android-nfc-release/collie.apk` is **6,767,554 bytes**
+(6.768 MB /6.454 MiB), SHA-256
+`aa5b8b893b2483ce903ebc5f9c712fb8bd809513d10d618a5b8663943c3abe12`.
+Packaging checks exclude all debug fixtures from the non-debug APK and retain
+protected VPN binding/foreground metadata.
+
+On that exact installed debug artifact, **77 Android checks passed**:33 NFC/OMAPI,
+10 Aware,16 Classic Bluetooth and18 GATT server. Each report records that digest.
+The NFC suite preserves the original conversation, distinguishes its deliberately
+denied codec workspace from allowed SDK fixtures, and uses actual accessibility
+buttons for both first-use grants. It explicitly reports `radio_verified=false`
+and `apdu_io_verified=false`.
+
+The same guest/core source passed native/interpreter NDEF vectors,4 paged-reference
+checks (all42,867 detailed bytes,7,926 index bytes, full32768-byte page and invalid
+bounds),13 lazy-permission and9 shared-core groups. The full hardware objective
+remains open. The earlier HID artifact's strict missing public unplug callback
+remains a separate failing gate; these passes do not override it.

@@ -7,6 +7,7 @@ fn hw_operations(){
     if hw_registry{return hw_registry;}let rows=j_array();
     hw_operation(rows,"hardware_capabilities","progress",0,0);
     hw_operation(rows,"hardware_api","progress",0,0);
+    hw_operation(rows,"hardware_api_page","progress",2,2);
     hw_operation(rows,"net_list","network",0,0);
     hw_operation(rows,"net_info","network",1,1);
     hw_operation(rows,"net_watch","network",0,0);
@@ -210,6 +211,33 @@ fn hw_operations(){
     hw_operation(rows,"hid_error","hardware_handle",3,3);
     hw_operation(rows,"hid_send","hardware_handle",4,4);
     hw_operation(rows,"hid_disconnect","hardware_handle",2,2);
+    hw_operation(rows,"nfc_info","nfc",0,0);
+    hw_operation(rows,"nfc_watch","nfc",0,0);
+    hw_operation(rows,"nfc_reader","nfc",2,2);
+    hw_operation(rows,"nfc_tags","hardware_handle",3,3);
+    hw_operation(rows,"nfc_tag_info","hardware_handle",2,2);
+    hw_operation(rows,"nfc_cached_ndef","hardware_handle",2,2);
+    hw_operation(rows,"nfc_ignore","hardware_handle",3,3);
+    hw_operation(rows,"nfc_connect","hardware_handle",3,3);
+    hw_operation(rows,"nfc_timeout","hardware_handle",2,2);
+    hw_operation(rows,"nfc_transceive","hardware_handle",2,2);
+    hw_operation(rows,"nfc_mifare_auth","hardware_handle",4,4);
+    hw_operation(rows,"nfc_ndef_read","hardware_handle",1,1);
+    hw_operation(rows,"nfc_ndef_write","hardware_handle",2,2);
+    hw_operation(rows,"nfc_ndef_read_only","hardware_handle",1,1);
+    hw_operation(rows,"nfc_ndef_format","hardware_handle",3,3);
+    hw_operation(rows,"se_open","secure_element",1,1);
+    hw_operation(rows,"se_readers","hardware_handle",3,3);
+    hw_operation(rows,"se_uicc","hardware_handle",2,2);
+    hw_operation(rows,"se_session","hardware_handle",2,2);
+    hw_operation(rows,"se_channel","hardware_handle",4,4);
+    hw_operation(rows,"se_select_response","hardware_handle",1,1);
+    hw_operation(rows,"se_select_next","hardware_handle",1,1);
+    hw_operation(rows,"se_transmit","hardware_handle",2,2);
+    hw_operation(rows,"se_command","hardware_handle",2,2);
+    hw_operation(rows,"se_command_write","hardware_handle",3,3);
+    hw_operation(rows,"se_send","hardware_handle",1,1);
+    hw_operation(rows,"se_response","hardware_handle",4,4);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

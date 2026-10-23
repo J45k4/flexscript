@@ -100,6 +100,9 @@ jobs:
         run: |
           build/stage2 apps/collie/tests/hardware-core.flex -o build/test-collie-hardware-core
           build/test-collie-hardware-core
+          build/stage2 apps/collie/tests/nfc.flex -o build/test-collie-nfc
+          build/test-collie-nfc
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/nfc.flex
           build/stage2 apps/collie/tests/usb-serial.flex -o build/test-collie-usb-serial
           build/test-collie-usb-serial
           build/stage2 run --interpret apps/collie/tests/usb-serial.flex
@@ -110,6 +113,7 @@ jobs:
           python3 scripts/test-collie-android.py --out build/android-worker-tests
           python3 scripts/test-collie-workers.py --out build/android-worker-tests
           python3 scripts/test-collie-signals.py --out build/android-worker-tests
+          python3 scripts/test-collie-hardware-reference.py --out build/android-worker-tests
           python3 scripts/test-collie-lazy-permissions.py --out build/android-worker-tests
           python3 scripts/test-collie-recall.py --out build/android-worker-tests
           python3 scripts/test-collie-thinking.py --out build/android-worker-tests

@@ -3,6 +3,7 @@
 fn device_field(map,key){let i=0;while i<db_count(map){let row=db_at(map,i);let name=db_at(row,0);if db_kind(name)==2 && worker_equal(db_word(name),key){return db_at(row,1);}i=i+1;}return db_null();}
 fn hardware_call(op,args){let r=db_request(op);let i=0;while i<db_count(args){db_add(r,db_at(args,i));i=i+1;}return db_rpc(r);}
 fn hardware_api(){return db_rpc(db_request("hardware_api"));}
+fn hardware_api_page(offset,limit){let r=db_request("hardware_api_page");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
 fn hardware_capabilities(){return db_rpc(db_request("hardware_capabilities"));}
 fn net_list(){return db_rpc(db_request("net_list"));}
 fn net_info(network){let r=db_request("net_info");db_add(r,db_text(network));return db_rpc(r);}
@@ -229,3 +230,32 @@ fn hid_error(endpoint,token,status){let r=db_request("hid_error");db_add(r,db_te
 fn hid_send(endpoint,peer,report_id,bytes){let r=db_request("hid_send");db_add(r,db_text(endpoint));db_add(r,db_text(peer));db_add(r,db_int(report_id));db_add(r,bytes);return db_rpc(r);}
 fn hid_disconnect(endpoint,peer){let r=db_request("hid_disconnect");db_add(r,db_text(endpoint));db_add(r,db_text(peer));return db_rpc(r);}
 fn hid_qos(service,rate,bucket,peak,latency,variation){let q=db_list();db_add(q,db_int(service));db_add(q,db_int(rate));db_add(q,db_int(bucket));db_add(q,db_int(peak));db_add(q,db_int(latency));db_add(q,db_int(variation));return q;}
+
+fn nfc_info(){let r=db_request("nfc_info");return db_rpc(r);}
+fn nfc_watch(){let r=db_request("nfc_watch");return db_rpc(r);}
+fn nfc_reader(flags,presence_delay_ms){let r=db_request("nfc_reader");db_add(r,db_int(flags));db_add(r,db_int(presence_delay_ms));return db_rpc(r);}
+fn nfc_tags(reader,offset,limit){let r=db_request("nfc_tags");db_add(r,db_text(reader));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn nfc_tag_info(reader,tag){let r=db_request("nfc_tag_info");db_add(r,db_text(reader));db_add(r,db_text(tag));return db_rpc(r);}
+fn nfc_cached_ndef(reader,tag){let r=db_request("nfc_cached_ndef");db_add(r,db_text(reader));db_add(r,db_text(tag));return db_rpc(r);}
+fn nfc_ignore(reader,tag,debounce_ms){let r=db_request("nfc_ignore");db_add(r,db_text(reader));db_add(r,db_text(tag));db_add(r,db_int(debounce_ms));return db_rpc(r);}
+fn nfc_connect(reader,tag,technology){let r=db_request("nfc_connect");db_add(r,db_text(reader));db_add(r,db_text(tag));db_add(r,db_text(technology));return db_rpc(r);}
+fn nfc_timeout(technology,timeout_ms){let r=db_request("nfc_timeout");db_add(r,db_text(technology));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn nfc_transceive(technology,bytes){let r=db_request("nfc_transceive");db_add(r,db_text(technology));db_add(r,bytes);return db_rpc(r);}
+fn nfc_mifare_auth(technology,sector,key,key_type){let r=db_request("nfc_mifare_auth");db_add(r,db_text(technology));db_add(r,db_int(sector));db_add(r,key);db_add(r,db_int(key_type));return db_rpc(r);}
+fn nfc_ndef_read(technology){let r=db_request("nfc_ndef_read");db_add(r,db_text(technology));return db_rpc(r);}
+fn nfc_ndef_write(technology,bytes){let r=db_request("nfc_ndef_write");db_add(r,db_text(technology));db_add(r,bytes);return db_rpc(r);}
+fn nfc_ndef_read_only(technology){let r=db_request("nfc_ndef_read_only");db_add(r,db_text(technology));return db_rpc(r);}
+fn nfc_ndef_format(technology,bytes,read_only){let r=db_request("nfc_ndef_format");db_add(r,db_text(technology));db_add(r,bytes);db_add(r,db_int(read_only));return db_rpc(r);}
+fn se_open(timeout_ms){let r=db_request("se_open");db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn se_readers(service,offset,limit){let r=db_request("se_readers");db_add(r,db_text(service));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn se_uicc(service,slot){let r=db_request("se_uicc");db_add(r,db_text(service));db_add(r,db_int(slot));return db_rpc(r);}
+fn se_session(service,reader){let r=db_request("se_session");db_add(r,db_text(service));db_add(r,db_text(reader));return db_rpc(r);}
+fn se_channel(session,aid,basic,p2){let r=db_request("se_channel");db_add(r,db_text(session));db_add(r,aid);db_add(r,db_int(basic));db_add(r,db_int(p2));return db_rpc(r);}
+fn se_select_response(channel){let r=db_request("se_select_response");db_add(r,db_text(channel));return db_rpc(r);}
+fn se_select_next(channel){let r=db_request("se_select_next");db_add(r,db_text(channel));return db_rpc(r);}
+fn se_transmit(channel,bytes){let r=db_request("se_transmit");db_add(r,db_text(channel));db_add(r,bytes);return db_rpc(r);}
+
+fn se_command(channel,bytes){let r=db_request("se_command");db_add(r,db_text(channel));db_add(r,db_int(bytes));return db_rpc(r);}
+fn se_command_write(channel,offset,value){let r=db_request("se_command_write");db_add(r,db_text(channel));db_add(r,db_int(offset));db_add(r,value);return db_rpc(r);}
+fn se_send(channel){let r=db_request("se_send");db_add(r,db_text(channel));return db_rpc(r);}
+fn se_response(channel,id,offset,limit){let r=db_request("se_response");db_add(r,db_text(channel));db_add(r,db_int(id));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}

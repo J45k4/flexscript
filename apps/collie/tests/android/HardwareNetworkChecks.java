@@ -59,6 +59,60 @@ public final class HardwareNetworkChecks {
     public static JSONObject runRevocation(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).revocation();}
     public static JSONObject runAware(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).aware();}
     public static JSONObject runBluetooth(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).bluetooth();}
+    public static JSONObject runNfc(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).nfc();}
+    private JSONObject nfc()throws Exception{
+        VmHardware.Context context=new VmHardware.Context(host,root);android.nfc.NfcAdapter adapter=HardwareNfc.optional(context);boolean supported=adapter!=null&&host.getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_NFC);
+        vm("fn main(){let rows=hardware_capabilities();let i=0;while i<db_count(rows){let c=db_at(rows,i);if worker_equal(db_word(device_field(c,\"id\")),\"nfc_reader\"){if db_word(device_field(c,\"supported\"))!="+(supported?1:0)+"{return 1;}return 0;}i=i+1;}return 2;}");
+        check(true,"NFC capability metadata matches the actual Android adapter and hardware feature without starting discovery");
+        vm("fn main(){if nfc_reader(0,100) || nfc_reader(32,100) || nfc_reader(1,0){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(true,"NFC reader flags and presence delay are validated before requesting the radio");
+        if(!supported){vm("fn main(){if nfc_info() || nfc_watch() || nfc_reader(1,250){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported\"){return 2;}return 0;}");check(true,"an emulator without NFC returns actual unsupported for reader/watch/info instead of synthetic tags");}
+        String setup="let records=db_list();let empty=db_blob(\"\",0);";
+        JSONObject text=vm(HEX+"fn main(){"+setup+"db_add(records,ndef_record(1,db_blob(\"T\",1),empty,db_blob(\"en hello\",8)));hex(ndef_encode(records));return 0;}");
+        byte[] wire=unhex(text.getString("stdout"));android.nfc.NdefRecord record=new android.nfc.NdefMessage(wire).getRecords()[0];
+        check(record.getTnf()==1&&Arrays.equals(record.getType(),new byte[]{84})&&Arrays.equals(record.getPayload(),"en hello".getBytes(java.nio.charset.StandardCharsets.UTF_8)),"Android's independent NDEF parser accepts actual Flexscript encoder bytes and preserves the payload");
+        JSONObject binary=vm(HEX+"fn main(){"+setup+"let b=alloc(300);let i=0;while i<300{store8(b+i,i%256);i=i+1;}let id=alloc(2);store8(id,0);store8(id+1,255);db_add(records,ndef_record(2,db_blob(\"application/octet-stream\",24),db_blob(id,2),db_blob(b,300)));hex(ndef_encode(records));return 0;}");
+        record=new android.nfc.NdefMessage(unhex(binary.getString("stdout"))).getRecords()[0];byte[] expected=new byte[300];for(int i=0;i<expected.length;i++)expected[i]=(byte)i;
+        check(record.getTnf()==2&&Arrays.equals(record.getId(),new byte[]{0,-1})&&Arrays.equals(record.getPayload(),expected),"long NDEF payload lengths and zero/high-bit IDs round-trip through the real Android NDEF parser");
+        byte[] chunked=unhex("b201034d6162635600026465");android.nfc.NdefMessage sdk=new android.nfc.NdefMessage(chunked);
+        JSONObject chunk=vm(HEX+"fn main(){let b=alloc(12);"+stores(chunked,"b")+"let records=ndef_parse(db_blob(b,12));if db_count(records)!=1{return 1;}hex(ndef_encode(records));return 0;}");
+        check(Arrays.equals(unhex(chunk.getString("stdout")),sdk.toByteArray()),"chunked NDEF payload reassembly agrees byte-for-byte with Android's independent canonical message");
+        for(String invalid:new String[]{"d10108540265","d101085402656e68656c6c6f00","51010054","91010054","f1010054","d60000","d0000101","d5010054","c101ffffffff54","d90100"}){
+            byte[] bytes=unhex(invalid);boolean rejected=false;try{new android.nfc.NdefMessage(bytes);}catch(android.nfc.FormatException error){rejected=true;}
+            check(rejected,"Android independently rejects malformed NDEF vector "+invalid);
+        }
+        secureElement(context);
+        return new JSONObject().put("ok",true).put("checks",checks).put("radio_verified",false).put("apdu_io_verified",false);
+    }
+    private static String stores(byte[] bytes,String variable){StringBuilder text=new StringBuilder();for(int i=0;i<bytes.length;i++)text.append("store8(").append(variable).append('+').append(i).append(',').append(bytes[i]&255).append(");");return text.toString();}
+    private void secureElement(VmHardware.Context context)throws Exception{
+        JSONObject opened=vm(PRINT+"fn await(h){let i=0;while i<8{let e=device_wait(h,1000);if db_kind(e)==5&&worker_equal(db_word(device_field(e,\"event\")),\"connected\"){return 1;}i=i+1;}return 0;}fn main(){let a=se_open(3000);let b=se_open(3000);if !a||!b||!await(db_word(a))||!await(db_word(b)){return 1;}emit(a);db_io(0,1,\"\\n\",1);emit(b);return 0;}");
+        String[] ids=opened.getString("stdout").split("\n");if(ids.length!=2)throw new IOException(opened.toString());HardwareSecureElement.Service first=VmHardware.handle(context,ids[0],HardwareSecureElement.Service.class),second=VmHardware.handle(context,ids[1],HardwareSecureElement.Service.class);
+        CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1),uiDone=new CountDownLatch(1);
+        try{
+            check(first.sdk.isConnected()&&second.sdk.isConnected(),"two actual Android OMAPI service bindings complete independently through Flexscript");
+            int readers=second.sdk.getReaders().length;JSONObject inventory=vm(PRINT+"fn main(){let p=se_readers("+quoted(ids[1])+",0,16);if !p{return 1;}number(db_word(device_field(p,\"total\")));return 0;}");
+            check(inventory.getString("stdout").equals(Integer.toString(readers)),"VM reader inventory matches the actual OMAPI service (zero readers does not claim APDU I/O)");
+            vm("fn main(){if se_session("+quoted(ids[1])+",\"foreign-reader\"){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_reader\"){return 2;}return 0;}");
+            check(true,"OMAPI session creation rejects foreign or absent reader IDs before card I/O");
+            first.post(()->{entered.countDown();if(!release.await(5,TimeUnit.SECONDS))throw new IOException("cleanup fixture timeout");});check(entered.await(2,TimeUnit.SECONDS),"controlled cleanup fixture is actually running");
+            host.runOnUiThread(()->{try{VmHardware.close(context,ids[0]);}catch(Exception ignored){}finally{uiDone.countDown();}});
+            check(uiDone.await(1,TimeUnit.SECONDS)&&first.closed,"local OMAPI close returns on the real UI thread while an explicitly controlled cleanup task is blocked");
+            vm("fn main(){if !se_readers("+quoted(ids[1])+",0,16){return 1;}return 0;}");check(second.sdk.isConnected(),"a second actual SDK binding remains responsive while the first service cleanup is pending");
+            release.countDown();long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);boolean done=false;while(System.nanoTime()<end){synchronized(first){done=first.released;}if(done)break;Thread.sleep(10);}check(done,"actual SDK shutdown completes after the controlled cleanup task is released");
+            vm("fn main(){if !se_readers("+quoted(ids[1])+",0,16){return 1;}return 0;}");check(second.sdk.isConnected(),"after actual SDK shutdown, the second owned service still supports reader queries");
+            // Pure byte-transport fixture; no SDK session/channel or APDU is invented.
+            HardwareSecureElement.SessionHandle session=new HardwareSecureElement.SessionHandle(second,new HardwareSecureElement.ReaderRef(null));HardwareSecureElement.ChannelHandle channel=new HardwareSecureElement.ChannelHandle(session);
+            try{
+                channel.exchanging=true;boolean busy=false;try{channel.selectNext();}catch(VmHardware.Failure error){busy=error.code.equals("busy");}finally{channel.exchanging=false;}check(busy,"transport fixture rejects overlapping applet selection before SDK I/O");
+                byte[] command=new byte[65544];for(int i=0;i<command.length;i++)command[i]=(byte)i;channel.command(command.length);channel.append(0,Arrays.copyOfRange(command,0,32768));channel.append(32768,Arrays.copyOfRange(command,32768,65536));channel.append(65536,Arrays.copyOfRange(command,65536,65544));
+                check(Arrays.equals(command,channel.take()),"transport fixture assembles a full65544-byte extended APDU sequentially from bounded chunks");boolean stale=false;try{channel.take();}catch(VmHardware.Failure error){stale=error.code.equals("incomplete_command");}check(stale,"a consumed staged APDU cannot be taken a second time");
+                channel.response=new byte[65538];for(int i=0;i<channel.response.length;i++)channel.response[i]=(byte)(i*7);channel.response[65536]=(byte)0x90;channel.response[65537]=0;channel.responseId=7;ByteArrayOutputStream data=new ByteArrayOutputStream();int offset=0;while(offset>=0){JSONObject page=(JSONObject)channel.page(7,offset,32768);data.write(VmHardware.data(page.get("value")));offset=page.getInt("next");if(page.getInt("status_word")!=0x9000)throw new IOException("status word");}
+                check(Arrays.equals(data.toByteArray(),channel.response),"transport fixture pages all65538 response bytes and actual raw status without reissuing a command");
+                stale=false;try{channel.page(6,0,32);}catch(VmHardware.Failure error){stale=error.code.equals("stale_response");}check(stale,"response IDs reject another exchange's cached byte data");
+            }finally{channel.closeLocally();}
+        }finally{release.countDown();try{VmHardware.close(context,ids[0]);}catch(Exception ignored){}try{VmHardware.close(context,ids[1]);}catch(Exception ignored){}}
+    }
     private JSONObject bluetooth()throws Exception{
         CountDownLatch cancelledTimer=new CountDownLatch(1);Runnable mustNotRun=cancelledTimer::countDown;HardwareSensors.events().postDelayed(mustNotRun,500);HardwareSensors.events().removeCallbacks(mustNotRun);
         check(!cancelledTimer.await(700,TimeUnit.MILLISECONDS),"the shared Android event handler cancels actual delayed callbacks across accessor calls");
@@ -97,7 +151,8 @@ public final class HardwareNetworkChecks {
             check(true,"real handles of another adapter cannot be used to publish Aware services, open data paths or request peer ranging");
         }finally{VmHardware.closeWorkspace(root);}
         JSONObject reference=vm("fn main(){let api=hardware_api();if !api{return 1;}db_io(0,1,db_word(api),db_bytes(api));return 0;}");String api=reference.getString("stdout");
-        check(api.contains("aware_publish(")&&api.contains("aware_network(")&&api.contains("aware_rtt(")&&api.contains("Wi-Fi RTT:")&&!api.contains("Aware and RTT APIs are not implemented"),"the VM's generated API reference exposes the real Aware/RTT functions and their asynchronous contracts");
+        StringBuilder contracts=new StringBuilder();boolean ended=false;for(int offset=0;offset<1048576;offset+=4096){JSONObject page=vm("fn main(){let p=hardware_api_page("+offset+",4096);if !p{return 1;}let t=device_field(p,\"text\");db_io(0,1,db_word(t),db_bytes(t));return 0;}");String part=page.getString("stdout");contracts.append(part);if(part.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<4096){ended=true;break;}}
+        check(ended&&api.contains("aware_publish(")&&api.contains("aware_network(")&&api.contains("aware_rtt(")&&contracts.toString().contains("Wi-Fi RTT:")&&!contracts.toString().contains("Aware and RTT APIs are not implemented"),"the VM's generated API index and paged reference expose the real Aware/RTT functions and their asynchronous contracts");
         return new JSONObject().put("ok",true).put("checks",checks).put("count",checks.length());
     }
     private JSONObject revocation()throws Exception{
