@@ -265,3 +265,7 @@ fn input_info(device){let r=db_request("input_info");db_add(r,db_int(device));re
 fn input_ranges(device,offset,limit){let r=db_request("input_ranges");db_add(r,db_int(device));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
 fn input_has_keys(device,keys){let r=db_request("input_has_keys");db_add(r,db_int(device));db_add(r,keys);return db_rpc(r);}
 fn input_watch(device,mask,axes,history){let r=db_request("input_watch");db_add(r,db_int(device));db_add(r,db_int(mask));db_add(r,axes);db_add(r,db_int(history));return db_rpc(r);}
+
+fn biometric_info(authenticators){let r=db_request("biometric_info");db_add(r,db_int(authenticators));return db_rpc(r);}
+fn biometric_auth(title,subtitle,description,authenticators,confirmation,timeout_ms){let r=db_request("biometric_auth");db_add(r,db_text(title));db_add(r,db_text(subtitle));db_add(r,db_text(description));db_add(r,db_int(authenticators));db_add(r,db_int(confirmation));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn biometric_cancel(handle){let r=db_request("biometric_cancel");db_add(r,db_text(handle));return db_rpc(r);}

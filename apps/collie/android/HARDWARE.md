@@ -34,7 +34,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
 | Device status | battery/charging/electrical data, thermal state/headroom/events | implemented | battery/thermal status and subscriptions passed; thermal-change injection pending |
-| Biometrics | system authentication result only | pending | pending |
+| Biometrics | system authentication result only | SDK availability, owned system prompts and cancellation implemented | 51 enrolled/unenrolled SDK checks passed, including real fingerprint/PIN success, cancellation, expiry, late success and live revocation; physical/older-device checks pending |
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
 | Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | pending | pending |
 | Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | pending | pending |
@@ -1488,3 +1488,116 @@ The same portable patches passed headless Chromium and60 native SDL desktop
 checks using the dummy video driver. Local mapped X11 testing was unavailable
 because xvfb-run is not installed; CI runs that explicit X11 variant. Historical
 checks on other APK digests remain under their own artifacts above.
+
+## System biometric and device-credential authentication
+
+`biometric_info(authenticators)` reports the actual Android SDK availability
+value (or an explicit unknown on older APIs), device-lock configuration and
+feature flags. Availability and enrollment never imply successful authentication.
+`biometric_auth(title,subtitle,description,authenticators,confirmation,timeout_ms)`
+starts Android's system-owned prompt from a visible Activity and returns an
+opaque workspace handle. Android keeps biometric templates, images, PINs,
+patterns and passwords. Only a real successful SDK callback produces an
+`authenticated` event. The raw SDK authentication type distinguishes biometric
+from device credential on Android11+. This result is neither cryptographic
+attestation nor a Keystore authorization token.
+
+Authenticator masks are15 strong/Class3,255 weak/Class2-or-better,32768 device
+credential, and32783/33023 biometric-or-credential. Android16 additionally accepts
+its optional Identity Check bit65536; Android controls its policy and enforcement.
+Android9 exposes only the default weak prompt and confirmation1; Android10 also
+supports weak-or-credential and the configurable confirmation hint. Other strength
+requests fail explicitly on those releases. Nothing silently weakens a requested
+class. The timeout is500..120000ms. Title, subtitle and description have explicit
+UTF-16 limits200/400/2000; the title must not be blank.
+
+`device_wait` yields copied requested/help/not_recognized/authenticated/error
+and cancellation events through the common bounded queue. A requested event says
+the SDK call was made, not that the prompt was displayed or authentication passed.
+`device_info` exposes state, sdk_requested, sdk_terminal, late_success_rejected
+and cleanup_pending. The late-success flag records a real SDK success callback
+that was refused after cancellation/expiry; authenticated remains false.
+`biometric_cancel` returns a typed1 for a new request or typed0 if already finishing;
+an operation error is the separate bare0/db_error path. Cancellation keeps the
+handle observable; `device_close` invalidates it immediately. The global single
+prompt lease remains held until the actual terminal SDK callback, or confirmation
+that no SDK request was ever started. Another workspace cannot inspect or cancel
+the handle. Revocation and conversation/process teardown cancel owned requests.
+
+SDK start and signal cancellation both run on the Android main queue. Deadlines
+use elapsed time and are checked independently of the scheduled timeout task,
+including before accepting a success callback. Blocked UI/callback queues cannot
+turn an expired request into success. Cancellation and timeout reject late
+success; local cancellation is distinct from confirmation that Android finished.
+Android owns prompt background cancellation and credential fallback. No enrollment
+or lock setting is changed by the adapter. USE_BIOMETRIC is a normal manifest
+permission; the separate conversation grant remains lazy Ask/Allow/Deny.
+
+The optional enrolled test uses only the separately owned headless
+`Collie_Biometrics_API36` AVD, configured through real Android enrollment with a
+public fixture PIN and virtual fingerprint1. Virtual fingerprint2 is deliberately
+not enrolled. The unenrolled test never changes its emulator's security settings.
+Both preserve the original conversation and permissions, clean private fixture
+workspaces, and guard the installed APK digest before and after the run. SDK and
+emulator evidence do not prove physical fingerprint/face/iris behavior, vendor
+confirmation UI, real lockout, Identity Check policy or older-SDK compatibility.
+
+```sh
+python3 scripts/test-collie-biometrics-android.py --out build/android-biometrics \
+  --serial emulator-5580
+# Only for the separately owned, already enrolled test AVD:
+python3 scripts/test-collie-biometrics-android.py --out build/android-biometrics \
+  --serial emulator-5582 --enrolled --fixture-pin 135790
+```
+
+SDK contracts: [system prompt](https://developer.android.com/reference/android/hardware/biometrics/BiometricPrompt),
+[authenticator masks](https://developer.android.com/reference/android/hardware/biometrics/BiometricManager.Authenticators),
+and [availability](https://developer.android.com/reference/android/hardware/biometrics/BiometricManager).
+
+
+### Biometric batch artifact evidence
+
+Debug `build/android-biometrics/collie.apk`: **6,898,705 bytes**
+(6.899 MB /6.579 MiB), SHA-256
+`2f1d9ffff34a372cbc09bb27e09a34fe0ac67078e3529ec9ab9c1f5cb0e51692`.
+Non-debug `build/android-biometrics-release/collie.apk`: **6,783,938 bytes**
+(6.784 MB /6.470 MiB), SHA-256
+`b87854334d49c82bc7d5ad8a4eb7e52b3f9eb127094fee87db196f43f2c295e8`.
+Packaging verifies USE_BIOMETRIC and protected VPN metadata in both APKs, and
+excludes HardwareBiometricChecks and all other debug fixtures from non-debug.
+
+On those installed debug bytes, **108 Android checks passed**:36 enrolled
+biometric,15 unenrolled biometric,24 Input and33 NFC/OMAPI. The two biometric
+reports separately retain physical_authentication_verified=false. Actual
+first-use approval resumes the interrupted call; metadata agrees with independent
+SDK queries. The original emulator remains unenrolled and without a device PIN;
+its actual no-biometric11/no-credential14 error callbacks are verified. A separate
+owned AVD provides real Android fingerprint enrollment and PIN authentication.
+An unregistered virtual finger yields a nonterminal failed-attempt callback,
+then the registered finger succeeds with authentication_type2. Entering only the
+public fixture PIN through SystemUI succeeds with authentication_type1.
+
+Explicit cancel receives SDK error5, the actual negative Button invokes its
+SDK callback, and Home receives SDK user-cancel10. Active timeout waits for SDK
+teardown. Controlled main/callback queues verify cancellation before SDK start
+and elapsed-time expiry despite blocked scheduled tasks. Closing an active
+request while its SDK callback executor is held invalidates the local handle
+but preserves the global busy lease until the actual callback runs. Another
+actual VM workspace cannot inspect or cancel it. Revoking the grant through the
+real permission-save path cancels a program already observed waiting in hardware
+I/O, closes the request and prevents a later program from reopening biometrics.
+
+For the late-success race, the actual callback/deadline executor is held while
+the host observes the unique SystemUI prompt and delivers its enrolled virtual
+finger before expiry. It releases the queue after the elapsed deadline. The
+actual successful SDK callback is then rejected: the VM observes timeout,
+late_success_rejected=true, authenticated=false, no authenticated event and a
+released prompt lease. No authentication callback is manufactured by the tests.
+
+The same source passed shared hardware codec/registry checks,4 paged-reference
+checks (47,754 detailed bytes and8,211 index bytes),13 native lazy-permission
+groups covering15 first-use gates, and9 shared-core groups. Earlier Bluetooth,
+UI and compiler evidence remains attached to its own artifacts. The separate
+strict HID missing public-unplug-callback failure remains open. Physical/vendor
+biometrics, face/iris, real lockout, confirmation/Identity Check policy and older
+SDKs still require appropriate fixtures. The full hardware inventory remains open.

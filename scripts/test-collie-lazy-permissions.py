@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
  t=begin('fn main(){let b=alloc(8);store64(b,42);return load64(b)-42;}','compute');o=vm(t)
  assert o['state']=='continue' and o['exit_code']==0 and 'signal' not in o,o
  passed('plain computation needs no prompt or grant')
- probes={'internet':'http_get("https://example.com")','files_read':'fs_list("/")','files_write':'fs_write("new.txt",db_text("data"))','db_read':'db_tables()','db_write':'db_begin()','history':'db_history(0,10)','workers':'worker_start("Helper","Check data")','vpn':'vpn_status()','cellular':'cellular_info(-1)','wifi':'wifi_info()','bluetooth':'bt_info()','nfc':'nfc_info()','secure_element':'se_open(1000)','input':'input_devices(0,16)'}
+ probes={'internet':'http_get("https://example.com")','files_read':'fs_list("/")','files_write':'fs_write("new.txt",db_text("data"))','db_read':'db_tables()','db_write':'db_begin()','history':'db_history(0,10)','workers':'worker_start("Helper","Check data")','vpn':'vpn_status()','cellular':'cellular_info(-1)','wifi':'wifi_info()','bluetooth':'bt_info()','nfc':'nfc_info()','secure_element':'se_open(1000)','input':'input_devices(0,16)','biometrics':'biometric_info(255)'}
  for key,probe in probes.items():
   config['permissions']=dict.fromkeys(keys,'ask')
   t=begin('fn main(){'+probe+';let e=db_error();db_io(0,1,e,db_len(e));return 0;}','deny-'+key)
@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
   o=vm(t);assert o['state']=='continue' and o['stdout']=='Permission denied: '+key,o
   t=step('observation',t['state'],observation=o);assert t['state']['pending_execution'] is None
  assert not (root/'files/new.txt').exists()
- passed('all fourteen tested first-use gates checkpoint before effects, survive restart, and return denial to the original caller')
+ passed('all fifteen tested first-use gates checkpoint before effects, survive restart, and return denial to the original caller')
  for operation,primary in [('cellular_cells(-1,0)','cellular'),('aware_open()','wifi'),('bt_scan(1000)','bluetooth'),('ble_scan("","",1000,0)','bluetooth')]:
   config['permissions']=dict.fromkeys(keys,'ask')
   t=begin('fn main(){if '+operation+'{return 1;}let e=db_error();db_io(0,1,e,db_len(e));return 0;}','two-grants-'+primary+'-'+str(len(operation)));o=vm(t)
@@ -60,13 +60,13 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
    assert ('requires the Android host' in o['stdout']) if approved else o['stdout']=='Permission denied: bluetooth',o
  passed('direct GATT client/server and HID calls checkpoint only Bluetooth and reach the real non-Android host boundary after approval even with Location denied')
 
- for operation,key in [('nfc_info()','nfc'),('se_open(1000)','secure_element'),('input_devices(0,16)','input')]:
+ for operation,key in [('nfc_info()','nfc'),('se_open(1000)','secure_element'),('input_devices(0,16)','input'),('biometric_info(255)','biometrics')]:
   config['permissions']=dict.fromkeys(keys,'ask')
   t=begin('fn main(){'+operation+';let e=db_error();db_io(0,1,e,db_len(e));return 0;}','approve-'+key);o=vm(t)
   assert o['state']=='permission' and o['signal']['key']==key,o
   t=step('observation',t['state'],observation=o);config['permissions'][key]=True;t=step('next',t['state']);o=vm(t)
   assert o['state']=='continue' and o['exit_code']==0 and 'requires the Android host' in o['stdout'],o
- passed('NFC, secure-element and input approvals resume the actual interrupted call and reach the non-Android host boundary without requesting unrelated grants')
+ passed('NFC, secure-element, input and biometric approvals resume the actual interrupted call and reach the non-Android host boundary without requesting unrelated grants')
 
  config['permissions']=dict.fromkeys(keys,'ask')
  # A completed write must never be replayed when the following read needs access.
