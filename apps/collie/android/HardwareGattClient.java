@@ -35,7 +35,7 @@ final class HardwareGattClient {
         final IdentityHashMap<Object,String> ids=new IdentityHashMap<>();
         final Map<String,JSONObject> records=new HashMap<>();
         final Map<String,List<String>> children=new HashMap<>();
-        final Runnable connectDeadline=()->fail("timeout",-1,"Android did not connect the BLE GATT client before its deadline.");
+        final Runnable connectDeadline=()->{synchronized(Client.this){if(state.equals("pending"))fail("timeout",-1,"Android did not connect the BLE GATT client before its deadline.");}};
 
         Client(VmHardware.Context c,String address,int operationTimeout){
             super(c,"bluetooth","bluetooth_le_gatt_client");context=c;app=c.host.getApplicationContext();this.address=address;this.operationTimeout=operationTimeout;

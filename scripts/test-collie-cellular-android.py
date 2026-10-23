@@ -4,9 +4,11 @@
 No calls, SMS, phone identifiers or physical radios are used. The simulated
 voice roaming state, runtime permissions and original conversation are restored.
 """
-import argparse,hashlib,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
+from collie_android_test_artifact import verify_installed_apk
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');a=p.parse_args();assert a.serial.startswith('emulator-')
+tested_apk=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')
 out=a.out.resolve();base=[a.adb,'-s',a.serial];pkg='org.flexscript.collie';prefix='cell-hw-'+uuid.uuid4().hex[:8];names=[];sessions=[];checks=[]
 def adb(*args,data=None,check=True):
  r=subprocess.run([*base,*map(str,args)],input=data,capture_output=True,timeout=45)
@@ -105,4 +107,5 @@ finally:
   assert sid.startswith(prefix) and sid!=original;adb('shell','run-as',pkg,'rm','-rf','files/workspaces/'+sid)
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('cellular handles, temporary runtime grants and radio state cleaned up; original conversation preserved')
-report=dict(count=len(checks),checks=checks,serial=a.serial,apk_sha256=hashlib.sha256((out/'collie.apk').read_bytes()).hexdigest());(out/'cellular-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android cellular scenarios passed')
+assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==tested_apk,'APK changed during the test'
+report=dict(count=len(checks),checks=checks,serial=a.serial,apk_sha256=tested_apk);(out/'cellular-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android cellular scenarios passed')

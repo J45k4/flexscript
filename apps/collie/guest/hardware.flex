@@ -205,3 +205,17 @@ fn ble_gatt_rssi(connection,id){let r=db_request("ble_gatt_rssi");db_add(r,db_te
 fn ble_gatt_phy_read(connection,id){let r=db_request("ble_gatt_phy_read");db_add(r,db_text(connection));db_add(r,db_int(id));return db_rpc(r);}
 fn ble_gatt_phy(connection,tx,rx,options,id){let r=db_request("ble_gatt_phy");db_add(r,db_text(connection));db_add(r,db_int(tx));db_add(r,db_int(rx));db_add(r,db_int(options));db_add(r,db_int(id));return db_rpc(r);}
 fn ble_gatt_priority(connection,priority){let r=db_request("ble_gatt_priority");db_add(r,db_text(connection));db_add(r,db_int(priority));return db_rpc(r);}
+
+fn ble_server_open(timeout){let r=db_request("ble_server_open");db_add(r,db_int(timeout));return db_rpc(r);}
+fn ble_server_add(server,uuid,kind,definitions){let r=db_request("ble_server_add");db_add(r,db_text(server));db_add(r,db_text(uuid));db_add(r,db_int(kind));db_add(r,definitions);return db_rpc(r);}
+fn ble_server_items(server,parent,offset,limit){let r=db_request("ble_server_items");db_add(r,db_text(server));db_add(r,db_text(parent));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn ble_server_remove(server,service){let r=db_request("ble_server_remove");db_add(r,db_text(server));db_add(r,db_text(service));return db_rpc(r);}
+fn ble_server_peers(server,offset,limit){let r=db_request("ble_server_peers");db_add(r,db_text(server));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn ble_server_requests(server,offset,limit){let r=db_request("ble_server_requests");db_add(r,db_text(server));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn ble_server_respond(server,token,status,offset,bytes){let r=db_request("ble_server_respond");db_add(r,db_text(server));db_add(r,db_text(token));db_add(r,db_int(status));db_add(r,db_int(offset));db_add(r,bytes);return db_rpc(r);}
+fn ble_server_notify(server,peer,attribute,bytes,confirm,id){let r=db_request("ble_server_notify");db_add(r,db_text(server));db_add(r,db_text(peer));db_add(r,db_text(attribute));db_add(r,bytes);db_add(r,db_int(confirm));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_server_disconnect(server,peer){let r=db_request("ble_server_disconnect");db_add(r,db_text(server));db_add(r,db_text(peer));return db_rpc(r);}
+fn ble_server_phy_read(server,peer,id){let r=db_request("ble_server_phy_read");db_add(r,db_text(server));db_add(r,db_text(peer));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_server_phy(server,peer,tx,rx,options,id){let r=db_request("ble_server_phy");db_add(r,db_text(server));db_add(r,db_text(peer));db_add(r,db_int(tx));db_add(r,db_int(rx));db_add(r,db_int(options));db_add(r,db_int(id));return db_rpc(r);}
+fn ble_define_descriptor(rows,uuid,permissions){let row=db_list();db_add(row,db_text(uuid));db_add(row,db_int(permissions));return db_add(rows,row);}
+fn ble_define_characteristic(rows,uuid,properties,permissions,descriptors){let row=db_list();db_add(row,db_text(uuid));db_add(row,db_int(properties));db_add(row,db_int(permissions));db_add(row,descriptors);return db_add(rows,row);}

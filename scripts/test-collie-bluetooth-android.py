@@ -4,9 +4,11 @@
 No remote devices are paired or contacted. RFCOMM payload tests require a
 separate peer fixture; this suite opens actual SDP listeners and checks timeout.
 """
-import argparse,hashlib,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
+from collie_android_test_artifact import verify_installed_apk
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');a=p.parse_args();assert a.serial.startswith('emulator-')
+tested_apk=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')
 pkg='org.flexscript.collie';prefix='bt-hw-'+uuid.uuid4().hex[:8];names=[];sessions=[];checks=[]
 permissions=['android.permission.BLUETOOTH_CONNECT','android.permission.BLUETOOTH_SCAN','android.permission.BLUETOOTH_ADVERTISE','android.permission.ACCESS_COARSE_LOCATION','android.permission.ACCESS_FINE_LOCATION']
 def adb(*args,data=None,check=True):
@@ -101,4 +103,5 @@ finally:
  for sid in sessions:adb('shell','run-as',pkg,'rm','-rf','files/workspaces/'+sid)
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('Bluetooth listeners/scans, runtime grants, radio state and original conversation restored; private fixtures removed')
-report=dict(count=len(checks),checks=checks,serial=a.serial,peer_payload_verified=False,apk_sha256=hashlib.sha256((a.out/'collie.apk').read_bytes()).hexdigest());(a.out/'bluetooth-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android Classic Bluetooth checks passed')
+assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==tested_apk,'APK changed during the test'
+report=dict(count=len(checks),checks=checks,serial=a.serial,peer_payload_verified=False,apk_sha256=tested_apk);(a.out/'bluetooth-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android Classic Bluetooth checks passed')

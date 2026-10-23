@@ -4,9 +4,11 @@
 Only the emulator virtual access point is used. Runtime grants, location state
 and the original conversation are restored; no physical Wi-Fi adapter is used.
 """
-import argparse,hashlib,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
+from collie_android_test_artifact import verify_installed_apk
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');a=p.parse_args();assert a.serial.startswith('emulator-')
+tested_apk=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')
 out=a.out.resolve();base=[a.adb,'-s',a.serial];pkg='org.flexscript.collie';prefix='wifi-hw-'+uuid.uuid4().hex[:8];names=[];sessions=[];checks=[]
 def adb(*args,data=None,check=True):
  r=subprocess.run([*base,*map(str,args)],input=data,capture_output=True,timeout=45)
@@ -47,9 +49,14 @@ def pending(sid,key,phase='permission'):
  return wait(check)
 adb('shell','run-as',pkg,'mkdir','-p','files/test');prefs=ET.fromstring(adb('exec-out','run-as',pkg,'cat','shared_prefs/MainActivity.xml'));original=next(x.text for x in prefs if x.get('name')=='session');before=read('files/workspaces/'+original+'/session.json')
 assert 'Wifi is enabled' in adb('shell','cmd','wifi','status').decode(),'Enable the emulator virtual Wi-Fi before running these tests'
-permissions=['android.permission.NEARBY_WIFI_DEVICES','android.permission.ACCESS_COARSE_LOCATION','android.permission.ACCESS_FINE_LOCATION'];state=adb('shell','dumpsys','package',pkg).decode();granted={x:bool(re.search(re.escape(x)+r': granted=true',state)) for x in permissions};user_flags={x:((re.search(re.escape(x)+r': granted=\w+, flags=\[([^]]*)\]',state) or [None,''])[1]) for x in permissions};location_enabled=adb('shell','cmd','location','is-location-enabled').decode().strip()
+# Wi-Fi and Bluetooth share Android's Nearby devices group. Isolate the real
+# consent dialog from existing Bluetooth grants and restore every grant below.
+permissions=['android.permission.NEARBY_WIFI_DEVICES','android.permission.ACCESS_COARSE_LOCATION','android.permission.ACCESS_FINE_LOCATION','android.permission.BLUETOOTH_CONNECT','android.permission.BLUETOOTH_SCAN','android.permission.BLUETOOTH_ADVERTISE'];state=adb('shell','dumpsys','package',pkg).decode();granted={x:bool(re.search(re.escape(x)+r': granted=true',state)) for x in permissions};user_flags={x:((re.search(re.escape(x)+r': granted=\w+, flags=\[([^]]*)\]',state) or [None,''])[1]) for x in permissions};location_enabled=adb('shell','cmd','location','is-location-enabled').decode().strip()
 try:
  adb('shell','am','force-stop',pkg)
+ # An abandoned Android network picker can retain a callback for a released
+ # request. Tests use only this emulator's Settings activity, never a phone.
+ adb('shell','am','force-stop','com.android.settings')
  for permission in permissions:
   adb('shell','pm','revoke',pkg,permission,check=False);adb('shell','pm','clear-permission-flags',pkg,permission,'user-set','user-fixed')
  sid=prefix+'-status';start(sid,dict(session=sid,prompt='Inspect virtual Wi-Fi',responses=conversation('fn main(){let s=wifi_info();if !s{return 1;}return 0;}')));pending(sid,'wifi');button(label='Allow requested access');observation(result(sid))
@@ -72,7 +79,7 @@ try:
  name=prefix+'-request';source='fn main(){let h=wifi_request("AndroidWifi","open","","",0,90000);if !h{db_io(0,2,db_error(),db_len(db_error()));return 1;}state_set("wifi_request",h);progress("Wi-Fi request pending");let i=0;while i<80{let e=device_wait(db_word(h),1000);if db_kind(e)==5{let t=device_field(e,"event");if worker_equal(db_word(t),"available"){return 0;}if worker_equal(db_word(t),"unavailable"){return 2;}}i=i+1;}return 3;}'
  start(name,dict(session=sid,prompt='Request the emulator access point',initial_permissions={'wifi':True,'location':True,'network':True,'db_read':True,'db_write':True},responses=conversation(source)));pending(sid,'wifi','platform_permission');(out/'wifi-nearby-consent.png').write_bytes(adb('exec-out','screencap','-p'));button(suffix='permission_allow_button')
  # Android owns the network picker; accept only the virtual AndroidWifi SSID.
- end=time.monotonic()+40;approved=False
+ end=time.monotonic()+60;approved=False
  while time.monotonic()<end:
   if read('files/test/'+name+'.result.json'):break
   ui=tree();nodes=list(ui.iter('node'));texts=[n.get('text','') for n in nodes]
@@ -81,7 +88,12 @@ try:
    (out/'wifi-network-picker.png').write_bytes(adb('exec-out','screencap','-p'));tap(connect);approved=True;break
   access=next((n for n in nodes if n.get('text')=='AndroidWifi' and n.get('clickable')=='true'),None)
   if access is not None:tap(access)
+  retry=next((n for n in nodes if n.get('text','').lower()=='try again' and n.get('enabled')=='true'),None)
+  if retry is not None:tap(retry)
   time.sleep(.2)
+ if not approved and not read('files/test/'+name+'.result.json'):
+  (out/'wifi-network-picker-failure.png').write_bytes(adb('exec-out','screencap','-p'))
+  raise AssertionError(('Android network picker did not complete',texts))
  observation(result(name));passed('Nearby Wi-Fi consent and Android-owned network selection complete before the VM receives an available lease')
  name=prefix+'-request-io';start(name,dict(session=sid,hardware_tests=True,hardware_wifi_request_tests=True,hardware_preserve_handles=True));r=result(name)
  for text in r['hardware']['checks']:passed(text)
@@ -116,4 +128,5 @@ finally:
   assert sid.startswith(prefix) and sid!=original;adb('shell','run-as',pkg,'rm','-rf','files/workspaces/'+sid)
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('Wi-Fi resources/runtime grants cleaned up and original conversation preserved')
-report=dict(count=len(checks),checks=checks,serial=a.serial,apk_sha256=hashlib.sha256((out/'collie.apk').read_bytes()).hexdigest());(out/'wifi-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android Wi-Fi scenarios passed')
+assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==tested_apk,'APK changed during the test'
+report=dict(count=len(checks),checks=checks,serial=a.serial,apk_sha256=tested_apk);(out/'wifi-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android Wi-Fi scenarios passed')

@@ -11,7 +11,8 @@ import org.json.*;
 /** SensorService listeners become bounded event streams, never guest callbacks. */
 final class HardwareSensors {
     private static HandlerThread thread;
-    static synchronized Handler events(){if(thread==null){thread=new HandlerThread("collie-hardware-events");thread.setDaemon(true);thread.start();}return new Handler(thread.getLooper());}
+    private static Handler handler;
+    static synchronized Handler events(){if(thread==null){thread=new HandlerThread("collie-hardware-events");thread.setDaemon(true);thread.start();handler=new Handler(thread.getLooper());}return handler;}
     static SensorManager manager(VmHardware.Context c){return (SensorManager)c.host.getApplicationContext().getSystemService(Context.SENSOR_SERVICE);}
     static boolean supports(String op){return op.equals("sensor_list")||op.equals("sensor_info")||op.equals("sensor_open");}
     static String id(Sensor s){return "sensor-"+s.getId()+"-"+s.getType()+"-"+Integer.toHexString((s.getName()+s.getVendor()).hashCode());}

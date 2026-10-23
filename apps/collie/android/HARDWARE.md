@@ -18,8 +18,8 @@ it does not count as an implementation of an otherwise available adapter.
 | Cellular diagnostics | subscriptions, signal/service/cell data with platform permissions | implemented; read-only diagnostics, separate cellular + location gates | 19 headless Android scenarios passed, including real runtime prompts, NR cell data, refresh, roaming callbacks and both grants; physical SIM/multi-SIM/radio checks pending |
 | USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt, accessory mode, disconnect handling | implemented; device consent and transfers need a real fixture | UsbManager inventory/events, missing devices, invalid arguments and wrong handle types passed on emulator; physical device approval/transfers/detach pending |
 | USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
-| Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 15 baseline SDK/VM/consent checks passed; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
-| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy advertising and GATT client SDK bindings implemented; GATT server and extended/periodic advertising pending | 26 checks passed on the GATT APK:14 client and12 raw transport, including duplicate UUIDs, 512-byte values, descriptors, notifications/indications, client isolation and late-response timeout; server/physical checks pending |
+| Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 16 baseline SDK/VM/consent checks passed on the current server APK; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
+| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy advertising, GATT client and GATT server SDK bindings implemented; extended/periodic advertising pending | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | pending | pending |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | pending | pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | pending | pending |
@@ -1013,7 +1013,7 @@ check proves direct GATT connect checkpoints only Bluetooth and, after approval,
 reaches the actual non-Android host boundary despite Location denial. It is not
 substituted for the Android connection proof above.
 
-**Still pending:** the GATT server adapter, reliable-write transactions,
+**At this client-only checkpoint, still pending:** the GATT server adapter (added below), reliable-write transactions,
 included-service links, PHY-set/radio-loss/service-change/queue-overflow/live
 revocation fixtures, older-SDK compatibility and physical peripherals. Extended/
 periodic advertising and the rest of the hardware inventory also remain open.
@@ -1027,4 +1027,138 @@ python scripts/fixtures/collie-gatt-peer.py \
 python3 scripts/test-collie-gatt-android.py \
   --out build/android-gatt --serial emulator-5580 \
   --peer-state build/android-gatt/gatt-peer.json
+```
+
+
+## BLE GATT server and shared event timers
+
+`ble_server_open(response_timeout_ms)` opens a real Android SDK GATT server.
+The timeout is1000..25000ms. A visible start, Collie Bluetooth and Android
+CONNECT are required; Location, SCAN and ADVERTISE are not. Advertising uses
+its separate `ble_advertise` function and permission. Guest snapshots preserve
+ordinary values and IDs, never live SDK registrations.
+
+`ble_server_add(server,uuid,type,definitions)` registers a primary(type0) or
+secondary(type1) service asynchronously. Wait for `service_added` with status0
+before advertising it or using its children. Only one registration may be
+pending, with a15-second deadline. Definitions are typed lists of
+`[uuid,properties,permissions,descriptors]`, and each descriptor is
+`[uuid,permissions]`. `ble_define_characteristic` and `ble_define_descriptor`
+append these rows to ordinary `db_list()` values. Property bits1..128 and
+Android read1/2/4, write16/32/64/128/256 permissions are checked before any
+registration state changes. Android enforces encryption/authentication flags.
+Limits are32 services,128 characteristics per addition,16 descriptors per
+characteristic and4096 total nodes.
+
+`ble_server_items(server,parent,offset,limit)` pages at most16 services for an
+empty parent, or children of an owned service/characteristic. Rows carry opaque
+IDs, UUIDs, kind, parent, properties/permissions/type and active state. Duplicate
+UUIDs remain distinct. `ble_server_remove` removes an owned service and
+invalidates its descendants; finish registration, unanswered requests and
+outgoing operations first.
+
+`ble_server_peers(server,offset,limit)` lists at most32 connected peers with
+opaque connection IDs, actual address, conservative initial MTU23,
+`mtu_observed`, outgoing request state and the last completion. Incoming
+`request` events carry `kind`(read/write/execute), peer, attribute (null for
+execute), offset, prepared/execute/response_needed flags, copied byte value and
+an opaque token when Android needs a response. `ble_server_requests` pages up
+to128 unanswered requests independently of the bounded event queue.
+
+`ble_server_respond(server,token,status,offset,bytes)` accepts ATT status0..255,
+offset0..512 and at most512 bytes. Invalid arguments do not consume a live
+request. A token is server/peer/request-owned and single-use; reply attempts
+consume it even if Android refuses the response. Expired tokens are invalid.
+An unanswered request receives ATT Unlikely Error14 at its real deadline and
+emits `request_expired`; an SDK response failure closes the registration.
+No-response write commands carry null tokens, create no pending response and
+receive no automatic acknowledgement. Oversized SDK values and exhausted
+request capacity produce explicit ATT errors where a response is required.
+
+The VM owns attribute values, read slicing, authorization, CCCD subscription
+state and prepared-write staging/commit/cancel. Java transports Android's
+callbacks and responses; it neither commits values nor accepts valid writes
+on behalf of the VM. The generated model API reference describes this contract.
+
+`ble_server_notify(server,peer,characteristic,bytes,confirm,id)` uses the actual
+SDK notification/indication API. The characteristic must declare the chosen
+property; bytes must fit both512 and the peer's observed MTU minus3. A request
+ID strictly increases per peer (0..2147483647). Wait for `notification_sent`
+with that ID, attribute, confirm flag and actual SDK status. This completion
+is retained on the peer as well as emitted. Flexscript separately decides
+whether its CCCD state allows an update. `ble_server_phy_read` and
+`ble_server_phy` share this one-outgoing-operation-per-peer channel; their
+positive SDK callback fixtures remain pending.
+
+`ble_server_disconnect` explicitly requests peer disconnection. A timeout or
+peer disconnection during an outgoing operation fails the entire server
+registration: Android's notification completion has no attribute/request ID,
+so a late callback must not be reassigned to new work. Close releases owned
+pending responses/timers, receiver and SDK registration. It does not cancel
+all physical links: Android may share a connection between registrations or
+apps. The two-server test closes one registration while the other continues
+real ATT I/O. Radio-off and permission/lifecycle cleanup use the existing
+workspace-owned handle boundary; remaining targeted revocation/radio tests
+are still listed below.
+
+Server integration exposed a shared timer bug: `HardwareSensors.events()`
+created a new Handler on each access, so `removeCallbacks` targeted a different
+Handler from the one that posted the timeout. It now returns one cached
+Handler. Classic and GATT client connect deadlines also check their pending
+state before failing. The Android check posts a real delayed callback and
+cancels it through another accessor call; server registration and client
+connection tests remain usable beyond their15-second connection/registration
+deadlines. Wi-Fi and cellular regressions cover other users of this handler.
+
+The independent server fixture uses a host-only Bumble client and localhost
+Netsim. It discovers the Android advertisement from actual raw packets and
+uses real ATT requests to verify512-byte long reads before MTU negotiation,
+duplicate UUIDs, binary descriptors, prepared commit/cancel, invalid fragments,
+unanswered request expiry, notifications, confirmed indications and no-response
+writes. All application values and prepared buffers are in Flexscript/DB.
+The test runs bounded VM batches and resumes from DB state while the owned SDK
+server stays open; it does not enlarge or reset one running program's CPU
+budget through progress checkpoints. A single endless VM handler is not implied.
+
+The six Bluetooth/Wi-Fi/cellular scripts in this batch now compare the installed APK
+bytes to the reported artifact before effects and after cleanup. A mismatch
+fails the test rather than attributing an older installation's results to a
+new file on disk. These host-only checks are excluded from the app. The Wi-Fi
+fixture also revokes/restores the entire declared Nearby group for its consent
+checks, and clears an abandoned emulator Settings picker before starting.
+Android groups Wi-Fi and Bluetooth runtime consent together, while Collie
+retains separate operation grants. See the [Android permission contract](https://developer.android.com/develop/connectivity/wifi/wifi-permissions).
+
+The current debug APK is
+`8710651d96bf2b9a978bf5770ea4e70b3c83e55d20af612ad4141620fc8cbc33`
+(**6,751,249 bytes**,6.751 MB/6.438 MiB). The non-debug APK is
+`e248c8f1499b8b56dc4014a9766efe569c008616757e6f8ce06027ac141aa5fa`
+(**6,669,250 bytes**,6.669 MB/6.360 MiB). Packaging checks verified both
+hashes and exclusion of debug fixtures from the non-debug app.
+
+On these exact installed debug bytes, **107 Android checks passed**:18 server,
+15 client,12 BLE discovery/advertising,16 Classic Bluetooth,27 Wi-Fi/RTT and19
+cellular. Each report names that digest. The server test proves foreign,
+expired and replayed token rejection, invalid status256 without consuming a
+live request, closing a separate SDK server without breaking the owner's
+connection, and cleanup after peer disconnect/removal. Runtime SCAN and
+Location stay denied throughout server I/O; only the advertisement asks for
+ADVERTISE. Native validation passed the shared32 KiB codec/registry checks,
+12 lazy-permission groups (including server/client Bluetooth gates despite
+Location denial) and9 shared-core groups. Test state/resources are restored
+or removed; this remains emulator evidence, not physical-device verification.
+
+**Still pending:** server-initiated outgoing connections, included-service
+links, client reliable-write helpers, server PHY callbacks and PHY setting,
+security/bonded access, explicit radio loss, service change, event overflow,
+targeted live revocation and older-SDK/physical fixtures. Extended/periodic
+advertising, Bluetooth HID and all other unfinished inventory families remain
+in scope. This server batch does not complete BLE or the hardware objective.
+
+```sh
+python3 scripts/test-collie-gatt-server-android.py \
+  --out build/android-gatt-server --serial emulator-5580 \
+  --netsim-port PORT
+# Uses build/bluetooth-fixture-env/bin/python (bumble[android]==0.0.236).
+# The script owns its uniquely named local peer and cleans it up afterward.
 ```

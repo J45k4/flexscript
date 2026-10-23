@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """BLE raw discovery and legacy advertising against a controlled local Netsim peer."""
-import argparse,hashlib,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
+from collie_android_test_artifact import verify_installed_apk
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--peer-state',type=Path,required=True);p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');a=p.parse_args();assert a.serial.startswith('emulator-')
+tested_apk=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')
 peer=json.loads(a.peer_state.read_text());assert peer.get('ready') and peer.get('seen')==0
 address=peer['address'].split('/')[0];assert re.fullmatch(r'[0-9A-F]{2}(:[0-9A-F]{2}){5}',address);service=str(uuid.UUID(peer['service']))
 pkg='org.flexscript.collie';sid='ble-hw-'+uuid.uuid4().hex[:8];names=[];checks=[];sessions=[]
@@ -78,4 +80,5 @@ finally:
  for session in sessions:adb('shell','run-as',pkg,'rm','-rf','files/workspaces/'+session)
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('original conversation, runtime grants and Location switch preserved; temporary BLE workspace removed')
-report=dict(count=len(checks),checks=checks,serial=a.serial,scan_payload_verified=True,advertisement_payload_verified=True,gatt_verified=False,apk_sha256=hashlib.sha256((a.out/'collie.apk').read_bytes()).hexdigest());(a.out/'ble-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android BLE transport checks passed')
+assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==tested_apk,'APK changed during the test'
+report=dict(count=len(checks),checks=checks,serial=a.serial,scan_payload_verified=True,advertisement_payload_verified=True,gatt_verified=False,apk_sha256=tested_apk);(a.out/'ble-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android BLE transport checks passed')

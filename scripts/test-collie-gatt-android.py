@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """GATT client I/O against a controlled local Netsim server, never physical peers."""
-import argparse,hashlib,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
+from collie_android_test_artifact import verify_installed_apk
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--peer-state',type=Path,required=True);p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');a=p.parse_args();assert a.serial.startswith('emulator-')
+tested_apk=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')
 peer=json.loads(a.peer_state.read_text());assert peer.get('ready') and not peer.get('connected')
 address=peer['address'].split('/')[0];assert re.fullmatch(r'[0-9A-F]{2}(:[0-9A-F]{2}){5}',address)
 for key in ['service','characteristic','descriptor','denied_characteristic','slow_characteristic']:assert str(uuid.UUID(peer[key]))==peer[key]
@@ -47,6 +49,9 @@ try:
  adb('shell','pm','grant',pkg,permissions[0])
  vm('fn main(){let h=ble_connect("'+address+'",15000,3000);if !h{return 1;}state_set("connection",h);let i=0;while i<10{let e=device_wait(db_word(h),1000);if db_kind(e)==5 && worker_equal(db_word(device_field(e,"event")),"connected"){return 0;}i=i+1;}return 2;}',True)
  passed('an actual asynchronous LE GATT connection completes with only CONNECT access and Collie Location denied')
+ time.sleep(15.3)
+ vm('fn main(){return !worker_equal(db_word(device_field(device_info(db_word(state_get("connection"))),"state")),"connected");}')
+ passed('a completed GATT connection cancels its connection deadline and remains usable after that deadline passes')
  vm('fn main(){let h=db_word(state_get("connection"));if db_word(device_field(device_info(h),"mtu"))!=23{return 1;}if !ble_gatt_discover(h,0){return 2;}let e=await_gatt(h,0);if !okay(e) || !worker_equal(db_word(device_field(e,"event")),"services"){return 3;}let service=seek(h,"","'+peer['service']+'",0);if !service{return 4;}state_set("service",db_text(service));let first=seek(h,service,"'+peer['characteristic']+'",0);let second=seek(h,service,"'+peer['characteristic']+'",1);if !first || !second || worker_equal(first,second){return 5;}state_set("first",db_text(first));state_set("second",db_text(second));let desc=seek(h,first,"'+peer['descriptor']+'",0);let ccc=seek(h,first,"00002902-0000-1000-8000-00805f9b34fb",0);if !desc || !ccc{return 6;}state_set("descriptor",db_text(desc));state_set("cccd",db_text(ccc));return 0;}')
  passed('real service discovery produces paged owned services, distinct duplicate-UUID characteristics and actual descriptors')
  vm('fn main(){let h=db_word(state_get("connection"));let p=alloc(21);if ble_gatt_write(h,db_word(state_get("first")),db_blob(p,21),1,1){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),"size_limit"){return 2;}if !ble_gatt_mtu(h,64,1){return 3;}let e=await_gatt(h,1);if !okay(e) || db_word(device_field(e,"mtu"))!=517 || db_word(device_field(device_info(h),"mtu"))!=517{return 4;}return 0;}')
@@ -90,4 +95,5 @@ finally:
  adb('shell','run-as',pkg,'rm','-rf','files/workspaces/'+sid)
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('temporary GATT resources/runtime grants removed and original conversation preserved')
-report=dict(count=len(checks),checks=checks,serial=a.serial,gatt_client_verified=True,gatt_server_binding_verified=False,apk_sha256=hashlib.sha256((a.out/'collie.apk').read_bytes()).hexdigest());(a.out/'gatt-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android GATT client checks passed')
+assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==tested_apk,'APK changed during the test'
+report=dict(count=len(checks),checks=checks,serial=a.serial,gatt_client_verified=True,gatt_server_binding_verified=False,apk_sha256=tested_apk);(a.out/'gatt-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android GATT client checks passed')

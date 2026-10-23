@@ -191,6 +191,17 @@ fn hw_operations(){
     hw_operation(rows,"ble_gatt_phy_read","hardware_handle",2,2);
     hw_operation(rows,"ble_gatt_phy","hardware_handle",5,5);
     hw_operation(rows,"ble_gatt_priority","hardware_handle",2,2);
+    hw_operation(rows,"ble_server_open","bluetooth",1,1);
+    hw_operation(rows,"ble_server_add","hardware_handle",4,4);
+    hw_operation(rows,"ble_server_items","hardware_handle",4,4);
+    hw_operation(rows,"ble_server_remove","hardware_handle",2,2);
+    hw_operation(rows,"ble_server_peers","hardware_handle",3,3);
+    hw_operation(rows,"ble_server_requests","hardware_handle",3,3);
+    hw_operation(rows,"ble_server_respond","hardware_handle",5,5);
+    hw_operation(rows,"ble_server_notify","hardware_handle",6,6);
+    hw_operation(rows,"ble_server_disconnect","hardware_handle",2,2);
+    hw_operation(rows,"ble_server_phy_read","hardware_handle",3,3);
+    hw_operation(rows,"ble_server_phy","hardware_handle",6,6);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

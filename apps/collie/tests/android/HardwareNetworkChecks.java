@@ -60,6 +60,8 @@ public final class HardwareNetworkChecks {
     public static JSONObject runAware(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).aware();}
     public static JSONObject runBluetooth(MainActivity host,File root)throws Exception{return new HardwareNetworkChecks(host,root).bluetooth();}
     private JSONObject bluetooth()throws Exception{
+        CountDownLatch cancelledTimer=new CountDownLatch(1);Runnable mustNotRun=cancelledTimer::countDown;HardwareSensors.events().postDelayed(mustNotRun,500);HardwareSensors.events().removeCallbacks(mustNotRun);
+        check(!cancelledTimer.await(700,TimeUnit.MILLISECONDS),"the shared Android event handler cancels actual delayed callbacks across accessor calls");
         android.bluetooth.BluetoothAdapter adapter=HardwareBluetooth.adapter(new VmHardware.Context(host,root));check(adapter.isEnabled(),"the test emulator provides an enabled real Android Bluetooth adapter");
         JSONObject info=vm(PRINT+"fn main(){let info=bt_info();if !info || !db_word(device_field(info,\"enabled\")) || db_kind(device_field(info,\"address\"))!=0{return 1;}emit(device_field(info,\"name\"));return 0;}");
         check(info.getString("stdout").equals(adapter.getName()),"Bluetooth VM metadata matches Android and does not export the local hardware MAC");
