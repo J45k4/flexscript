@@ -1856,3 +1856,13 @@ The existing8-scenario Android VPN suite also passed on the same document APK,
 including actual system consent through the shared Activity-result dispatcher,
 foreground TUN establishment, binary UDP response I/O, protected TCP, model-route
 selection and SDK/kernel teardown. The report records the same debug digest.
+
+Initial document CI [40029985779](https://github.com/J45k4/flexscript/actions/runs/40029985779)
+failed on stale UI fixtures expecting30 permissions. The new schema has31, with
+Documents initially Ask. Fixtures for portable/ARM64, full Collie UI, desktop,
+browser and older Android permission/worker scripts now expect that actual total.
+Locally,6 portable UI groups,10 complete Collie UI groups (Linux/ARM64 agreement),
+60 native SDL dummy-driver checks and the actual isolated headless Chromium
+suite passed; browser and native permission screenshots were inspected. This
+fixture-only follow-up does not change the APK bytes or reuse the UI failure as
+evidence about physical hardware. CI's mapped X11 check remains a separate gate.

@@ -16,9 +16,9 @@ fn main(argc,argv){
     let portfile=h_join(profile,"DevToolsActivePort");let end=net_now()+30000;
     while !h_exists(portfile){h_pump(chrome,10);if h_status(chrome)!= -999 || net_now()>end{h_stop(chrome);h_stop(server);h_die("headless browser failed to start");}}
     let text=h_read(portfile);cd_port=h_number(h_slice(text,h_find(text,"\n")));let url=h_cat3("http://127.0.0.1:",h_int(port),"/");let a=cd_tab(url);let b=cd_tab(url);
-    let ready="document.querySelector('[data-ui-key=\"permissions-summary\"]')?.textContent==='0 allowed · 30 ask · 0 denied'";cd_wait(a,ready);cd_wait(b,ready);
+    let ready="document.querySelector('[data-ui-key=\"permissions-summary\"]')?.textContent==='0 allowed · 31 ask · 0 denied'";cd_wait(a,ready);cd_wait(b,ready);
     cd_eval(b,"window.original=document.querySelector('[data-ui-key=\"deny-internet\"]');true");
-    cd_eval(a,"document.querySelector('[data-ui-key=\"deny-internet\"]').click();true");cd_wait(b,"document.querySelector('[data-ui-key=\"permissions-summary\"]').textContent==='0 allowed · 29 ask · 1 denied'");
+    cd_eval(a,"document.querySelector('[data-ui-key=\"deny-internet\"]').click();true");cd_wait(b,"document.querySelector('[data-ui-key=\"permissions-summary\"]').textContent==='0 allowed · 30 ask · 1 denied'");
     ub_check(b,"document.querySelector('[data-ui-key=\"deny-internet\"]')===original && original.textContent==='Deny'");
     cd_eval(a,"document.querySelector('[data-ui-key=\"ask-internet\"]').click();true");cd_wait(b,ready);
     cd_screenshot(a,"build/ui-permissions-browser.png",430,932,1);ub_check(a,"document.documentElement.scrollWidth<=430");

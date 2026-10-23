@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix='ui-',dir=root/'build') as d:
  def call(req):return json.loads(run([screen],json.dumps(req).encode()))
  snapshot=call({'policy':policy,'reset':True});assert len(snapshot['ops'])==1
  request={'policy':policy,'next_policy':dict(policy,internet=False),'event':{'key':'deny-internet','type':'click','action':'internet'}}
- update=call(request);assert {'op':'text','key':'permissions-summary','value':'6 allowed · 23 ask · 1 denied'} in update['ops'];assert len(update['ops'])==3,update
+ update=call(request);assert {'op':'text','key':'permissions-summary','value':'6 allowed · 24 ask · 1 denied'} in update['ops'];assert len(update['ops'])==3,update
  assert update['command']=={'kind':'permission','key':'internet','allowed':False}
  for event in [{'key':'deny-internet','type':'click','action':'db_write'},{'key':'allow-internet','type':'change','action':'internet','value':True}]:assert 'error' in call({'policy':policy,'event':event})
  passed('shared Collie screen validates events and returns minimal updates plus persistence effects')
