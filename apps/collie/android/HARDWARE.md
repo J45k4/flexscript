@@ -19,7 +19,7 @@ it does not count as an implementation of an otherwise available adapter.
 | USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt, accessory mode, disconnect handling | implemented; device consent and transfers need a real fixture | UsbManager inventory/events, missing devices, invalid arguments and wrong handle types passed on emulator; physical device approval/transfers/detach pending |
 | USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
 | Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 15 baseline SDK/VM/consent checks passed; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
-| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | pending | pending |
+| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan and legacy advertising implemented; GATT client/server and extended/periodic advertising pending | 12 headless checks passed, including independent raw packet oracles in both directions, actual Android oversize callback, SDK stop, separate denials and permission-free capability discovery; GATT/physical checks pending |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | pending | pending |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | pending | pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | pending | pending |
@@ -844,4 +844,86 @@ python scripts/fixtures/collie-bluetooth-peer.py \
 python3 scripts/test-collie-bluetooth-peer-android.py \
   --out build/android-hardware --serial emulator-5580 \
   --peer-state build/android-hardware/bluetooth-peer.json --secure 1
+```
+
+
+## BLE discovery and legacy advertising
+
+`ble_info()` reports actual controller features. The `bluetooth_le_scan` and
+`bluetooth_le_advertise` capability rows describe only these implemented
+bindings. Discovery availability accounts for Android CONNECT/SCAN/precise
+Location and the Location switch; advertising accounts for CONNECT/ADVERTISE.
+When the controller cannot be queried while off or without CONNECT, advertising
+support is null with `support_known=false`, rather than a false hardware-absence
+claim. Capability discovery itself needs neither a Collie grant nor an Android
+runtime prompt.
+
+`ble_scan(service,address,duration_ms,mode)` requires independent Bluetooth and
+Location grants, Android CONNECT/SCAN/precise Location, the Location switch and
+a visible start. Empty service/address omit their filters. A canonical UUID
+matches either an advertised service UUID list or service-data UUID; an optional
+address filter is ANDed with either form. Mode0/1/2 selects low-power/balanced/
+low-latency and duration is1000..30000ms. Android can pause unfiltered scans when
+the screen is off. The adapter requests both legacy and extended scan results;
+only legacy PDUs have been positively verified so far.
+
+Each `found` event copies raw advertisement bytes for Flexscript protocols to
+parse. Metadata includes address, SID, RSSI, monotonic timestamp, connectable,
+legacy, PHY, completeness/data status, TX power and periodic interval. At most128
+address/SID records are retained; `ble_scan_page` returns up to16 per page and
+reports omitted records. A deadline or radio shutdown stops only this callback,
+emits `finished`, and retains the permission-gated snapshot. SDK scan failures
+emit an error with Android's numeric status. Close/revocation erases the data.
+
+`ble_advertise(service,service_data,manufacturer,manufacturer_data,connectable,
+power,mode,duration_ms)` opens an owned legacy advertiser. Empty UUID omits the
+service; an empty service-data blob advertises its UUID list, otherwise it
+advertises service data. Manufacturer-1 omits that field. Each byte field is at
+most27 bytes, power0..3, mode0..2 and connectable0/1. Android's31-byte radio limit
+includes field headers and flags, so a combination of individually valid fields
+may still fail; its actual error callback is preserved. No device name or local
+hardware MAC is included automatically. Duration0 lasts until close;1..180000ms
+sets a deadline. Wait for `started`/`error`. Close, grant revocation and adapter
+shutdown stop the owned SDK registration; late success cannot revive it.
+
+The BLE debug APK is
+`05a3675864a5608d2b46ff3cefc76847f26f8f0f6de0a34c34be970d0f1d754e`
+(**6,702,097 bytes**). Its non-debug build is
+`c721b403d44badafc103a67ddc28da85b488f3c5ded7b0aa01fe8e8291d6653e`
+(**6,620,098 bytes**). Packaging checks passed with test fixtures excluded.
+
+On this exact debug build, **12 BLE transport checks passed**. A controlled
+host-only Bumble/Netsim peer emits an independently constructed raw packet
+containing zero/high-bit service-data bytes; Flexscript checks the actual SDK
+scan payload. The peer separately parses Collie's actual outgoing UUID/data
+advertisement and verifies that its packets stop after close. Tests also cover
+permission-free capability queries with both grants denied and Android runtime
+permissions absent, invalid arguments, bounded pages/deadline, wrong handle
+types, actual `ADVERTISE_FAILED_DATA_TOO_LARGE`, and independent Bluetooth and
+Location denial despite existing Android runtime access. Original conversations,
+runtime grants/flags and Location state are restored; test workspaces are
+removed. No synthetic ScanResult or advertisement-success callback is used.
+Shared codec/registry,9 core and11 lazy-permission groups also passed, including
+both Bluetooth and Location checkpoints for BLE scans.
+
+**Pending:** GATT connection/service enumeration/characteristic and descriptor
+I/O, notifications/indications, GATT server requests/responses, extended/periodic
+advertising controls, and positive extended-scan, manufacturer-data, radio-loss,
+live-revocation and physical-device verification. This is not completion of the
+BLE family or the full hardware objective. The earlier49-check Classic snapshot
+above remains a separate APK, not a claim about these current bytes.
+
+The Classic CI run `39959157664` timed out during dependency installation before
+compiler tests ran: Azure's package mirror spent over11 minutes fetching the
+61.2MB CJK font archive. CI now selects Ubuntu's main archive on mirrorlist-based
+runners, retaining all packages and checks. Its replacement run must still pass.
+
+```sh
+# Use a separate virtual environment with bumble[android]==0.0.236.
+python scripts/fixtures/collie-ble-peer.py \
+  --transport android-netsim:127.0.0.1:PORT,name=collie-test-UNIQUE \
+  --out build/android-ble/ble-peer.json
+python3 scripts/test-collie-ble-android.py \
+  --out build/android-ble --serial emulator-5580 \
+  --peer-state build/android-ble/ble-peer.json
 ```

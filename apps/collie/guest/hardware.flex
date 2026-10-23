@@ -188,3 +188,8 @@ fn bt_uuids(device,refresh){let r=db_request("bt_uuids");db_add(r,db_text(device
 fn bt_rfcomm_listen(name,uuid,secure){let r=db_request("bt_rfcomm_listen");db_add(r,db_text(name));db_add(r,db_text(uuid));db_add(r,db_int(secure));return db_rpc(r);}
 fn bt_rfcomm_connect(device,uuid,secure,timeout_ms){let r=db_request("bt_rfcomm_connect");db_add(r,db_text(device));db_add(r,db_text(uuid));db_add(r,db_int(secure));db_add(r,db_int(timeout_ms));return db_rpc(r);}
 fn bt_rfcomm_accept(listener,timeout_ms){let r=db_request("bt_rfcomm_accept");db_add(r,db_text(listener));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+
+fn ble_info(){return db_rpc(db_request("ble_info"));}
+fn ble_scan(service,address,duration,mode){let r=db_request("ble_scan");db_add(r,db_text(service));db_add(r,db_text(address));db_add(r,db_int(duration));db_add(r,db_int(mode));return db_rpc(r);}
+fn ble_scan_page(scan,offset,limit){let r=db_request("ble_scan_page");db_add(r,db_text(scan));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn ble_advertise(service,service_data,manufacturer,manufacturer_data,connectable,power,mode,duration){let r=db_request("ble_advertise");db_add(r,db_text(service));db_add(r,service_data);db_add(r,db_int(manufacturer));db_add(r,manufacturer_data);db_add(r,db_int(connectable));db_add(r,db_int(power));db_add(r,db_int(mode));db_add(r,db_int(duration));return db_rpc(r);}

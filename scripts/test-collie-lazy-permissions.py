@@ -41,9 +41,9 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
   t=step('observation',t['state'],observation=o);assert t['state']['pending_execution'] is None
  assert not (root/'files/new.txt').exists()
  passed('all eleven tested first-use gates checkpoint before effects, survive restart, and return denial to the original caller')
- for operation,primary in [('cellular_cells(-1,0)','cellular'),('aware_open()','wifi'),('bt_scan(1000)','bluetooth')]:
+ for operation,primary in [('cellular_cells(-1,0)','cellular'),('aware_open()','wifi'),('bt_scan(1000)','bluetooth'),('ble_scan("","",1000,0)','bluetooth')]:
   config['permissions']=dict.fromkeys(keys,'ask')
-  t=begin('fn main(){if '+operation+'{return 1;}let e=db_error();db_io(0,1,e,db_len(e));return 0;}','two-grants-'+primary);o=vm(t)
+  t=begin('fn main(){if '+operation+'{return 1;}let e=db_error();db_io(0,1,e,db_len(e));return 0;}','two-grants-'+primary+'-'+str(len(operation)));o=vm(t)
   assert o['state']=='permission' and o['signal']['key']==primary,o
   t=step('observation',t['state'],observation=o);config['permissions'][primary]=True;t=step('next',t['state']);o=vm(t)
   assert o['state']=='permission' and o['signal']['key']=='location',o

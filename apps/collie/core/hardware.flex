@@ -175,6 +175,11 @@ fn hw_operations(){
     hw_operation(rows,"bt_rfcomm_listen","bluetooth",3,3);
     hw_operation(rows,"bt_rfcomm_connect","hardware_handle",4,4);
     hw_operation(rows,"bt_rfcomm_accept","hardware_handle",2,2);
+    hw_operation(rows,"ble_info","bluetooth",0,0);
+    hw_operation(rows,"ble_scan","bluetooth",4,4);
+    j_set(j_at(rows,j_count(rows)-1),"also",j_string("location"));
+    hw_operation(rows,"ble_scan_page","hardware_handle",3,3);
+    hw_operation(rows,"ble_advertise","bluetooth",8,8);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

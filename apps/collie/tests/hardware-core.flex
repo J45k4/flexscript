@@ -17,5 +17,6 @@ fn main(argc,argv){
     h_assert(h_equal(cj_text(hw_find("p2p_open"),"also"),"location") && h_equal(cj_text(hw_find("p2p_udp_send"),"permission"),"hardware_handle") && hw_find("p2p_group_attach"),"P2P channel/child permissions and explicit attach registry");
     let old=j_parse("{\"internet\":true,\"files_read\":false}");let policy=j_get(cp_permissions(old),"policy");h_assert(j_value(j_get(policy,"internet")) && !j_value(j_get(policy,"files_read")) && h_equal(cj_text(policy,"network"),"ask"),"hardware migration asks rather than enabling access");
     h_assert(h_equal(cj_text(hw_find("bt_info"),"permission"),"bluetooth") && h_equal(cj_text(hw_find("bt_scan"),"also"),"location") && h_equal(cj_text(hw_find("bt_rfcomm_connect"),"permission"),"hardware_handle") && cj_int(hw_find("bt_rfcomm_connect"),"min")==4,"Bluetooth inventory, discovery and owned connection grants");
+    h_assert(h_equal(cj_text(hw_find("ble_scan"),"permission"),"bluetooth") && h_equal(cj_text(hw_find("ble_scan"),"also"),"location") && h_equal(cj_text(hw_find("ble_scan_page"),"permission"),"hardware_handle") && cj_int(hw_find("ble_advertise"),"min")==8,"BLE scan and owned snapshot grants");
     h_print(1,"PASS shared hardware codec: 32768 binary bytes, malformed frames, exact numeric values, registry and permission migration\n");return 0;
 }
