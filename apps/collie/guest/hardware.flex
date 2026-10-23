@@ -277,3 +277,22 @@ fn uwb_stop(handle){let r=db_request("uwb_stop");db_add(r,db_text(handle));retur
 fn uwb_add(handle,peer){let r=db_request("uwb_add");db_add(r,db_text(handle));db_add(r,peer);return db_rpc(r);}
 fn uwb_remove(handle,uuid){let r=db_request("uwb_remove");db_add(r,db_text(handle));db_add(r,db_text(uuid));return db_rpc(r);}
 fn uwb_interval(handle,skip){let r=db_request("uwb_interval");db_add(r,db_text(handle));db_add(r,db_int(skip));return db_rpc(r);}
+
+// Android document trees: grants persist; tree handles and document tokens do not.
+fn document_pick(ticket,writable){let r=db_request("document_pick");db_add(r,db_text(ticket));db_add(r,db_int(writable));return db_rpc(r);}
+fn document_trees(offset,limit){let r=db_request("document_trees");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn document_forget(grant){let r=db_request("document_forget");db_add(r,db_text(grant));return db_rpc(r);}
+fn document_tree_open(grant){let r=db_request("document_tree_open");db_add(r,db_text(grant));return db_rpc(r);}
+fn document_info(tree,document){let r=db_request("document_info");db_add(r,db_text(tree));db_add(r,db_text(document));return db_rpc(r);}
+fn document_children(tree,document,offset,limit){let r=db_request("document_children");db_add(r,db_text(tree));db_add(r,db_text(document));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn document_file_open(tree,document,mode){let r=db_request("document_file_open");db_add(r,db_text(tree));db_add(r,db_text(document));db_add(r,db_text(mode));return db_rpc(r);}
+fn document_seek(file,offset){let r=db_request("document_seek");db_add(r,db_text(file));db_add(r,db_int(offset));return db_rpc(r);}
+fn document_create(tree,parent,name,mime){let r=db_request("document_create");db_add(r,db_text(tree));db_add(r,db_text(parent));db_add(r,db_text(name));db_add(r,db_text(mime));return db_rpc(r);}
+fn document_rename(tree,document,name){let r=db_request("document_rename");db_add(r,db_text(tree));db_add(r,db_text(document));db_add(r,db_text(name));return db_rpc(r);}
+fn document_delete(tree,document){let r=db_request("document_delete");db_add(r,db_text(tree));db_add(r,db_text(document));return db_rpc(r);}
+
+fn document_types(tree,document,mime_filter){let r=db_request("document_types");db_add(r,db_text(tree));db_add(r,db_text(document));db_add(r,db_text(mime_filter));return db_rpc(r);}
+fn document_typed_open(tree,document,mime){let r=db_request("document_typed_open");db_add(r,db_text(tree));db_add(r,db_text(document));db_add(r,db_text(mime));return db_rpc(r);}
+fn document_copy(tree,document,target_parent){let r=db_request("document_copy");db_add(r,db_text(tree));db_add(r,db_text(document));db_add(r,db_text(target_parent));return db_rpc(r);}
+fn document_move(tree,document,source_parent,target_parent){let r=db_request("document_move");db_add(r,db_text(tree));db_add(r,db_text(document));db_add(r,db_text(source_parent));db_add(r,db_text(target_parent));return db_rpc(r);}
+fn document_remove(tree,document,parent){let r=db_request("document_remove");db_add(r,db_text(tree));db_add(r,db_text(document));db_add(r,db_text(parent));return db_rpc(r);}

@@ -101,8 +101,11 @@ try:
  assert saved(sid)['permissions']['files_read'] is True
  passed('worker requests use the same approval UI and one conversation grant serves both workers without blocking the VM engine')
  # The settings page can reset an existing grant back to Ask.
+ expected_policy=dict(saved(sid)['permissions'],files_read='ask')
  tap('Menu');tap('Permissions');tap('Ask for Read workspace files')
- assert saved(sid)['permissions']['files_read']=='ask'
+ # Android posts the click callback after delivering the touch event. Wait for
+ # the real saved policy, and require every unrelated grant to stay unchanged.
+ wait(lambda:saved(sid)['permissions']==expected_policy,seconds=10)
  (out/'lazy-permission-settings.png').write_bytes(adb('exec-out','screencap','-p'))
  passed('Ask/Allow/Deny settings persist and an allowed capability can be reset to Ask')
  sid=prefix+'-background'

@@ -38,7 +38,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
 | Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | pending | pending |
 | Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | pending | pending |
-| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/pickers exist; persisted tree access pending | existing tests; tree tests pending |
+| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | 29 real Android picker/provider/lifecycle checks passed; full-size binary data, asset byte ranges, restart and both revocation layers verified; provider copy/move/remove, actual virtual conversion and physical removable/cloud providers pending |
 | Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | pending capability reporting | pending |
 
 Cross-cutting requirements:
@@ -1747,3 +1747,112 @@ groups covering16 first-use gates, and9 shared-core groups also passed. CI now
 runs the portable UWB record test in native and interpreter modes. Earlier
 Bluetooth, editor/UI and other artifact evidence remains under its own digests.
 The complete hardware goal, older UWB binding and separate HID failure stay open.
+
+
+## Persisted document folders
+
+`document_pick(ticket, writable)` uses Android's actual folder picker, after the
+conversation's separate `documents` first-use grant. `writable` is0 or1. Each
+selection uses a new1..64-character ticket (letters/digits/dot/underscore/hyphen).
+Tickets preserve their selected or cancelled result, so replay after a VM
+checkpoint cannot open a second picker. At most16 tickets may be saved per
+conversation and128 per app; explicitly forget unused selections/cancellations. Use `document_trees(offset,limit1..16)`
+to list this workspace's durable selections and actual Android read/write flags.
+`document_forget(grant)` removes that selection, closes its live resources and
+releases only OS grant bits unused by another saved selection. The picker owns
+which locations may be approved: Android11+ restricts volume roots, the Download
+root and Android/data/obb. No broad storage permission is declared.
+
+`document_tree_open(grant)` returns an owned tree handle. The initial document
+token is `root`. `document_info(tree,token)` and
+`document_children(tree,token,offset,limit1..16)` query the actual provider.
+Metadata includes name, MIME type, provider flags and nullable size/modified time;
+pages include documents/next/total/loading. Tokens are issued only for documents
+returned by that provider and belong to one live tree; no host path or raw URI is
+accepted. Eight trees may be open app-wide, with1024 known tokens per tree.
+Close/reopen a tree for a fresh traversal. Only the selected grant IDs survive a
+process restart; live handles and document tokens must be reopened/enumerated.
+
+`document_create(tree,parent,name,mime)` creates an actual provider document;
+use `vnd.android.document/directory` for a folder. `document_rename`,
+`document_delete`, `document_copy`, `document_move` and `document_remove` use the
+provider's operations within the selected tree. Remove detaches a parent link;
+delete removes the document. Provider support/flags and access rules still apply.
+The selected root cannot be renamed/deleted/copied/moved/removed. Successful
+mutations invalidate old non-root tokens and close streams; enumerate again.
+A timed-out mutation can have uncertain completion and is never replayed.
+
+`document_file_open(tree,token,mode)` opens SDK modes r/w/wt/wa/rw/rwt; w truncation
+is provider-dependent, wt/rwt request truncation. Use bounded `device_read/write`
+(max32768 bytes), actual partial write counts, `document_seek(file,absolute)` and
+`device_close`. EOF is db_null; nonseekable streams report unsupported_operation.
+`document_types` queries up to64 advertised conversion types and
+`document_typed_open` opens a read-only converted/virtual stream. Typed reads
+respect the SDK asset's offset and declared length. Read-only selections reject
+all mutations and writable opens even if another selection gave this app broader
+OS permission for the same URI. Every operation checks the actual persisted OS
+grant; closing a tree or revoking the conversation grant closes children.
+
+The Java adapter owns only SDK URIs, cursors, descriptors, OS grants and their
+lifecycle. The common permission schema, operation registry, sole-tool wrappers
+and API reference remain Flexscript. Actual Android16 headless integration passed29 checks on the artifact below.
+The real system picker (including Android's root restriction), first-use Collie
+approval, completed-ticket replay and picker cancellation were exercised through
+actual Activity results. Independent ContentResolver queries matched provider
+metadata and verified every byte of the VM-written32791-byte file. Tests cover
+32768-byte frames, short reads/EOF, seek, read-only stream and selection rules,
+foreign-workspace denial, rename/delete/folders, eight-tree capacity and cleanup.
+
+A real provider typed stream passed ordinary-file I/O. A separately labeled,
+SDK-constructed asset slice over that same provider file verified a17-byte offset,
+257-byte declared length and exact EOF; it is not evidence of actual virtual-file
+conversion. Two independently approved conversations shared one actual URI grant.
+Forgetting one preserved the other; forgetting the last writable selection
+released Android's write bit while retaining the remaining read-only selection.
+Actual process death invalidated handles and a persisted selection reopened.
+Changing Documents to Deny on the real UI thread cancelled a VM observed waiting
+in hardware I/O, closed its tree and blocked reopening. Independently releasing
+Android's persisted URI grant closed existing access and blocked the durable ID.
+The test restored original conversations, permissions and preexisting saved
+selections and removed only its uniquely owned folder, grants and workspaces.
+
+Provider-dependent copy/move/remove calls are bound but their successful effects
+remain unverified. Actual virtual conversion, pipe/disconnect behavior, offline
+cloud/removable providers, older Android and physical devices remain open gates.
+No successful provider effects were synthesized to replace those checks.
+
+### Document batch artifacts
+
+Debug `build/android-documents/collie.apk`: **6,997,009 bytes**
+(6.997MB/6.673MiB), SHA-256
+`201e67030508ae73fd403b7b1fda5b3dca67efdd802989e26729745c2c440146`.
+Non-debug `build/android-documents-release/collie.apk`: **6,865,858 bytes**
+(6.866MB/6.548MiB), SHA-256
+`a8387a16a5e5879c16aabf8085efa2d37159da089959f2d153e87e5d580531df`.
+Both builds and package checks passed. HardwareDocumentChecks and every other
+debug fixture are absent from non-debug. No storage permission was added.
+Shared hardware codec/registry,9 shared-core groups,13 native lazy-permission
+groups covering17 first-use gates, and4 full reference checks passed. The detailed
+reference is55,743 bytes and the function index9,124 bytes, verified through the
+actual VM's bounded pages with all capabilities denied.
+
+`documents-android-report.json` records29 passing assertions on the exact installed
+debug digest, checked before and after the suite. The prior UWB/HID strict failures
+and their distinct artifact evidence remain above; this batch does not turn those
+suites or any physical-device requirement into a pass.
+
+References: [Android SAF](https://developer.android.com/guide/topics/providers/document-provider),
+[document/folder access restrictions](https://developer.android.com/training/data-storage/shared/documents-files),
+[DocumentsContract](https://developer.android.com/reference/android/provider/DocumentsContract).
+
+On the same installed document APK,36 enrolled biometric SDK checks and10
+Android lazy-permission groups passed. The settings regression now waits for the
+actual persisted policy after Android's posted click callback and requires every
+unrelated grant to remain unchanged. These reports retain their installed digest
+and restore the original conversation/permissions. Physical biometric success
+remains unverified.
+
+The existing8-scenario Android VPN suite also passed on the same document APK,
+including actual system consent through the shared Activity-result dispatcher,
+foreground TUN establishment, binary UDP response I/O, protected TCP, model-route
+selection and SDK/kernel teardown. The report records the same debug digest.

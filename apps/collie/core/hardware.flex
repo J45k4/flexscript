@@ -253,6 +253,22 @@ fn hw_operations(){
     hw_operation(rows,"uwb_add","hardware_handle",2,2);
     hw_operation(rows,"uwb_remove","hardware_handle",2,2);
     hw_operation(rows,"uwb_interval","hardware_handle",2,2);
+    hw_operation(rows,"document_pick","documents",2,2);
+    hw_operation(rows,"document_trees","documents",2,2);
+    hw_operation(rows,"document_forget","documents",1,1);
+    hw_operation(rows,"document_tree_open","documents",1,1);
+    hw_operation(rows,"document_info","documents",2,2);
+    hw_operation(rows,"document_children","documents",4,4);
+    hw_operation(rows,"document_file_open","documents",3,3);
+    hw_operation(rows,"document_seek","documents",2,2);
+    hw_operation(rows,"document_create","documents",4,4);
+    hw_operation(rows,"document_rename","documents",3,3);
+    hw_operation(rows,"document_delete","documents",2,2);
+    hw_operation(rows,"document_types","documents",3,3);
+    hw_operation(rows,"document_typed_open","documents",3,3);
+    hw_operation(rows,"document_copy","documents",3,3);
+    hw_operation(rows,"document_move","documents",4,4);
+    hw_operation(rows,"document_remove","documents",3,3);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}
