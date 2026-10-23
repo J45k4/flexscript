@@ -85,10 +85,10 @@ with tempfile.TemporaryDirectory(prefix='collie-ui-',dir=root/'build') as d:
  passed('shared message, stream, context, source/result folding, real error display, clipboard and rich text views')
  event('chat-menu');event('menu-permissions');assert state['page']=='permissions' and widgets.nodes['chat']['hidden'] is True
  command=event('deny-internet');assert command=={'kind':'permission','key':'internet','allowed':False} and not state['policy']['internet']
- assert widgets.text('permissions-summary')=='0 allowed · 28 ask · 1 denied'
+ assert widgets.text('permissions-summary')=='0 allowed · 29 ask · 1 denied'
  step(data={'policy':dict(state['policy'],internet=True)});assert widgets.nodes['allow-internet']['props']['background']=='#354b3a'
  command=event('ask-internet');assert command=={'kind':'permission','key':'internet','allowed':'ask'}
- for key in ['internet','files_read','files_write','db_read','db_write','history','workers','vpn','cellular']:
+ for key in ['internet','files_read','files_write','db_read','db_write','history','workers','vpn','cellular','input']:
   for choice,value in [('allow',True),('deny',False),('ask','ask')]:
    assert event(choice+'-'+key)=={'kind':'permission','key':key,'allowed':value}
    assert state['page']=='permissions' and state['policy'][key]==value

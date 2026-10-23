@@ -219,6 +219,12 @@ public class MainActivity extends Activity {
         permissionRationale(getIntent());
     }
     @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event){HardwareInput.motion(this,event,1);return super.dispatchTouchEvent(event);}
+    @Override
+    public boolean dispatchGenericMotionEvent(android.view.MotionEvent event){HardwareInput.motion(this,event,4);return super.dispatchGenericMotionEvent(event);}
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent event){HardwareInput.key(this,event);return super.dispatchKeyEvent(event);}
+    @Override
     protected void onStart(){super.onStart();hardwareVisible=true;}
     @Override
     protected void onStop(){hardwareVisible=false;VmHardware.appHidden();super.onStop();}
@@ -1026,7 +1032,7 @@ public class MainActivity extends Activity {
                 }
                 workers.fixtures = test.optJSONObject("worker_responses");
                 if (test.optBoolean("hardware_tests")) {
-                    Class<?> checks=Class.forName("org.flexscript.collie.HardwareNetworkChecks");
+                    Class<?> checks=Class.forName(test.optBoolean("hardware_input_tests")?"org.flexscript.collie.HardwareInputChecks":"org.flexscript.collie.HardwareNetworkChecks");
                     JSONObject result=(JSONObject)checks.getMethod(test.optBoolean("hardware_nfc_tests")?"runNfc":test.optBoolean("hardware_bluetooth_tests")?"runBluetooth":test.optBoolean("hardware_aware_tests")?"runAware":test.optBoolean("hardware_revocation_tests")?"runRevocation":test.optBoolean("hardware_wifi_tests")?"runWifi":test.optBoolean("hardware_wifi_request_tests")?"runWifiRequest":test.optBoolean("hardware_wifi_recovery_tests")?"runWifiRecovery":test.optBoolean("hardware_cellular_tests")?"runCellular":test.optBoolean("hardware_microphone_tests")?"runMicrophone":test.optBoolean("hardware_vpn_tests")?"runVpn":"run",MainActivity.class,File.class).invoke(null,this,session);
                     report.put("hardware",result);if(!result.optBoolean("ok"))throw new IOException(result.toString());
                 } else if (test.has("ui_packets")) {

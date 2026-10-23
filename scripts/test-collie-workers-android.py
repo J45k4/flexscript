@@ -125,9 +125,9 @@ adb('shell','input','keyevent','4');adb('shell','input','keyevent','4')
 click(lambda x:x.get('content-desc')=='Menu')
 click(lambda x:x.get('text')=='Permissions')
 texts=[n.get('text','') for n in dump().iter('node')]
-assert any('7 allowed · 22 ask · 0 denied' in x for x in texts),texts
+assert any('7 allowed · 23 ask · 0 denied' in x for x in texts),texts
 click(lambda x:x.get('content-desc')=='Deny Internet access')
-assert any('6 allowed · 22 ask · 1 denied' in n.get('text','') for n in dump().iter('node'))
+assert any('6 allowed · 23 ask · 1 denied' in n.get('text','') for n in dump().iter('node'))
 click(lambda x:x.get('content-desc')=='Allow Internet access')
 passed('shared permission metadata renders seven Ask/Allow/Deny settings and saves changes')
 # Preserve evidence and avoid leaving synthetic jobs running.

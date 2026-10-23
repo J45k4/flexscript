@@ -31,7 +31,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
 | Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | pending | pending |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
-| Input | delivered touch/stylus/key/mouse/gamepad events | pending | pending |
+| Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
 | Device status | battery/charging/electrical data, thermal state/headroom/events | implemented | battery/thermal status and subscriptions passed; thermal-change injection pending |
 | Biometrics | system authentication result only | pending | pending |
@@ -1384,3 +1384,107 @@ checks (all42,867 detailed bytes,7,926 index bytes, full32768-byte page and inva
 bounds),13 lazy-permission and9 shared-core groups. The full hardware objective
 remains open. The earlier HID artifact's strict missing public unplug callback
 remains a separate failing gate; these passes do not override it.
+
+
+## Input devices and delivered events
+
+`input_devices(offset,limit1..16)`, `input_info(id)`,
+`input_ranges(id,offset,limit1..16)` and `input_has_keys(id,key_codes)` use
+Android's actual InputManager/InputDevice metadata. Device IDs are transient
+integers. `input_watch(device,mask,axes,history_limit)` returns a workspace-owned
+handle. Device-1 means all; mask bits are1 touch,2 key,4 generic mouse/joystick
+motion,8 device inventory changes. At most16 distinct axis codes and0..8
+historical samples are requested. Pointer rows are
+`[pointer_id,tool_type,axis_values]` in the requested axis order, with db_real
+values, uptime timestamps, source/action/button/meta data and explicit
+history/pointer omission counts. Historical rows retain the containing event's
+action. SDK event objects are copied before Android can recycle them. Legacy
+key characters are bounded to4096 UTF-16 units without splitting surrogate
+pairs, with an explicit `characters_truncated` field.
+
+The Activity hooks preserve normal Android dispatch and observe only events
+actually delivered to Collie. Other apps' input is not visible. The VM receives
+no input-injection or global-capture API. Software keyboards can commit text
+without KeyEvents. The new Input grant defaults to Ask, including migrated
+conversations; malformed policies still deny. No separate Android runtime
+permission is required for the app's own events. Streams use the bounded common
+queue, close on background/conversation change/revocation, and selected-device
+streams close on removal. The8-subscription app limit includes SDK listeners.
+Keyboard/navigation configuration changes preserve the Activity instead of
+recreating it and losing live subscriptions during attachment.
+
+### Input and cross-platform UI verification
+
+The **24 input checks** distinguish these evidence sources:
+
+- Actual emulator delivery: touch/F1, stylus-source taps, fractional mouse
+  scrolling, joystick axes and gamepad trigger events cross the SDK/VM boundary.
+- A temporary kernel-backed keyboard produces actual Android add/remove
+  callbacks, inventory changes and F1 down/up events. A selected-device stream
+  excludes another keyboard's events whose delivery is independently observed
+  by an all-device stream. Removal closes only the selected stream; the global
+  watcher remains usable. The helper uses the emulator shell's existing uinput
+  access, lives outside the APK, and is removed afterward. Collie gains no new
+  platform privilege. The driver requires an x86_64 emulator and bounds helper
+  lifetime, commands and cleanup.
+- Clearly marked SDK-constructed fixtures verify four historical samples/two
+  pointer IDs and tools, exact fractional bits/timestamps after MotionEvent
+  recycling, event-category filtering, a150-event burst bounded to128 with22
+  dropped, and Unicode truncation. These are not physical stylus/controller or
+  OS batching evidence.
+- A different actual VM workspace cannot use the handle. A live VM is observed
+  waiting in hardware I/O before the real UI settings path changes Input to
+  Deny. That cancels the running program, closes its SDK listener and prevents
+  a subsequent program from reopening it. Explicit close, background/reopen,
+  capacity/release and original-conversation cleanup also pass.
+
+The input integration exposed an existing Android UI issue: every text editor
+forced sentence capitalization, including search and model identifiers. The
+portable input property `autocapitalize` now selects none/sentences/words/
+characters. Flexscript declares None for search/model and Sentences for chat;
+Android maps it to editor flags and the DOM adapter to its native hint. Desktop
+committed text is unchanged. The compiler rejects the property on non-input
+widgets. Controlled updates retain keyboard configuration, focus and drafts.
+Real Android widget checks and five full navigation groups verify this behavior;
+Chromium verifies the same compiler-produced hints and view transitions.
+Permission-summary fixtures now include the30th grant instead of asserting the
+old29-entry schema. The optional Android UI adapter test restores preferences
+and removes its private workspace, with before/after APK guards.
+
+**Remaining Input gates:** actual device-changed callbacks, older Android,
+physical multi-touch/stylus/mouse/controllers. Kernel/emulator/constructed fixtures do not
+substitute for those physical checks. The full hardware objective remains open,
+including the earlier separate strict HID missing-unplug-callback failure.
+
+```sh
+python3 scripts/test-collie-input-android.py --out build/android-input \
+  --serial emulator-5580
+# gcc is used only for the emulator fixture; no C helper ships in the APK.
+```
+
+SDK contracts: [input devices](https://developer.android.com/reference/android/view/InputDevice),
+[motion events](https://developer.android.com/reference/android/view/MotionEvent),
+[device listeners](https://developer.android.com/reference/android/hardware/input/InputManager.InputDeviceListener),
+and [kernel uinput](https://docs.kernel.org/input/uinput.html).
+
+### Input batch artifacts
+
+Debug `build/android-input/collie.apk`: **6,865,937 bytes**
+(6.866 MB /6.548 MiB), SHA-256
+`9b7c7bc2c0d6c525f11acc772470e22f67ae43e64e67e261bf35a9b748705d65`.
+Non-debug `build/android-input-release/collie.apk`: **6,767,554 bytes**
+(6.768 MB /6.454 MiB), SHA-256
+`a716f016b1b7cd9d7c430ac864f37a408c758b0c10fb6dee41ff7946be012cc2`.
+Packaging verifies that HardwareInputChecks and every other debug fixture are
+excluded from the non-debug APK and protected VPN metadata is retained.
+
+On those installed debug bytes, **91 hardware checks passed**:24 Input,33 NFC/
+OMAPI,16 Classic Bluetooth and18 GATT server. Five navigation groups also
+record and verify that installed digest. NFC RF and real secure-element
+APDU I/O remain explicitly unverified. Shared checks passed7 portable UI groups
+(including actual Android widgets),10 complete Collie UI groups,4 bounded
+reference checks,13 lazy-permission groups (14 first-use gates), and9 core groups.
+The same portable patches passed headless Chromium and60 native SDL desktop
+checks using the dummy video driver. Local mapped X11 testing was unavailable
+because xvfb-run is not installed; CI runs that explicit X11 variant. Historical
+checks on other APK digests remain under their own artifacts above.

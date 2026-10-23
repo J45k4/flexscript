@@ -14,13 +14,14 @@ fn cp_choice(key,binding){
     if h_equal(binding,h_cat("allow-",key)){return cp_value("allow");}
     if h_equal(binding,h_cat("deny-",key)){return cp_value("deny");}return 0;
 }
-fn cp_hardware_key(key){return h_has(",network,wifi,bluetooth,usb,nfc,location,sensors,camera,microphone,audio,haptics,infrared,midi,device_status,biometrics,keystore,screen_capture,accessibility,uwb,secure_element,vpn,cellular,",h_cat3(",",key,","));}
+fn cp_hardware_key(key){return h_has(",network,wifi,bluetooth,usb,nfc,input,location,sensors,camera,microphone,audio,haptics,infrared,midi,device_status,biometrics,keystore,screen_capture,accessibility,uwb,secure_element,vpn,cellular,",h_cat3(",",key,","));}
 fn cp_hardware_permissions(rows){
     cp_permission(rows,"network","Network connections","Inspect available networks and communicate using a selected Wi-Fi, Ethernet or cellular connection. Model traffic uses its own connection.");
     cp_permission(rows,"wifi","Wi-Fi devices","Discover and connect nearby Wi-Fi devices using supported Android Wi-Fi APIs.");
     cp_permission(rows,"bluetooth","Bluetooth devices","Discover, connect and exchange data with Bluetooth and BLE devices, or register as an input device for a paired host.");
     cp_permission(rows,"usb","USB devices","Inspect and communicate with USB peripherals. Android separately asks before opening a device.");
     cp_permission(rows,"nfc","NFC tags and emulation","Read and exchange commands with nearby NFC tags and use supported card emulation.");
+    cp_permission(rows,"input","Input devices and events","Inspect input devices and observe touch, stylus, keyboard, mouse and gamepad events delivered to Collie while it is visible.");
     cp_permission(rows,"location","Location and GNSS","Read location updates, satellite status and supported GNSS measurements.");
     cp_permission(rows,"sensors","Phone sensors","Read available motion, environment and activity sensor measurements.");
     cp_permission(rows,"camera","Camera and flashlight","Capture images or camera frames and control supported camera settings and the torch.");

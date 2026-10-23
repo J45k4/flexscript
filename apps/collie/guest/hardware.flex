@@ -259,3 +259,9 @@ fn se_command(channel,bytes){let r=db_request("se_command");db_add(r,db_text(cha
 fn se_command_write(channel,offset,value){let r=db_request("se_command_write");db_add(r,db_text(channel));db_add(r,db_int(offset));db_add(r,value);return db_rpc(r);}
 fn se_send(channel){let r=db_request("se_send");db_add(r,db_text(channel));return db_rpc(r);}
 fn se_response(channel,id,offset,limit){let r=db_request("se_response");db_add(r,db_text(channel));db_add(r,db_int(id));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+
+fn input_devices(offset,limit){let r=db_request("input_devices");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn input_info(device){let r=db_request("input_info");db_add(r,db_int(device));return db_rpc(r);}
+fn input_ranges(device,offset,limit){let r=db_request("input_ranges");db_add(r,db_int(device));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn input_has_keys(device,keys){let r=db_request("input_has_keys");db_add(r,db_int(device));db_add(r,keys);return db_rpc(r);}
+fn input_watch(device,mask,axes,history){let r=db_request("input_watch");db_add(r,db_int(device));db_add(r,db_int(mask));db_add(r,axes);db_add(r,db_int(history));return db_rpc(r);}

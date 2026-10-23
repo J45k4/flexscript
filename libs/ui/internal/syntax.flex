@@ -116,7 +116,7 @@ fn sx_patch_call(buffer,helper,name,old,new) {
 fn sx_ast(kind,name,value,site) {let p=alloc(184);store64(p,kind);store64(p+16,sx_module);store64(p+24,site);store64(p+32,name);store64(p+40,value);return p;}
 fn sx_widget(name) {return ext_equal(name,"column") || ext_equal(name,"row") || ext_equal(name,"scroll") || ext_equal(name,"text") || ext_equal(name,"button") || ext_equal(name,"input") || ext_equal(name,"check") || ext_equal(name,"image") || ext_equal(name,"stack") || ext_equal(name,"hscroll") || ext_equal(name,"progress");}
 fn sx_numeric(name) {return ext_equal(name,"padding") || ext_equal(name,"padding_x") || ext_equal(name,"padding_y") || ext_equal(name,"gap") || ext_equal(name,"radius") || ext_equal(name,"border_width") || ext_equal(name,"size") || ext_equal(name,"weight") || ext_equal(name,"width") || ext_equal(name,"height") || ext_equal(name,"min_height") || ext_equal(name,"max_lines") || ext_equal(name,"min_lines") || ext_equal(name,"single_line") || ext_equal(name,"selectable") || ext_equal(name,"timestamp") || ext_equal(name,"zoom") || ext_equal(name,"progress") || ext_equal(name,"alpha") || ext_equal(name,"follow") || ext_equal(name,"line_height");}
-fn sx_property(name) {return sx_numeric(name) || ext_equal(name,"color") || ext_equal(name,"background") || ext_equal(name,"border_color") || ext_equal(name,"font") || ext_equal(name,"align") || ext_equal(name,"description") || ext_equal(name,"value") || ext_equal(name,"source") || ext_equal(name,"enabled") || ext_equal(name,"runs") || ext_equal(name,"hint_color") || ext_equal(name,"ime") || ext_equal(name,"position");}
+fn sx_property(name) {return sx_numeric(name) || ext_equal(name,"color") || ext_equal(name,"background") || ext_equal(name,"border_color") || ext_equal(name,"font") || ext_equal(name,"align") || ext_equal(name,"description") || ext_equal(name,"value") || ext_equal(name,"source") || ext_equal(name,"enabled") || ext_equal(name,"runs") || ext_equal(name,"hint_color") || ext_equal(name,"ime") || ext_equal(name,"autocapitalize") || ext_equal(name,"position");}
 fn sx_action_name() {if sx_portable {return "action";}return "data-action";}
 fn sx_id_helper() {if sx_portable {return "uv_compiled_id(b,key,";}return "ui_compiled_id(b,key,";}
 fn sx_node(parent,structural,conditional,depth) {
@@ -142,6 +142,7 @@ fn sx_node(parent,structural,conditional,depth) {
             if numeric && load8(value)==34 {sx_fail("numeric UI property requires an integer expression");}
             if !numeric && load8(value)!=34 && !ext_equal(value,"0") {sx_fail("string UI property requires a string expression or 0");}
         }
+        if sx_portable && ext_equal(name,"autocapitalize") && !ext_equal(kind,"input") {sx_fail("autocapitalize requires an input widget");}
         if sx_portable && ext_equal(name,"value") && !ext_equal(kind,"input") {sx_fail("value requires an input widget");}
         if sx_portable && ext_equal(name,"source") && !ext_equal(kind,"image") {sx_fail("source requires an image widget");}
         let prop=props+count*24;store64(prop,name);store64(prop+8,value);store64(prop+16,type);count=count+1;

@@ -39,6 +39,7 @@ with tempfile.TemporaryDirectory(prefix='ui-',dir=root/'build') as d:
   ('column("app",text:"ignored");','text requires'),
   ('text("app",value:"ignored");','value requires'),
   ('text("app",source:"ignored");','source requires'),
+  ('text("app",autocapitalize:"sentences");','autocapitalize requires'),
   ('column("app"){each id in ui_items(){text("duplicate");}}','dynamic stable keys'),
  ]:
   source=temp/'invalid.flex';source.write_text(header+'view app_view(){'+view+'}fn main(){return 0;}')
@@ -52,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix='ui-',dir=root/'build') as d:
  def call(req):return json.loads(run([screen],json.dumps(req).encode()))
  snapshot=call({'policy':policy,'reset':True});assert len(snapshot['ops'])==1
  request={'policy':policy,'next_policy':dict(policy,internet=False),'event':{'key':'deny-internet','type':'click','action':'internet'}}
- update=call(request);assert {'op':'text','key':'permissions-summary','value':'6 allowed · 22 ask · 1 denied'} in update['ops'];assert len(update['ops'])==3,update
+ update=call(request);assert {'op':'text','key':'permissions-summary','value':'6 allowed · 23 ask · 1 denied'} in update['ops'];assert len(update['ops'])==3,update
  assert update['command']=={'kind':'permission','key':'internet','allowed':False}
  for event in [{'key':'deny-internet','type':'click','action':'db_write'},{'key':'allow-internet','type':'change','action':'internet','value':True}]:assert 'error' in call({'policy':policy,'event':event})
  passed('shared Collie screen validates events and returns minimal updates plus persistence effects')
@@ -64,19 +65,31 @@ with tempfile.TemporaryDirectory(prefix='ui-',dir=root/'build') as d:
  if a.serial:
   assert a.out,'--serial requires --out';adb=shutil.which('adb') or '/opt/android-sdk/platform-tools/adb';pkg='org.flexscript.collie'
   def device(*args,data=None):return run([adb,'-s',a.serial,*args],data)
-  device('install','-r',out/'collie.apk');device('shell','run-as',pkg,'mkdir','-p','files/test')
-  name='ui-adapter-'+str(time.time_ns());case={'session':name,'ui_packets':packets}
-  device('shell','run-as',pkg,'sh','-c',"'umask 077; cat > files/test/"+name+".json'",data=json.dumps(case).encode())
-  device('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name)
-  for _ in range(100):
-   r=subprocess.run([adb,'-s',a.serial,'exec-out','run-as',pkg,'cat','files/test/'+name+'.result.json'],capture_output=True)
-   if r.returncode==0:
-    try:result=json.loads(r.stdout)
-    except ValueError:result=None
-    if result is not None:
-     assert result['ok'] and result['ui']['ok'],result;break
-   time.sleep(.2)
-  else:raise AssertionError('Android UI check timed out')
-  passed('actual Android widgets preserve identity, focus, selection, drafts and action bindings across compiled patches')
+  from collie_android_test_artifact import verify_installed_apk
+  device('install','-r',out/'collie.apk');tested=verify_installed_apk(adb,a.serial,out/'collie.apk');device('shell','run-as',pkg,'mkdir','-p','files/test')
+  prior=subprocess.run([adb,'-s',a.serial,'exec-out','run-as',pkg,'cat','shared_prefs/MainActivity.xml'],capture_output=True);saved=prior.stdout if prior.returncode==0 else None
+  name='ui-adapter-'+str(time.time_ns())
+  try:
+   case={'session':name,'ui_packets':packets}
+   device('shell','run-as',pkg,'sh','-c',"'umask 077; cat > files/test/"+name+".json'",data=json.dumps(case).encode())
+   device('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name)
+   for _ in range(100):
+    r=subprocess.run([adb,'-s',a.serial,'exec-out','run-as',pkg,'cat','files/test/'+name+'.result.json'],capture_output=True)
+    if r.returncode==0:
+     try:result=json.loads(r.stdout)
+     except ValueError:result=None
+     if result is not None:
+      assert result['ok'] and result['ui']['ok'],result;break
+    time.sleep(.2)
+   else:raise AssertionError('Android UI check timed out')
+   passed('actual Android widgets preserve identity, focus, selection, drafts and action bindings across compiled patches')
+  finally:
+   device('shell','am','force-stop',pkg)
+   if saved is not None:device('shell','run-as',pkg,'sh','-c',"'cat > shared_prefs/MainActivity.xml'",data=saved)
+   else:device('shell','run-as',pkg,'rm','-f','shared_prefs/MainActivity.xml')
+   device('shell','run-as',pkg,'rm','-rf','files/workspaces/'+name)
+   device('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
+   device('shell','am','start','-n',pkg+'/.MainActivity')
+   assert verify_installed_apk(adb,a.serial,out/'collie.apk')==tested
  (root/'build/ui-tests.json').write_text(json.dumps({'checks':checks,'count':len(checks)},indent=2)+'\n')
 print(f'{len(checks)} portable UI groups passed')

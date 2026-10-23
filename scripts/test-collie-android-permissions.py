@@ -151,7 +151,7 @@ try:
     adb('shell', 'am', 'start', '-n', pkg + '/.MainActivity')
     assert not any(base_grants(session).values())
     open_page()
-    assert find(tree(), '0 allowed · 22 ask · 7 denied') is not None
+    assert find(tree(), '0 allowed · 23 ask · 7 denied') is not None
     adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
     assert find(tree(), 'Message Collie') is not None
     open_page()
