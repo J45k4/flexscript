@@ -20,7 +20,7 @@ it does not count as an implementation of an otherwise available adapter.
 | USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
 | Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 16 baseline SDK/VM/consent checks passed on the current server APK; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy advertising, GATT client and GATT server SDK bindings implemented; extended/periodic advertising pending | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
-| Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | pending | pending |
+| Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | public Classic HID device SDK bindings implemented; remaining verification gates below | encrypted510-byte control/interrupt report exchange, registration ownership and reconnect verified against a controlled host; public unplug callback gate remains failing on this emulator |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | pending | pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | pending | pending |
 | Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | pending | pending |
@@ -1161,4 +1161,126 @@ python3 scripts/test-collie-gatt-server-android.py \
   --netsim-port PORT
 # Uses build/bluetooth-fixture-env/bin/python (bumble[android]==0.0.236).
 # The script owns its uniquely named local peer and cleans it up afterward.
+```
+
+
+## Classic Bluetooth HID device
+
+`hid_open(name,description,provider,subclass,descriptor,in_qos,out_qos,timeout)`
+requests the public Android9+ HID device profile and registers an owned app.
+It requires Collie Bluetooth, Android CONNECT and a visible Activity. It does
+not scan or ask for Location/SCAN/ADVERTISE. Wait for the actual `registered`
+event before connecting or sending. The name/description/provider each require
+1..50 UTF-8 bytes without NUL; subclass is0..255; the report descriptor is an
+opaque1..2048-byte blob. Descriptors, report encoding, values, key state and
+application policy remain in Flexscript. This is Classic HID, separate from
+USB gadget support and custom BLE GATT services.
+
+QoS arguments are empty `db_list()` values for Android defaults, or
+`hid_qos(service,rate,bucket,peak,latency,variation)`. Service types are0..2;
+the remaining fields accept unsigned32-bit values or-1 for MAX. A timeout of
+1000..25000ms bounds registration, connection/disconnection and unanswered
+control requests. SDK acceptance of a command is separate from its callback
+or peer receipt. Failed registrations expose actual errors rather than a
+synthetic supported device.
+
+Android permits one registered HID app system-wide and disables its HID host
+profile while that registration is active. Collie reserves one registration
+across workspaces until teardown is confirmed. An unconfirmed unregister keeps
+new Collie registrations blocked; its diagnostic state indicates that SDK
+confirmation or app restart is needed. A late callback cannot register or
+unregister a newer endpoint. Background entry closes the active registration
+and removes all published HID handles, including error handles left when
+Android automatically unregisters before Activity `onStop`. SDK profile
+connections and registrations are never snapshotted by the VM.
+
+`hid_connect(endpoint,bt_device_handle)` requires an explicitly paired device.
+Use `bt_bond` and Android's pairing UI first; the HID call does not approve
+pairing. Its return is an owned pending peer ID. Observe actual `connected`,
+`connection_state` or `disconnected` events. `hid_peers(endpoint,offset,limit)`
+pages up to8 owned peer records with address, SDK state0disconnected/
+1connecting/2connected/3disconnecting, and protocol0boot/1report. Report mode
+is the SDK's documented default. IDs expire on disconnect and cannot control
+a new connection. `hid_disconnect` requests actual SDK disconnection; closing
+an endpoint unregisters its app and stops its owned control/report transport.
+
+`hid_send(endpoint,peer,report_id,bytes)` sends an input report; bytes exclude
+the report ID (0 if the descriptor has none). Collie bounds the entire HIDP
+packet to Android16's default512-byte HID MTU: up to510 data bytes with a
+nonzero report ID,511 with ID0. Oversized replies/reports fail before SDK I/O.
+The public proxy does not expose the negotiated peer MTU, so capability data
+explicitly says `mtu_known=false`; these are transport bounds, not a claimed
+measurement. SDK command acceptance does not prove delivery. The independent
+host oracle verifies actual received bytes.
+
+Incoming `request` events contain kind(get_report/set_report), owned peer,
+report_type(1input/2output/3feature), report_id, requested buffer_size, copied
+value/null and an opaque response token. `hid_requests` pages unanswered
+controls separately from the bounded event queue. `hid_reply(endpoint,token,
+bytes)` answers GET_REPORT, with no report ID in the byte blob. Flexscript
+validates/stores a SET_REPORT and acknowledges it with `hid_error(...,0)`;
+other handshake codes are1notReady,2invalidReportId,3unsupported,
+4invalidParameter and14unknown. Invalid arguments leave a live request intact;
+reply attempts consume it. Tokens are endpoint/peer-owned and single-use.
+The SDK exposes no control transaction IDs, so overlapping requests or an
+unanswered deadline close the registration to discard ambiguous late replies.
+
+Interrupt output arrives as `output_report` with copied bytes and no response
+token. `protocol` events report Android-acknowledged boot/report changes;
+Flexscript adapts its own encoding. `virtual_cable_unplug` forwards the actual
+public callback, including null identity if Android omits it. Collie does not
+infer an unplug event from generic disconnection. The public SDK has no app
+unplug method, so none is invented.
+
+The debug APK is
+`bc32bcd03b15996081fb581c79a0010eaed0771a35429f1ea88880c798a53423`
+(**6,767,633 bytes**,6.768 MB/6.454 MiB). The non-debug APK is
+`d6bd988c59907e0acf733516e1b62d17091246657efc4a455fd2618b34bc7e34`
+(**6,702,018 bytes**,6.702 MB/6.392 MiB). Both packaging checks passed,
+including debug-fixture exclusion and protected VPN service metadata.
+
+On the exact installed debug bytes, **17 HID assertions passed**, including
+real SDK registration/unregistration/reopening, single-owner rejection,
+unpaired-host rejection, Android-confirmed pairing, actual encrypted
+control/interrupt channels,510-byte feature/output/input reports, explicit
+SET_REPORT acknowledgements, error handshakes, replay/invalid-argument checks,
+boot/report protocol changes, disconnect/reconnect with expired peer IDs,
+actual foreground cleanup and conversation/permission/pairing restoration.
+The tests use a controlled localhost Netsim/Bumble host and vendor reports;
+no reports are injected into the user's desktop. Application values stay in
+Flexscript/DB between bounded VM batches. Runtime SCAN/ADVERTISE and Location
+remain denied throughout. Shared32 KiB codec/registry,12 native lazy-permission
+and9 shared-core groups also passed.
+
+**The strict HID suite still exits nonzero.** Its report has `ok=false` and
+`missing_gates=["public virtual-cable unplug callback"]`. The host's actual
+unplug packet closes both channels, but Android does not deliver the public
+unplug callback in this emulator run. Temporary HidDeviceService diagnostics
+observed its ordinary disconnect/protocol callbacks but no unplug callback;
+the prior log setting was restored. Generic disconnection is not substituted
+for the missing SDK event. The adapter forwards that callback when delivered,
+but this path is not claimed as positively verified. The other assertions and
+foreground cleanup run independently of that gate so their evidence is retained.
+
+On the same final debug APK, **34 regressions passed**:18 GATT server and16
+Classic Bluetooth checks. These are separate from the17 partial HID assertions
+and do not turn the failing strict HID gate into a pass.
+
+**Remaining HID gates:** public virtual-cable callback, timeout/overlapping
+control transactions, targeted permission revocation and radio/service loss,
+custom QoS, ID0/no-report-ID descriptors, keyboard/mouse OS integration,
+older-SDK compatibility and physical hosts. This batch does not complete the
+HID family or the full hardware inventory.
+
+Primary contracts: [HID device API](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.html),
+[callbacks](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.Callback),
+[SDP settings](https://developer.android.com/reference/android/bluetooth/BluetoothHidDeviceAppSdpSettings),
+and [Android16 HID transport constants](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/android16-release/system/internal_include/bt_target.h).
+
+```sh
+# Host-only fixture dependency: bumble[android]==0.0.236, excluded from the APK.
+python3 scripts/test-collie-hid-android.py \
+  --out build/android-hid --serial emulator-5580 --netsim-port PORT
+# Strict: remains nonzero if Android omits its public unplug callback.
+# hid-android-report.json records partial passes with ok=false and missing_gates.
 ```

@@ -219,3 +219,13 @@ fn ble_server_phy_read(server,peer,id){let r=db_request("ble_server_phy_read");d
 fn ble_server_phy(server,peer,tx,rx,options,id){let r=db_request("ble_server_phy");db_add(r,db_text(server));db_add(r,db_text(peer));db_add(r,db_int(tx));db_add(r,db_int(rx));db_add(r,db_int(options));db_add(r,db_int(id));return db_rpc(r);}
 fn ble_define_descriptor(rows,uuid,permissions){let row=db_list();db_add(row,db_text(uuid));db_add(row,db_int(permissions));return db_add(rows,row);}
 fn ble_define_characteristic(rows,uuid,properties,permissions,descriptors){let row=db_list();db_add(row,db_text(uuid));db_add(row,db_int(properties));db_add(row,db_int(permissions));db_add(row,descriptors);return db_add(rows,row);}
+
+fn hid_open(name,description,provider,subclass,descriptor,incoming,outgoing,timeout){let r=db_request("hid_open");db_add(r,db_text(name));db_add(r,db_text(description));db_add(r,db_text(provider));db_add(r,db_int(subclass));db_add(r,descriptor);db_add(r,incoming);db_add(r,outgoing);db_add(r,db_int(timeout));return db_rpc(r);}
+fn hid_connect(endpoint,device){let r=db_request("hid_connect");db_add(r,db_text(endpoint));db_add(r,db_text(device));return db_rpc(r);}
+fn hid_peers(endpoint,offset,limit){let r=db_request("hid_peers");db_add(r,db_text(endpoint));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn hid_requests(endpoint,offset,limit){let r=db_request("hid_requests");db_add(r,db_text(endpoint));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn hid_reply(endpoint,token,bytes){let r=db_request("hid_reply");db_add(r,db_text(endpoint));db_add(r,db_text(token));db_add(r,bytes);return db_rpc(r);}
+fn hid_error(endpoint,token,status){let r=db_request("hid_error");db_add(r,db_text(endpoint));db_add(r,db_text(token));db_add(r,db_int(status));return db_rpc(r);}
+fn hid_send(endpoint,peer,report_id,bytes){let r=db_request("hid_send");db_add(r,db_text(endpoint));db_add(r,db_text(peer));db_add(r,db_int(report_id));db_add(r,bytes);return db_rpc(r);}
+fn hid_disconnect(endpoint,peer){let r=db_request("hid_disconnect");db_add(r,db_text(endpoint));db_add(r,db_text(peer));return db_rpc(r);}
+fn hid_qos(service,rate,bucket,peak,latency,variation){let q=db_list();db_add(q,db_int(service));db_add(q,db_int(rate));db_add(q,db_int(bucket));db_add(q,db_int(peak));db_add(q,db_int(latency));db_add(q,db_int(variation));return q;}

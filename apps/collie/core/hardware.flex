@@ -202,6 +202,14 @@ fn hw_operations(){
     hw_operation(rows,"ble_server_disconnect","hardware_handle",2,2);
     hw_operation(rows,"ble_server_phy_read","hardware_handle",3,3);
     hw_operation(rows,"ble_server_phy","hardware_handle",6,6);
+    hw_operation(rows,"hid_open","bluetooth",8,8);
+    hw_operation(rows,"hid_connect","hardware_handle",2,2);
+    hw_operation(rows,"hid_peers","hardware_handle",3,3);
+    hw_operation(rows,"hid_requests","hardware_handle",3,3);
+    hw_operation(rows,"hid_reply","hardware_handle",3,3);
+    hw_operation(rows,"hid_error","hardware_handle",3,3);
+    hw_operation(rows,"hid_send","hardware_handle",4,4);
+    hw_operation(rows,"hid_disconnect","hardware_handle",2,2);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

@@ -18,7 +18,7 @@ fn cp_hardware_key(key){return h_has(",network,wifi,bluetooth,usb,nfc,location,s
 fn cp_hardware_permissions(rows){
     cp_permission(rows,"network","Network connections","Inspect available networks and communicate using a selected Wi-Fi, Ethernet or cellular connection. Model traffic uses its own connection.");
     cp_permission(rows,"wifi","Wi-Fi devices","Discover and connect nearby Wi-Fi devices using supported Android Wi-Fi APIs.");
-    cp_permission(rows,"bluetooth","Bluetooth devices","Discover, connect and exchange data with Bluetooth and BLE devices.");
+    cp_permission(rows,"bluetooth","Bluetooth devices","Discover, connect and exchange data with Bluetooth and BLE devices, or register as an input device for a paired host.");
     cp_permission(rows,"usb","USB devices","Inspect and communicate with USB peripherals. Android separately asks before opening a device.");
     cp_permission(rows,"nfc","NFC tags and emulation","Read and exchange commands with nearby NFC tags and use supported card emulation.");
     cp_permission(rows,"location","Location and GNSS","Read location updates, satellite status and supported GNSS measurements.");
