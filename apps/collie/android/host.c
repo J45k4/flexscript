@@ -906,3 +906,20 @@ Java_org_flexscript_collie_MainActivity_nativeBegin(void *env, void *clazz) {
     (void)clazz;
     __atomic_store_n(&cancelled, 0, __ATOMIC_RELAXED);
 }
+/* The system-bound card service loads this image in :hce_background. Its
+ * callback broker has no Java hardware/file/network entry points. */
+__attribute__((visibility("default"))) long
+Java_org_flexscript_collie_CollieHceBackgroundService_nativeCall(void *env, void *clazz,
+        long op, void *input, long size, void *output_buffer, void *session) {
+    if (op != 10) return -13;
+    return Java_org_flexscript_collie_MainActivity_nativeCall(env, clazz, op, input,
+                                                           size, output_buffer, session);
+}
+__attribute__((visibility("default"))) void
+Java_org_flexscript_collie_CollieHceBackgroundService_nativeCancel(void *env, void *clazz) {
+    Java_org_flexscript_collie_MainActivity_nativeCancel(env, clazz);
+}
+__attribute__((visibility("default"))) void
+Java_org_flexscript_collie_CollieHceBackgroundService_nativeBegin(void *env, void *clazz) {
+    Java_org_flexscript_collie_MainActivity_nativeBegin(env, clazz);
+}

@@ -104,6 +104,7 @@ def generate(out, compiler):
         ROOT / 'apps/collie/core/checkpoint.flex',
         ROOT / 'apps/collie/core/recall.flex',
         ROOT / 'apps/collie/core/hardware.flex',
+        ROOT / 'apps/collie/core/card-handler.flex',
         ROOT / 'apps/collie/providers/stream.flex',
         ROOT / 'apps/collie/providers/images.flex',
     ], transformed)
@@ -118,7 +119,7 @@ def generate(out, compiler):
                        else t[0] for t in TOKEN.finditer(text))
     declarations, functions = rewrite(declarations), rewrite(functions)
     functions = re.sub(r'(\bfn next\(\)\s*\{)', r'\1ca_compile_tick();', functions)
-    functions = functions.replace('vm_execute(main_index);', 'cv_execute(main_index);')
+    functions = functions.replace('vm_execute(main_index);', 'ca_execute(main_index);')
     globals_ = re.findall(r'\bglobal\s+([A-Za-z_]\w*)\s*=\s*([^;]+);', declarations)
     assert globals_ and len(globals_) == sum(t[0] == 'global' for t in TOKEN.finditer(declarations)), 'unsupported global declaration'
     stubs = '\n'.join('fn ca_disabled_' + name + '(' +
@@ -134,6 +135,7 @@ def generate(out, compiler):
     guest += '\n' + (ROOT/'apps/collie/guest/usb-serial.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/nfc.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/uwb.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/camera.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/accessibility.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/ble.flex').read_text()
     guest += '\n' + (ROOT/'apps/collie/guest/hardware-access.flex').read_text()
     embedded = 'fn ca_guest_extra(){return '+json.dumps(guest, ensure_ascii=False)+';}\n'
+    embedded += 'fn ca_card_guest(){return '+json.dumps((ROOT/'apps/collie/guest/card-handler.flex').read_text(),ensure_ascii=False)+';}\n'
     signatures=re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/hardware.flex').read_text(),re.M)
     serial_api={'serial_ports','serial_port','serial_open','serial_configure','serial_lines','serial_break','serial_read','serial_write','serial_status','serial_info','serial_close'}
     signatures += [(name,params) for name,params in re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/usb-serial.flex').read_text(),re.M) if name in serial_api]

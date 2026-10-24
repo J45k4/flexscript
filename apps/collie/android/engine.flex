@@ -152,6 +152,7 @@ fn ca_hardware(request,entry){
 }
 fn collie_android_db_frame(payload,n){
     let request=db_decode(payload,n);
+    if card_active{return card_dispatch(request);}
     if request && db_kind(request)==5 && db_kind(db_at(request,0))==2 {
         let hardware=hw_find(db_word(db_at(request,0)));if hardware{return ca_hardware(request,hardware);}
         let required=ca_required(db_word(db_at(request,0)));
@@ -238,6 +239,20 @@ fn ca_run(request){
     if ca_views {j_set(result,"views",ca_views);}
     return result;
 }
+fn ca_execute(index){if card_active{cv_execution_begin();vm_execute(index);return vm_acc;}return cv_execute(index);}
+fn ca_card_run(request){
+    let source=cj_text(request,"source");let rejected=cp_validate(source);if !rejected{rejected=ca_source_depth(source);}
+    if rejected{return c_error(rejected);}
+    if !card_begin(cj_get(request,"input"),cj_get(request,"saved_state")){return c_error("Invalid card callback command or saved state.");}
+    ca_host(1001,h_cat("import \"/guest/sdk.flex\";\n",source),h_cat(cg_source(),ca_card_guest()),0,0,0,0);
+    output_limit=8388608;let args=h_args("collie","run","--restricted","--interpret","--allow-stdin","--no-url-imports");
+    h_add(args,"--fuel=4000000");h_add(args,"--memory=4m");h_add(args,"--timeout-ms=1000");h_add(args,"/guest/main.flex");
+    let words=ca_alloc((h_count(args)+2)*8);let i=0;while i<h_count(args){store64(words+i*8,h_at(args,i));i=i+1;}store64(words+i*8,0);store64(words+(i+1)*8,0);
+    let status=vm_main(h_count(args),words);let result=card_result();let ok=status==0 && !vm_error && card_committed;
+    j_set(result,"ok",j_bool(ok));j_set(result,"exit_code",j_int(status));j_set(result,"stdout",j_string(ca_capture(1)));j_set(result,"stderr",j_string(ca_capture(2)));
+    if !ok{j_set(result,"response",cj_null());j_set(result,"saved_state",cj_null());}
+    return result;
+}
 fn ca_instructions(body){
     let text=h_replace(j_s(body,"instructions"),"host\nfiles, network, processes, raw FFI and user stdin are unavailable.","ungranted host files, processes, raw FFI and user stdin are unavailable. Android grants HTTPS GET through http_get(url).");
     text=h_replace(text,"The workspace starts with zero tables. Choose and evolve your own schemas.","The runtime owns read-only collie_workers, collie_messages and private collie_state tables. Choose and evolve your own application tables; the collie_ prefix is reserved.");
@@ -279,6 +294,7 @@ fn collie_android_entry(operation,text,bridge,packet){
     else if operation==7{result=ag_host(request);}
     else if operation==8{result=ch_host(request);}
     else if operation==9{result=cs_host(request);}
+    else if operation==10{result=ca_card_run(request);}
     else {result=c_error("Unknown Android engine operation.");}
     return j_dump(result);
 }
