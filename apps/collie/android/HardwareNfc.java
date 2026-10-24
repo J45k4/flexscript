@@ -12,7 +12,8 @@ import org.json.*;
 
 /** NFC discovery/technology SDK transport; NDEF/APDU contents remain guest bytes. */
 final class HardwareNfc {
-    private static final Object LEASE=new Object();private static Reader owner;
+    static final Object LEASE=new Object();private static Reader owner;
+    static boolean readerOwned(){synchronized(LEASE){return owner!=null;}}
     static boolean supports(String op){return op.startsWith("nfc_");}
     static NfcAdapter optional(VmHardware.Context c){NfcManager manager=c.host.getSystemService(NfcManager.class);return manager==null?null:manager.getDefaultAdapter();}
     static NfcAdapter adapter(VmHardware.Context c)throws Exception{NfcAdapter value=optional(c);if(value==null||!c.host.getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC))throw new VmHardware.Failure("unsupported","This Android device has no NFC reader adapter.");return value;}
@@ -77,7 +78,7 @@ final class HardwareNfc {
     static Object call(VmHardware.Context c,String op,JSONArray a)throws Exception{
         if(op.equals("nfc_info")){permission(c);return info(c,adapter(c));}
         if(op.equals("nfc_watch")){permission(c);Watch watch=new Watch(c,adapter(c));try{watch.start();return VmHardware.add(watch);}catch(Exception error){watch.close();throw error;}}
-        if(op.equals("nfc_reader")){int flags=VmHardware.integer(a,0,1,415),delay=VmHardware.integer(a,1,10,5000);if((flags&~415)!=0||(flags&31)==0)throw new VmHardware.Failure("invalid_argument","Reader flags require NFC technology bits1/2/4/8/16, optionally128/256.");permission(c);visible(c);NfcAdapter adapter=adapter(c);if(!adapter.isEnabled())throw new VmHardware.Failure("nfc_disabled","Enable NFC in Android settings.");Reader reader;synchronized(LEASE){if(owner!=null)throw new VmHardware.Failure("busy","Only one Collie NFC reader mode may be active.");reader=new Reader(c,adapter,flags,delay);owner=reader;}VmHardware.blocking(reader);try{reader.start();return VmHardware.add(reader);}catch(Exception error){reader.close();throw error;}finally{VmHardware.unblocking();}}
+        if(op.equals("nfc_reader")){int flags=VmHardware.integer(a,0,1,415),delay=VmHardware.integer(a,1,10,5000);if((flags&~415)!=0||(flags&31)==0)throw new VmHardware.Failure("invalid_argument","Reader flags require NFC technology bits1/2/4/8/16, optionally128/256.");permission(c);visible(c);NfcAdapter adapter=adapter(c);if(!adapter.isEnabled())throw new VmHardware.Failure("nfc_disabled","Enable NFC in Android settings.");Reader reader;synchronized(LEASE){if(owner!=null||HardwareHce.owned())throw new VmHardware.Failure("busy","Close the owned NFC reader/card-emulation lease and wait for SDK/link cleanup first.");reader=new Reader(c,adapter,flags,delay);owner=reader;}VmHardware.blocking(reader);try{reader.start();return VmHardware.add(reader);}catch(Exception error){reader.close();throw error;}finally{VmHardware.unblocking();}}
         if(op.equals("nfc_tags")||op.equals("nfc_tag_info")||op.equals("nfc_cached_ndef")||op.equals("nfc_ignore")||op.equals("nfc_connect")){
             Reader reader=VmHardware.handle(c,VmHardware.text(a,0,128),Reader.class);reader.access(c);
             if(op.equals("nfc_tags"))return reader.page(VmHardware.integer(a,1,0,16),VmHardware.integer(a,2,1,16));TagRef ref=reader.tag(VmHardware.text(a,1,128));

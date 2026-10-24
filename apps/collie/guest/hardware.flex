@@ -323,3 +323,16 @@ fn camera_video_pause(video){let r=db_request("camera_video_pause");db_add(r,db_
 fn camera_video_resume(video){let r=db_request("camera_video_resume");db_add(r,db_text(video));return db_rpc(r);}
 fn camera_video_seek(video,offset){let r=db_request("camera_video_seek");db_add(r,db_text(video));db_add(r,db_int(offset));return db_rpc(r);}
 fn camera_shutdown(camera){let r=db_request("camera_shutdown");db_add(r,db_text(camera));return db_rpc(r);}
+
+// NFC service routing and asynchronous command replies; the guest owns protocol bytes.
+fn hce_info(){let r=db_request("hce_info");return db_rpc(r);}
+fn hce_open(category,aids,reply_timeout_ms){let r=db_request("hce_open");db_add(r,db_int(category));db_add(r,aids);db_add(r,db_int(reply_timeout_ms));return db_rpc(r);}
+fn hcef_open(system_code,nfcid2,reply_timeout_ms){let r=db_request("hcef_open");db_add(r,db_text(system_code));db_add(r,db_text(nfcid2));db_add(r,db_int(reply_timeout_ms));return db_rpc(r);}
+fn hce_request(session){let r=db_request("hce_request");db_add(r,db_text(session));return db_rpc(r);}
+fn hce_reply(session,request,bytes){let r=db_request("hce_reply");db_add(r,db_text(session));db_add(r,db_text(request));db_add(r,bytes);return db_rpc(r);}
+fn hce_unhandled(session,request){let r=db_request("hce_unhandled");db_add(r,db_text(session));db_add(r,db_text(request));return db_rpc(r);}
+fn hce_shutdown(session){let r=db_request("hce_shutdown");db_add(r,db_text(session));return db_rpc(r);}
+fn hce_request_read(session,request,offset,limit){let r=db_request("hce_request_read");db_add(r,db_text(session));db_add(r,db_text(request));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn hce_reply_begin(session,request,total){let r=db_request("hce_reply_begin");db_add(r,db_text(session));db_add(r,db_text(request));db_add(r,db_int(total));return db_rpc(r);}
+fn hce_reply_write(session,request,offset,bytes){let r=db_request("hce_reply_write");db_add(r,db_text(session));db_add(r,db_text(request));db_add(r,db_int(offset));db_add(r,bytes);return db_rpc(r);}
+fn hce_reply_commit(session,request){let r=db_request("hce_reply_commit");db_add(r,db_text(session));db_add(r,db_text(request));return db_rpc(r);}

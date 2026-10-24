@@ -20,10 +20,11 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
   dex=apk.read('classes.dex')
-  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','UiRendererChecks']:
+  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareHcePeerFixture','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
   fixture_resource=any('midi_loopback_fixture' in name for name in apk.namelist());assert fixture_resource==debug,(label,'test resource')
- services=list(sections(manifest,'service'));assert any('MidiLoopbackFixture' in service for service in services)==debug
+ services=list(sections(manifest,'service'));assert any('HardwareHcePeerFixture' in service for service in services)==debug
+ assert any('MidiLoopbackFixture' in service for service in services)==debug
  vpn=next(service for service in services if '.CollieVpnService' in service)
  assert 'android.permission.BIND_VPN_SERVICE' in vpn,(label,'VPN binding permission')
  assert re.search(r'foregroundServiceType[^=]*=0x0*400\b',vpn),(label,'VPN foreground type')
@@ -32,6 +33,17 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  uwb=next(feature for feature in sections(manifest,'uses-feature') if '"android.hardware.uwb"' in feature);assert re.search(r':required[^=]*=false',uwb),(label,'UWB remains optional')
  for feature_name in ['android.hardware.camera','android.hardware.camera.any','android.hardware.camera.autofocus']:
   feature=next(feature for feature in sections(manifest,'uses-feature') if '"'+feature_name+'"' in feature);assert re.search(r':required[^=]*=false',feature),(label,feature_name,'camera remains optional')
+ for feature_name in ['android.hardware.nfc.hce','android.hardware.nfc.hcef']:
+  feature=next(feature for feature in sections(manifest,'uses-feature') if '"'+feature_name+'"' in feature);assert re.search(r':required[^=]*=false',feature),(label,feature_name,'emulation remains optional')
+ for service_name,resource,action in [('CollieHceService','hce_other','HOST_APDU_SERVICE'),('CollieHcePaymentService','hce_payment','HOST_APDU_SERVICE'),('CollieHceFService','hce_f','HOST_NFCF_SERVICE')]:
+  service=next(s for s in services if '".'+service_name+'"' in s)
+  assert 'android.permission.BIND_NFC_SERVICE' in service and re.search(r':enabled[^=]*=false',service) and re.search(r':exported[^=]*=true',service),(label,service_name,'protected and disabled by default')
+  assert action in service,(label,service_name,'SDK service action')
+  xml=subprocess.check_output([a.aapt2,'dump','xmltree',str(path),'--file','res/xml/'+resource+'.xml']).decode()
+  if resource!='hce_f':assert re.search(r':requireDeviceUnlock[^=]*=true',xml),(label,resource,'unlock required')
+  else:
+   for element in ['system-code-filter','nfcid2-filter']:
+    item=next(sections(xml,element));assert '"NULL"' in item,(label,element,'no static NFC-F route')
  sha=hashlib.sha256(path.read_bytes()).hexdigest();assert sha==json.loads((path.parent/'build.json').read_text())['sha256']
  report[label]={'path':str(path),'bytes':path.stat().st_size,'MB':round(path.stat().st_size/1e6,3),'MiB':round(path.stat().st_size/2**20,3),'sha256':sha,'debug_fixtures':debug,'vpn_binding':'BIND_VPN_SERVICE','vpn_foreground_type':'systemExempted','vpn_always_on':False}
 (a.debug.resolve().parent/'packaging-report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2));print('PASS APK fixture isolation and protected VPN service metadata')

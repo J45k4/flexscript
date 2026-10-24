@@ -1,0 +1,6 @@
+<host-nfcf-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/hce_description">
+    <system-code-filter android:name="NULL" />
+    <nfcid2-filter android:name="NULL" />
+    <t3tPmm-filter android:name="FFFFFFFFFFFFFFFF" />
+</host-nfcf-service>

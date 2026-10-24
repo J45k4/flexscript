@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
     private JSONObject harness = new JSONObject();
     private PlatformTask activeTask;
     final HardwareConsent hardwareConsent = new HardwareConsent(this);
-    volatile boolean hardwareVisible;
+    volatile boolean hardwareVisible,hardwareResumed;
     final PermissionPrompts permissionPrompts = new PermissionPrompts(this);
     private volatile JSONObject permissions = new JSONObject();
     private volatile HardwareNetwork.ModelRoute modelRoute;
@@ -215,6 +215,7 @@ public class MainActivity extends Activity {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,uiBack);
         }
         HardwareWifi.recoverAsync(this);
+        HardwareHce.recoverAsync(this);
         onTestIntent(getIntent());
         permissionRationale(getIntent());
     }
@@ -226,6 +227,10 @@ public class MainActivity extends Activity {
     public boolean dispatchKeyEvent(android.view.KeyEvent event){HardwareInput.key(this,event);return super.dispatchKeyEvent(event);}
     @Override
     protected void onStart(){super.onStart();hardwareVisible=true;}
+    @Override
+    protected void onResume(){super.onResume();hardwareResumed=true;}
+    @Override
+    protected void onPause(){hardwareResumed=false;HardwareHce.hidden();super.onPause();}
     @Override
     protected void onStop(){hardwareVisible=false;VmHardware.appHidden();super.onStop();}
     @Override
@@ -1044,8 +1049,8 @@ public class MainActivity extends Activity {
                 }
                 workers.fixtures = test.optJSONObject("worker_responses");
                 if (test.optBoolean("hardware_tests")) {
-                    Class<?> checks=Class.forName(test.optBoolean("hardware_camera_tests")?"org.flexscript.collie.HardwareCameraChecks":test.optBoolean("hardware_document_tests")?"org.flexscript.collie.HardwareDocumentChecks":test.optBoolean("hardware_uwb_tests")?"org.flexscript.collie.HardwareUwbChecks":test.optBoolean("hardware_biometric_tests")?"org.flexscript.collie.HardwareBiometricChecks":test.optBoolean("hardware_input_tests")?"org.flexscript.collie.HardwareInputChecks":"org.flexscript.collie.HardwareNetworkChecks");
-                    JSONObject result=(JSONObject)checks.getMethod(test.optBoolean("hardware_camera_yuv_tests")?"runYuv":test.optBoolean("hardware_camera_lifecycle_tests")?"runLifecycle":test.optBoolean("hardware_camera_manual_tests")?"runManual":test.optBoolean("hardware_camera_video_tests")?"runVideo":test.optBoolean("hardware_document_read_grant_tests")?"runReadGrant":test.optBoolean("hardware_document_live_tests")?"runLive":test.optBoolean("hardware_document_revoke_tests")?"runRevoke":test.optBoolean("hardware_uwb_lifecycle_tests")?"runLifecycle":test.optBoolean("hardware_biometric_late_tests")?"runLate":test.optBoolean("hardware_biometric_live_tests")?"runLive":test.optBoolean("hardware_nfc_tests")?"runNfc":test.optBoolean("hardware_bluetooth_tests")?"runBluetooth":test.optBoolean("hardware_aware_tests")?"runAware":test.optBoolean("hardware_revocation_tests")?"runRevocation":test.optBoolean("hardware_wifi_tests")?"runWifi":test.optBoolean("hardware_wifi_request_tests")?"runWifiRequest":test.optBoolean("hardware_wifi_recovery_tests")?"runWifiRecovery":test.optBoolean("hardware_cellular_tests")?"runCellular":test.optBoolean("hardware_microphone_tests")?"runMicrophone":test.optBoolean("hardware_vpn_tests")?"runVpn":"run",MainActivity.class,File.class).invoke(null,this,session);
+                    Class<?> checks=Class.forName(test.optBoolean("hardware_hce_tests")?"org.flexscript.collie.HardwareHceChecks":test.optBoolean("hardware_camera_tests")?"org.flexscript.collie.HardwareCameraChecks":test.optBoolean("hardware_document_tests")?"org.flexscript.collie.HardwareDocumentChecks":test.optBoolean("hardware_uwb_tests")?"org.flexscript.collie.HardwareUwbChecks":test.optBoolean("hardware_biometric_tests")?"org.flexscript.collie.HardwareBiometricChecks":test.optBoolean("hardware_input_tests")?"org.flexscript.collie.HardwareInputChecks":"org.flexscript.collie.HardwareNetworkChecks");
+                    JSONObject result=(JSONObject)checks.getMethod(test.optBoolean("hardware_hce_background_tests")?"runBackground":test.optBoolean("hardware_hce_orphan_tests")?"runOrphan":test.optBoolean("hardware_hce_recovered_tests")?"runRecovered":test.optBoolean("hardware_camera_yuv_tests")?"runYuv":test.optBoolean("hardware_camera_lifecycle_tests")?"runLifecycle":test.optBoolean("hardware_camera_manual_tests")?"runManual":test.optBoolean("hardware_camera_video_tests")?"runVideo":test.optBoolean("hardware_document_read_grant_tests")?"runReadGrant":test.optBoolean("hardware_document_live_tests")?"runLive":test.optBoolean("hardware_document_revoke_tests")?"runRevoke":test.optBoolean("hardware_uwb_lifecycle_tests")?"runLifecycle":test.optBoolean("hardware_biometric_late_tests")?"runLate":test.optBoolean("hardware_biometric_live_tests")?"runLive":test.optBoolean("hardware_nfc_tests")?"runNfc":test.optBoolean("hardware_bluetooth_tests")?"runBluetooth":test.optBoolean("hardware_aware_tests")?"runAware":test.optBoolean("hardware_revocation_tests")?"runRevocation":test.optBoolean("hardware_wifi_tests")?"runWifi":test.optBoolean("hardware_wifi_request_tests")?"runWifiRequest":test.optBoolean("hardware_wifi_recovery_tests")?"runWifiRecovery":test.optBoolean("hardware_cellular_tests")?"runCellular":test.optBoolean("hardware_microphone_tests")?"runMicrophone":test.optBoolean("hardware_vpn_tests")?"runVpn":"run",MainActivity.class,File.class).invoke(null,this,session);
                     report.put("hardware",result);if(!result.optBoolean("ok"))throw new IOException(result.toString());
                 } else if (test.has("ui_packets")) {
                     java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(1);

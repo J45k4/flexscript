@@ -295,6 +295,17 @@ fn hw_operations(){
     hw_operation(rows,"camera_video_resume","hardware_handle",1,1);
     hw_operation(rows,"camera_video_seek","hardware_handle",2,2);
     hw_operation(rows,"camera_shutdown","hardware_handle",1,1);
+    hw_operation(rows,"hce_info","nfc",0,0);
+    hw_operation(rows,"hce_open","nfc",3,3);
+    hw_operation(rows,"hcef_open","nfc",3,3);
+    hw_operation(rows,"hce_request","hardware_handle",1,1);
+    hw_operation(rows,"hce_reply","hardware_handle",3,3);
+    hw_operation(rows,"hce_unhandled","hardware_handle",2,2);
+    hw_operation(rows,"hce_shutdown","hardware_handle",1,1);
+    hw_operation(rows,"hce_request_read","hardware_handle",4,4);
+    hw_operation(rows,"hce_reply_begin","hardware_handle",3,3);
+    hw_operation(rows,"hce_reply_write","hardware_handle",4,4);
+    hw_operation(rows,"hce_reply_commit","hardware_handle",2,2);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

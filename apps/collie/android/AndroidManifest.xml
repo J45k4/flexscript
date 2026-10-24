@@ -9,6 +9,8 @@
     <uses-feature android:name="android.hardware.uwb" android:required="false" />
     <uses-permission android:name="android.permission.NFC" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc.hcef" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -50,6 +52,18 @@
     <application android:label="Collie" android:theme="@style/CollieTheme" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:allowBackup="false" android:debuggable="false" android:usesCleartextTraffic="true" android:extractNativeLibs="false">
         <provider android:name=".CameraAttachmentProvider" android:authorities="org.flexscript.collie.camera" android:exported="false" android:grantUriPermissions="true" />
         <receiver android:name=".UsbConsentReceiver" android:exported="false" />
+        <service android:name=".CollieHceService" android:enabled="false" android:exported="true" android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter><action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" /></intent-filter>
+            <meta-data android:name="android.nfc.cardemulation.host_apdu_service" android:resource="@xml/hce_other" />
+        </service>
+        <service android:name=".CollieHcePaymentService" android:enabled="false" android:exported="true" android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter><action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" /></intent-filter>
+            <meta-data android:name="android.nfc.cardemulation.host_apdu_service" android:resource="@xml/hce_payment" />
+        </service>
+        <service android:name=".CollieHceFService" android:enabled="false" android:exported="true" android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter><action android:name="android.nfc.cardemulation.action.HOST_NFCF_SERVICE" /></intent-filter>
+            <meta-data android:name="android.nfc.cardemulation.host_nfcf_service" android:resource="@xml/hce_f" />
+        </service>
         <service android:name=".CollieVpnService" android:exported="true" android:permission="android.permission.BIND_VPN_SERVICE" android:foregroundServiceType="systemExempted">
             <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
             <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="false" />
