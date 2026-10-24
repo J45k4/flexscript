@@ -20,7 +20,7 @@ def texts(tree):return [n.attrib.get('text','') for n in tree.iter('node')]
 def click(description):
  tree=dump();n=next(n for n in tree.iter('node') if n.attrib.get('content-desc')==description)
  x1,y1,x2,y2=map(int,re.findall(r'\d+',n.attrib['bounds']));adb('shell','input','tap',(x1+x2)//2,(y1+y2)//2)
-def start(name,case):write(name,case);adb('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name)
+def start(name,case):case.setdefault('initial_permissions',dict.fromkeys(['internet','files_read','files_write','db_read','db_write','history','workers'],True));write(name,case);adb('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name)
 def result(name):
  for _ in range(120):
   r=read('files/test/'+name+'.result.json')

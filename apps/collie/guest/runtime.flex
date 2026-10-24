@@ -1,5 +1,6 @@
 // Collie's VM-side FlexDB API and bounded value codec. No host pointers.
 global db_last_error=0;
+global db_last_error_details=0;
 global db_wire=0;
 global db_reply_buffer=0;
 global db_header=0;
@@ -11,7 +12,7 @@ global db_read_at=0;
 global db_nodes=0;
 fn db_value(kind,word,bytes) {let p=alloc(32);if p<=0 {syscall(60,70,0,0,0,0,0);return 0;}store64(p,kind);store64(p+8,word);store64(p+16,bytes);store64(p+24,0);return p;}
 fn db_len(s) {let n=0;if s {while load8(s+n) {n=n+1;}}return n;}
-fn db_copy(to,from,n) {let i=0;while i<n {store8(to+i,load8(from+i));i=i+1;}return to;}
+fn db_copy(to,from,n) {if n<=0{return to;}let i=0;let overlap=to>from && to-from<n;if !overlap{while i<=n-8{store64(to+i,load64(from+i));i=i+8;}}while i<n {store8(to+i,load8(from+i));i=i+1;}return to;}
 fn db_int(n) {return db_value(1,n,0);}
 fn db_null() {return db_value(0,0,0);}
 fn db_real(bits) {return db_value(4,bits,0);}
@@ -44,11 +45,16 @@ fn db_decode(p,n) {db_codec_ok=1;db_read_buffer=p;db_read_size=n;db_read_at=0;db
 fn db_io(reading,fd,p,n) {let i=0;while i<n {let op=1;if reading {op=0;}let r=syscall(op,fd,p+i,n-i,0,0,0);if r==-4 {}else if r<=0 {return 0;}else {i=i+r;}}return 1;}
 fn db_request(op) {let v=db_list();db_add(v,db_text(op));return v;}
 fn db_rpc(request) {
-    db_last_error="";let n=db_encode(request);if !n {db_last_error="Database request exceeds codec limits.";return 0;}
+    db_last_error="";db_last_error_details=0;let n=db_encode(request);if !n {db_last_error="Database request exceeds codec limits.";return 0;}
     if !db_header {db_header=alloc(16);db_reply_buffer=alloc(65536);}db_copy(db_header,"COLLIEDB",8);store64(db_header+8,n);
     if !db_io(0,2,db_header,16) || !db_io(0,2,db_wire,n) || !db_io(1,0,db_header,8) {db_last_error="Database channel closed.";return 0;}
     n=load64(db_header);if n<16 || n>65536 || !db_io(1,0,db_reply_buffer,n) {db_last_error="Invalid database response.";return 0;}let reply=db_decode(db_reply_buffer,n);
-    if db_count(reply)!=2 {db_last_error="Invalid database response.";return 0;}let error=db_at(reply,0);if db_kind(error)==2 {db_last_error=db_word(error);return 0;}if db_kind(error)!=0 {db_last_error="Invalid database response.";return 0;}return db_at(reply,1);
+    if db_count(reply)!=2 {db_last_error="Invalid database response.";return 0;}let error=db_at(reply,0);
+    // The broker has not executed this request. Suspend after consuming the
+    // complete frame, then retry only this operation against the current grant.
+    if db_kind(error)==1 && db_word(error)== -3 {syscall(10001,-3,0,0,0,0,0);return db_rpc(request);}
+    if db_kind(error)==5 && db_count(error)==2 && db_kind(db_at(error,0))==2 && db_kind(db_at(error,1))==2 {db_last_error_details=error;db_last_error=db_word(db_at(error,1));return 0;}
+    if db_kind(error)==2 {db_last_error=db_word(error);return 0;}if db_kind(error)!=0 {db_last_error="Invalid database response.";return 0;}return db_at(reply,1);
 }
 fn db_error() {if !db_last_error {return "";}return db_last_error;}
 fn db_begin() {return db_word(db_rpc(db_request("begin")));}

@@ -46,6 +46,7 @@ def put(path,data):
     adb('shell','run-as',pkg,'sh','-c',"'cat > "+path+"'",data=data)
 
 def case(name,request):
+    request.setdefault('initial_permissions',dict.fromkeys(['internet','files_read','files_write','db_read','db_write','history','workers'],True))
     requests.append(name);request.setdefault('session',sid);path='files/test/'+name
     # Kill only between fixture operations, after a previous result is saved.
     # This also makes recovery deterministic if the model transport times out.
@@ -151,7 +152,9 @@ try:
     passed('Native VM returns bounded text views and decoded image snapshot metadata')
 
     if not args.media_only:
-        tap('Show VM result',True);tap('Open file: memo.txt');root=tree('text_view')
+        root=tree('collapsed_activity')
+        assert find(root,'Expand thinking') is not None and find(root,'Show VM result') is None
+        tap('Expand thinking',True);tap('Show VM result',True);tap('Open file: memo.txt');root=tree('text_view')
         assert any('ORBIT-6049' in n.get('text','') for n in root.iter('node'));shot('text_view');tap('Close preview')
         tap('Open image: sample.png');root=tree('image_view')
         assert find(root,'Full image: sample.png') is not None;shot('image_view');tap('Close preview')
@@ -164,15 +167,13 @@ try:
         put(workspace+'sample.png',png)
         passed('Image snapshots survive source replacement; invalid images fail without crashing')
 
-        tap('Menu');tap('Permissions');root=tree()
-        node=next(n for n in root.iter('node') if n.get('content-desc')=='Read workspace files' and n.get('checkable')=='true')
-        a,b,c,d=map(int,re.findall(r'\d+',node.get('bounds')));adb('shell','input','tap',(a+c)//2,(b+d)//2)
+        tap('Menu');tap('Permissions');tap('Deny Read workspace files')
         tap('Back to conversation')
         r=execute('views_denied','fn main(){view_image("sample.png");let e=db_error();db_io(0,1,e,db_len(e));return 0;}')
         assert r['stdout']=='Permission denied: files_read' and not r.get('views'),r
-        tap('Menu');tap('Permissions');tap('Read workspace files');tap('Back to conversation')
+        tap('Menu');tap('Permissions');tap('Allow Read workspace files');tap('Back to conversation')
         assert saved(sid)['permissions']['files_read']
-        passed('Read workspace files switch governs actual image viewing')
+        passed('Read workspace files Allow/Deny choices govern actual image viewing')
 
         if args.picker:
             put(workspace+filename,b'keep-original')

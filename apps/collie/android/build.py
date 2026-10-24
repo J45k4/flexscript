@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import shutil
 import subprocess
 import zipfile
@@ -102,6 +103,8 @@ def generate(out, compiler):
         ROOT / 'apps/collie/core/scheduler.flex',
         ROOT / 'apps/collie/core/checkpoint.flex',
         ROOT / 'apps/collie/core/recall.flex',
+        ROOT / 'apps/collie/core/hardware.flex',
+        ROOT / 'apps/collie/core/card-handler.flex',
         ROOT / 'apps/collie/providers/stream.flex',
         ROOT / 'apps/collie/providers/images.flex',
     ], transformed)
@@ -116,7 +119,7 @@ def generate(out, compiler):
                        else t[0] for t in TOKEN.finditer(text))
     declarations, functions = rewrite(declarations), rewrite(functions)
     functions = re.sub(r'(\bfn next\(\)\s*\{)', r'\1ca_compile_tick();', functions)
-    functions = functions.replace('vm_execute(main_index);', 'cv_execute(main_index);')
+    functions = functions.replace('vm_execute(main_index);', 'ca_execute(main_index);')
     globals_ = re.findall(r'\bglobal\s+([A-Za-z_]\w*)\s*=\s*([^;]+);', declarations)
     assert globals_ and len(globals_) == sum(t[0] == 'global' for t in TOKEN.finditer(declarations)), 'unsupported global declaration'
     stubs = '\n'.join('fn ca_disabled_' + name + '(' +
@@ -128,8 +131,27 @@ def generate(out, compiler):
     assert not (HERE / 'engine.flex').read_text().lstrip().startswith('import'), 'engine must use the shared flattened modules'
     globals_ += re.findall(r'\bglobal\s+([A-Za-z_]\w*)\s*=\s*([^;]+);', extra_globals)
     reset = 'fn ca_reset_globals(){\n' + '\n'.join(f'{n}={v};' for n,v in globals_) + '\n}\n'
-    guest = (HERE / 'guest-files.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/workers.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/memory.flex').read_text()
+    guest = (HERE / 'guest-files.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/workers.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/memory.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/hardware.flex').read_text()
+    guest += '\n' + (ROOT/'apps/collie/guest/usb-serial.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/nfc.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/uwb.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/camera.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/accessibility.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/ble.flex').read_text()
+    guest += '\n' + (ROOT/'apps/collie/guest/hardware-access.flex').read_text()
     embedded = 'fn ca_guest_extra(){return '+json.dumps(guest, ensure_ascii=False)+';}\n'
+    embedded += 'fn ca_card_guest(){return '+json.dumps((ROOT/'apps/collie/guest/card-handler.flex').read_text(),ensure_ascii=False)+';}\n'
+    signatures=re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/hardware.flex').read_text(),re.M)
+    serial_api={'serial_ports','serial_port','serial_open','serial_configure','serial_lines','serial_break','serial_read','serial_write','serial_status','serial_info','serial_close'}
+    signatures += [(name,params) for name,params in re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/usb-serial.flex').read_text(),re.M) if name in serial_api]
+    signatures += [(name,params) for name,params in re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/nfc.flex').read_text(),re.M) if name in {'ndef_record','ndef_encode','ndef_parse'}]
+    signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/uwb.flex').read_text(),re.M)
+    signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/camera.flex').read_text(),re.M)
+    signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/accessibility.flex').read_text(),re.M)
+    signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/ble.flex').read_text(),re.M)
+    signatures += [('hardware_restrictions','')]
+    api="Android hardware API. All results are typed db values; device_field finds a map field.\n"+"\n".join(name+"("+params+")" for name,params in signatures)
+    api += (ROOT/'apps/collie/guest/hardware-api.txt').read_text()
+    index="Android hardware function index. All results are typed db values. Detailed contracts: hardware_api_page(offset,limit1..32768) returns {text,total,next}; follow next until-1.\n"+"\n".join(name+"("+params+")" for name,params in signatures)
+    assert len(index.encode())<=32768, 'Hardware function index needs pagination before it exceeds one VM value'
+    embedded+='fn ca_hardware_index(){return '+json.dumps(index,ensure_ascii=False)+';}\n'
+    embedded+='fn ca_hardware_api(){return '+json.dumps(api,ensure_ascii=False)+';}\n'
+
     source = out / 'engine-generated.flex'
     source.write_text(declarations+'\n'+extra_globals+'\n'+functions+'\n'+stubs+'\n'+
                       reset+embedded+extra_functions+'\nfn main(){return 0;}\n')
@@ -197,24 +219,50 @@ def main():
     tools = sdk/'build-tools/36.1.0'
     android = sdk/'platforms/android-36/android.jar'
     assert android.is_file(), android
+    dependencies=runpy.run_path(str(HERE/'dependencies.py'))['prepare'](out,ROOT/'build/android-dependency-cache')
     classes, dex = out/'classes', out/'dex'
     # Deleted platform classes must not survive incremental APK builds.
     for directory in (classes, dex):
         if directory.exists(): shutil.rmtree(directory)
         directory.mkdir()
     java = lambda name: shutil.which(name,path=env['PATH'])
-    java_sources = sorted(HERE.glob('*.java'))
-    if args.debug: java_sources += sorted((ROOT/'apps/collie/tests/android').glob('*.java'))
-    run([java('javac'),'-source','8','-target','8','-classpath',android,
-         '-d',classes,*java_sources])
-    run([tools/'d8','--min-api','26','--lib',android,'--output',dex,*sorted(classes.rglob('*.class'))])
     manifest=out/'AndroidManifest.xml'
-    manifest.write_text((HERE/'AndroidManifest.xml').read_text().replace('android:debuggable="false"', 'android:debuggable="'+str(args.debug).lower()+'"'))
+    manifest_text=(HERE/'AndroidManifest.xml').read_text().replace('android:debuggable="false"', 'android:debuggable="'+str(args.debug).lower()+'"')
+    if args.debug:
+        manifest_text=manifest_text.replace('</application>', '<service android:name=".MidiLoopbackFixture" android:exported="true" android:permission="android.permission.BIND_MIDI_DEVICE_SERVICE"><intent-filter><action android:name="android.media.midi.MidiDeviceService" /></intent-filter><meta-data android:name="android.media.midi.MidiDeviceService" android:resource="@xml/midi_loopback_fixture" /></service></application>')
+    if args.debug: manifest_text=manifest_text.replace('</application>', '<service android:name=".HardwareHcePeerFixture" android:exported="false" android:process=":hce_fixture_peer" /></application>')
+    manifest.write_text(manifest_text)
     run([tools/'aapt2','compile','--dir',HERE/'res','-o',out/'resources.zip'])
-    run([tools/'aapt2','link','-I',android,'--manifest',manifest,out/'resources.zip',
+    resources=[]
+    for index,directory in enumerate(dependencies['resources']):
+        archive=out/('dependency-resources-'+str(index)+'.zip')
+        run([tools/'aapt2','compile','--dir',directory,'-o',archive]);resources.append(archive)
+    resources.append(out/'resources.zip')
+    if args.debug:
+        run([tools/'aapt2','compile','--dir',ROOT/'apps/collie/tests/android/res','-o',out/'test-resources.zip'])
+        resources.append(out/'test-resources.zip')
+    generated=out/'generated-r'
+    if generated.exists():shutil.rmtree(generated)
+    generated.mkdir()
+    resource_args=[]
+    for resource in resources:resource_args+=['-R',resource]
+    run([tools/'aapt2','link','-I',android,'--manifest',manifest,'--auto-add-overlay',
+         '--java',generated,'--extra-packages',':'.join(dependencies['packages']),*resource_args,
          '--version-code','1','--version-name','0.1.0','-o',out/'unsigned.apk'])
+    java_sources = sorted(HERE.glob('*.java'))+sorted(generated.rglob('*.java'))
+    if args.debug: java_sources += sorted((ROOT/'apps/collie/tests/android').glob('*.java'))
+    classpath=os.pathsep.join(map(str,[android,*dependencies['jars']]))
+    run([java('javac'),'-source','8','-target','8','-classpath',classpath,'-d',classes,*java_sources])
+    keep=out/'dependency-r8.pro'
+    keep.write_text('-dontobfuscate\n-keep class org.flexscript.collie.** { *; }\n'+
+                    '\n'.join(path.read_text() for path in dependencies['rules']))
+    run([java('java'),'-cp',tools/'lib/d8.jar','com.android.tools.r8.R8','--release',
+         '--min-api','26','--lib',android,'--pg-conf',keep,'--output',dex,
+         *sorted(classes.rglob('*.class')),*dependencies['jars']])
     with zipfile.ZipFile(out/'unsigned.apk','a',compression=zipfile.ZIP_STORED) as apk:
-        apk.write(dex/'classes.dex','classes.dex')
+        for path in sorted(dex.glob('classes*.dex')):apk.write(path,path.name)
+        for name,data in {**dependencies['assets'],**dependencies['licenses']}.items():
+            apk.writestr(name,data,compress_type=zipfile.ZIP_DEFLATED)
         apk.write(out/'libcollie.so','lib/arm64-v8a/libcollie.so')
         apk.write(out/'libcollie_ui.so','lib/arm64-v8a/libcollie_ui.so')
     run([tools/'zipalign','-f','-P','16','4',out/'unsigned.apk',out/'aligned.apk'])

@@ -72,6 +72,11 @@ Common properties:
   provide `imageSource` through the renderer platform adapter.
   The portable browser host permits images from its own origin, data URLs and
   blob URLs; it does not fetch arbitrary remote image sources.
+- `autocapitalize` belongs to `input`: `"none"` (the default), `"sentences"`,
+  `"words"`, or `"characters"`. Android and DOM adapters pass this hint to the
+  platform editor; they do not rewrite the value in Flexscript. Search and
+  identifiers should use `"none"`; chat can request `"sentences"`. Desktop
+  committed text remains unchanged.
 
 Unknown widgets and properties fail compilation. Portable views use explicit
 style properties; HTML tags and CSS classes remain in the Monolith HTML frontend.

@@ -6,9 +6,11 @@ are restored afterward; screenshots/reports stay under the specified build dir.
 """
 import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
+from collie_android_test_artifact import verify_installed_apk
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--serial',required=True);p.add_argument('--out',type=Path,default=Path('build/android-collie'))
 p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');args=p.parse_args()
+tested_apk=verify_installed_apk(args.adb,args.serial,args.out/'collie.apk')
 pkg='org.flexscript.collie';prefix='ui-nav-'+uuid.uuid4().hex[:10]
 out=args.out.resolve()/'ui-navigation';out.mkdir(parents=True,exist_ok=True);checks=[];requests=[];sessions=[]
 def adb(*command,data=None,check=True):
@@ -69,12 +71,12 @@ adb('shell','run-as',pkg,'mkdir','-p','files/test')
 try:
  for suffix in ('Alpha','Beta'):
   sid=prefix+'-'+suffix.lower();sessions.append(sid);case(sid,prefix+' '+suffix)
- tap('Message Collie');adb('shell','input','text','keep%smy%sdraft');time.sleep(.4)
+ tap('Message Collie');adb('shell','input','text','keep%smy%sdraft');time.sleep(.4);draft=value('Message Collie');assert draft.casefold()=='keep my draft'
  tap('Conversations');find('Search conversations');shot('conversations')
  edit('Search conversations',prefix+' Alpha');find(prefix+' Alpha')
  assert not any(n.get('text')==prefix+' Beta' for n in tree().iter('node'))
  shot('conversation-search');tap('Back to conversation')
- assert value('Message Collie')=='keep my draft'
+ assert value('Message Collie')==draft
  passed('Conversations open a separate shared screen; search filters real saved sessions and preserves the composer draft')
  tap('Conversations');tap(prefix+' Alpha');find(prefix+' Alpha reply')
  assert pref('session')==sessions[0]
@@ -106,6 +108,7 @@ finally:
  for sid in sessions:adb('shell','run-as',pkg,'rm','-rf','files/workspaces/'+sid)
  for name in requests:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
  adb('shell','am','start','-n',pkg+'/.MainActivity')
-report={'checks':checks,'count':len(checks),'serial':args.serial,'preferences_restored':True}
+assert verify_installed_apk(args.adb,args.serial,args.out/'collie.apk')==tested_apk
+report={'checks':checks,'count':len(checks),'serial':args.serial,'preferences_restored':True,'apk_sha256':tested_apk}
 (out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))

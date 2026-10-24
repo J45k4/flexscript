@@ -170,10 +170,12 @@ final class UiRenderer extends FrameLayout {
                     EditText input=(EditText)view;
                     input.setHint(node.text);
                     input.setHintTextColor(color(props,"hint_color",Color.GRAY));
-                    String options=props.optString("single_line")+":"+props.optString("ime");
+                    String caps=props.optString("autocapitalize","none");
+                    String options=props.optString("single_line")+":"+props.optString("ime")+":"+caps;
                     if (!options.equals(node.inputOptions)) {
                         input.setSingleLine(number(props,"single_line",0)>0);
-                        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES |
+                        int capital=caps.equals("sentences")?android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES:caps.equals("words")?android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS:caps.equals("characters")?android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS:0;
+                        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | capital |
                                            (number(props,"single_line",0)>0?0:android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE));
                         input.setImeOptions((props.optString("ime").equals("send")?EditorInfo.IME_ACTION_SEND:EditorInfo.IME_ACTION_DONE)|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
                         node.inputOptions=options;

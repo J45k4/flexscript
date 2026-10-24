@@ -22,7 +22,7 @@ fn sg_rpc(request){
     let kind="progress";if h_equal(op,"agent_ask"){kind="feedback";}j_set(sg_signal,"kind",j_string(kind));return db_int(sg_count);
 }
 fn sg_valid_yield(reason){
-    if !sg_signal{return 0;}let kind=cj_text(sg_signal,"kind");return (reason== -1 && h_equal(kind,"progress")) || (reason== -2 && h_equal(kind,"feedback"));
+    if !sg_signal{return 0;}let kind=cj_text(sg_signal,"kind");return (reason== -1 && h_equal(kind,"progress")) || (reason== -2 && h_equal(kind,"feedback")) || (reason== -3 && (h_equal(kind,"permission") || h_equal(kind,"platform_permission")));
 }
 // Only completed parent items enter the feedback branch. The original tool
 // call remains pending until the suspended program eventually finishes.

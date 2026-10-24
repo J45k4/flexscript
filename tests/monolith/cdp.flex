@@ -4,12 +4,68 @@ import "../../scripts/lib/json.flex";
 global cd_id=0;
 global cd_port=0;
 global cd_chrome=0;
-fn cd_http(path) {
-    let fd=tcp_connect("127.0.0.1",h_int(cd_port),3000);h_assert(fd>=0,"DevTools HTTP connection failed");
-    let request=h_cat3("PUT ",path," HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
-    h_assert(tcp_write(fd,request,h_len(request),net_now()+3000),"DevTools request failed");let b=h_buffer();let scratch=h_take(4096);
-    while 1 {let n=tcp_read(fd,scratch,4096,net_now()+3000);if n<=0 {h_close(fd);let text=h_data(b);let end=h_find(text,"\r\n\r\n");h_assert(end>=0 && h_starts(text,"HTTP/1.1 200"),text);return text+end+4;}h_append(b,scratch,n);}return 0;
+// Chromium creates this file before its first line is necessarily written.
+// A missing/partial/invalid line is not readiness; the caller owns the deadline.
+fn cd_port_file(path) {
+    let fd=syscall(2,path,0x80000,0,0,0,0);if fd<0{return 0;}
+    let text=h_take(65);let n=syscall(0,fd,text,64,0,0,0);h_close(fd);
+    if n<=0{return 0;}store8(text+n,0);
+    let end=h_find(text,"\n");if end<1 || end>5{return 0;}
+    let port=0;let i=0;
+    while i<end{let c=load8(text+i);if c<48 || c>57{return 0;}port=port*10+c-48;i=i+1;}
+    if port<1 || port>65535{return 0;}return port;
 }
+fn cd_http_failure(fd,path,reason,b) {
+    if fd>=0{h_close(fd);}let preview=h_size(b);if preview>2048{preview=2048;}
+    h_die(h_cat3("DevTools HTTP ",reason,h_cat3(" for ",path,h_cat3("; response bytes=",h_int(h_size(b)),h_cat("; response=",h_slice(h_data(b),preview))))));return 0;
+}
+fn cd_http_header(line,size,name){
+    let n=h_len(name);if size<n+1 || load8(line+n)!=58{return 0;}let i=0;
+    while i<n{let c=load8(line+i);if c>=65 && c<=90{c=c+32;}if c!=load8(name+i){return 0;}i=i+1;}return 1;
+}
+fn cd_http_length(fd,path,b,end){
+    let text=h_data(b);if end>16384 || !h_starts(text,"HTTP/1.1 200 "){return cd_http_failure(fd,path,"invalid status/header",b);}
+    let at=h_find(text,"\r\n")+2;let length=-1;
+    while at<end{
+        let n=h_find(text+at,"\r\n");let colon=h_find(text+at,":");
+        if n<1 || at+n>end || colon<1 || colon>=n{return cd_http_failure(fd,path,"invalid header",b);}
+        if cd_http_header(text+at,n,"transfer-encoding"){return cd_http_failure(fd,path,"unsupported transfer encoding",b);}
+        if cd_http_header(text+at,n,"content-length"){
+            if length>=0{return cd_http_failure(fd,path,"duplicate Content-Length",b);}let i=colon+1;
+            while i<n && (load8(text+at+i)==32 || load8(text+at+i)==9){i=i+1;}
+            let digits=0;length=0;
+            while i<n && load8(text+at+i)>=48 && load8(text+at+i)<=57{
+                let digit=load8(text+at+i)-48;if length>(1048576-digit)/10{return cd_http_failure(fd,path,"Content-Length exceeds 1 MiB",b);}
+                length=length*10+digit;digits=digits+1;i=i+1;
+            }
+            while i<n && (load8(text+at+i)==32 || load8(text+at+i)==9){i=i+1;}
+            if !digits || i!=n{return cd_http_failure(fd,path,"invalid Content-Length",b);}
+        }
+        at=at+n+2;
+    }return length;
+}
+fn cd_http_timeout(path,ms) {
+    h_assert(ms>0 && ms<=10000,"invalid DevTools HTTP deadline");let deadline=net_now()+ms;let b=h_buffer();
+    let connect_ms=ms;if connect_ms>3000{connect_ms=3000;}
+    let fd=tcp_connect("127.0.0.1",h_int(cd_port),connect_ms);if fd<0{return cd_http_failure(fd,path,"connection failed",b);}
+    let request=h_cat3("PUT ",path," HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+    if !tcp_write(fd,request,h_len(request),deadline){return cd_http_failure(fd,path,"request send failed",b);}let scratch=h_take(4096);let header=-1;let length=-1;
+    while 1 {
+        // Drain owned browser pipes while its main thread serves this request.
+        // EAGAIN is not EOF, and a slow stream never resets the total deadline.
+        if cd_chrome{h_pump(cd_chrome,0);}if net_now()>=deadline{return cd_http_failure(fd,path,"read timed out",b);}
+        let n=syscall(0,fd,scratch,4096,0,0,0);
+        if n>0{
+            if h_size(b)+n>1048576{return cd_http_failure(fd,path,"response exceeds 1 MiB",b);}h_append(b,scratch,n);
+            if header<0{header=h_find(h_data(b),"\r\n\r\n");if header>=0{length=cd_http_length(fd,path,b,header);}else if h_size(b)>16384{return cd_http_failure(fd,path,"header exceeds 16 KiB",b);}}
+            if header>=0 && length>=0{let bytes=h_size(b)-header-4;if bytes>length{return cd_http_failure(fd,path,"body exceeds Content-Length",b);}if bytes==length{h_close(fd);return h_data(b)+header+4;}}
+        }
+        else if n==0{if header<0{return cd_http_failure(fd,path,"invalid response or early EOF",b);}if length>=0{return cd_http_failure(fd,path,"truncated Content-Length body",b);}h_close(fd);return h_data(b)+header+4;}
+        else if n==-11 || n==-4{h_sleep(5);}
+        else{return cd_http_failure(fd,path,h_cat("read failed, errno=",h_int(0-n)),b);}
+    }return 0;
+}
+fn cd_http(path){return cd_http_timeout(path,10000);}
 fn cd_read(fd,p,n) {
     let end=net_now()+10000;let done=0;
     while done<n {if cd_chrome {h_pump(cd_chrome,0);}let k=syscall(0,fd,p+done,n-done,0,0,0);

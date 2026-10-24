@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.flexscript.collie.uiprobe">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
+    <application android:label="Collie owned UI test probe" android:debuggable="true" android:allowBackup="false" />
+    <instrumentation android:name=".UiProbe" android:targetPackage="org.flexscript.collie.uiprobe" />
+</manifest>

@@ -28,6 +28,12 @@ jobs:
 
       - name: Install verification dependencies
         run: |
+          # The Azure mirror can stream large font packages too slowly to fit
+          # this job's deadline. Keep the same signed Ubuntu repositories and
+          # packages, using the main archive on runners with mirrorlist sources.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
           sudo apt-get update
           sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libgdk-pixbuf-2.0-0 libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 qemu-user lld
           # Ubuntu's default unconfined user-namespace policy denies the
@@ -92,10 +98,32 @@ jobs:
 
       - name: Verify Android worker broker and VM continuation checkpoints under ARM64 QEMU
         run: |
+          build/stage2 apps/collie/tests/hardware-core.flex -o build/test-collie-hardware-core
+          build/test-collie-hardware-core
+          build/stage2 apps/collie/tests/nfc.flex -o build/test-collie-nfc
+          build/test-collie-nfc
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/nfc.flex
+          build/stage2 apps/collie/tests/uwb.flex -o build/test-collie-uwb
+          build/test-collie-uwb
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/uwb.flex
+          build/stage2 apps/collie/tests/camera.flex -o build/test-collie-camera-records
+          build/test-collie-camera-records
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/camera.flex
+          build/stage2 apps/collie/tests/usb-serial.flex -o build/test-collie-usb-serial
+          build/test-collie-usb-serial
+          build/stage2 run --interpret apps/collie/tests/usb-serial.flex
+          build/stage2 apps/collie/tests/guest-copy.flex -o build/test-collie-guest-copy
+          build/test-collie-guest-copy
+          build/stage2 run --interpret --fuel=50000000 apps/collie/tests/guest-copy.flex
           python3 scripts/build-collie-android.py --compiler build/stage2 --native-only --out build/android-worker-tests
           python3 scripts/test-collie-android.py --out build/android-worker-tests
           python3 scripts/test-collie-workers.py --out build/android-worker-tests
           python3 scripts/test-collie-signals.py --out build/android-worker-tests
+          build/stage2 scripts/test-collie-hardware-reference.flex -o build/test-collie-hardware-reference
+          build/test-collie-hardware-reference --out build/android-worker-tests
+          build/stage2 scripts/test-collie-card-handler.flex -o build/test-collie-card-handler
+          build/test-collie-card-handler --out build/android-worker-tests
+          python3 scripts/test-collie-lazy-permissions.py --out build/android-worker-tests
           python3 scripts/test-collie-recall.py --out build/android-worker-tests
           python3 scripts/test-collie-thinking.py --out build/android-worker-tests
           python3 scripts/test-collie-core.py --out build/android-worker-tests
@@ -112,6 +140,7 @@ jobs:
 
       - name: Test installed libraries and Monolith native and browser apps
         run: |
+          python3 scripts/test-cdp-http.py --compiler build/stage2
           build/tools/test-libraries build/stage2 --report build/library-tests.json
           build/tools/build-monolith --compiler build/stage2
           build/test-monolith-syntax build/stage2 --report build/monolith-syntax-tests.json

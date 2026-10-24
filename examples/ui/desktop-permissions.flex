@@ -8,7 +8,7 @@ view app_view(){use permission_screen();}
 fn dp_update(event){
     cu_entries=0;let policy=j_parse(dp_policy);let request=j_object();j_set(request,"policy",policy);j_set(request,"reset",j_bool(!event));
     let next=j_parse(dp_policy);
-    if event{j_set(request,"event",event);let key=j_s(event,"action");if j_get(next,key){let allowed=j_value(j_get(next,key))==0;if h_equal(j_s(event,"type"),"change"){allowed=j_value(j_need(event,"value"));}j_set(next,key,j_bool(allowed));}j_set(request,"next_policy",next);}
+    if event{j_set(request,"event",event);let key=j_s(event,"action");if j_get(next,key){let value=cp_choice(key,j_s(event,"key"));if value{j_set(next,key,value);}}j_set(request,"next_policy",next);}
     let result=cu_permissions(request);h_assert(!j_get(result,"error"),ud_string(result,"error"));ui_desktop_apply(result);let text=j_dump(next);h_assert(h_len(text)<4096,"Permission state limit");h_copy(dp_policy,text,h_len(text)+1);
     let back=h_equal(ud_string(j_need(result,"command"),"kind"),"back");m_reset(0);h_reset(0);return !back;
 }

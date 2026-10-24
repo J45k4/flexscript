@@ -5,7 +5,9 @@ fn suite(compiler) {
     let current=h_trim(h_read("VERSION"));
     t_assert(h_equal(version,"flexscript 0.0.1\n") || h_equal(version,h_cat3("flexscript ",current,"\n")),"compiler version");
     let help=h_check(h_run(h_args(t_compiler,"--help",0,0,0,0)),0,0);
-    t_assert(h_starts(h_out(help),"Usage: flexscript <source.flex> -o <binary>\n"),"compiler help");
+    // Additional target notes may precede usage (including in PR merge builds).
+    // Keep the usage contract checked for both the frozen seed and new stages.
+    t_assert(h_has(h_out(help),"Usage: flexscript <source.flex> -o <binary>\n"),h_cat3("compiler help: ",t_compiler,h_cat("\nstdout: ",h_out(help))));
     h_check(h_run(h_args(t_compiler,0,0,0,0,0)),1,0);
     t_checks=t_checks+1;
     let cases=j_parse(h_read("tests/cases.json"));

@@ -15,7 +15,7 @@ view conversations_screen(){
     column("conversations",height:-1,background:"#10151a"){
         use cu_header("conversations","Conversations","Back to conversation");
         row("conversations-controls",padding_x:18,gap:8){
-            input("conversations-query",text:"Search conversations",description:"Search conversations",value:cu_s("query"),action:"query",weight:1,single_line:1,ime:"done",size:15,color:"#edf2ed",hint_color:"#8e9d9f",padding:12,background:"#191f25",radius:16);
+            input("conversations-query",autocapitalize:"none",text:"Search conversations",description:"Search conversations",value:cu_s("query"),action:"query",weight:1,single_line:1,ime:"done",size:15,color:"#edf2ed",hint_color:"#8e9d9f",padding:12,background:"#191f25",radius:16);
             button("conversations-clear",text:"×",description:"Clear search",action:"clear_search",align:"center",width:42,height:44,color:"#c5e3ae",size:22);
             button("conversations-new",text:"＋",description:"New conversation",action:"new_session",align:"center",width:44,height:44,color:"#c5e3ae",size:24);
         }
@@ -91,8 +91,16 @@ view model_screen(){
         column("model-spacer",weight:1,action:"back");
         column("model-panel",padding:20,gap:14,background:"#191f25",radius:24){
             text("model-title",text:"Choose a model",size:22,font:"medium",color:"#edf2ed");
-            input("model-input",text:"Model",description:"Model",value:cu_s("model_input"),action:"model_input",single_line:1,color:"#edf2ed",hint_color:"#8e9d9f",size:16,padding:12,background:"#232c33",radius:12);
+            input("model-input",autocapitalize:"none",text:"Model",description:"Model",value:cu_s("model_input"),action:"model_input",single_line:1,color:"#edf2ed",hint_color:"#8e9d9f",size:16,padding:12,background:"#232c33",radius:12);
             if h_len(cu_s("model_error")){text("model-error",text:cu_s("model_error"),color:"#f1aaa6",size:13);}
+            text("model-network-label",text:"Model connection",size:14,color:"#8e9d9f");
+            text("model-network-detail",text:"Choose the internet connection Collie uses. Programs select their own networks separately.",size:12,color:"#8e9d9f");
+            row("model-network-choices",gap:6){
+                button("model-network-default",text:"Auto",action:"model_network",action_id:0,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("default"),radius:10,align:"center");
+                button("model-network-wifi",text:"Wi-Fi",action:"model_network",action_id:1,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("wifi"),radius:10,align:"center");
+                button("model-network-cellular",text:"Cellular",action:"model_network",action_id:2,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("cellular"),radius:10,align:"center");
+                button("model-network-ethernet",text:"Ethernet",action:"model_network",action_id:3,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("ethernet"),radius:10,align:"center");
+            }
             use cu_action("model-save","Save","save_model",0);
             use cu_action("model-cancel","Cancel","back",0);
         }

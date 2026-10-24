@@ -64,3 +64,5 @@ fn cu_worker_subtitle(){let selected=cu_worker();if selected{return m_cat(m_cat(
 
 fn cu_context_estimate(){if cu_n("estimated"){return "~";}return "";}
 fn cu_progress(){let total=cu_n("total");if total<1{return 0;}let value=cu_n("used")*1000/total;if value>1000{value=1000;}return value;}
+
+fn cu_model_network_bg(mode){let current=cu_s("model_network");if !h_len(current){current="default";}if h_equal(current,mode){return "#354b3a";}return "#242d34";}

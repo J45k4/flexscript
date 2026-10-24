@@ -44,7 +44,7 @@ view chat_screen(){
             }
             row("composer-input-row",padding:6,gap:4,background:"#191f25",radius:26,border_width:1,border_color:"#2c353b"){
                 button("composer-attach",text:"＋",description:"Attach file",action:"attachments",enabled:!cu_n("busy"),align:"center",width:44,height:44,color:"#c5e3ae",size:24);
-                input("composer-draft",text:"Message Collie…",description:"Message Collie",value:cu_s("draft"),action:"draft",weight:1,max_lines:5,min_lines:1,ime:"send",padding:10,size:16,color:"#edf2ed",hint_color:"#8e9d9f");
+                input("composer-draft",autocapitalize:"sentences",text:"Message Collie…",description:"Message Collie",value:cu_s("draft"),action:"draft",weight:1,max_lines:5,min_lines:1,ime:"send",padding:10,size:16,color:"#edf2ed",hint_color:"#8e9d9f");
                 button("composer-send",text:cu_send_icon(),description:cu_send_label(),action:"send",enabled:cu_send_enabled(),align:"center",width:44,height:44,color:"#10151a",background:cu_send_color(),radius:22,size:22);
             }
         }

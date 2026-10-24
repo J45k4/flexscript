@@ -70,6 +70,7 @@ class FlexscriptUi {
     el.disabled = props.enabled === 'false';
     if (kind === 'input') {
       el.placeholder = node.text;
+      el.autocapitalize = ['sentences', 'words', 'characters'].includes(props.autocapitalize) ? props.autocapitalize : 'none';
       el.rows = Number(props.min_lines ?? 1);
       el.style.resize = 'none';
       if (prior.value !== props.value && el.value !== (props.value ?? '')) el.value = props.value ?? '';
