@@ -20,9 +20,17 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
   dex=apk.read('classes.dex')
-  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareScreenChecks','HardwareHcePeerFixture','UiRendererChecks']:
+  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareHcePeerFixture','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
   fixture_resource=any('midi_loopback_fixture' in name for name in apk.namelist());assert fixture_resource==debug,(label,'test resource')
+ accessibility=next(service for service in sections(manifest,'service') if '.CollieAccessibilityService' in service)
+ assert 'android.permission.BIND_ACCESSIBILITY_SERVICE' in accessibility and re.search(r':exported[^=]*=true',accessibility),(label,'Android-only accessibility binding')
+ assert 'android.accessibilityservice.AccessibilityService' in accessibility and 'android.accessibilityservice' in accessibility,(label,'accessibility service declaration')
+ xml=subprocess.check_output([a.aapt2,'dump','xmltree',str(path),'--file','res/xml/accessibility.xml']).decode()
+ for attribute in ['canRetrieveWindowContent','canPerformGestures']:assert re.search(':'+attribute+r'[^=]*=true',xml),(label,attribute)
+ assert 'accessibilityEventTypes' not in xml,(label,'no initial event subscription')
+ assert 'FLAG_DONT_SUPPRESS' not in manifest and not list(sections(manifest,'instrumentation')),(label,'no UI probe instrumentation in Collie')
+ with zipfile.ZipFile(path) as apk:assert b'Lorg/flexscript/collie/uiprobe/UiProbe;' not in apk.read('classes.dex'),(label,'UI probe remains separate test APK')
  projection=next(service for service in sections(manifest,'service') if '.CollieProjectionService' in service)
  assert re.search(r':exported[^=]*=false',projection),(label,'projection private service')
  assert re.search(r'foregroundServiceType[^=]*=0x0*a0\b',projection),(label,'projection/media microphone types')

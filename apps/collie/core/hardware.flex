@@ -325,6 +325,22 @@ fn hw_operations(){
     hw_operation(rows,"screen_video_pause","hardware_handle",1,1);
     hw_operation(rows,"screen_video_resume","hardware_handle",1,1);
     hw_operation(rows,"screen_video_seek","hardware_handle",2,2);
+    hw_operation(rows,"accessibility_info","accessibility",0,0);
+    hw_operation(rows,"accessibility_open","accessibility",3,3);
+    hw_operation(rows,"accessibility_windows","hardware_handle",4,4);
+    hw_operation(rows,"accessibility_root","hardware_handle",2,2);
+    hw_operation(rows,"accessibility_node","hardware_handle",2,2);
+    hw_operation(rows,"accessibility_children","hardware_handle",4,4);
+    hw_operation(rows,"accessibility_parent","hardware_handle",2,2);
+    hw_operation(rows,"accessibility_node_close","hardware_handle",2,2);
+    hw_operation(rows,"accessibility_clear","hardware_handle",1,1);
+    hw_operation(rows,"accessibility_actions","hardware_handle",4,4);
+    hw_operation(rows,"accessibility_text","hardware_handle",5,5);
+    hw_operation(rows,"accessibility_action","hardware_handle",4,4);
+    hw_operation(rows,"accessibility_global_actions","hardware_handle",3,3);
+    hw_operation(rows,"accessibility_global_action","hardware_handle",2,2);
+    hw_operation(rows,"accessibility_gesture","hardware_handle",3,3);
+    hw_operation(rows,"accessibility_gesture_state","hardware_handle",2,2);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

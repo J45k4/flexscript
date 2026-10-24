@@ -356,3 +356,21 @@ fn screen_video_stop(video){let r=db_request("screen_video_stop");db_add(r,db_te
 fn screen_video_pause(video){let r=db_request("screen_video_pause");db_add(r,db_text(video));return db_rpc(r);}
 fn screen_video_resume(video){let r=db_request("screen_video_resume");db_add(r,db_text(video));return db_rpc(r);}
 fn screen_video_seek(video,offset){let r=db_request("screen_video_seek");db_add(r,db_text(video));db_add(r,db_int(offset));return db_rpc(r);}
+
+// Explicitly user-enabled Android accessibility service and owned SDK references.
+fn accessibility_info(){let r=db_request("accessibility_info");return db_rpc(r);}
+fn accessibility_open(mask,packages,notification_timeout_ms){let r=db_request("accessibility_open");db_add(r,db_int(mask));db_add(r,packages);db_add(r,db_int(notification_timeout_ms));return db_rpc(r);}
+fn accessibility_windows(session,display,offset,limit){let r=db_request("accessibility_windows");db_add(r,db_text(session));db_add(r,db_int(display));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn accessibility_root(session,window){let r=db_request("accessibility_root");db_add(r,db_text(session));db_add(r,db_int(window));return db_rpc(r);}
+fn accessibility_node(session,node){let r=db_request("accessibility_node");db_add(r,db_text(session));db_add(r,db_text(node));return db_rpc(r);}
+fn accessibility_children(session,node,offset,limit){let r=db_request("accessibility_children");db_add(r,db_text(session));db_add(r,db_text(node));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn accessibility_parent(session,node){let r=db_request("accessibility_parent");db_add(r,db_text(session));db_add(r,db_text(node));return db_rpc(r);}
+fn accessibility_node_close(session,node){let r=db_request("accessibility_node_close");db_add(r,db_text(session));db_add(r,db_text(node));return db_rpc(r);}
+fn accessibility_clear(session){let r=db_request("accessibility_clear");db_add(r,db_text(session));return db_rpc(r);}
+fn accessibility_actions(session,node,offset,limit){let r=db_request("accessibility_actions");db_add(r,db_text(session));db_add(r,db_text(node));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn accessibility_text(session,node,field,offset,limit){let r=db_request("accessibility_text");db_add(r,db_text(session));db_add(r,db_text(node));db_add(r,db_int(field));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn accessibility_action(session,node,action,arguments){let r=db_request("accessibility_action");db_add(r,db_text(session));db_add(r,db_text(node));db_add(r,db_int(action));db_add(r,arguments);return db_rpc(r);}
+fn accessibility_global_actions(session,offset,limit){let r=db_request("accessibility_global_actions");db_add(r,db_text(session));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn accessibility_global_action(session,action){let r=db_request("accessibility_global_action");db_add(r,db_text(session));db_add(r,db_int(action));return db_rpc(r);}
+fn accessibility_gesture(session,strokes,display){let r=db_request("accessibility_gesture");db_add(r,db_text(session));db_add(r,strokes);db_add(r,db_int(display));return db_rpc(r);}
+fn accessibility_gesture_state(session,gesture){let r=db_request("accessibility_gesture_state");db_add(r,db_text(session));db_add(r,db_text(gesture));return db_rpc(r);}

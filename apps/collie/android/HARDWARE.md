@@ -37,7 +37,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Biometrics | system authentication result only | SDK availability, owned system prompts and cancellation implemented | 51 enrolled/unenrolled SDK checks passed, including real fingerprint/PIN success, cancellation, expiry, late success and live revocation; physical/older-device checks pending |
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
 | Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | one-use consent/tickets, foreground projection service, bounded RGBA planes and silent/microphone MP4 SDK bindings implemented; further session/lifecycle gates below | 38 real headless Android checks passed for chooser approval/denial, exact pixels/MP4 bytes, hidden Activity frames and screen-lock Stop; selected-app/older-device/physical and additional lifecycle gates pending |
-| Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | pending | pending |
+| Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | Android-owned service enablement, scoped SDK node/window/event/action bindings and bounded gesture transport implemented; further lifecycle/SDK gates below | 27 actual headless Android checks passed for real Settings consent, tree/text/action/touch effects, resource ownership and delayed callback cleanup; physical/older-device and remaining gates pending |
 | Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | 29 real Android picker/provider/lifecycle checks passed; full-size binary data, asset byte ranges, restart and both revocation layers verified; provider copy/move/remove, actual virtual conversion and physical removable/cloud providers pending |
 | Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | pending capability reporting | pending |
 
@@ -2307,3 +2307,169 @@ The screen script uses the owned biometric emulator's public fixture PIN135790
 for its actual screen-lock check; it never changes credentials or enrollment.
 Do not target a personal physical phone with that fixture. The emulator's
 reported success remains emulator evidence, not physical-device verification.
+
+
+MediaProjection compiler/application CI
+[40050271595](https://github.com/J45k4/flexscript/actions/runs/40050271595) passed
+for `2e4c022fa463071c025b51df06b9be28aa2a1991`; this is separate from all remaining
+screen/hardware/device gates.
+
+## Accessibility service, UI nodes, actions and gestures batch
+
+The accessibility adapter adds16 typed SDK operations and6 portable guest
+helpers. The sole model tool remains `flexscript`. Traversal, node selection,
+action arguments and gesture construction are ordinary Flexscript code; Java
+owns Android SDK references, callback copies and lifecycle/resource bounds.
+The already existing lazy `accessibility` grant is reused; policy count stays31.
+No secure setting is written, service manually bound or Android approval
+manufactured by the application. The actual user must enable **Collie device
+control** in Android Settings and accept the system confirmation. Returning
+without enabling it resumes the original VM call as a remembered Collie denial.
+
+`accessibility_info` reports actual enabled-service membership, connection and
+SDK capabilities. `accessibility_open(mask,packages,notification_timeout_ms)`
+yields for Android Settings when needed and returns an owned session. Mask-1
+selects all events; packages is an ordinary list of exact names, empty for all.
+Four sessions include cleanup still pending. The Android service itself remains
+user-owned after a session closes; it is not silently disabled or enabled.
+Configuration aggregates live subscriptions through bounded SDK workers.
+Closing the last session sets actual SDK event types to zero; the idle service
+does not copy events into conversation state. Each session separately filters
+node packages and copied events. These filters do not constrain global actions
+or gesture coordinates, which operate on the device screen.
+
+`accessibility_windows`, `accessibility_root`, `accessibility_node`,
+`accessibility_children/parent/actions/text/node_close` and
+`accessibility_clear` expose current SDK data through bounded pages and opaque,
+session-owned node IDs. Android11+ supports non-default displays. Nodes retain
+actual SDK objects outside VM snapshots; at most256 references/session include
+recycle pending. Tokens expire after20s idle and invalidate on observed window
+changes, explicit close/clear, service disconnect and owning conversation
+cleanup. Each node refresh uses the SDK and reports stale nodes explicitly.
+This is a live tree, not an atomic screen snapshot. A missing SDK root is typed
+null: use `db_kind(root)` before treating it as a text node ID.
+
+Metadata includes actual bounds, view/package/class identifiers and control
+flags. Text previews cap4096 UTF-16 units with a truncation flag;
+`accessibility_text` pages the actual value up to1Mi UTF-16 units, using bounded
+2048-unit pages and explicit Unicode surrogate-boundary checks. Password and
+Android14+ sensitive-node text is redacted in both metadata and text pages.
+Events copy SDK types/timestamps/package/window and bounded text/scroll/selection
+metadata, with truncation/redaction and the shared128-event overflow protocol.
+Callbacks never enter paused guest memory.
+
+`accessibility_action` accepts only an SDK-advertised node action ID and bounded
+typed primitive Bundle arguments. `accessibility_global_actions/global_action`
+query/call Android's public system actions. `accessibility_argument`,
+`accessibility_click` and `accessibility_set_text` are guest composition.
+Results report SDK acceptance separately from proof that the UI actually changed.
+
+`accessibility_gesture` accepts bounded stroke/path lists; guest helpers build
+points, strokes and taps. Limits follow actual SDK stroke/duration bounds,
+with128 points/stroke and512 total points. One Collie gesture may be pending
+because Android injection shares one device input stream. Gesture tokens retain
+16 bounded result records; `accessibility_gesture_state` and copied real SDK
+callbacks distinguish queued/dispatched/completed/cancelled/timeout. A missing
+callback deadline does not manufacture completion or free the injection slot.
+Already accepted Android gestures have no per-request cancellation handle:
+local close invalidates the session immediately while retaining its pending
+lease until actual callback/service disconnection. Late callbacks do not revive
+closed handles or publish late success. SDK result handlers are separate from
+the UI thread so cleanup remains responsive with callback delivery delayed.
+Deadline installation shares the callback state lock, so a completion arriving
+before dispatch returns cannot leave a new deadline queued afterward.
+
+27 actual Android checks pass on the exact installed artifact:
+
+- Real Collie first-use approval and the actual Android Settings switch/full
+  control confirmation, plus declining by leaving Settings without enabling.
+- An actual system-bound service and current root/child traversal through the VM.
+- Independently retained live widget text matches every Unicode page beyond the
+  metadata preview. Actual set-text and node-click calls change real widgets.
+- Real framework click events cross the VM event queue. VM-selected bounds and
+  actual dispatchGesture completion produce a second independent widget click.
+- A real global Back action dismisses an owned dialog, with observation of the
+  actual UI completion rather than acceptance alone. Current SDK window/system
+  action inventories are returned as bounded VM pages.
+- A separate package filter rejects another package's root/window inventory;
+  foreign workspace lookup fails. Actual password widgets are either withheld
+  by Android or have redacted text through the bridge.
+- Cache clear makes IDs stale. Four actual sessions work and the fifth fails.
+- Delaying the actual SDK gesture-result handler retains a real accepted gesture
+  and rejects another request. UI-thread close returns while retaining capacity;
+  the delayed real callback releases it without reviving the session or events.
+- Closing all sessions removes SDK event subscriptions while preserving the
+  user's OS enablement. A fresh session reuses that actual enablement. Actual
+  Android service disable disconnects sessions and invalidates owned handles.
+
+The first UI inspector suppressed other accessibility services (UiAutomation's
+Android default), invalidating the handle under test. Tests now use a separate
+owned instrumentation APK with `FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES`.
+It is not packaged in Collie, uses no service-enable shortcut and adopts no
+shell permission identity. The probe waits for a real SDK root through bounded
+window transitions. Actual app and probe APK bytes are guarded. A traversal
+fixture also needed typed-null guards, and global Back completion needed an
+actual observed-UI wait. Failed runs are not counted as verification.
+
+Cold restart exposed a stale Settings activity in the owned Collie task after
+a failed test. The suite now stops the old app process before clearing only its
+owned task, and restores the original conversation using one fresh intent.
+This prevents old Activity teardown from cancelling a new test program and
+leaves a clean foreground task for subsequent suites. The separate UI probe,
+owned widgets/workspaces and OS service enablement are removed/restored.
+Original conversation messages and policy are compared before/after.
+Production multi-Activity/settings-return recovery remains an explicit gate.
+
+Artifacts: debug `build/android-accessibility/collie.apk` is7,279,903 bytes
+(7.280MB/6.943MiB), SHA256
+`37bd0093153353df564f1cb82e3339d1ae014d97e09505304121cbef5ab3b594`;
+non-debug `build/android-accessibility-release/collie.apk` is7,050,448 bytes
+(7.050MB/6.724MiB), SHA256
+`53095043be447d354775af6766320998436ecf2b32eff57ca6b17865f9412d04`.
+The separate test probe digest is
+`b2af1888e78aa7a58118e5f2d4ce01529c7f60026785da1b10b93251cad6cad9`.
+Builds and packaging checks pass. The accessibility service is protected by
+BIND_ACCESSIBILITY_SERVICE, with checked retrieve-content/gesture capability
+metadata and no initial XML event subscription. All debug fixtures are absent
+from non-debug; the separate probe/instrumentation is absent from both Collie
+APKs. Production Java, generated Flexscript and native engine/test bytes match
+between builds. Shared32KiB codec/registry,9 core groups and15 native lazy groups
+covering20 first-use gates pass.
+
+The API-reference verifier was strengthened: it previously explicitly denied
+only a selected subset of grants. It now obtains the actual31-key policy from
+the native shared core and denies every key before reading all76,247 detailed
+reference bytes and the12,109-byte index through bounded real VM RPC pages.
+All4 reference checks pass. Earlier reports should not be interpreted as this
+stronger all31-denied proof. On this same exact installed debug digest,10 Android
+lazy-permission groups,8 VPN/TUN scenarios and38 screen-capture checks pass after
+the task cleanup correction above. Every report guards installed APK bytes and
+restores original conversation/policy and owned fixture state.
+
+Remaining accessibility requirements are open:
+
+- [ ] Live Collie revocation during SDK work, stale Settings return/cancellation,
+      service reconnect/process death, interrupted enablement and multiple
+      Activity ownership/launcher return, including cold restarts from Settings.
+- [ ] Actual20s node expiry,256-node/recycle saturation, large/changing window
+      lists and tree churn, gesture-history eviction and missed SDK callbacks.
+- [ ] Multi-stroke/swipe/long-press, user-cancelled gestures, service disable
+      mid-gesture, duration/point maxima and secondary displays.
+- [ ] Additional public SDK capabilities beyond this initial binding, including
+      continued strokes, screenshots, magnification, keyboard controls and
+      optional key filtering, with their appropriate independent grants.
+- [ ] Android26..35 and physical/OEM checks, app-specific virtual/WebView trees,
+      sensitive/protected windows and longer sustained lifecycle/resource tests.
+
+Repeat on the explicitly owned, unlocked headless emulator:
+
+```sh
+python3 scripts/build-collie-ui-probe.py --out build/android-accessibility --java-home /path/to/jdk17
+python3 scripts/test-collie-accessibility-android.py --out build/android-accessibility --serial emulator-5582
+python3 scripts/test-collie-android-packaging.py --debug build/android-accessibility/collie.apk --release build/android-accessibility-release/collie.apk
+```
+
+No phone deployment or physical accessibility proof is claimed. The complete
+inventory remains open, including privileged/vendor reporting, BLE extensions,
+older UWB integration, strict UWB effective-interval/HID unplug failures and all
+previously listed physical/software/radio gates.

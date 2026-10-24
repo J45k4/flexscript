@@ -4,11 +4,11 @@ import subprocess
 from pathlib import Path
 
 
-def verify_installed_apk(adb, serial, apk):
+def verify_installed_apk(adb, serial, apk, package="org.flexscript.collie"):
     expected = hashlib.sha256(Path(apk).read_bytes()).hexdigest()
     command = [str(adb), '-s', serial]
     paths = subprocess.check_output(
-        [*command, 'shell', 'pm', 'path', 'org.flexscript.collie'],
+        [*command, 'shell', 'pm', 'path', package],
         timeout=40, text=True,
     ).splitlines()
     if len(paths) != 1 or not paths[0].startswith('package:/'):
