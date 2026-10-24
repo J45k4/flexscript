@@ -20,7 +20,7 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
   dex=apk.read('classes.dex')
-  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
+  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
   fixture_resource=any('midi_loopback_fixture' in name for name in apk.namelist());assert fixture_resource==debug,(label,'test resource')
  accessibility=next(service for service in sections(manifest,'service') if '.CollieAccessibilityService' in service)

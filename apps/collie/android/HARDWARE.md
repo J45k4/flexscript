@@ -22,7 +22,7 @@ it does not count as an implementation of an otherwise available adapter.
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy and extended/periodic transmission, GATT client/server SDK bindings implemented; remaining lifecycle/SDK gates below | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | public Classic HID device SDK bindings implemented; remaining verification gates below | encrypted510-byte control/interrupt report exchange, registration ownership and reconnect verified against a controlled host; public unplug callback gate remains failing on this emulator |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
-| NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment, NFC-F and bounded ISO-DEP polling-frame reception implemented; polling-filter/observe controls and background operation pending | 62 actual Android service/VM and explicitly constructed Binder-peer checks passed; SDK adapter absence is real, successful registration/routing/RF/physical checks remain unverified |
+| NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment, NFC-F, polling-frame reception and owned exact/pattern-filter/observe SDK bindings implemented; background operation pending | 48 control/recovery scenarios and80 HCE/polling checks passed on the NFC-less emulator; successful filter/observe/routing/RF and physical checks remain unverified |
 | Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | SDK service/readers/sessions/channels and extended APDU byte transport implemented | actual independent service bindings, empty reader inventory, owned asynchronous shutdown and first-use consent verified; real applet/channel/APDU and access-control fixtures pending |
 | UWB | supported-device sessions and ranging events through supported APIs | Android16 public raw-session, capability, peer and interval bindings implemented; older SDK integration pending | actual two-emulator measurements and SDK peer callbacks verified; strict effective-interval check remains failing; physical/older-device checks pending |
 | Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
@@ -2012,7 +2012,7 @@ deployed. Compiler/application CI for this batch is recorded in the PR.
 
 ## NFC host card emulation and NFC-F
 
-Eleven ordinary Flexscript functions bind Android's public emulation SDK:
+The original eleven Flexscript functions bind Android's public emulation SDK:
 `hce_info`, `hce_open`, `hcef_open`, `hce_request`, `hce_reply`, `hce_unhandled`
 and `hce_shutdown`, plus `hce_request_read` and staged `hce_reply_begin/write/commit`.
 They use the existing lazy NFC grant and sole VM tool; no
@@ -2803,13 +2803,160 @@ python3 scripts/test-collie-android-packaging.py \
   --release build/android-hce-polling-release/collie.apk
 ```
 
-Dynamic exact/pattern polling-filter registration/removal, observe-mode control,
-its owned cleanup/recovery and their successful hardware effects are **still
-unimplemented**. The API reports `filter_registration_implemented=false` and
-`observe_control_implemented=false`; this receive path changes no such SDK state.
-Those controls are the next HCE implementation work. Real RF frame delivery,
+At that reception-only checkpoint, dynamic exact/pattern filters and observe
+controls were unimplemented and both implementation flags were false. The
+controls follow-up below adds those bindings and their ownership/recovery logic;
+the receive path itself still changes no such SDK state. Real RF frame delivery,
 routing, real late callbacks, paused/background operation, older SDK/OEM and
 physical-reader checks remain open, together with the earlier HCE and full
 inventory gates. The strict UWB interval and HID unplug failures are unchanged.
 The full objective and draft PR remain open; no master merge or phone deployment
 is claimed.
+
+
+## Owned HCE polling filters and observe controls
+
+Five additional ordinary Flexscript functions now bind the Android15+ public
+[CardEmulation polling-filter APIs](https://developer.android.com/reference/android/nfc/cardemulation/CardEmulation)
+and [NfcAdapter observe-mode control](https://developer.android.com/reference/android/nfc/NfcAdapter#setObserveModeEnabled(boolean)):
+
+- `hce_polling_register(session,kind,filter,auto_transact,timeout_ms)`;
+- `hce_polling_remove(session,kind,filter,timeout_ms)`;
+- `hce_observe(session,enabled,timeout_ms)`;
+- `hce_control_result(session,control_id)` and `hce_polling_filters(session)`.
+
+Mutations return a control ID immediately. All calls inherit the existing HCE
+handle's workspace/NFC grant; mutations require a ready ISO-DEP session and a
+resumed Activity. NFC-F and Android before15 return `unsupported_operation`.
+No default wallet, persistent observe default, new permission or model tool is
+added. The public SDK enforces preferred-service/routing policy. A true return
+from an SDK method does not prove an RF effect or that the mode stays unchanged.
+Ending foreground preference returns mode policy to Android.
+
+Kind0 is exact bytes encoded as complete hexadecimal pairs; kind1 is a Java
+pattern with a literal hexadecimal-byte prefix and only hexadecimal digits and
+`. ? *` operators. Both normalize to uppercase and accept2..512 characters.
+These are Collie's bounded interfaces, not a claimed controller payload limit.
+Auto-transact/enabled are0/1. There are at most16 owned filter intents, one
+unsettled control and16 retained results per session. Replacing an owned filter
+uses its existing slot. A filter list describes requested owned intents and the
+last observed SDK boolean; it is not a public SDK inventory or hardware proof.
+Removing an unowned filter fails before any SDK operation.
+
+`device_wait` emits `hce_control` events with `phase=queued/timeout/completed` and
+`result`. Results retain operation/arguments, state, elapsed deadline, `expired`,
+`worker_done`, `sdk_call_started`, `sdk_call_returned`, nullable `sdk_boolean`,
+`sdk_not_submitted`, code/message, `cleanup_error` and `operation_error`. The
+underlying exception is retained independently of the primary deadline, so an
+expired result does not hide an actual SDK/journal failure. `returned/rejected`
+report the actual public method's boolean. Typed errors, cancellation, deadline
+and raw return facts are separate. Only the last16 results remain queryable;
+foreign/evicted IDs return `stale_request`.
+
+Deadlines are established at admission. Elapsed guards run immediately before
+SDK mutation and after its return, independently of timer callback delivery. Expired or stopped unsent work is skipped. A pending
+slot stays reserved until its worker actually settles; timing out is not proof
+that an attempted SDK effect was undone. Late returns keep timeout and their real
+boolean. No registration or uncertain operation is automatically replayed.
+
+Filter ownership is recorded in an app-private version1 journal before SDK
+mutation. Commits sync and read back the exact bytes because `AtomicFile` can
+log a failed rename without throwing. Records are bounded32KiB/16 entries and
+contain only the private service mode, kind, canonical filter and lease ID.
+Malformed/unknown-version/duplicate data is retained with `recovery_required`.
+The SDK worker removes only owned private-component filters during close and
+restart. SDK removal is idempotent and may wait at most3 seconds for Android's
+component cache; a rejected/uncertain cleanup retains ownership and its record.
+A private component is enabled only as needed for this cleanup and reset to its
+disabled default afterward. Unresolved recovery blocks both new HCE and reader
+opens on supported adapters. Ordinary unavailable hardware is not called success.
+
+SDK executor exhaustion is handled explicitly: rejected startup clears its
+`starting` flag, rejected recovery clears `recovering` while retaining the error,
+and shutdown keeps the lease while retrying only a cleanup task which was never
+submitted. The UI does not wait for queued SDK work. `cleanup_queue_waiting`,
+`sdk_cleanup_returned` and `lease_released` remain separate facts.
+
+**48 control/recovery scenarios pass on the final installed debug digest.** They
+explicitly require the emulator's actual absence of an ISO-DEP adapter. Bound
+service/VM leases and some routing intents are constructed fixtures; no adapter,
+SDK mutation return or RF success is manufactured. The checks cover:
+
+- Eleven malformed argument cases; exact/pattern normalization; unowned removal;
+  another actual VM workspace; sixteen constructed unsent intents and capacity.
+- Real missing-adapter errors from exact/pattern/observe calls, with no mutation
+  submitted, no fabricated SDK boolean and the underlying error intact over RPC.
+- Worker-driven elapsed expiry before a blocked timer runs, with no status getter;
+  getter-driven expiry with the pending slot retained until worker settlement.
+- Actual UI-thread shutdown/revocation while work is queued; cancellation before
+  mutation, nonblocking close and release only after cleanup/worker settlement.
+- Seventy actual VM control attempts retain16 results/128 events, report12 losses
+  and preserve the final genuine unsupported result. Every retained event is read
+  through bounded VM calls; guest fuel was not increased. Executor rejection
+  preserves prior results, consumes no pending slot and emits no phantom timeout.
+- Full executor handling for UI cleanup, constructed startup and actual recovery;
+  rejected work does not leave starting/recovering flags stuck or free the lease.
+- Actual atomic file sync/commit/readback, a deliberately failed rename, and
+  retained malformed/versioned/duplicate data in isolated journal fixtures.
+- Actual process death with one explicitly constructed unsent ownership record:
+  adapter absence retains it and exposes recovery failure while disabling all
+  private services. The fixture then restores only its constructed state and
+  verifies exact original journal/conversation/permission/selection restoration.
+
+The control report records `control_negative_paths_verified=true`,
+`control_sdk_success_verified=false`, `filter_registration_verified=false`,
+`observe_mode_effect_verified=false`, `routing_registration_verified=false`,
+`radio_exchange_verified=false` and `physical_devices_verified=false`.
+The successful SDK/RF effects remain unverified, rather than being inferred from
+these negative-path and lifecycle checks.
+
+Final artifacts and regressions:
+
+- Debug `build/android-hce-controls/collie.apk`: **7,394,591 bytes**, SHA256
+  `16bdfa46f871ca1d9ec5e445798c900f460df461821d45e2807e0eb343c4e190`.
+- Non-debug `build/android-hce-controls-release/collie.apk`: **7,115,984 bytes**,
+  SHA256 `21f4e57d243889d18cf980edaa6ba07c9cee0e3ff3e7bf6fec11df3b4da4bddc`.
+- Both APK packaging checks pass. `HardwareHceControlChecks` and every debug
+  fixture remain excluded from non-debug. All262 production Java class files,
+  native library/test and generated engine bytes match debug/non-debug.
+- On the same exact installed digest, the80 existing HCE/polling checks,
+  33 NFC/NDEF/OMAPI checks and10 Android lazy-permission groups pass. These171
+  Android scenarios retain their distinct constructed/SDK/RF evidence boundaries.
+- Shared32KiB codec/registry,9 core groups and15 native lazy-permission groups pass.
+  All4 API-reference checks pass with31 grants denied:86,388 detailed bytes and
+  13,047 index bytes are read through actual bounded VM RPC pages.
+
+The initial all-at-once event-drain fixture exhausted the normal VM instruction
+budget; it now reads all retained events in16-event calls. A split-fixture syntax
+error was corrected before the successful final runs. Neither issue changed
+production VM limits or substituted successful hardware effects. Final Android
+reports verify the installed APK before/after and match the digest above.
+
+Repeat with the owned unlocked headless emulator:
+
+```sh
+python3 scripts/test-collie-hce-android.py \
+  --out build/android-hce-controls --serial emulator-5582 --controls
+python3 scripts/test-collie-hce-android.py \
+  --out build/android-hce-controls --serial emulator-5582
+python3 scripts/test-collie-nfc-android.py \
+  --out build/android-hce-controls --serial emulator-5582
+python3 scripts/test-collie-android-packaging.py \
+  --debug build/android-hce-controls/collie.apk \
+  --release build/android-hce-controls-release/collie.apk
+```
+
+Remaining HCE gates:
+
+- [ ] Successful exact/pattern registration/removal, auto-transact matching and
+      observe enable/disable on actual supported hardware; independent RF effects.
+- [ ] Actual blocked SDK call bodies, late booleans/exceptions, Binder/HAL failures
+      and unsuccessful cleanup. Deadline/underlying-error fields are implemented,
+      but the unavailable adapter cannot prove these positive SDK-call paths.
+- [ ] Process death during actual registrations/updates, interrupted durable
+      writes and restoration/removal under real component-cache/SDK failures.
+- [ ] Multiple Activity ownership, background HCE, default-wallet/routing/user
+      policy variants, Android15/older-device/OEM and physical-reader integration.
+- [ ] Earlier HCE, full inventory and strict UWB effective-interval/HID unplug
+      gates remain open. This is an implementation checkpoint, not completion of
+      the full objective, a master merge or a phone deployment.

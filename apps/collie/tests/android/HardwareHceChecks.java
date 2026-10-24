@@ -71,8 +71,8 @@ public final class HardwareHceChecks {
     void polling()throws Exception{
         NfcAdapter adapter=HardwareNfc.optional(context);boolean hce=HardwareHce.supported(host,adapter,0);
         boolean observe=hce&&adapter.isObserveModeSupported(),enabled=hce&&adapter.isObserveModeEnabled();
-        vm("fn main(){let p=device_field(hce_info(),\"polling\");if !db_word(device_field(p,\"frames_api\"))||db_word(device_field(p,\"supported\"))!="+(hce?1:0)+"||db_word(device_field(p,\"observe_supported\"))!="+(observe?1:0)+"||db_word(device_field(p,\"observe_enabled\"))!="+(enabled?1:0)+"{return 1;}if db_word(device_field(p,\"filter_registration_implemented\"))||db_word(device_field(p,\"observe_control_implemented\")){return 2;}return 0;}");
-        check(true,"polling/observe capability values match independent public SDK queries and do not claim unimplemented controls");
+        vm("fn main(){let p=device_field(hce_info(),\"polling\");if !db_word(device_field(p,\"frames_api\"))||db_word(device_field(p,\"supported\"))!="+(hce?1:0)+"||db_word(device_field(p,\"observe_supported\"))!="+(observe?1:0)+"||db_word(device_field(p,\"observe_enabled\"))!="+(enabled?1:0)+"{return 1;}if !db_word(device_field(p,\"filter_registration_implemented\"))||!db_word(device_field(p,\"observe_control_implemented\")){return 2;}return 0;}");
+        check(true,"polling/observe capability values match independent public SDK queries and identify the implemented control bindings");
         for(int mode=0;mode<2;mode++)try(Peer p=new Peer(mode,5000)){
             p.session.events.clear();String h=q(p.handle);int[] types={79,88,65,66,70,85};ArrayList<PollingFrame> rows=new ArrayList<>();
             byte[] binary=new byte[32768];for(int i=0;i<binary.length;i++)binary[i]=(byte)((i*37+11)&255);

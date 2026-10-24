@@ -16,7 +16,9 @@ final class HardwareHcePolling {
             "observe_supported",supported?Api35.observeSupported(adapter):false,
             "observe_enabled",supported?Api35.observeEnabled(adapter):false,
             "maximum_frame_bytes",VmHardware.MAX_BYTES,"maximum_callback_frames",MAX_BATCH,
-            "filter_registration_implemented",false,"observe_control_implemented",false);
+            "filter_registration_implemented",true,"observe_control_implemented",true,
+            "maximum_filters",HardwareHceControls.MAX_FILTERS,"maximum_control_results",HardwareHceControls.MAX_RESULTS,
+            "maximum_filter_text",HardwareHceControls.MAX_FILTER_TEXT);
         return value;
     }
 

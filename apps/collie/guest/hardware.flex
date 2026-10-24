@@ -336,6 +336,11 @@ fn hce_request_read(session,request,offset,limit){let r=db_request("hce_request_
 fn hce_reply_begin(session,request,total){let r=db_request("hce_reply_begin");db_add(r,db_text(session));db_add(r,db_text(request));db_add(r,db_int(total));return db_rpc(r);}
 fn hce_reply_write(session,request,offset,bytes){let r=db_request("hce_reply_write");db_add(r,db_text(session));db_add(r,db_text(request));db_add(r,db_int(offset));db_add(r,bytes);return db_rpc(r);}
 fn hce_reply_commit(session,request){let r=db_request("hce_reply_commit");db_add(r,db_text(session));db_add(r,db_text(request));return db_rpc(r);}
+fn hce_polling_register(session,kind,filter,auto_transact,timeout_ms){let r=db_request("hce_polling_register");db_add(r,db_text(session));db_add(r,db_int(kind));db_add(r,db_text(filter));db_add(r,db_int(auto_transact));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn hce_polling_remove(session,kind,filter,timeout_ms){let r=db_request("hce_polling_remove");db_add(r,db_text(session));db_add(r,db_int(kind));db_add(r,db_text(filter));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn hce_observe(session,enabled,timeout_ms){let r=db_request("hce_observe");db_add(r,db_text(session));db_add(r,db_int(enabled));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn hce_control_result(session,request){let r=db_request("hce_control_result");db_add(r,db_text(session));db_add(r,db_text(request));return db_rpc(r);}
+fn hce_polling_filters(session){let r=db_request("hce_polling_filters");db_add(r,db_text(session));return db_rpc(r);}
 
 // Explicit Android session consent; frames and recording share one SDK projection.
 fn screen_info(){let r=db_request("screen_info");return db_rpc(r);}

@@ -28,21 +28,21 @@ final class HardwareHce {
     static void recoverAsync(android.content.Context context){
         final android.content.Context app=context.getApplicationContext();
         synchronized(HardwareNfc.LEASE){if(recovered||recovering||owner!=null)return;recovering=true;}
-        SDK.execute(()->{String error="";NfcAdapter adapter=null;try{adapter=NfcAdapter.getDefaultAdapter(app);}catch(Exception e){error=MainActivity.safe(e);}
+        try{SDK.execute(()->{String error="";NfcAdapter adapter=null;try{adapter=NfcAdapter.getDefaultAdapter(app);}catch(Exception e){error=MainActivity.safe(e);}
             for(int mode=0;mode<3;mode++){
-                try{if(supported(app,adapter,mode)){
+                try{HardwareHceControls.recover(app,adapter,mode,null);if(supported(app,adapter,mode)){
                     if(mode==2){NfcFCardEmulation f=NfcFCardEmulation.getInstance(adapter);if(f.getSystemCodeForService(component(app,mode))!=null&&!f.unregisterSystemCodeForService(component(app,mode)))throw new IOException("Android did not remove the interrupted NFC-F registration.");}
                     else{CardEmulation h=CardEmulation.getInstance(adapter);if(h.getAidsForService(component(app,mode),category(mode))!=null&&!h.removeAidsForService(component(app,mode),category(mode)))throw new IOException("Android did not remove an interrupted AID registration.");}
                 }}catch(Exception e){error=MainActivity.safe(e);}finally{try{enabled(app,mode,false);}catch(Exception e){error=MainActivity.safe(e);}}
             }
-        synchronized(HardwareNfc.LEASE){recoveryError=error;recovered=error.isEmpty();recovering=false;}});
+        synchronized(HardwareNfc.LEASE){recoveryError=error;recovered=error.isEmpty();recovering=false;}});}catch(RejectedExecutionException error){synchronized(HardwareNfc.LEASE){recovering=false;recoveryError="The NFC SDK executor is full; routing recovery remains pending.";}}
     }
     static void serviceCreated(android.app.Service service,int mode){synchronized(HardwareNfc.LEASE){if(owner==null){recovered=false;recoverAsync(service);}}}
     static void capabilities(VmHardware.Context c,JSONArray out)throws Exception{
         NfcAdapter adapter=HardwareNfc.optional(c);for(int mode:new int[]{0,2}){boolean s=supported(c.host,adapter,mode);out.put(VmHardware.object("id",mode==2?"nfc_hcef":"nfc_hce","implemented",true,"supported",s,"available",s&&adapter.isEnabled()&&c.host.hardwareResumed,"permission","nfc","foreground_required",true,"max_sessions",1));}
         JSONObject polling=HardwareHcePolling.info(adapter,supported(c.host,adapter,0));
         out.put(polling.put("id","nfc_hce_polling_frames").put("implemented",true).put("permission","nfc")
-            .put("available",polling.getBoolean("supported")&&c.host.hardwareResumed?JSONObject.NULL:false)
+            .put("available",polling.getBoolean("supported")&&adapter.isEnabled()&&c.host.hardwareResumed?JSONObject.NULL:false)
             .put("foreground_required",true));
     }
     static JSONObject info(VmHardware.Context c)throws Exception{
@@ -66,7 +66,8 @@ final class HardwareHce {
     static final class Session extends VmHardware.Handle {
         final VmHardware.Context context;final NfcAdapter adapter;final int mode,timeout;final ArrayList<String> aids;final String systemCode,nfcid2;
         CardEmulation apdu;NfcFCardEmulation nfcf;Request pending;Endpoint channel;
-        String state="registering",cleanupError="";boolean starting,componentEnabled,registered,registrationAttempted,preferred,watching,cleanupQueued,cleaned,cleanupReturned,released,channelActive;long startupDeadline;
+        final HardwareHceControls controls=new HardwareHceControls(this);
+        String state="registering",cleanupError="";boolean starting,componentEnabled,registered,registrationAttempted,preferred,watching,cleanupQueued,cleanupSubmissionWaiting,cleaned,cleanupReturned,released,channelActive;long startupDeadline;
         final BroadcastReceiver radio=new BroadcastReceiver(){public void onReceive(android.content.Context ignored,Intent intent){if(adapter!=null&&!adapter.isEnabled())try{close();}catch(IOException ignoredError){}}};
         final Runnable startupTimer=this::expireStartup;
         Session(VmHardware.Context c,NfcAdapter a,int mode,int timeout,ArrayList<String> aids,String code,String id){super(c,"nfc",mode==2?"nfc_hcef":"nfc_hce");context=c;adapter=a;this.mode=mode;this.timeout=timeout;this.aids=aids;systemCode=code;nfcid2=id;}
@@ -81,15 +82,15 @@ final class HardwareHce {
             long end=SystemClock.elapsedRealtime()+3000;
             while(true){guard();boolean ok=mode==2?nfcf.registerSystemCodeForService(name,systemCode):apdu.registerAidsForService(name,category(mode),aids);if(ok){synchronized(this){registered=true;}return;}if(SystemClock.elapsedRealtime()>=end)throw new VmHardware.Failure("routing_denied","Android rejected the registration after its component-cache grace period.");Thread.sleep(50);}
         }
-        void start(){synchronized(this){starting=true;startupDeadline=SystemClock.elapsedRealtime()+10000;}HardwareSensors.events().postDelayed(startupTimer,10000);
-            SDK.execute(()->{try{
+        void start()throws Exception{synchronized(this){starting=true;startupDeadline=SystemClock.elapsedRealtime()+10000;}HardwareSensors.events().postDelayed(startupTimer,10000);
+            try{SDK.execute(()->{try{
                 guard();IntentFilter filter=new IntentFilter(NfcAdapter.ACTION_ADAPTER_STATE_CHANGED);if(Build.VERSION.SDK_INT>=33)context.host.registerReceiver(radio,filter,null,HardwareSensors.events(),android.content.Context.RECEIVER_EXPORTED);else context.host.registerReceiver(radio,filter,null,HardwareSensors.events());synchronized(this){watching=true;}guard();enabled(context.host,mode,true);synchronized(this){componentEnabled=true;}guard();ComponentName component=component(context.host,mode);
                 if(mode==2){nfcf=NfcFCardEmulation.getInstance(adapter);register(component);guard();if(!nfcf.setNfcid2ForService(component,nfcid2))throw new VmHardware.Failure("routing_denied","Android rejected the NFCID2.");}
                 else{apdu=CardEmulation.getInstance(adapter);for(String id:aids)if(id.endsWith("*")&&!apdu.supportsAidPrefixRegistration())throw new VmHardware.Failure("unsupported_operation","Android does not support AID prefixes.");register(component);}
                 // Serialize Activity-scoped preference with onPause. NFC-F's
                 // public disableService rejects an already-paused Activity.
                 MAIN.post(()->{try{guard();boolean ok=mode==2?nfcf.enableService(context.host,component):apdu.setPreferredService(context.host,component);if(!ok)throw new VmHardware.Failure("routing_denied","Android/user routing policy did not prefer this service.");synchronized(Session.this){preferred=true;}guard();synchronized(Session.this){state="ready";event("ready","sdk_registration_returned",true,"radio_exchange_verified",false);}}catch(Exception e){failed(e);}finally{started();}});
-            }catch(Exception e){failed(e);started();}});
+            }catch(Exception e){failed(e);started();}});}catch(RejectedExecutionException error){synchronized(this){starting=false;HardwareSensors.events().removeCallbacks(startupTimer);}throw new VmHardware.Failure("busy","The NFC SDK executor is full; no startup registration was submitted.");}
         }
         synchronized void failed(Exception e){if(!closed){state="error";event("error","code",e instanceof VmHardware.Failure?((VmHardware.Failure)e).code:"sdk_error","message",MainActivity.safe(e));}}
         synchronized void started(){starting=false;HardwareSensors.events().removeCallbacks(startupTimer);if(stopping())cleanup();}
@@ -116,17 +117,22 @@ final class HardwareHce {
             final Request r;final byte[] copy=bytes.clone();synchronized(this){if(!accepts())throw new VmHardware.Failure("not_ready","Wait for actual SDK registration.");r=request(id);r.queued=true;}
             MAIN.post(()->{synchronized(Session.this){if(pending!=r||!accepts()||channel!=r.endpoint)return;if(SystemClock.elapsedRealtime()>=r.expires){expire(r);return;}clearPending();try{if(unhandled)r.endpoint.unhandled();else r.endpoint.response(copy);event(unhandled?"unhandled_submitted":"reply_submitted","request",r.id,"sdk_call_returned",true,"peer_receipt_verified",false);}catch(Exception e){event("error","code","reply_failed","message",MainActivity.safe(e));}}});return 1;
         }
-        synchronized void release(){if(!released&&cleaned&&!starting&&!channelActive){released=true;state="closed";synchronized(HardwareNfc.LEASE){if(owner==this)owner=null;}event("closed","sdk_cleanup_returned",cleanupReturned,"lease_released",true);}}
+        synchronized void release(){if(!released&&cleaned&&!starting&&!channelActive&&!controls.busy()){released=true;state="closed";synchronized(HardwareNfc.LEASE){if(owner==this)owner=null;}event("closed","sdk_cleanup_returned",cleanupReturned,"lease_released",true);}}
+        void submitCleanup(Runnable action){
+            try{SDK.execute(action);synchronized(this){cleanupSubmissionWaiting=false;}}
+            catch(RejectedExecutionException error){synchronized(this){if(!cleanupSubmissionWaiting)event("cleanup_pending","code","busy","message","The NFC SDK executor is full; the lease remains owned until cleanup can be submitted.");cleanupSubmissionWaiting=true;}HardwareSensors.events().postDelayed(()->submitCleanup(action),250);}
+        }
         synchronized void cleanup(){if(starting||cleanupQueued)return;cleanupQueued=true;clearPending();HardwareSensors.events().removeCallbacks(startupTimer);
             Runnable foreground=()->{String failure="";synchronized(Session.this){try{if(channelActive&&channel!=null&&mode!=2)channel.unhandled();}catch(Exception e){failure=MainActivity.safe(e);}if(preferred)try{boolean ok=mode==2?nfcf.disableService(context.host):apdu.unsetPreferredService(context.host);if(!ok)throw new IOException("Android did not remove foreground NFC routing.");preferred=false;}catch(Exception e){failure=MainActivity.safe(e);}}
-                final String foregroundError=failure;SDK.execute(()->{String error=foregroundError;
+                final String foregroundError=failure;submitCleanup(()->{String error=foregroundError;
+                    try{controls.cleanup();}catch(Exception e){error=MainActivity.safe(e);}
                     if(registrationAttempted)try{ComponentName name=component(context.host,mode);boolean present=mode==2?nfcf.getSystemCodeForService(name)!=null:apdu.getAidsForService(name,category(mode))!=null;if(present){boolean ok=mode==2?nfcf.unregisterSystemCodeForService(name):apdu.removeAidsForService(name,category(mode));if(!ok)throw new IOException("Android did not remove the owned NFC registration.");}synchronized(Session.this){registered=false;registrationAttempted=false;}}catch(Exception e){error=MainActivity.safe(e);}
                     try{enabled(context.host,mode,false);synchronized(Session.this){componentEnabled=false;}}catch(Exception e){error=MainActivity.safe(e);}if(watching)try{context.host.unregisterReceiver(radio);synchronized(Session.this){watching=false;}}catch(Exception e){error=MainActivity.safe(e);}
                     synchronized(Session.this){cleanupReturned=true;cleanupError=error;cleaned=error.isEmpty();if(!cleaned){state="error";cleanupQueued=false;event("error","code","cleanup_failed","message",error);}release();}
                 });
             };if(Looper.myLooper()==Looper.getMainLooper())foreground.run();else MAIN.post(foreground);
         }
-        synchronized Object info()throws Exception{check();expireStartup();if(pending!=null&&SystemClock.elapsedRealtime()>=pending.expires)expire(pending);return VmHardware.object("kind",kind,"state",state,"category",mode==2?"nfcf":category(mode),"reply_timeout_ms",timeout,"request",pending==null?JSONObject.NULL:pending.value(),"channel_active",channelActive,"sdk_registered",registered,"sdk_preferred",preferred,"sdk_cleanup_returned",cleanupReturned,"lease_released",released,"cleanup_error",cleanupError);}
+        synchronized Object info()throws Exception{check();expireStartup();if(pending!=null&&SystemClock.elapsedRealtime()>=pending.expires)expire(pending);return VmHardware.object("kind",kind,"state",state,"category",mode==2?"nfcf":category(mode),"reply_timeout_ms",timeout,"request",pending==null?JSONObject.NULL:pending.value(),"channel_active",channelActive,"sdk_registered",registered,"sdk_preferred",preferred,"sdk_cleanup_returned",cleanupReturned,"cleanup_queue_waiting",cleanupSubmissionWaiting,"lease_released",released,"cleanup_error",cleanupError,"controls",controls.info());}
         synchronized int shutdown()throws Exception{check();if(state.equals("closed")||state.equals("stopping")&&cleanupQueued)return 0;state="stopping";clearPending();cleanup();return 1;}
         public synchronized void close()throws IOException{if(closed)return;super.close();state="stopping";clearPending();cleanup();}
     }
@@ -150,6 +156,11 @@ final class HardwareHce {
             if(op.equals("hce_reply_write"))return s.writeReply(VmHardware.text(a,1,128),VmHardware.integer(a,2,0,65538),VmHardware.data(a.get(3)));
             if(op.equals("hce_reply_commit"))return s.commitReply(VmHardware.text(a,1,128));
             if(op.equals("hce_unhandled"))return s.reply(VmHardware.text(a,1,128),new byte[0],true);
+            if(op.equals("hce_polling_register"))return s.controls.request("register",VmHardware.integer(a,1,0,1),VmHardware.text(a,2,HardwareHceControls.MAX_FILTER_TEXT),VmHardware.integer(a,3,0,1)==1,VmHardware.integer(a,4,1,8000));
+            if(op.equals("hce_polling_remove"))return s.controls.request("remove",VmHardware.integer(a,1,0,1),VmHardware.text(a,2,HardwareHceControls.MAX_FILTER_TEXT),false,VmHardware.integer(a,3,1,8000));
+            if(op.equals("hce_observe"))return s.controls.request("observe",0,"",VmHardware.integer(a,1,0,1)==1,VmHardware.integer(a,2,1,8000));
+            if(op.equals("hce_control_result"))return s.controls.result(VmHardware.text(a,1,128));
+            if(op.equals("hce_polling_filters"))return s.controls.filters();
             if(op.equals("hce_shutdown"))return s.shutdown();
             throw new VmHardware.Failure("unsupported_operation","Unknown card emulation operation.");
         }finally{VmHardware.unblocking();}

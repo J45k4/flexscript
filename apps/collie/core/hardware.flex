@@ -306,6 +306,11 @@ fn hw_operations(){
     hw_operation(rows,"hce_reply_begin","hardware_handle",3,3);
     hw_operation(rows,"hce_reply_write","hardware_handle",4,4);
     hw_operation(rows,"hce_reply_commit","hardware_handle",2,2);
+    hw_operation(rows,"hce_polling_register","hardware_handle",5,5);
+    hw_operation(rows,"hce_polling_remove","hardware_handle",4,4);
+    hw_operation(rows,"hce_observe","hardware_handle",3,3);
+    hw_operation(rows,"hce_control_result","hardware_handle",2,2);
+    hw_operation(rows,"hce_polling_filters","hardware_handle",1,1);
     hw_operation(rows,"screen_info","screen_capture",0,0);
     hw_operation(rows,"screen_open","screen_capture",5,5);
     hw_operation(rows,"screen_tickets","screen_capture",2,2);
