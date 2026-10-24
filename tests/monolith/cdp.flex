@@ -4,6 +4,17 @@ import "../../scripts/lib/json.flex";
 global cd_id=0;
 global cd_port=0;
 global cd_chrome=0;
+// Chromium creates this file before its first line is necessarily written.
+// A missing/partial/invalid line is not readiness; the caller owns the deadline.
+fn cd_port_file(path) {
+    let fd=syscall(2,path,0x80000,0,0,0,0);if fd<0{return 0;}
+    let text=h_take(65);let n=syscall(0,fd,text,64,0,0,0);h_close(fd);
+    if n<=0{return 0;}store8(text+n,0);
+    let end=h_find(text,"\n");if end<1 || end>5{return 0;}
+    let port=0;let i=0;
+    while i<end{let c=load8(text+i);if c<48 || c>57{return 0;}port=port*10+c-48;i=i+1;}
+    if port<1 || port>65535{return 0;}return port;
+}
 fn cd_http(path) {
     let fd=tcp_connect("127.0.0.1",h_int(cd_port),3000);h_assert(fd>=0,"DevTools HTTP connection failed");
     let request=h_cat3("PUT ",path," HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");

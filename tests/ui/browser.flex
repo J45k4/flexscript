@@ -14,8 +14,8 @@ fn main(argc,argv){
     h_environment(argc,argv);h_assert(argc==3 || argc==4,"Usage: test-ui-browser WEB-BINARY CHROMIUM [COUNTER-BINARY]");let port=ub_free_port();let server=h_spawn(h_args(h_real(load64(argv+8)),h_int(port),0,0,0,0),"",0);h_until(server,"listening",5000);
     let temp=h_temp();let profile=h_join(temp,"chromium");let args=h_args(load64(argv+16),"--headless","--no-sandbox","--disable-gpu","--no-first-run","--no-default-browser-check");h_add(args,h_cat("--user-data-dir=",profile));h_add(args,"--remote-debugging-address=127.0.0.1");h_add(args,"--remote-debugging-port=0");h_add(args,"about:blank");let chrome=h_spawn(args,"",0);cd_chrome=chrome;
     let portfile=h_join(profile,"DevToolsActivePort");let end=net_now()+30000;
-    while !h_exists(portfile){h_pump(chrome,10);if h_status(chrome)!= -999 || net_now()>end{h_stop(chrome);h_stop(server);h_die("headless browser failed to start");}}
-    let text=h_read(portfile);cd_port=h_number(h_slice(text,h_find(text,"\n")));let url=h_cat3("http://127.0.0.1:",h_int(port),"/");let a=cd_tab(url);let b=cd_tab(url);
+    cd_port=0;while !cd_port{cd_port=cd_port_file(portfile);if !cd_port{h_pump(chrome,10);if h_status(chrome)!= -999 || net_now()>end{h_stop(chrome);h_stop(server);h_die("headless browser failed to start");}}}
+    let url=h_cat3("http://127.0.0.1:",h_int(port),"/");let a=cd_tab(url);let b=cd_tab(url);
     let ready="document.querySelector('[data-ui-key=\"permissions-summary\"]')?.textContent==='0 allowed · 31 ask · 0 denied'";cd_wait(a,ready);cd_wait(b,ready);
     cd_eval(b,"window.original=document.querySelector('[data-ui-key=\"deny-internet\"]');true");
     cd_eval(a,"document.querySelector('[data-ui-key=\"deny-internet\"]').click();true");cd_wait(b,"document.querySelector('[data-ui-key=\"permissions-summary\"]').textContent==='0 allowed · 30 ask · 1 denied'");
