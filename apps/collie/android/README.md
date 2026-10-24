@@ -653,3 +653,5 @@ The native suite covers every first-use gate, denial, nested frame restoration,
 restart, cancellation, worker inheritance, saved-policy compatibility and open
 transactions. The emulator suite uses synthetic model responses, taps the actual
 shared permission UI and verifies files and saved conversation state.
+
+The detailed hardware API reference lives in [guest/hardware-api.txt](../guest/hardware-api.txt). The build appends this text to the generated function catalog; it is not Python program logic. Programs read it through `hardware_api_page(offset,limit)` without device grants. The full implementation and verification checklist is [HARDWARE.md](HARDWARE.md).
