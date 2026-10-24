@@ -15,7 +15,7 @@ import org.json.*;
 
 /** Independent SDK/decoder checks. No successful camera callbacks are fabricated. */
 public final class HardwareCameraChecks {
-    final MainActivity host;final File root;final VmHardware.Context context;final JSONArray checks=new JSONArray();int sequence;
+    final MainActivity host;final File root;final VmHardware.Context context;final JSONArray checks=new JSONArray();final JSONObject outputProfiles=new JSONObject();int sequence;
     HardwareCameraChecks(MainActivity host,File root){this.host=host;this.root=root;context=new VmHardware.Context(host,root);}
     public static JSONObject run(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).run();}
     public static JSONObject runVideo(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).video();}
@@ -30,7 +30,7 @@ public final class HardwareCameraChecks {
     JSONObject vm(String source)throws Exception{return vm(root,source);}
     String state(String key)throws Exception{return vm("fn main(){let v=state_get("+q(key)+");if db_kind(v)!=2{return 1;}db_io(0,1,db_word(v),db_bytes(v));return 0;}").getString("stdout");}
     void ui(Runnable action)throws Exception{CountDownLatch ready=new CountDownLatch(1);AtomicReference<Throwable> error=new AtomicReference<>();host.runOnUiThread(()->{try{action.run();}catch(Throwable e){error.set(e);}finally{ready.countDown();}});if(!ready.await(5,TimeUnit.SECONDS))throw new IOException("Camera UI fixture timed out");if(error.get()!=null)throw new IOException(error.get());}
-    JSONObject report()throws Exception{return new JSONObject().put("ok",true).put("checks",checks).put("physical_devices_verified",false);}
+    JSONObject report()throws Exception{return new JSONObject().put("ok",true).put("checks",checks).put("physical_devices_verified",false).put("output_profiles",outputProfiles);}
     JSONObject run()throws Exception{
         String id=state("camera_id");CameraManager manager=host.getSystemService(CameraManager.class);check(Arrays.asList(manager.getCameraIdList()).contains(id),"the selected VM camera ID belongs to an independent Android CameraManager inventory");CameraCharacteristics ch=manager.getCameraCharacteristics(id);
         vm("fn main(){let d=camera_info("+q(id)+");if db_word(device_field(d,\"lens_facing\"))!="+ch.get(CameraCharacteristics.LENS_FACING)+"||db_word(device_field(d,\"hardware_level\"))!="+ch.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)+"||db_word(device_field(d,\"sensor_orientation\"))!="+ch.get(CameraCharacteristics.SENSOR_ORIENTATION)+"{return 1;}return 0;}");
@@ -52,9 +52,78 @@ public final class HardwareCameraChecks {
             vm("fn main(){let h="+q(handle)+";let i=0;while i<20{let e=device_wait(h,1000);if db_kind(e)==5&&worker_equal(db_word(device_field(e,\"event\")),\"opened\"){return 0;}i=i+1;}return 1;}");
             File other=new File(root,"camera-foreign");if(!new File(other,"files").mkdirs())throw new IOException("Cannot create camera ownership fixture");vm(other,"fn main(){if device_info("+q(handle)+")||camera_frame_info("+q(handle)+",\"frame-unknown\"){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_handle\"){return 2;}return 0;}");check(true,"another actual VM workspace cannot inspect or use the owned camera");
             vm("fn main(){if camera_open("+q(id)+",5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"busy\"){return 2;}if camera_frame_info("+q(handle)+",\"frame-unknown\"){return 3;}let outputs=db_list();db_add(outputs,camera_output(256,123,457));if camera_configure("+q(handle)+",outputs,5000){return 4;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported_format\"){return 5;}return 0;}");check(true,"overlapping opens, unknown frames and non-advertised sizes fail without silently changing output geometry");
+            profileOutputs(handle,owned);
             vm("fn main(){if db_word(camera_shutdown("+q(handle)+"))!=1{return 1;}let i=0;while i<20{let info=device_info("+q(handle)+");if db_word(device_field(info,\"sdk_terminal\"))&&db_word(device_field(info,\"lease_released\")){return 0;}device_wait("+q(handle)+",1000);i=i+1;}return 2;}");check(owned.terminal&&owned.cleaned&&owned.released,"the actual SDK terminal callback and completed component teardown release the owned camera lease");
         }finally{VmHardware.close(context,handle);}
         return report();
+    }
+    void profileOutputs(String handle,HardwareCamera.Camera owned)throws Exception{
+        if(Build.VERSION.SDK_INT<33)return;
+        Size[] sizes=owned.ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(android.graphics.ImageFormat.JPEG);
+        if(sizes==null||sizes.length==0)throw new IOException("Owned JPEG fixture has no advertised size");
+        Size size=sizes[0];for(Size candidate:sizes)if((long)candidate.getWidth()*candidate.getHeight()<(long)size.getWidth()*size.getHeight())size=candidate;
+        String basic="let rows=db_list();db_add(rows,camera_profile_output(256,"+size.getWidth()+","+size.getHeight()+",PROFILE,USE_CASE));";
+        int generation=owned.generation;
+        vm("fn main(){"+basic.replace("PROFILE","1152921504606846976").replace("USE_CASE","0")+"if camera_configure("+q(handle)+",rows,5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported_profile\"){return 2;}return 0;}");
+        check(owned.generation==generation&&owned.readers.isEmpty(),"a non-advertised dynamic-range profile fails in the actual VM before any output allocation or SDK session submission");
+        vm("fn main(){"+basic.replace("PROFILE","0").replace("USE_CASE","-1")+"if camera_configure("+q(handle)+",rows,5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        vm("fn main(){"+basic.replace("PROFILE","-1").replace("USE_CASE","0")+"if camera_configure("+q(handle)+",rows,5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(owned.generation==generation&&owned.readers.isEmpty(),"negative profile/use-case values fail without changing the live camera or allocating SDK readers");
+        vm("fn main(){let r=camera_output(256,"+size.getWidth()+","+size.getHeight()+");db_add(r,db_int(1));let rows=db_list();db_add(rows,r);if camera_configure("+q(handle)+",rows,5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(owned.generation==generation&&owned.readers.isEmpty(),"an incomplete five-field profile record is rejected before a configuration generation changes");
+        long useCase=0;long[] actualCases=owned.ch.get(CameraCharacteristics.SCALER_AVAILABLE_STREAM_USE_CASES);if(actualCases!=null)for(long value:actualCases)if(value==CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_STILL_CAPTURE)useCase=value;
+        long absentUseCase=Long.MAX_VALUE;boolean found=true;while(found){found=false;if(actualCases!=null)for(long value:actualCases)if(value==absentUseCase){found=true;absentUseCase--;break;}}
+        vm("fn main(){"+basic.replace("PROFILE","0").replace("USE_CASE",Long.toString(absentUseCase))+"if camera_configure("+q(handle)+",rows,5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported_profile\"){return 2;}return 0;}");
+        check(owned.generation==generation&&owned.readers.isEmpty(),"an actual non-advertised positive64-bit stream-use-case ID is rejected without silently selecting a default");
+        vm("fn main(){let rows=db_list();db_add(rows,camera_physical_profile_output(256,"+size.getWidth()+","+size.getHeight()+",\"not-a-child\",1,0));if camera_configure("+q(handle)+",rows,5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(owned.generation==generation&&owned.readers.isEmpty(),"the extended six-field output record still rejects physical routing outside its actual logical camera");
+        int color=-1;if(Build.VERSION.SDK_INT>=34){android.hardware.camera2.params.ColorSpaceProfiles colors=owned.ch.get(CameraCharacteristics.REQUEST_AVAILABLE_COLOR_SPACE_PROFILES);if(colors!=null)for(android.graphics.ColorSpace.Named named:colors.getSupportedColorSpaces(256))if(colors.getSupportedDynamicRangeProfiles(named,256).contains(1L)){color=named.ordinal();if(named==android.graphics.ColorSpace.Named.SRGB)break;}}
+        vm("fn main(){"+basic.replace("PROFILE","1").replace("USE_CASE",Long.toString(useCase))+"if camera_configure_color_space("+q(handle)+",rows,2147483647,5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(owned.generation==generation&&owned.readers.isEmpty(),"unknown SDK color-space IDs fail through the owned VM path before session construction");
+        if(Build.VERSION.SDK_INT>=34){
+            android.hardware.camera2.params.ColorSpaceProfiles colors=owned.ch.get(CameraCharacteristics.REQUEST_AVAILABLE_COLOR_SPACE_PROFILES);
+            for(android.graphics.ColorSpace.Named named:android.graphics.ColorSpace.Named.values())if(colors==null||!colors.getSupportedColorSpaces(256).contains(named)||!colors.getSupportedDynamicRangeProfiles(named,256).contains(1L)){
+                vm("fn main(){"+basic.replace("PROFILE","1").replace("USE_CASE","0")+"if camera_configure_color_space("+q(handle)+",rows,"+named.ordinal()+",5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported_profile\"){return 2;}return 0;}");
+                check(owned.generation==generation&&owned.readers.isEmpty(),"a valid SDK color-space ID with an unsupported actual format/profile combination is rejected before session mutation");break;
+            }
+        }
+        android.hardware.camera2.params.DynamicRangeProfiles constrained=new android.hardware.camera2.params.DynamicRangeProfiles(new long[]{2,2,0,4,4,0});
+        HardwareCameraOutput.Api33.constraints(constrained,2,Collections.singletonList(2L));
+        try{HardwareCameraOutput.Api33.constraints(constrained,2,Arrays.asList(2L,4L));throw new IOException("Incompatible profiles accepted");}catch(VmHardware.Failure expected){check(expected.code.equals("unsupported_combination"),"constructed public SDK capture constraints reject incompatible targets while allowing the profile by itself");}
+        HardwareCameraOutput.Api33.constraints(new android.hardware.camera2.params.DynamicRangeProfiles(new long[]{2,0,0}),2,Arrays.asList(1L,2L));
+        check(true,"an actual empty SDK capture-constraint set means unrestricted targets rather than no targets");
+        String configured=basic.replace("PROFILE","1").replace("USE_CASE",Long.toString(useCase));
+        vm("fn main(){"+configured+"if !camera_configure_color_space("+q(handle)+",rows,"+color+",5000){return 1;}return 0;}");
+        vm("fn main(){let i=0;while i<20{let e=device_wait("+q(handle)+",1000);if db_kind(e)==5&&worker_equal(db_word(device_field(e,\"event\")),\"configured\"){if !db_word(device_field(e,\"sdk_callback\")){return 1;}return 0;}i=i+1;}return 2;}");
+        HardwareCamera.Reader output;synchronized(owned){check(owned.readers.size()==1&&owned.state.equals("configured"),"explicit profile output receives an actual SDK configured callback");output=owned.readers.values().iterator().next();}
+        check(output.configuration.getDynamicRangeProfile()==1&&output.configuration.getStreamUseCase()==useCase,"the exact retained SDK OutputConfiguration contains the requested STANDARD profile and advertised/default stream use case");
+        vm("fn main(){let d=device_info("+q(handle)+");let o=db_at(device_field(d,\"outputs\"),0);if db_kind(device_field(o,\"dynamic_range_profile\"))!=1||db_kind(device_field(o,\"stream_use_case\"))!=1||db_word(device_field(o,\"dynamic_range_profile\"))!=1||db_word(device_field(o,\"stream_use_case\"))!="+useCase+"{return 1;}return 0;}");
+        check(true,"actual SDK profile/use-case getters cross the VM result transport without claiming an effective image change");
+        if(color>=0){vm("fn main(){if db_kind(device_field(device_info("+q(handle)+"),\"configuration_color_space_id\"))!=1||db_word(device_field(device_info("+q(handle)+"),\"configuration_color_space_id\"))!="+color+"{return 1;}return 0;}");check(owned.configurationColorSpace==color,"the actual SessionConfiguration color-space getter is retained independently of output profile metadata");}
+        vm("fn main(){if !camera_capture("+q(handle)+",2,db_list(),0){return 2;}let i=0;while i<30{let e=device_wait("+q(handle)+",1000);if db_kind(e)==5&&worker_equal(db_word(device_field(e,\"event\")),\"frame\"){state_set(\"profile_frame\",device_field(e,\"frame\"));return 0;}i=i+1;}return 1;}");
+        String frame=state("profile_frame");HardwareCamera.Frame actual=owned.frame(frame);int dataSpace=actual.image.getDataSpace();
+        vm("fn main(){let f=camera_frame_info("+q(handle)+","+q(frame)+");if db_kind(device_field(f,\"data_space\"))!=1||db_word(device_field(f,\"data_space\"))!="+dataSpace+"{return 1;}return db_word(camera_frame_close("+q(handle)+","+q(frame)+"))-1;}");
+        check(true,"a real JPEG from the explicit-profile session exposes the independent actual SDK image data-space value through the VM");
+        android.hardware.camera2.params.DynamicRangeProfiles actualProfiles=owned.ch.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES);
+        Size[] p010=owned.ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(android.graphics.ImageFormat.YCBCR_P010);
+        outputProfiles.put("standard_session_verified",true).put("color_space_verified",color>=0).put("selected_color_space_id",color<0?JSONObject.NULL:color).put("selected_stream_use_case",useCase).put("nondefault_stream_use_case_verified",useCase!=0).put("dynamic_range_profile_map_present",actualProfiles!=null).put("advertised_dynamic_ranges",actualProfiles==null?new JSONArray():new JSONArray(new TreeSet<>(actualProfiles.getSupportedProfiles()))).put("p010_sizes",p010==null?0:p010.length).put("hdr_capture_verified",false).put("hdr_accuracy_verified",false);
+        if(actualProfiles!=null&&actualProfiles.getSupportedProfiles().contains(2L)&&p010!=null&&p010.length>0)hdrOutput(handle,owned,p010);
+
+    }
+    void hdrOutput(String handle,HardwareCamera.Camera owned,Size[] sizes)throws Exception{
+        Size size=sizes[0];for(Size candidate:sizes)if((long)candidate.getWidth()*candidate.getHeight()<(long)size.getWidth()*size.getHeight())size=candidate;
+        int color=-1;
+        if(Build.VERSION.SDK_INT>=34){android.hardware.camera2.params.ColorSpaceProfiles profiles=owned.ch.get(CameraCharacteristics.REQUEST_AVAILABLE_COLOR_SPACE_PROFILES);if(profiles!=null)for(android.graphics.ColorSpace.Named candidate:new TreeSet<>(profiles.getSupportedColorSpacesForDynamicRange(android.graphics.ImageFormat.YCBCR_P010,2))){color=candidate.ordinal();if(candidate==android.graphics.ColorSpace.Named.BT2020_HLG)break;}}
+        vm("fn main(){let rows=db_list();db_add(rows,camera_profile_output(54,"+size.getWidth()+","+size.getHeight()+",2,0));if !camera_configure_color_space("+q(handle)+",rows,"+color+",10000){return 1;}let i=0;while i<20{let e=device_wait("+q(handle)+",1000);if db_kind(e)==5&&worker_equal(db_word(device_field(e,\"event\")),\"configured\"){return 0;}i=i+1;}return 2;}");
+        synchronized(owned){HardwareCamera.Reader output=owned.readers.values().iterator().next();check(output.configuration.getDynamicRangeProfile()==2&&owned.state.equals("configured"),"a real HLG10/P010 session receives an actual configured callback with exact SDK profile2");}
+        vm("fn main(){if !camera_capture("+q(handle)+",1,db_list(),0){return 1;}let i=0;while i<30{let e=device_wait("+q(handle)+",1000);if db_kind(e)==5&&worker_equal(db_word(device_field(e,\"event\")),\"frame\"){state_set(\"hdr_frame\",device_field(e,\"frame\"));return 0;}i=i+1;}return 2;}");
+        String id=state("hdr_frame");HardwareCamera.Frame actual=owned.frame(id);int dataSpace=actual.image.getDataSpace();
+        check(actual.image.getFormat()==android.graphics.ImageFormat.YCBCR_P010&&actual.image.getWidth()==size.getWidth()&&actual.image.getHeight()==size.getHeight(),"the HLG session delivers a real SDK P010 image at the exact advertised dimensions");
+        check(android.hardware.DataSpace.getStandard(dataSpace)==android.hardware.DataSpace.STANDARD_BT2020&&android.hardware.DataSpace.getTransfer(dataSpace)==android.hardware.DataSpace.TRANSFER_HLG,"the actual captured P010 image reports BT2020/HLG in its SDK data-space metadata: "+dataSpace);
+        boolean large=verifyFramePlanes(handle,id,actual);
+        check(true,"every HDR/P010 plane byte and stride crosses bounded VM pages and agrees with the independent actual SDK buffers");
+        vm("fn main(){let f=camera_frame_info("+q(handle)+","+q(id)+");if db_kind(device_field(f,\"data_space\"))!=1||db_word(device_field(f,\"data_space\"))!="+dataSpace+"||db_word(device_field(f,\"format\"))!=54{return 1;}return db_word(camera_frame_close("+q(handle)+","+q(id)+"))-1;}");
+        outputProfiles.put("hdr_capture_verified",true).put("hdr_profile",2).put("hdr_format",54).put("hdr_width",size.getWidth()).put("hdr_height",size.getHeight()).put("hdr_data_space",dataSpace).put("hdr_color_space_id",color<0?JSONObject.NULL:color).put("hdr_plane_paging_verified",true).put("hdr_has_plane_above32k",large);
     }
     void wire(String expression,Object expected,StringBuilder code,int[] sequence)throws Exception{
         String name="v"+(sequence[0]++);code.append("let ").append(name).append("=").append(expression).append(";if !").append(name).append("{return 1;}");
@@ -149,9 +218,7 @@ public final class HardwareCameraChecks {
     }
     static void checkTime(boolean ok)throws IOException{if(!ok)throw new IOException("Encoded video sample timestamps are not monotonic");}
     static final class ByteBufferHolder {final java.nio.ByteBuffer value=java.nio.ByteBuffer.allocate(4*1024*1024);}
-    JSONObject yuv()throws Exception{
-        String handle=state("camera"),id=state("frame");HardwareCamera.Camera camera=VmHardware.handle(context,handle,HardwareCamera.Camera.class);HardwareCamera.Frame frame=camera.frame(id);
-        check(frame.image.getFormat()==android.graphics.ImageFormat.YUV_420_888&&frame.image.getPlanes().length==3,"the actual ImageReader exposes a real three-plane YUV420 image");
+    boolean verifyFramePlanes(String handle,String id,HardwareCamera.Frame frame)throws Exception{
         Image.Plane[] planes=frame.image.getPlanes();boolean large=false;
         for(int p=0;p<planes.length;p++){
             java.nio.ByteBuffer bytes=planes[p].getBuffer().duplicate();int count=bytes.remaining();if(count>32768)large=true;
@@ -160,6 +227,12 @@ public final class HardwareCameraChecks {
                 vm("fn main(){let r=camera_frame_read("+q(handle)+","+q(id)+","+p+","+offset+",32768);if !r{return 1;}let v=device_field(r,\"value\");if db_bytes(v)!="+n+"||db_word(device_field(r,\"total\"))!="+count+"||db_word(device_field(r,\"next\"))!="+next+"{return 2;}let ptr=db_word(v);let i=0;let a=1;let b=0;while i<"+n+"{a=(a+load8(ptr+i))%65521;b=(b+a)%65521;i=i+1;}if ((b<<16)|a)!="+sum.getValue()+"{return 3;}return 0;}");offset+=n;
             }
         }
+        return large;
+    }
+    JSONObject yuv()throws Exception{
+        String handle=state("camera"),id=state("frame");HardwareCamera.Camera camera=VmHardware.handle(context,handle,HardwareCamera.Camera.class);HardwareCamera.Frame frame=camera.frame(id);
+        check(frame.image.getFormat()==android.graphics.ImageFormat.YUV_420_888&&frame.image.getPlanes().length==3,"the actual ImageReader exposes a real three-plane YUV420 image");
+        boolean large=verifyFramePlanes(handle,id,frame);
         check(large,"the advertised YUV fixture contains a plane larger than one32768-byte VM page");
         check(true,"all three VM-paged YUV planes match independent SDK buffers byte-for-byte by exact length/Adler32, including actual row and pixel strides");
         boolean manual=false;int[] caps=camera.ch.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);if(caps!=null)for(int cap:caps)if(cap==CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)manual=true;

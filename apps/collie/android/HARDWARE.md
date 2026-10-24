@@ -29,7 +29,7 @@ it does not count as an implementation of an otherwise available adapter.
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
-| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, bounded JPEG/YUV/SDK planes, MediaRecorder and owned torch SDK bindings implemented; additional metadata types pending | 79 headless camera checks passed on each of Android15/16, including typed profiles/noise metadata, physical-result absence/ownership/eviction and prior JPEG/YUV/manual/video/consent/lifecycle gates; successful physical overrides/results, RAW/depth, torch and physical/older-device gates remain open |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, MediaRecorder and owned torch SDK bindings implemented; additional metadata types and HDR video pending | 97 headless camera checks passed on each of Android15/16, including actual HLG10/P010 capture and complete plane transport, typed profiles/noise metadata and prior JPEG/YUV/manual/video/consent/lifecycle gates; physical HDR accuracy, successful physical overrides/results, RAW/depth, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
@@ -3423,3 +3423,95 @@ active, and no master merge or phone deployment is included.
 Primary SDK contracts: [DynamicRangeProfiles](https://developer.android.com/reference/android/hardware/camera2/params/DynamicRangeProfiles),
 [ColorSpaceProfiles](https://developer.android.com/reference/android/hardware/camera2/params/ColorSpaceProfiles),
 [Capability](https://developer.android.com/reference/android/hardware/camera2/params/Capability).
+
+## Camera output profiles and portable API reference (2026-10-24)
+
+The output controls now consume the previously exposed SDK profile maps.
+`camera_profile_output(format,width,height,dynamic_range,stream_use_case)` and
+`camera_physical_profile_output(format,width,height,physical_id,dynamic_range,stream_use_case)`
+produce six-field typed records. Legacy three/four-field records remain valid;
+five fields are rejected. Zero profile/use-case leaves the SDK default. Nonzero
+selections require API33+, the actual source camera's advertised values and an
+exact advertised format/size. STANDARD1 remains valid when the optional ten-bit
+profile map is absent. Every record is checked before any ImageReader allocation;
+PRIVATE images still require the separate recorder path.
+
+`camera_configure_color_space(camera,outputs,color_space,timeout_ms)` uses the
+existing owned Camera grant and configuration operation. The optional fourth
+wire argument follows the existing timeout. Color-space-1 leaves the default;
+nonnegative values select a public `ColorSpace.Named` ordinal on API34+ and must
+be advertised for every selected output's format/profile. The public
+`SessionConfiguration.setColorSpace` sets the session-wide value; no hidden
+OutputConfiguration color setter, reflection or general SDK dispatch is used.
+The actual configuration getters are exposed as `dynamic_range_profile`,
+`stream_use_case` and `configuration_color_space_id`. These describe SDK objects,
+not a claim of effective sensor/color accuracy. Each actual image separately
+exposes SDK33+ `data_space` (0 means UNKNOWN; older SDKs return typed null).
+This bitmask is not a ColorSpace enum ID.
+
+Capture submission checks the actual SDK dynamic-range request constraints
+across all target outputs. An empty constraint set means unrestricted; incompatible
+profile combinations return `unsupported_combination` before submission. Default
+recording retains STANDARD; HDR codec/recording controls remain open. Existing
+resource leases, callback deadlines, frame bounds and permission cleanup apply.
+No new permission, model tool or Java UI behavior is added.
+
+The same frozen debug APK passes97 camera groups on each owned headless
+Android15/API35 and Android16/API36 emulator. Eighteen groups extend the earlier79:
+invalid/absent profiles, negative values, malformed five-field records,
+non-advertised positive use cases, physical nonmembers, invalid/unsupported color
+combinations, explicitly constructed SDK constraint semantics, real configured
+sessions/getters and real HLG image transport. The existing JPEG/YUV/manual
+exposure/video/audio/ownership/revocation/lifecycle groups continue to pass.
+
+On both emulators the real camera advertises profiles1/2 and seven P010 sizes.
+Actual SDK callbacks configure STANDARD/sRGB with stream-use-case2, then an
+HLG10/P010 session produces a160x120 image. Its actual SDK data space168165376
+independently decodes as BT2020/HLG. Every plane's length, stride and Adler32
+matches the independent SDK ByteBuffer across bounded VM pages, including a
+plane above32KiB. This verifies virtual-device capture and byte transport;
+`hdr_accuracy_verified` and all physical-device/physical-override/result-value
+flags remain false. Constructed constraint objects are fixtures, not radio or
+camera callbacks. Original messages, conversation/OS grants and user flags were
+restored; owned private workspaces removed. Both owned emulators were stopped.
+The earlier unexplained cold-launch compilation cancellation remains an open
+startup handoff gate; these settled-Activity passes do not establish a fix.
+
+Frozen artifacts and reports are under `build/android-camera-profiles/`:
+
+- `final-debug/collie.apk`:7,931,479 bytes (7.564MiB), SHA256
+  `f50ba4473a53239b89c022b1ce284b991c86b43823dea6a7b41efb785b0dbe9b`.
+- `final-release/collie.apk`:7,652,872 bytes (7.298MiB), SHA256
+  `8e07ed62b6e7ce13343f114846d3d4ae882cca223b17801ef6a411f418025bbc`.
+- `final-debug/camera-emulator-5582-report.json` and
+  `camera-emulator-5584-report.json` retain serial, exact APK hash and actual
+  output-profile observations; `camera36-final.log`/`camera35-final.log` retain
+  all97 groups separately.
+- Debug/non-debug packaging checks pass.285 handwritten production Java classes
+  match before DEX; generated R classes are excluded. Generated engine source,
+  object and both native libraries match. Debug fixtures and Python are absent
+  from the non-debug APK.
+- Final native engine:9 shared-core,17 lazy-permission and4 complete reference
+  groups pass. All97,958 detailed API bytes and the13,981-byte index are read
+  with all31 grants denied, including32KiB pages, bounds and EOF. Portable camera
+  records pass native and interpreter checks; the codec/registry check passes.
+
+Static API prose is now maintained in `apps/collie/guest/hardware-api.txt`, not
+embedded as Python string literals. The isolated reference-move commit preserves
+all81,831 original bytes (SHA256
+`a01b167650b99cfeb1c503291eb04f94fe9afb3dc6ea9884aea8178d5c85fcf9`)
+and produces byte-identical generated engine/object/native libraries. Profile
+control documentation follows that unchanged prefix. No Python runner is added;
+the existing camera driver only retains the SDK oracle's output-profile report.
+The build and other legacy test drivers still use Python on the host.
+
+Actual RAW/depth, physical HDR accuracy, HDR video/codec controls, successful
+physical-camera outputs/overrides/results, additional SDK types, older/vendor
+behavior and other hardware gates remain open. Background HCE, legacy AOSP UWB,
+strict UWB interval and public HID callback gates are not closed by this batch.
+The full all-adapter goal remains active; no master merge or phone deployment.
+
+Public SDK contracts: [OutputConfiguration](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration),
+[SessionConfiguration](https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration),
+[DynamicRangeProfiles](https://developer.android.com/reference/android/hardware/camera2/params/DynamicRangeProfiles),
+[ColorSpaceProfiles](https://developer.android.com/reference/android/hardware/camera2/params/ColorSpaceProfiles).

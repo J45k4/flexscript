@@ -3,4 +3,6 @@ fn camera_setting(key,type,value){let r=db_list();db_add(r,db_text(key));db_add(
 fn camera_physical_setting(physical_id,key,type,value){let r=camera_setting(key,type,value);db_add(r,db_text(physical_id));return r;}
 fn camera_physical_output(format,width,height,physical_id){let r=db_list();db_add(r,db_int(format));db_add(r,db_int(width));db_add(r,db_int(height));db_add(r,db_text(physical_id));return r;}
 fn camera_output(format,width,height){return camera_physical_output(format,width,height,"");}
+fn camera_physical_profile_output(format,width,height,physical_id,dynamic_range,stream_use_case){let r=camera_physical_output(format,width,height,physical_id);db_add(r,db_int(dynamic_range));db_add(r,db_int(stream_use_case));return r;}
+fn camera_profile_output(format,width,height,dynamic_range,stream_use_case){return camera_physical_profile_output(format,width,height,"",dynamic_range,stream_use_case);}
 fn camera_video_options(width,height,fps,bitrate,duration_ms,max_bytes,codec){let r=db_list();db_add(r,db_int(width));db_add(r,db_int(height));db_add(r,db_int(fps));db_add(r,db_int(bitrate));db_add(r,db_int(duration_ms));db_add(r,db_int(max_bytes));db_add(r,db_int(codec));return r;}
