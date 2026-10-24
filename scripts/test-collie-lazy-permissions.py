@@ -78,7 +78,7 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
  assert o['state']=='continue' and o['exit_code']==0 and o['stdout']=='Permission denied: microphone',o
  passed('camera video with audio checkpoints Camera and Microphone separately and propagates denial before SDK I/O')
 
- for body in ['hce_info();','let a=db_list();db_add(a,db_text("F0434F4C4C494500"));hce_open(0,a,1000);','hcef_open("4000","02FE000000000001",1000);']:
+ for body in ['hce_info();','let a=db_list();db_add(a,db_text("F0434F4C4C494500"));hce_open(0,a,1000);','hcef_open("4000","02FE000000000001",1000);','hce_background_status();','hce_background_state();','let a=db_list();db_add(a,db_text("F0434F4C4C494501"));hce_background_install(0,a,"fn main(){return 0;}",db_null(),1000);']:
   for approved in [False,True]:
    config['permissions']=dict.fromkeys(keys,'ask')
    t=begin('fn main(){'+body+'let e=db_error();db_io(0,1,e,db_len(e));return 0;}','hce-'+str(len(body))+'-'+str(approved));o=vm(t)
@@ -86,7 +86,10 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
    t=step('observation',t['state'],observation=o);config['permissions']['nfc']=approved;t=step('next',t['state']);o=vm(t)
    assert o['state']=='continue' and o['exit_code']==0,o
    assert ('requires the Android host' in o['stdout']) if approved else o['stdout']=='Permission denied: nfc',o
- passed('HCE inventory and ISO-DEP/NFC-F registration checkpoint only NFC and resume approval/denial without another model tool')
+ config['permissions']=dict.fromkeys(keys,'ask');config['permissions']['nfc']=False
+ t=begin('fn main(){hce_background_remove("card-unknown");let e=db_error();db_io(0,1,e,db_len(e));return 0;}','remove-card-denied');o=vm(t)
+ assert o['state']=='continue' and o['exit_code']==0 and 'requires the Android host' in o['stdout'],o
+ passed('HCE inventory, live ISO-DEP/NFC-F and durable callback registration/state checkpoint only NFC; owned removal needs no new grant')
 
  config['permissions']=dict.fromkeys(keys,'ask')
  # A completed write must never be replayed when the following read needs access.

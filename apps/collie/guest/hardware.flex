@@ -341,6 +341,10 @@ fn camera_shutdown(camera){let r=db_request("camera_shutdown");db_add(r,db_text(
 
 // NFC service routing and asynchronous command replies; the guest owns protocol bytes.
 fn hce_info(){let r=db_request("hce_info");return db_rpc(r);}
+fn hce_background_install(category,aids,source,state,timeout_ms){let r=db_request("hce_background_install");db_add(r,db_int(category));db_add(r,aids);db_add(r,db_text(source));db_add(r,state);db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn hce_background_status(){return db_rpc(db_request("hce_background_status"));}
+fn hce_background_state(){return db_rpc(db_request("hce_background_state"));}
+fn hce_background_remove(registration){let r=db_request("hce_background_remove");db_add(r,db_text(registration));return db_rpc(r);}
 fn hce_open(category,aids,reply_timeout_ms){let r=db_request("hce_open");db_add(r,db_int(category));db_add(r,aids);db_add(r,db_int(reply_timeout_ms));return db_rpc(r);}
 fn hcef_open(system_code,nfcid2,reply_timeout_ms){let r=db_request("hcef_open");db_add(r,db_text(system_code));db_add(r,db_text(nfcid2));db_add(r,db_int(reply_timeout_ms));return db_rpc(r);}
 fn hce_request(session){let r=db_request("hce_request");db_add(r,db_text(session));return db_rpc(r);}

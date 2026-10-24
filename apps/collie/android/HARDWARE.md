@@ -22,7 +22,7 @@ it does not count as an implementation of an otherwise available adapter.
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy and extended/periodic transmission, GATT client/server SDK bindings implemented; remaining lifecycle/SDK gates below | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | public Classic HID device SDK bindings implemented; remaining verification gates below | encrypted510-byte control/interrupt report exchange, registration ownership and reconnect verified against a controlled host; public unplug callback gate remains failing on this emulator |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
-| NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment, NFC-F, polling-frame reception and owned exact/pattern-filter/observe SDK bindings implemented; background operation pending | 48 control/recovery scenarios and80 HCE/polling checks passed on the NFC-less emulator; successful filter/observe/routing/RF and physical checks remain unverified |
+| NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment, durable background Flexscript callbacks, foreground NFC-F, polling-frame reception and owned filter/observe SDK bindings implemented | 102 HCE/service/VM checks passed on each Android15/16 emulator, including background execution, process restart and retained channel leases; 48 control/recovery checks passed separately; successful AID/filter/observe/routing/RF and physical checks remain unverified |
 | Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | SDK service/readers/sessions/channels and extended APDU byte transport implemented | actual independent service bindings, empty reader inventory, owned asynchronous shutdown and first-use consent verified; real applet/channel/APDU and access-control fixtures pending |
 | UWB | supported-device sessions and ranging events through supported APIs | Android16 public raw-session and Android12+ Play services Task bindings implemented; legacy AOSP provider/fusion pending | actual two-emulator measurements and SDK peer callbacks verified; strict effective-interval check remains failing; physical/older-device checks pending |
 | Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
@@ -3515,3 +3515,124 @@ Public SDK contracts: [OutputConfiguration](https://developer.android.com/refere
 [SessionConfiguration](https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration),
 [DynamicRangeProfiles](https://developer.android.com/reference/android/hardware/camera2/params/DynamicRangeProfiles),
 [ColorSpaceProfiles](https://developer.android.com/reference/android/hardware/camera2/params/ColorSpaceProfiles).
+
+## Durable background ISO-DEP handlers (2026-10-24)
+
+`hce_background_install(category,aids,source,state,timeout_ms)` registers one
+workspace-owned background card. `hce_background_status()` and
+`hce_background_state()` inspect that conversation's registration/state;
+`hce_background_remove(id)` requests removal without another NFC grant. Install
+uses the existing lazy NFC permission and starts with a resumed Activity. It does
+not choose a default wallet or set an Activity routing preference. Android still
+owns AID conflicts, wallet selection, device unlock, secure NFC and force-stop
+policy. NFC-F's public enableService remains foreground-only; this new adapter
+uses ISO-DEP other/payment services.
+
+The APDU program/state machine is shared Flexscript in
+`core/card-handler.flex`; `guest/card-handler.flex` supplies its preloaded API.
+Android's protected, default-disabled services run in `:hce_background`, separately
+from the Activity/native agent engine. The SDK host supplies component/routing
+calls, copied APDUs, process lifecycle and locked AtomicFile storage. No Python
+runner, model tool, permission category or runtime is added. CI compiles/runs the
+new callback oracle directly from Flexscript.
+
+A self-contained source(up to32768 UTF-8 bytes) is compiled on each command using
+the restricted interpreter:4MiB guest heap,4million instructions,1-second guest
+execution deadline, plus a100..5000ms whole-transaction deadline. Callbacks can
+read their command and saved typed value, stage one reply and commit a new value.
+They cannot access files, the conversation DB, network, workers, hardware, raw
+FFI or native processes. Agent turns retain their existing APIs; they can inspect
+the callback state and use it in their own DB. Full4..65544-byte commands and
+2..65538-byte replies cross32KiB pages. Null, binary bytes, integer64 and exact
+binary64 bits survive the typed state boundary. Missing/incomplete commits,
+nonzero exits, compiler errors and VM limits publish no reply/state.
+
+Registration intent is durable before SDK submission, including an explicit
+attempt marker. Status separates acknowledgement, handler compilation, startup
+expiry/process loss, removal and cleanup failure. Uncertain SDK work retains
+ownership; startup is not silently retried. File locks serialize both processes.
+Fresh saved NFC permission is checked at command acceptance and state commit;
+NFC Deny requests removal before persisting its policy. A cleanup failure cannot
+prevent saving Deny. Reader/live-HCE/background registrations share exclusive
+Collie ownership. Removal closes new command access immediately, removes only
+owned AIDs/components and retains an active channel until actual SDK deactivation,
+service destruction or an authoritative observation that its owning process ended.
+A real replacement service instance settles an old instance marker after process
+death; no native pointer or OS handle is restored.
+
+State is durable before sendResponseApdu. `last_submission` records prepared,
+sdk_returned, deadline_expired, expired_after_state_commit or send_failed. A crash
+or link loss can leave peer receipt unknown, including after state advancement;
+a response is never automatically replayed. sdk_returned describes the public
+call, not RF delivery. Empty stderr no longer hides a failing callback's actual
+exit code in `last_error`.
+
+The final revised debug APK passes102 HCE groups on each owned headless
+Android15/API35 and Android16/API36 emulator.22 new groups extend the earlier80:
+protected separate-process services, actual unsupported installation before
+mutation, native VM replies/state, Activity onPause/onStop, live channel markers,
+actual process kill/replacement and state restoration, foreign-workspace denial,
+full extended APDU byte equality, failing program/exit diagnostics, callback
+capability denial, an actual100ms deadline/late completion, getter-driven startup
+expiry, uncertain SDK cleanup and actual deactivation before lease release.
+The injected ready profile deliberately has no registration acknowledgement.
+Constructed framework Messenger APDUs reach the real service/VM, but do not prove
+NFC controller support, successful AID registration, routing or any RF exchange.
+Those report flags and physical-device verification remain false.
+
+Prototype fixture fixes were explicit: Android16's extra command-latency ACK was
+initially mistaken for a response; the peer now waits only for APDU/unhandled
+messages. A generated foreign-workspace program had an extra closing parenthesis.
+A native negative test expected a return value where the restricted VM correctly
+traps a denied syscall. No production limits or hardware success were fabricated
+to make these fixtures pass.
+
+Frozen current artifacts:
+
+- `build/android-hce-background/final-v2-debug/collie.apk`:8,013,399 bytes
+  (7.642MiB), SHA256
+  `921ff6e5154f3c60511730af8e9e5c75c107d050a48bfe1ceca79cd63063619d`.
+- `build/android-hce-background/final-v2-release/collie.apk`:7,702,024 bytes
+  (7.345MiB), SHA256
+  `0815752f02e70b432b01dee34e18de4708e5cc91956fad27e0ca782709f4a139`.
+- Each device's exact-hash report is retained in
+  `final-v2-debug/emulator-5582/hce-android-report.json` and
+  `final-v2-debug/emulator-5584/hce-android-report.json`; corresponding logs are
+  `hce36-final-v2.log` and `hce35-final-v2.log`.
+- Both packaging checks pass. All289 handwritten production Java classes match
+  between debug/non-debug; generated R classes are excluded. Both native
+  libraries, engine source and object match. Debug fixtures and Python are absent
+  from the non-debug APK. New compiled service metadata verifies NFC binding
+  protection, dedicated processes, disabled defaults and required unlock.
+
+The preceding frozen `final-debug` snapshot(debug SHA256
+`906203c9e0c34419205f52b2a4fa931e54587481485fd22ba38687e3a25c1821`)
+also passed102 HCE checks on each emulator. On Android16 that exact APK separately
+passed33 NFC/OMAPI,48 HCE control/recovery and97 Camera2 regression groups.
+These Android regressions are not relabeled as tests of the revised APK. The
+only changed production Java class is CollieHceBackgroundService's callback-error
+diagnostic; `parity-v2.json` proves every other production class and all native
+files are identical between snapshots. The current native engine passes11 new
+callback groups,9 shared-core,17 lazy-permission and4 complete reference groups,
+plus the32KiB codec/registry check. All102,032 detailed reference bytes and the
+14,126-byte index are readable with all31 grants denied. The callback oracle
+covers fresh ARM64 processes, all extended bytes, exact state, staged-commit
+failure, restricted RPC/syscall traps, fuel/deadlines and malformed envelopes.
+
+Both emulator suites restore original conversations/choices and remove owned
+profiles/test workspaces; private components return to their defaults. Both owned
+headless emulators were stopped. No phone deployment or master merge is included.
+
+Remaining background-card gates include actual AID registration/removal and
+controller routing, payment/default-wallet/unlock policy, RF latency/WTX and peer
+receipt, hardware crypto/other host-service composition, older/OEM behavior,
+corrupted/interrupted durable writes and real SDK/Binder/cleanup faults. The
+existing polling/filter/observe physical gates remain open. This does not close
+legacy AOSP UWB, fusion/nonzero limits, strict UWB effective interval/public HID
+unplug, RAW/depth/physical-camera, privileged/vendor integrations or the other
+hardware inventory's physical/lifecycle gates. The all-adapter goal remains active.
+
+Primary contracts: [HCE guide](https://developer.android.com/develop/connectivity/nfc/hce),
+[CardEmulation](https://developer.android.com/reference/android/nfc/cardemulation/CardEmulation),
+[NFC-F enableService](https://developer.android.com/reference/android/nfc/cardemulation/NfcFCardEmulation#enableService(android.app.Activity,%20android.content.ComponentName)),
+[framework Messenger implementation](https://android.googlesource.com/platform/packages/modules/Nfc/+/refs/heads/main/framework/java/android/nfc/cardemulation/HostApduService.java).

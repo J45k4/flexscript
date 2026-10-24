@@ -308,6 +308,10 @@ fn hw_operations(){
     hw_operation(rows,"camera_video_seek","hardware_handle",2,2);
     hw_operation(rows,"camera_shutdown","hardware_handle",1,1);
     hw_operation(rows,"hce_info","nfc",0,0);
+    hw_operation(rows,"hce_background_install","nfc",5,5);
+    hw_operation(rows,"hce_background_status","nfc",0,0);
+    hw_operation(rows,"hce_background_state","nfc",0,0);
+    hw_operation(rows,"hce_background_remove","progress",1,1);
     hw_operation(rows,"hce_open","nfc",3,3);
     hw_operation(rows,"hcef_open","nfc",3,3);
     hw_operation(rows,"hce_request","hardware_handle",1,1);

@@ -20,7 +20,7 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
   dex=b''.join(apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex',name))
-  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareUwbGmsChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
+  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareUwbGmsChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareCardServiceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
   assert b'Lorg/flexscript/collie/HardwareUwbGms;' in dex,(label,'GMS UWB adapter present')
   lock=json.loads(apk.read('assets/collie-android-dependencies.json'))
@@ -51,10 +51,11 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
   feature=next(feature for feature in sections(manifest,'uses-feature') if '"'+feature_name+'"' in feature);assert re.search(r':required[^=]*=false',feature),(label,feature_name,'camera remains optional')
  for feature_name in ['android.hardware.nfc.hce','android.hardware.nfc.hcef']:
   feature=next(feature for feature in sections(manifest,'uses-feature') if '"'+feature_name+'"' in feature);assert re.search(r':required[^=]*=false',feature),(label,feature_name,'emulation remains optional')
- for service_name,resource,action in [('CollieHceService','hce_other','HOST_APDU_SERVICE'),('CollieHcePaymentService','hce_payment','HOST_APDU_SERVICE'),('CollieHceFService','hce_f','HOST_NFCF_SERVICE')]:
+ for service_name,resource,action in [('CollieHceService','hce_other','HOST_APDU_SERVICE'),('CollieHcePaymentService','hce_payment','HOST_APDU_SERVICE'),('CollieHceFService','hce_f','HOST_NFCF_SERVICE'),('CollieHceBackgroundService','hce_other','HOST_APDU_SERVICE'),('CollieHceBackgroundPaymentService','hce_payment','HOST_APDU_SERVICE')]:
   service=next(s for s in services if '".'+service_name+'"' in s)
   assert 'android.permission.BIND_NFC_SERVICE' in service and re.search(r':enabled[^=]*=false',service) and re.search(r':exported[^=]*=true',service),(label,service_name,'protected and disabled by default')
   assert action in service,(label,service_name,'SDK service action')
+  if 'Background' in service_name:assert ':hce_background' in service,(label,service_name,'dedicated callback process')
   xml=subprocess.check_output([a.aapt2,'dump','xmltree',str(path),'--file','res/xml/'+resource+'.xml']).decode()
   if resource!='hce_f':assert re.search(r':requireDeviceUnlock[^=]*=true',xml),(label,resource,'unlock required')
   else:

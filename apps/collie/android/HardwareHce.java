@@ -40,6 +40,7 @@ final class HardwareHce {
     static void serviceCreated(android.app.Service service,int mode){synchronized(HardwareNfc.LEASE){if(owner==null){recovered=false;recoverAsync(service);}}}
     static void capabilities(VmHardware.Context c,JSONArray out)throws Exception{
         NfcAdapter adapter=HardwareNfc.optional(c);for(int mode:new int[]{0,2}){boolean s=supported(c.host,adapter,mode);out.put(VmHardware.object("id",mode==2?"nfc_hcef":"nfc_hce","implemented",true,"supported",s,"available",s&&adapter.isEnabled()&&c.host.hardwareResumed,"permission","nfc","foreground_required",true,"max_sessions",1));}
+        boolean background=supported(c.host,adapter,0);out.put(VmHardware.object("id","nfc_hce_background","implemented",true,"supported",background,"available",background&&adapter.isEnabled()?JSONObject.NULL:false,"permission","nfc","foreground_required",false,"install_foreground_required",true,"persistent_registration",true,"maximum_registrations",1,"nfcf_background_supported",false));
         JSONObject polling=HardwareHcePolling.info(adapter,supported(c.host,adapter,0));
         out.put(polling.put("id","nfc_hce_polling_frames").put("implemented",true).put("permission","nfc")
             .put("available",polling.getBoolean("supported")&&adapter.isEnabled()&&c.host.hardwareResumed?JSONObject.NULL:false)
@@ -138,6 +139,7 @@ final class HardwareHce {
     }
     static Session current(int mode){Session s;synchronized(HardwareNfc.LEASE){s=owner;}return s!=null&&s.mode==mode&&s.accepts()?s:null;}
     static Object call(VmHardware.Context c,String op,JSONArray a)throws Exception{
+        if(op.startsWith("hce_background_"))return HardwareHceBackground.call(c,op,a);
         if(op.equals("hce_info")){recoverAsync(c.host);return info(c);}
         if(op.equals("hce_open")||op.equals("hcef_open")){
             int mode,timeout;ArrayList<String> ids=null;String code="",id="";
@@ -145,7 +147,7 @@ final class HardwareHce {
             else{mode=2;code=hex(a,0,4);id=hex(a,1,16);if(code.charAt(0)!='4'||code.endsWith("FF")||!id.startsWith("02FE"))throw new VmHardware.Failure("invalid_argument","Use an NFC-F system code4000..4FFF excluding4*FF, and a16-digit NFCID2 beginning02FE.");timeout=VmHardware.integer(a,2,20,5000);}
             visible(c);NfcAdapter adapter=HardwareNfc.optional(c);if(!supported(c.host,adapter,mode))throw new VmHardware.Failure("unsupported",mode==2?"Android has no NFC-F host card emulation adapter.":"Android has no ISO-DEP host card emulation adapter.");if(!adapter.isEnabled())throw new VmHardware.Failure("nfc_disabled","Enable NFC in Android settings.");recoverAsync(c.host);
             Session session=new Session(c,adapter,mode,timeout,ids,code,id);
-            synchronized(HardwareNfc.LEASE){if(!recovered)throw new VmHardware.Failure("recovery_pending","Wait for interrupted NFC registration cleanup: "+recoveryError);if(owner!=null||HardwareNfc.readerOwned())throw new VmHardware.Failure("busy","Close the owned NFC reader/card-emulation lease and wait for SDK/link cleanup first.");owner=session;}
+            synchronized(HardwareNfc.LEASE){if(!recovered)throw new VmHardware.Failure("recovery_pending","Wait for interrupted NFC registration cleanup: "+recoveryError);if(owner!=null||HardwareNfc.readerOwned()||HardwareHceBackground.owned(c.host))throw new VmHardware.Failure("busy","Close the owned NFC reader/card-emulation lease or durable background card and wait for SDK/link cleanup first.");owner=session;}
             VmHardware.blocking(session);try{String handle=VmHardware.add(session);session.start();return handle;}catch(Exception e){session.close();throw e;}finally{VmHardware.unblocking();}
         }
         Session s=VmHardware.handle(c,VmHardware.text(a,0,128),Session.class);s.access(c);VmHardware.blocking(s);

@@ -151,6 +151,11 @@ public class MainActivity extends Activity {
     void savePermission(String key,Object value) throws Exception {
         JSONObject previous=permissions;
         try {
+            boolean backgroundCleanupFailed=false;
+            if(key.equals("nfc")&&!Boolean.TRUE.equals(value)){
+                try{HardwareHceBackground.revoke(this,session);}
+                catch(Exception cleanup){backgroundCleanupFailed=true;}
+            }
             permissions=new JSONObject(previous.toString()).put(key,value);
             save();if(!Boolean.TRUE.equals(value)){
                 // A running VM holds a configuration snapshot. Stop it on an
@@ -159,7 +164,7 @@ public class MainActivity extends Activity {
                 // ordinary denied-call result rather than being cancelled.
                 if(Boolean.TRUE.equals(previous.opt(key))&&nativeThread!=null){nativeCancel();VmInternet.cancel();VmHardware.cancel();}
                 VmHardware.revoke(session,key);
-            }updateUiFacts();
+            }updateUiFacts();if(backgroundCleanupFailed)ui.notice("NFC access is disabled. Android could not finish removing the background card.");
         } catch(Exception error) { permissions=previous;updateUiFacts();throw error; }
     }
     boolean hasAuthentication() {
