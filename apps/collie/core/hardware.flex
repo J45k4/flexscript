@@ -306,6 +306,25 @@ fn hw_operations(){
     hw_operation(rows,"hce_reply_begin","hardware_handle",3,3);
     hw_operation(rows,"hce_reply_write","hardware_handle",4,4);
     hw_operation(rows,"hce_reply_commit","hardware_handle",2,2);
+    hw_operation(rows,"screen_info","screen_capture",0,0);
+    hw_operation(rows,"screen_open","screen_capture",5,5);
+    hw_operation(rows,"screen_tickets","screen_capture",2,2);
+    hw_operation(rows,"screen_forget","screen_capture",1,1);
+    hw_operation(rows,"screen_shutdown","hardware_handle",1,1);
+    hw_operation(rows,"screen_resize","hardware_handle",4,4);
+    hw_operation(rows,"screen_pause","hardware_handle",2,2);
+    hw_operation(rows,"screen_rotation","hardware_handle",2,2);
+    hw_operation(rows,"screen_frames","hardware_handle",3,3);
+    hw_operation(rows,"screen_frame_info","hardware_handle",2,2);
+    hw_operation(rows,"screen_frame_read","hardware_handle",5,5);
+    hw_operation(rows,"screen_frame_close","hardware_handle",2,2);
+    hw_operation(rows,"screen_video_start","screen_capture",2,2);
+    hw_operation(rows,"screen_video_audio_start","screen_capture",2,2);
+    j_set(j_at(rows,j_count(rows)-1),"also",j_string("microphone"));
+    hw_operation(rows,"screen_video_stop","hardware_handle",1,1);
+    hw_operation(rows,"screen_video_pause","hardware_handle",1,1);
+    hw_operation(rows,"screen_video_resume","hardware_handle",1,1);
+    hw_operation(rows,"screen_video_seek","hardware_handle",2,2);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}

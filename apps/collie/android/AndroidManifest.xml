@@ -48,6 +48,8 @@
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <application android:label="Collie" android:theme="@style/CollieTheme" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:allowBackup="false" android:debuggable="false" android:usesCleartextTraffic="true" android:extractNativeLibs="false">
         <provider android:name=".CameraAttachmentProvider" android:authorities="org.flexscript.collie.camera" android:exported="false" android:grantUriPermissions="true" />
@@ -64,6 +66,7 @@
             <intent-filter><action android:name="android.nfc.cardemulation.action.HOST_NFCF_SERVICE" /></intent-filter>
             <meta-data android:name="android.nfc.cardemulation.host_nfcf_service" android:resource="@xml/hce_f" />
         </service>
+        <service android:name=".CollieProjectionService" android:exported="false" android:foregroundServiceType="mediaProjection|microphone" />
         <service android:name=".CollieVpnService" android:exported="true" android:permission="android.permission.BIND_VPN_SERVICE" android:foregroundServiceType="systemExempted">
             <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
             <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="false" />

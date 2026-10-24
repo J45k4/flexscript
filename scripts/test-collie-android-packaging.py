@@ -20,9 +20,13 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
   dex=apk.read('classes.dex')
-  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareHcePeerFixture','UiRendererChecks']:
+  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareScreenChecks','HardwareHcePeerFixture','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
   fixture_resource=any('midi_loopback_fixture' in name for name in apk.namelist());assert fixture_resource==debug,(label,'test resource')
+ projection=next(service for service in sections(manifest,'service') if '.CollieProjectionService' in service)
+ assert re.search(r':exported[^=]*=false',projection),(label,'projection private service')
+ assert re.search(r'foregroundServiceType[^=]*=0x0*a0\b',projection),(label,'projection/media microphone types')
+ for permission in ['android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION','android.permission.FOREGROUND_SERVICE_MICROPHONE']:assert '"'+permission+'"' in manifest,(label,permission)
  services=list(sections(manifest,'service'));assert any('HardwareHcePeerFixture' in service for service in services)==debug
  assert any('MidiLoopbackFixture' in service for service in services)==debug
  vpn=next(service for service in services if '.CollieVpnService' in service)

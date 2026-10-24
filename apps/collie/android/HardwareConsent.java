@@ -22,7 +22,7 @@ final class HardwareConsent {
     private static final class Pending {
         final PlatformTask task;final JSONObject signal;
         final CountDownLatch ready=new CountDownLatch(1);
-        int code;boolean abandoned,documentOpened;String token;PendingIntent callback;String[] permissions;volatile Exception error;
+        int code;boolean abandoned,documentOpened,captureOpened;String token;PendingIntent callback;String[] permissions;volatile Exception error;
         Pending(PlatformTask task,JSONObject signal){this.task=task;this.signal=signal;}
     }
     HardwareConsent(MainActivity host){this.host=host;}
@@ -34,7 +34,10 @@ final class HardwareConsent {
                 task.check();if(!host.ownsPermissionRequest(task.root))throw new IOException("Android permission request belongs to a closed conversation.");
             }
             task.check();if(pending.error!=null)throw pending.error;completed=true;
-        }finally{final boolean interrupted=!completed;host.runOnUiThread(()->{if(interrupted&&pending.documentOpened)try{HardwareDocuments.abandonPick(new VmHardware.Context(host,task.root),pending.signal.getJSONObject("request"));}catch(Exception ignored){}if(pending.code!=0 && queue.peek()==pending){pending.abandoned=true;}else queue.remove(pending);show();});}
+        }finally{final boolean interrupted=!completed;host.runOnUiThread(()->{if(interrupted)abandon(pending);if(pending.code!=0 && queue.peek()==pending){pending.abandoned=true;}else queue.remove(pending);show();});}
+    }
+    private void abandon(Pending pending){
+        try{VmHardware.Context c=new VmHardware.Context(host,pending.task.root);JSONObject r=pending.signal.getJSONObject("request");if(pending.documentOpened)HardwareDocuments.abandonPick(c,r);if(pending.captureOpened)HardwareScreenCapture.abandon(c,r);}catch(Exception ignored){}
     }
     private void show(){
         Pending pending=queue.peek();if(pending==null || pending.code!=0)return;
@@ -42,6 +45,10 @@ final class HardwareConsent {
             pending.task.check();if(!host.ownsPermissionRequest(pending.task.root))throw new IOException("Conversation closed.");
             JSONObject request=pending.signal.getJSONObject("request");
             String type=request.getString("type");
+            if(type.equals("screen_capture")){
+                Intent intent=HardwareScreenCapture.picker(new VmHardware.Context(host,pending.task.root),request);if(intent==null){complete(pending);return;}
+                pending.captureOpened=true;pending.code=++sequence;host.startActivityForResult(intent,pending.code);return;
+            }
             if(type.equals("document_tree")){
                 Intent intent=HardwareDocuments.picker(new VmHardware.Context(host,pending.task.root),request);if(intent==null){complete(pending);return;}
                 pending.documentOpened=true;pending.code=++sequence;host.startActivityForResult(intent,pending.code);return;
@@ -69,7 +76,7 @@ final class HardwareConsent {
             if(missing.isEmpty()){queue.remove();pending.ready.countDown();show();return;}
             if(missing.contains("android.permission.ACCESS_FINE_LOCATION") && !missing.contains("android.permission.ACCESS_COARSE_LOCATION"))missing.add("android.permission.ACCESS_COARSE_LOCATION");
             pending.permissions=missing.toArray(new String[0]);pending.code=++sequence;host.requestPermissions(pending.permissions,pending.code);
-        }catch(Exception error){pending.error=error;if(pending.documentOpened)try{HardwareDocuments.abandonPick(new VmHardware.Context(host,pending.task.root),pending.signal.getJSONObject("request"));}catch(Exception ignored){}complete(pending);}
+        }catch(Exception error){pending.error=error;abandon(pending);complete(pending);}
     }
     private void complete(Pending pending){if(pending.token!=null)USB_REQUESTS.remove(pending.token);if(pending.callback!=null)pending.callback.cancel();queue.remove(pending);pending.ready.countDown();show();}
     static void usbResult(String token){HardwareConsent consent=USB_REQUESTS.get(token);if(consent!=null)consent.usbCompleted(token);}
@@ -79,9 +86,10 @@ final class HardwareConsent {
         catch(Exception error){pending.error=error;}
         complete(pending);
     }
-    void close(){for(Pending pending:queue){pending.error=new IOException("Android permission request cancelled because the activity closed.");if(pending.documentOpened)try{HardwareDocuments.abandonPick(new VmHardware.Context(host,pending.task.root),pending.signal.getJSONObject("request"));}catch(Exception ignored){}if(pending.token!=null)USB_REQUESTS.remove(pending.token);if(pending.callback!=null)pending.callback.cancel();pending.ready.countDown();}queue.clear();}
+    void close(){for(Pending pending:queue){pending.error=new IOException("Android permission request cancelled because the activity closed.");abandon(pending);if(pending.token!=null)USB_REQUESTS.remove(pending.token);if(pending.callback!=null)pending.callback.cancel();pending.ready.countDown();}queue.clear();}
     boolean activityResult(int code,int resultCode,Intent data){
         Pending pending=queue.peek();if(pending==null||pending.code!=code)return false;String type=pending.signal.optJSONObject("request").optString("type");
+        if(type.equals("screen_capture")){try{boolean abandoned=pending.abandoned||!host.ownsPermissionRequest(pending.task.root);if(!abandoned)pending.task.check();HardwareScreenCapture.pickerResult(new VmHardware.Context(host,pending.task.root),pending.signal.getJSONObject("request"),resultCode,data,abandoned);if(!abandoned&&(resultCode!=android.app.Activity.RESULT_OK||data==null))host.savePermission(pending.signal.getString("key"),false);}catch(Exception error){pending.error=error;abandon(pending);}complete(pending);return true;}
         if(type.equals("document_tree")){try{boolean abandoned=pending.abandoned||!host.ownsPermissionRequest(pending.task.root);if(!abandoned)pending.task.check();HardwareDocuments.pickerResult(new VmHardware.Context(host,pending.task.root),pending.signal.getJSONObject("request"),resultCode,data,abandoned);}catch(Exception error){pending.error=error;try{HardwareDocuments.abandonPick(new VmHardware.Context(host,pending.task.root),pending.signal.getJSONObject("request"));}catch(Exception ignored){}}complete(pending);return true;}
         if(!type.equals("vpn")&&!type.equals("bluetooth_enable")&&!type.equals("bluetooth_discoverable"))return false;
         try{if(!pending.abandoned){pending.task.check();if(!host.ownsPermissionRequest(pending.task.root))throw new IOException("Conversation closed.");boolean denied=type.equals("bluetooth_discoverable")?resultCode<=0:resultCode!=android.app.Activity.RESULT_OK;if(type.equals("vpn")&&android.net.VpnService.prepare(host)!=null)denied=true;if(denied)host.savePermission(pending.signal.getString("key"),false);}}

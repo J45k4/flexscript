@@ -99,7 +99,7 @@ final class VmHardware {
     }
     static void closeWorkspace(File root) { closeMatching(root,null); }
     static void revoke(File root,String permission) { closeMatching(root,permission); }
-    static void appHidden(){HardwareInput.hidden();closeKind("input_events");HardwareNfc.hidden();HardwareHce.hidden();closeKind("nfc_reader");closeKind("nfc_technology");HardwareHid.hidden();closeKind("bluetooth_hid_device");closeMatching(null,"microphone");closeMatching(null,"camera");closeMatching(null,"screen_capture");}
+    static void appHidden(){HardwareInput.hidden();closeKind("input_events");HardwareNfc.hidden();HardwareHce.hidden();closeKind("nfc_reader");closeKind("nfc_technology");HardwareHid.hidden();closeKind("bluetooth_hid_device");closeMatching(null,"microphone");closeMatching(null,"camera");}
     private static void closeKind(String kind) {
         List<Handle> closing=new ArrayList<>();
         synchronized(HANDLES){Iterator<Map.Entry<String,Handle>> it=HANDLES.entrySet().iterator();while(it.hasNext()){Handle h=it.next().getValue();if(h.kind.equals(kind)){closing.add(h);it.remove();}}}
@@ -175,7 +175,7 @@ final class VmHardware {
             if("permission".equals(request.optString("phase"))) {
                 value=object("permission",handle(context,text(args,0,128)).permission,"also",handle(context,text(args,0,128)).also);
             } else if(op.equals("hardware_capabilities")) {
-                JSONArray caps=new JSONArray();HardwareNetwork.capabilities(context,caps);HardwareSensors.capabilities(context,caps);HardwareStatus.capabilities(context,caps);HardwareLocation.capabilities(context,caps);HardwareUsb.capabilities(context,caps);HardwareKeystore.capabilities(context,caps);HardwareAudio.capabilities(context,caps);HardwareMidi.capabilities(context,caps);HardwareNsd.capabilities(context,caps);HardwareVpn.capabilities(context,caps);HardwareCellular.capabilities(context,caps);HardwareWifi.capabilities(context,caps);HardwareP2p.capabilities(context,caps);HardwareRtt.capabilities(context,caps);HardwareAware.capabilities(context,caps);HardwareBluetooth.capabilities(context,caps);HardwareBle.capabilities(context,caps);HardwareGattClient.capabilities(context,caps);HardwareGattServer.capabilities(context,caps);HardwareHid.capabilities(context,caps);HardwareNfc.capabilities(context,caps);HardwareSecureElement.capabilities(context,caps);HardwareInput.capabilities(context,caps);HardwareBiometrics.capabilities(context,caps);HardwareUwb.capabilities(context,caps);HardwareDocuments.capabilities(context,caps);HardwareCamera.capabilities(context,caps);HardwareHce.capabilities(context,caps);value=caps;
+                JSONArray caps=new JSONArray();HardwareNetwork.capabilities(context,caps);HardwareSensors.capabilities(context,caps);HardwareStatus.capabilities(context,caps);HardwareLocation.capabilities(context,caps);HardwareUsb.capabilities(context,caps);HardwareKeystore.capabilities(context,caps);HardwareAudio.capabilities(context,caps);HardwareMidi.capabilities(context,caps);HardwareNsd.capabilities(context,caps);HardwareVpn.capabilities(context,caps);HardwareCellular.capabilities(context,caps);HardwareWifi.capabilities(context,caps);HardwareP2p.capabilities(context,caps);HardwareRtt.capabilities(context,caps);HardwareAware.capabilities(context,caps);HardwareBluetooth.capabilities(context,caps);HardwareBle.capabilities(context,caps);HardwareGattClient.capabilities(context,caps);HardwareGattServer.capabilities(context,caps);HardwareHid.capabilities(context,caps);HardwareNfc.capabilities(context,caps);HardwareSecureElement.capabilities(context,caps);HardwareInput.capabilities(context,caps);HardwareBiometrics.capabilities(context,caps);HardwareUwb.capabilities(context,caps);HardwareDocuments.capabilities(context,caps);HardwareCamera.capabilities(context,caps);HardwareHce.capabilities(context,caps);HardwareScreenCapture.capabilities(context,caps);value=caps;
             } else if(op.equals("device_close")) { close(context,text(args,0,128));value=1; }
             else if(op.equals("device_info")) { Handle h=handle(context,text(args,0,128));h.access(context);blocking(h);try{value=h.info();}finally{unblocking();} }
             else if(op.equals("device_wait")) {
@@ -184,7 +184,8 @@ final class VmHardware {
                 Handle h=handle(context,text(args,0,128));h.access(context);blocking(h);try{value=h.read(integer(args,1,1,MAX_BYTES),integer(args,2,1,8000));}finally{unblocking();}
             } else if(op.equals("device_write")) {
                 Handle h=handle(context,text(args,0,128));h.access(context);blocking(h);try{value=h.write(data(args.get(1)));}finally{unblocking();}
-            } else if(HardwareCamera.supports(op)) value=HardwareCamera.call(context,op,args);
+            } else if(HardwareScreenCapture.supports(op)) value=HardwareScreenCapture.call(context,op,args);
+            else if(HardwareCamera.supports(op)) value=HardwareCamera.call(context,op,args);
             else if(HardwareDocuments.supports(op)) value=HardwareDocuments.call(context,op,args);
             else if(HardwareUwb.supports(op)) value=HardwareUwb.call(context,op,args);
             else if(HardwareBiometrics.supports(op)) value=HardwareBiometrics.call(context,op,args);

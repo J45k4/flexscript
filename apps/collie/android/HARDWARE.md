@@ -36,7 +36,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Device status | battery/charging/electrical data, thermal state/headroom/events | implemented | battery/thermal status and subscriptions passed; thermal-change injection pending |
 | Biometrics | system authentication result only | SDK availability, owned system prompts and cancellation implemented | 51 enrolled/unenrolled SDK checks passed, including real fingerprint/PIN success, cancellation, expiry, late success and live revocation; physical/older-device checks pending |
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
-| Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | pending | pending |
+| Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | one-use consent/tickets, foreground projection service, bounded RGBA planes and silent/microphone MP4 SDK bindings implemented; further session/lifecycle gates below | 38 real headless Android checks passed for chooser approval/denial, exact pixels/MP4 bytes, hidden Activity frames and screen-lock Stop; selected-app/older-device/physical and additional lifecycle gates pending |
 | Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | pending | pending |
 | Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | 29 real Android picker/provider/lifecycle checks passed; full-size binary data, asset byte ranges, restart and both revocation layers verified; provider copy/move/remove, actual virtual conversion and physical removable/cloud providers pending |
 | Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | pending capability reporting | pending |
@@ -2170,3 +2170,140 @@ any workspace, then passed10 permission groups and8 VPN scenarios with the
 unchanged final HCE APK above. `artifact-guards-report.json` records those4
 positive/negative guard checks. This changes no APK bytes or hardware scope;
 the strict RF/physical/UWB/HID gates remain open.
+
+
+## MediaProjection frames and recording batch
+
+The screen adapter adds18 ordinary Flexscript functions to the shared typed
+operation registry. The sole model tool remains `flexscript`; permission policy,
+checkpoint resume and protocol values remain shared Flexscript. Java supplies
+Android's chooser, projection/display/surface SDK objects, callbacks, the
+foreground service and bounded private recorder files. `screen_capture` was
+already a lazy grant; the permission/UI count remains31.
+
+`screen_open(ticket,width,height,density_dpi,scope)` yields for real Android
+session approval before starting the foreground service and acquiring a
+MediaProjection. The approval Intent stays only in RAM. Each ticket binds one
+workspace and immutable options. Live identical replay returns the same handle;
+expired, ended or interrupted consent cannot create another SDK projection.
+The session makes one `createVirtualDisplay` call. Surface resize, pause and
+frame/recorder switching reuse that existing display. Metadata ticket records
+are private and bounded16/conversation,128/app, not persisted OS capabilities.
+`screen_tickets` pages them; `screen_forget` removes terminal records.
+
+`screen_frames`, `screen_frame_info/read/close` expose actual SDK RGBA planes,
+strides, crop, dimensions and timestamps through opaque session-owned frame IDs.
+Two retained frames evict oldest IDs. Image memory is bounded128MiB including
+actual image close still pending; geometry is at most8192 per dimension and8Mi
+pixels. Pixels remain outside VM snapshots, with reads at most32768 bytes.
+`screen_resize`, `screen_pause` and Android16+ `screen_rotation` call the
+existing display. Content-size/visibility SDK callbacks are copied as events;
+Flexscript chooses how to respond to them.
+
+`screen_video_start` and `screen_video_audio_start` attach MediaRecorder's
+prepared surface to the same display and return a separate read-only MP4
+handle. Options are ordinary typed lists, using the existing portable
+`camera_video_options` constructor or a direct seven-element list. Audio needs
+separate Collie Microphone and actual Android runtime permission, with a visible
+start. `screen_video_pause/resume/stop/seek` and common device reads expose the
+actual recorder lifecycle and finalized bytes. Duration/size SDK notifications
+request stop; a failed/oversized clip is not presented as successful output.
+Camera and screen resources share two slots including finalized files and SDK
+cleanup. Private spools are bounded64MiB each and removed on handle close.
+
+`screen_shutdown` keeps the session observable while finalizing an active clip.
+System projection Stop also finalizes it. Local close/revocation discards an
+active clip. Completed recorder files remain independently owned until their
+handle closes. SDK/display/service teardown runs off UI where needed. Resource
+release requires completed cleanup and real SDK stop/release completion, plus
+actual Service.onDestroy. `projection_stop_returned` and
+`display_release_returned` are separate from callback terminal fields:
+VirtualDisplay.onStopped is a system-stop notification, not a required callback
+from an application's own release call. No successful callback is manufactured.
+
+Silent frame capture continues through Activity.onStop under the foreground
+service; the actual hidden-Activity VM/callback path is tested. Microphone
+recording currently closes when the Activity hides, following the existing
+microphone lifecycle restriction. Activity destruction/conversation close also
+closes owned resources. There is no process-restart continuation of a live
+projection, no secure-window bypass and no playback-audio capture.
+
+Validation on the exact installed APK:
+
+- 38 screen checks use the genuine SystemUI chooser and actual SDK frames and
+  MediaRecorder output, with installed-APK digest guards before and after.
+- Collie first-use approval is separate from Android session approval; declining
+  the actual Android dialog resumes the interrupted call as remembered denial.
+- The owned Activity draws an independent red/green pattern. The test waits for
+  that pattern in actual SDK pixels before pausing the surface and inspecting it.
+  Every plane byte crosses VM pages and matches independent page Adler32/length,
+  with explicit EOF, stride, bounds, ownership and stale-frame checks.
+- Real display resize produces the requested frame geometry. Live identical
+  tickets are idempotent; changed options/live forget/oversized geometry fail.
+- Actual Activity.onStop leaves the session live and new ImageReader callbacks
+  and VM reads succeed while hidden.
+- Independent MediaExtractor parses actual MP4 dimensions, samples/timestamps
+  and exact requested audio-track presence. Every container byte matches an
+  independent file checksum/length through VM reads/seek/EOF/write rejection.
+  Explicit pause/resume/stop, real duration-limit notification, separate
+  microphone prompts and shutdown-finalized recording pass.
+- Actual emulator screen lock causes Android's MediaProjection.onStop and
+  completed display release/service destruction before the session lease frees.
+- Tests restore the original conversation/policy, Android microphone choices
+  and private projection ticket records; only owned workspaces are removed.
+
+The first whole-image checksum program exhausted the VM instruction budget;
+verification now runs independent bounded-page programs without raising VM
+limits. A later fixture run caught a stale frame preceding pattern rendering;
+the verifier now waits for actual matching SDK pixels. These were failing
+verification runs, not successful checks or evidence to skip pixel validation.
+
+Artifacts: debug `build/android-projection/collie.apk` is7,214,296 bytes
+(7.214MB/6.880MiB), SHA-256
+`b7775703e02308282afd71c354aea455ebd8deaa3dcc66e4f078a82678024268`;
+non-debug `build/android-projection-release/collie.apk` is7,013,513 bytes
+(7.014MB/6.689MiB), SHA-256
+`a92c2f466f297a3f27b86aff8a52f243e2b96eedbf8f0d98ad48b26e30cd1970`.
+Both build and APK packaging checks pass. The compiled service is nonexported,
+with mediaProjection/microphone foreground types and permissions; the debug
+screen fixture and all other test fixtures are absent from non-debug. Production
+Java class bytes, generated Flexscript, native engine and native-test match
+between outputs. Full reference is70,419 bytes, index11,176; all bytes pass
+bounded VM paging with every grant denied. Shared32KiB codec/registry,9 core
+checks and15 lazy groups covering19 first-use gates pass. On the same installed
+APK,55 Camera2 regression checks,10 Android lazy-permission groups and8 actual
+VPN/TUN scenarios pass, with installed-APK guards and original-state restoration.
+
+Remaining screen requirements are explicitly open:
+
+- [ ] Selected-app chooser and content-size/visibility changes; full-display
+      chooser tested, selected-app isolation/rotation/multiwindow still pending.
+- [ ] Actual system Stop chip/notification action and replacement by another
+      projection; screen-lock onStop and explicit shutdown are verified.
+- [ ] Live screen and microphone revocation, cancellation while consent is open,
+      denied/stale late approval, delayed SDK callbacks and service-start errors.
+- [ ] Process death/restart ticket interruption, approval expiry and SDK-start
+      expiry under delayed callback queues; metadata design alone is not proof.
+- [ ] Saturation of image/reader/recorder/file/ticket bounds and actual cleanup
+      failures, including simultaneous camera/screen quota contention.
+- [ ] Microphone recording across background, background worker ownership after
+      Activity destruction, playback-audio capture where Android permits it.
+- [ ] Protected windows, Android26..35 behavior, vendor/OEM differences, physical
+      phone geometry, rotation, codec and sustained capture/resource behavior.
+
+No phone deployment or physical screen/camera/audio proof is claimed. All other
+inventory rows, strict UWB effective-interval and HID unplug failures, RF gates,
+accessibility, BLE extensions and privileged/vendor reporting remain open.
+
+
+Repeat the screen checks on an explicitly owned, unlocked headless emulator:
+
+```sh
+python3 scripts/test-collie-screen-android.py --out build/android-projection --serial emulator-5582
+python3 scripts/test-collie-android-packaging.py --debug build/android-projection/collie.apk --release build/android-projection-release/collie.apk
+```
+
+The screen script uses the owned biometric emulator's public fixture PIN135790
+for its actual screen-lock check; it never changes credentials or enrollment.
+Do not target a personal physical phone with that fixture. The emulator's
+reported success remains emulator evidence, not physical-device verification.

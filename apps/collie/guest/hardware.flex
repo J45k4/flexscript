@@ -336,3 +336,23 @@ fn hce_request_read(session,request,offset,limit){let r=db_request("hce_request_
 fn hce_reply_begin(session,request,total){let r=db_request("hce_reply_begin");db_add(r,db_text(session));db_add(r,db_text(request));db_add(r,db_int(total));return db_rpc(r);}
 fn hce_reply_write(session,request,offset,bytes){let r=db_request("hce_reply_write");db_add(r,db_text(session));db_add(r,db_text(request));db_add(r,db_int(offset));db_add(r,bytes);return db_rpc(r);}
 fn hce_reply_commit(session,request){let r=db_request("hce_reply_commit");db_add(r,db_text(session));db_add(r,db_text(request));return db_rpc(r);}
+
+// Explicit Android session consent; frames and recording share one SDK projection.
+fn screen_info(){let r=db_request("screen_info");return db_rpc(r);}
+fn screen_open(ticket,width,height,density_dpi,scope){let r=db_request("screen_open");db_add(r,db_text(ticket));db_add(r,db_int(width));db_add(r,db_int(height));db_add(r,db_int(density_dpi));db_add(r,db_int(scope));return db_rpc(r);}
+fn screen_tickets(offset,limit){let r=db_request("screen_tickets");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn screen_forget(ticket){let r=db_request("screen_forget");db_add(r,db_text(ticket));return db_rpc(r);}
+fn screen_shutdown(screen){let r=db_request("screen_shutdown");db_add(r,db_text(screen));return db_rpc(r);}
+fn screen_resize(screen,width,height,density_dpi){let r=db_request("screen_resize");db_add(r,db_text(screen));db_add(r,db_int(width));db_add(r,db_int(height));db_add(r,db_int(density_dpi));return db_rpc(r);}
+fn screen_pause(screen,paused){let r=db_request("screen_pause");db_add(r,db_text(screen));db_add(r,db_int(paused));return db_rpc(r);}
+fn screen_rotation(screen,rotation){let r=db_request("screen_rotation");db_add(r,db_text(screen));db_add(r,db_int(rotation));return db_rpc(r);}
+fn screen_frames(screen,offset,limit){let r=db_request("screen_frames");db_add(r,db_text(screen));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn screen_frame_info(screen,frame){let r=db_request("screen_frame_info");db_add(r,db_text(screen));db_add(r,db_text(frame));return db_rpc(r);}
+fn screen_frame_read(screen,frame,plane,offset,limit){let r=db_request("screen_frame_read");db_add(r,db_text(screen));db_add(r,db_text(frame));db_add(r,db_int(plane));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn screen_frame_close(screen,frame){let r=db_request("screen_frame_close");db_add(r,db_text(screen));db_add(r,db_text(frame));return db_rpc(r);}
+fn screen_video_start(screen,options){let r=db_request("screen_video_start");db_add(r,db_text(screen));db_add(r,options);return db_rpc(r);}
+fn screen_video_audio_start(screen,options){let r=db_request("screen_video_audio_start");db_add(r,db_text(screen));db_add(r,options);return db_rpc(r);}
+fn screen_video_stop(video){let r=db_request("screen_video_stop");db_add(r,db_text(video));return db_rpc(r);}
+fn screen_video_pause(video){let r=db_request("screen_video_pause");db_add(r,db_text(video));return db_rpc(r);}
+fn screen_video_resume(video){let r=db_request("screen_video_resume");db_add(r,db_text(video));return db_rpc(r);}
+fn screen_video_seek(video,offset){let r=db_request("screen_video_seek");db_add(r,db_text(video));db_add(r,db_int(offset));return db_rpc(r);}
