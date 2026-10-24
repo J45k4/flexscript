@@ -60,6 +60,19 @@ Ongoing work is published through a draft PR on `codex/collie-hardware-adapters`
 Keep the PR in draft until the inventory and verification gates are satisfied.
 No merge to master or phone deployment is implied.
 
+## Native Flexscript hardware-test driver (2026-10-24)
+
+Python reduction starts with the native hardware-reference suite:
+`scripts/test-collie-hardware-reference.flex` replaces the deleted Python
+runner and uses `scripts/lib/collie-test.flex` for bounded QEMU JSON calls,
+private workspaces, shared configuration and reports. Before removal, both
+runners produced identical complete reports on the same engine. CI compiles
+and executes the Flexscript driver directly. Four final reference groups read
+all95,490 detailed API bytes and the13,746-byte index with all31 grants denied,
+including maximum32KiB pages and invalid/EOF bounds. The final native engine
+also passes9 core and17 lazy-permission groups plus the32KiB codec/registry
+check. This is an initial migration; other Python build/test drivers remain.
+
 ## Current build and repeatable checks
 
 Worktree: `build/collie-android`, branch `codex/collie-hardware-adapters`.
@@ -1354,7 +1367,8 @@ older Aware reference test use the paged contract.
 build/flex-hardware apps/collie/tests/nfc.flex -o build/test-collie-nfc
 build/test-collie-nfc
 build/flex-hardware run --interpret --fuel=10000000 apps/collie/tests/nfc.flex
-python3 scripts/test-collie-hardware-reference.py --out build/android-nfc
+build/flex-hardware scripts/test-collie-hardware-reference.flex -o build/test-collie-hardware-reference
+build/test-collie-hardware-reference --out build/android-nfc
 python3 scripts/test-collie-nfc-android.py --out build/android-nfc \
   --serial emulator-5580
 ```

@@ -116,7 +116,8 @@ jobs:
           python3 scripts/test-collie-android.py --out build/android-worker-tests
           python3 scripts/test-collie-workers.py --out build/android-worker-tests
           python3 scripts/test-collie-signals.py --out build/android-worker-tests
-          python3 scripts/test-collie-hardware-reference.py --out build/android-worker-tests
+          build/stage2 scripts/test-collie-hardware-reference.flex -o build/test-collie-hardware-reference
+          build/test-collie-hardware-reference --out build/android-worker-tests
           python3 scripts/test-collie-lazy-permissions.py --out build/android-worker-tests
           python3 scripts/test-collie-recall.py --out build/android-worker-tests
           python3 scripts/test-collie-thinking.py --out build/android-worker-tests
