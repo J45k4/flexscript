@@ -26,8 +26,16 @@ def wait(test,seconds=180):
 def start(sid,**payload):
  if sid.startswith(prefix) and sid not in sessions:sessions.append(sid)
  name=prefix+'-'+uuid.uuid4().hex[:8];names.append(name);adb('shell','run-as',pkg,'sh','-c',"'umask 077; cat > files/test/"+name+".json'",data=json.dumps(dict(session=sid,hardware_preserve_handles=True,**payload)).encode());adb('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name);return name
+resumed_requests=set()
 def result(name):
- r=wait(lambda:read('files/test/'+name+'.result.json'));assert r['ok'],r;return r
+ def probe():
+  r=read('files/test/'+name+'.result.json')
+  if r:return r
+  request=read('files/workspaces/'+prefix+'/hce-fixture-foreground.json')
+  if request and (token:=request.get('request_id')) and token not in resumed_requests:
+   resumed_requests.add(token);adb('shell','am','start','-n',pkg+'/.MainActivity')
+  return None
+ r=wait(probe);assert r['ok'],r;return r
 def observation(r):
  o=r['observation'] if 'observation' in r else next(json.loads(m['output']) for m in r['messages'] if m.get('type')=='custom_tool_call_output')
  assert o['state']=='continue' and o['exit_code']==0,o

@@ -31,7 +31,13 @@ final class HardwareCardServiceChecks {
         byte[] command(byte[] bytes)throws Exception{send(0,bytes);byte[] response=receive(1).getData().getByteArray("data");if(response==null)throw new IOException("No SDK response bytes");return response;}
         public void close()throws Exception{try{send(2,null);}catch(RemoteException disconnected){}finally{if(bound)test.ui(()->host.unbindService(connection));}}
     }
-    void foreground()throws Exception{test.ui(()->host.startActivity(new Intent(host,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));test.until(()->host.hardwareResumed);hidden=false;}
+    void foreground()throws Exception{
+        // Android owns background-Activity launch policy. Ask the external
+        // emulator driver to simulate a user reopening the existing task.
+        File request=new File(root,"hce-fixture-foreground.json");
+        try{try(FileOutputStream out=new FileOutputStream(request)){out.write(new JSONObject().put("request_id",UUID.randomUUID().toString()).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));}test.until(()->host.hardwareResumed);hidden=false;}
+        finally{request.delete();}
+    }
     void run()throws Exception{
         if(HardwareHceBackground.owned(host))throw new IOException("Refusing to overwrite an existing durable card profile.");
         fixture="card-"+UUID.randomUUID();Object previous=host.workerConfig(root,0).getJSONObject("permissions").get("nfc");
@@ -92,10 +98,11 @@ final class HardwareCardServiceChecks {
                 test.check(host.getPackageManager().getComponentEnabledSetting(HardwareHceBackground.component(host,0))==PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,"NFC Deny persists removal, performs actual component cleanup and releases the constructed background registration");
             }
         }finally{
-            if(hidden)foreground();
+            try{if(hidden)foreground();}finally{
             HardwareHceBackground.locked(host,(f,r)->{if(r!=null&&fixture.equals(r.getString("id")))f.delete();return null;});
             for(int mode=0;mode<2;mode++)host.getPackageManager().setComponentEnabledSetting(HardwareHceBackground.component(host,mode),PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,PackageManager.DONT_KILL_APP);
             test.ui(()->{try{host.savePermission("nfc",previous);}catch(Exception error){throw new RuntimeException(error);}});
+            }
         }
     }
 }

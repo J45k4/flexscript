@@ -3747,3 +3747,37 @@ active; there is no master merge or physical-phone deployment.
 Primary contracts: [DngCreator](https://developer.android.com/reference/android/hardware/camera2/DngCreator),
 [DEPTH16 layout](https://developer.android.com/reference/android/graphics/ImageFormat#DEPTH16),
 [public DngCreator implementation](https://android.googlesource.com/platform/frameworks/base/+/main/core/java/android/hardware/camera2/DngCreator.java).
+
+### HCE regression fixture follows Android foreground-launch policy
+
+The initial Android16 HCE regression on the camera-verified APK timed out after
+the real background callback had advanced saved state to9. Independent Activity
+logs show BAL_BLOCK: Android rejected the debug app trying to bring itself back
+from Home. The cleanup path also called that foreground helper before deleting
+its fixture, so a second timeout left its ready, unacknowledged test profile.
+An immediate rerun correctly refused to overwrite it. The archived profile's
+workspace matched this run's unique recovery prefix; it had no registration
+attempt/acknowledgement or active channel. It was removed only after the owned
+process stopped and its component defaults were restored using the app's UID.
+
+The debug fixture now writes a bounded foreground-request marker in its owned
+workspace. The existing external emulator driver observes it and simulates a
+user reopening Collie with am start. The service is still required to execute
+and persist state while the actual Activity is hidden. There is no production
+background-launch permission or policy bypass. Fixture cleanup runs even if
+returning to the foreground fails. No new Python file is introduced.
+
+The revised debug APK at `build/android-camera-raw/final-v3-debug/collie.apk`
+is8,029,783 bytes, SHA256
+`f14e2e9368d1940d3c29eddf390df867300004024ec90458e80eb4e5277b687e`.
+It passes102 HCE groups on each of Android15/API35 and Android16/API36.
+Exact-hash reports are under `final-v3-debug/emulator-5582/hce-android-report.json`
+and `final-v3-debug/emulator-5584/hce-android-report.json`; logs are
+`hce36-final-v3.log` and `hce35-final-v3.log`. Routing/RF/physical flags remain false. Packaging passes
+against the same frozen non-debug APK above. `parity-v3.json` proves all292
+production Java classes and all native/engine files match both non-debug and
+the camera-verified v2 APK. The125/121 camera counts retain their v2 digest;
+they are not relabeled as v3 APK runs.
+Both suites restore original conversations/permission choices and remove their
+owned workspaces. The durable fixture profile is independently confirmed absent
+on each emulator, and both owned headless emulators are stopped.
