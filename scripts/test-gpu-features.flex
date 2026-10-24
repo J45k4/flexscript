@@ -27,6 +27,7 @@ fn gf_execute(path,kind,direct) {
     i=0;while i<256 {
         store64(input+i*8,0x4000400040004000);
         if kind==16 {store64(input+i*8,gf_max_bits(i&15)|(gf_max_bits(i>>4)<<32));}
+        if kind==25 {store64(input+i*8,gpu_f32_from_i64(i-128));}
         if kind==15 {store64(input+i*8,((i-128)*0x123456789abcd)^(i<<47));}
         cuda_u32(input+2048+i*4,0x42004200);
         if kind==5 {let j=0;while j<4 {cuda_u32(input+3072+i*16+j*4,gpu_f32_from_i64(i*4+j));j=j+1;}}
@@ -36,6 +37,7 @@ fn gf_execute(path,kind,direct) {
     let stream=cuda_stream();gpu_check(cuda_status);let event=cuda_event();gpu_check(cuda_status);
     gpu_check(cuda_upload_async(a,input,bytes,stream));gpu_check(cuda_upload_async(b,output,bytes,stream));
     let config=cuda_config(4,1,1,64,1,1,512,stream);
+    if kind==23 || kind==24 {config=cuda_config(4,1,1,64,1,1,49152,stream);}
     if kind==1 {config=cuda_config(2,2,2,8,2,2,0,stream);}
     let argument=a;let texture=0;
     if kind==6 {
@@ -62,6 +64,11 @@ fn gf_execute(path,kind,direct) {
         else if kind==12 {expected=1;}else if kind==13 {expected=((((i/32)*32+32)<<32)|(((i/32)*32+31)*7))^0xaaaaaaaa;}
         if kind==15 {expected=((i-128)*0x123456789abcd)^(i<<47);}
         if kind==18 {expected=(((i%8)-4)*0x123456789abcdef)^0xfeedbeef00000000;}
+        if kind==22 {expected=gpu_f32_from_i64((i-128)*3+7)|(gpu_f32_from_i64((128-i)*3+7)<<32);}
+        if kind==23 {expected=(i/64)*64+(i+1)%64;}
+        if kind==24 {expected=i;}
+        if kind==25 {expected=gpu_f32_from_i64((i-128)*32+496);}
+        if kind==21 {expected=(i/64)*64+(i+32)%64;}
         if kind==17 {let sum=0;let lane=0;while lane<32 {let item=(i/32)*32+lane-128;if lane&1 {item=item*3+7;}else {item=item-3;}sum=sum+item;lane=lane+1;}expected=gpu_f32_from_i64(sum);}
         if kind==16 {expected=gpu_f32_max(gf_max_bits(i&15),gf_max_bits(i>>4));if (expected&2147483647)>2139095040 {gf_assert((value&2147483647)>2139095040 && !(value>>32),"maximum NaN output");expected=value;}}
         if kind!=9 {gf_assert(value==expected,h_cat3("GPU feature mismatch ",h_int(kind),h_cat3(h_cat(" at ",h_int(i)),h_cat(" actual ",h_int(value)),h_cat(" expected ",h_int(expected)))));}
@@ -77,7 +84,8 @@ fn gf_execute(path,kind,direct) {
             gf_assert(!load64(seen+old*8),"atomic returns unique previous values");store64(seen+old*8,1);i=i+1;}
     }
     let function=cuda_function(module,"flex_kernel");gpu_check(cuda_status);
-    gf_assert(cuda_function_attribute(function,4)>0,"kernel register query");gpu_check(cuda_status);
+    gf_assert(cuda_function_attribute(function,4)>0,"kernel register query");
+    if kind==25 && direct {let registers=cuda_function_attribute(function,4);gf_assert(registers<=56,h_cat("FP32 word register pressure: ",h_int(registers)));}gpu_check(cuda_status);
     gf_assert(cuda_occupancy(function,64,512)>0,"kernel occupancy query");gpu_check(cuda_status);
     if texture {gpu_check(cuda_texture_close(texture));}
     gpu_check(cuda_event_close(event));gpu_check(cuda_stream_close(stream));
@@ -143,6 +151,21 @@ fn suite(compiler) {
     gf_case("store64(output+i*8,gpu_f64_sqrt(0x4048800000000000));",10,1);
     gf_case("store64(output+i*8,gpu_f64_to_i64(gpu_f64_from_i64(i-128)));",14,1);
     gf_case("store64(output+i*8,gpu_f32_fma(gpu_f32_add(0x3f800000,0x3f800000),0x40400000,0x3f800000));",11,1);
+    gf_case("gpu_shared_store_u32(gpu_thread_x()*4,i);gpu_shared_barrier();let next=(gpu_thread_x()+1)&63;store64(output+i*8,gpu_shared_load_u32(next*4));",2,1);
+    gf_case("gpu_shared_store_u32(gpu_thread_x()*4,i);gpu_shared_barrier();let base=(gpu_thread_x()&31)*4;let value=0;if gpu_thread_x()<32 {value=gpu_shared_load_u32(base+128);}else {value=gpu_shared_load_u32(base);}store64(output+i*8,value);",21,1);
+    gf_case("let x=gpu_f32_from_i64(i-128);let y=gpu_f32_from_i64(128-i);store64(output+i*8,gpu_f32x2_fma(x|(y<<32),0x4040000040400000,0x40e0000040e00000));",22,1);
+    gf_case("gpu_shared_store_u32(48000+gpu_thread_x()*4,i);gpu_shared_barrier();let base=((gpu_thread_x()+1)&63)*4;store64(output+i*8,gpu_shared_load_u32(base+48000));",23,1);
+    gf_case("gpu_shared_store64(48000+gpu_thread_x()*8,i);gpu_shared_barrier();let base=((gpu_thread_x()+1)&63)*8;store64(output+i*8,gpu_shared_load64(base+48000));",23,1);
+    gf_case("let x=gpu_f32_from_i64(i-128);let y=gpu_f32_from_i64(128-i);gpu_shared_store64(gpu_thread_x()*8,x|(y<<32));gpu_shared_barrier();let pair=gpu_shared_load64(gpu_thread_x()*8);store64(output+i*8,gpu_f32_fma(pair,0x40400000,0x40e00000)|(gpu_f32_fma(pair>>32,0x40400000,0x40e00000)<<32));",22,1);
+    gf_case("let base=gpu_thread_x()*16;gpu_shared_store64(base+8,i);gpu_shared_barrier();gpu_shared_store64(base,i+123);store64(output+i*8,gpu_shared_load64(base+8));",24,1);
+    // Independent FP32 words stay live together before a scalar reduction.
+    // Their two-word language representation must not double register pressure.
+    let pressure="";let word=0;
+    while word<32 {pressure=h_cat(pressure,h_cat3("let x",h_int(word),h_cat3("=gpu_f32_add(gpu_load_u32(input+i*8),",h_int(gpu_f32_from_i64(word)),");")));word=word+1;}
+    pressure=h_cat(pressure,"let sum=0;");word=0;
+    while word<32 {pressure=h_cat(pressure,h_cat3("sum=gpu_f32_add(sum,x",h_int(word),");"));word=word+1;}
+    gf_case(h_cat(pressure,"gpu_store_u32(output+i*8,sum);"),25,1);
+    gf_case("let x=gpu_f32_from_i64(i-128);let bias=0x40e00000;store64(output+i*8,gpu_f32_fma(x,0x40400000,bias));",7,1);
     gf_case("store64(output+i*8,gpu_f32_sub(0x41200000,0x40400000));",11,1);
     gf_case("store64(output+i*8,gpu_f32_div(0x42440000,0x40e00000));",11,1);
     gf_case("gpu_mma_f16(input+i*8,input+2048+i*4,input+3072+i*16,output+i*16);",5,1);

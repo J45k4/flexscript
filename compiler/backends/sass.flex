@@ -16,16 +16,42 @@ global sass_math_base=0;
 fn sass_special(to,code) {sass_instruction(0x7919|(to<<16),code<<8,1);sass_immediate32(to+1,0);return 0;}
 fn sass_constant_word(to,offset) {sass_constant(to,offset);sass_immediate32(to+1,0);return 0;}
 fn sass_intrinsic_supported(kind) {
-    return kind<=18 || (kind>=20 && kind<=29) || (kind>=50 && kind<=71)
+    return kind==125 || kind==124 || kind==121 || kind==122 || (kind>=105 && kind<=108) || (kind>=114 && kind<=120) || kind==103 || kind==104 || kind<=18 || (kind>=20 && kind<=29) || (kind>=50 && kind<=71)
         || (kind>=30 && kind<=37) || (kind>=40 && kind<=47);
 }
 fn sass_load_offset(kind,first,offset) {
+    if kind==17 {sass_instruction(0x7984|(sass_acc<<16)|(first<<24)|(offset<<40),0x1a00,1);return 0;}
+    if kind==103 {sass_instruction(0x7984|(sass_acc<<16)|(first<<24)|(offset<<40),0x1800,1);sass_immediate32(sass_acc+1,0);return 0;}
+
     let high=0x001ee900;if kind==59 {high=0x001eeb00;}else if kind==61 {high=0x001f4b00;}else if kind==55 || kind==60 {high=0x001ee500;}
     sass_instruction(0x7381|(sass_acc<<16)|(first<<24)|(offset<<40),high,1);
     if kind==55 {sass_instruction(0x7819|(sass_acc<<16)|(sass_acc<<24)|(16<<32),0x6ff,0);}
     if kind!=59 && kind!=61 {sass_immediate32(sass_acc+1,0);}return 0;
 }
 fn sass_intrinsic(kind,first) {
+    if kind==125 {
+        sass_instruction(0x7223|(10<<16)|(first<<24)|((first+2)<<32),first+4,0);
+        sass_instruction(0x7223|(11<<16)|((first+1)<<24)|((first+3)<<32),first+5,0);sass_move(sass_acc,10);return 0;
+    }
+
+    if kind==124 {sass_instruction(0x7825|(sass_acc<<16)|((first+2)<<24)|(4<<32),0x078e0000|first,0);return 0;}
+
+    if kind==121 || kind==122 {let selector=0x5410;if kind==122 {selector=0x7632;}sass_instruction(0x7816|(sass_acc<<16)|(first<<24)|(selector<<32),first+1,0);sass_immediate32(sass_acc+1,0);return 0;}
+
+    if kind>=105 && kind<=108 {
+        let opcode=0x7210;let high=0x078e00ff;let sign=0;
+        if kind==106 {sign=0x8000000000000000;}else if kind==107 || kind==108 {opcode=0x7224;if kind==108 {high=0x078e0000|first+4;}}
+        sass_instruction(opcode|(sass_acc<<16)|(first<<24)|((first+2)<<32)|sign,high,0);sass_immediate32(sass_acc+1,0);return 0;
+    }
+    if kind==120 {sass_instruction(0x7225|(10<<16)|(first<<24)|((first+2)<<32),0x078e00ff,0);sass_move32(sass_acc,11);sass_immediate32(sass_acc+1,0);return 0;}
+    if kind>=114 && kind<=119 {
+        let condition=1;if kind==115 {condition=3;}else if kind==116 {condition=4;}else if kind==117 {condition=6;}else if kind==118 {condition=2;}else if kind==119 {condition=5;}
+        sass_instruction(0x720c|(first<<24)|((first+2)<<32),0x03f20270|(condition<<12),0);sass_boolean(0);return 0;
+    }
+
+    if kind==103 {sass_instruction(0x7984|(sass_acc<<16)|(first<<24),0x1800,1);sass_immediate32(sass_acc+1,0);return 0;}
+    if kind==104 {sass_instruction(0x7388|(first<<24)|((first+2)<<32),0x800,2);sass_move(sass_acc,first+2);return 0;}
+
 
 
     if kind==69 {
@@ -163,8 +189,8 @@ fn sass_test(value) {
     sass_instruction(0x720c|(6<<24)|(255<<32),0x03f25070,0);return 0;
 }
 fn sass_boolean(invert) {
-    sass_immediate(sass_acc,0);let predicate=1;if invert {predicate=9;}
-    sass_instruction(0x802|(predicate<<12)|(sass_acc<<16)|(1<<32),0xf00,0);return 0;
+    let predicate=9;if invert {predicate=1;}
+    sass_instruction(0x7807|(sass_acc<<16)|(255<<24)|(1<<32),predicate<<23,0);sass_immediate32(sass_acc+1,0);return 0;
 }
 fn sass_shift(left,right) {
     sass_immediate32(6,63);sass_logic32(10,sass_acc,6,0xc0);
@@ -209,12 +235,13 @@ fn sass_constant_binary(left,value,op) {
 }
 fn sass_stall(low) {
     let op=low&4095;
-    // Tested SM75 dependent chains: FMA four cycles, other FP32 math five,
-    // integer/move six. A branch drains scoreboards and flushes fixed results.
+    // Tested SM75 dependent chains: FMA and integer/move six cycles,
+    // other FP32 math five. A branch drains scoreboards and flushes fixed results.
     // Predicates and unclassified operations retain the original delay.
     if op==0x23c {return 14;}
-    if op==0x947 || op==0xa02 {return 6;}if op==0x223 {return 4;}
+    if op==0x947 || op==0xa02 || op==0x807 {return 6;}if op==0x223 {return 6;} // packed stores expose a six-clock result dependency
     if op==0x220 || op==0x221 || op==0x209 {return 5;}if op==0x230 {return 8;}
+    if op==0x824 || op==0x825 || op==0x816 {return 6;}
     if op==0x202 || op==0x802 || op==0x210 || op==0x810 || op==0x212 || op==0x812 || op==0x219 || op==0x819
         || op==0x224 || op==0x225 || op==0x220 || op==0x221 || op==0x223 || op==0x209 {return 6;}
     return 15;
@@ -335,7 +362,7 @@ fn sass_supported(op,arg) {
 fn sass_frame(index) {
     if load64(sass_frames+index*24+16) {return load64(sass_frames+index*24+16);}
     let start=load64(functions+index*32+16)+16;let end=p_end(index);let pc=start;
-    let slots=load64(p_code+start-8);let depth=0;let maximum=0;let child=0;
+    let map=sl_map(index);store64(sass_slot_maps+index*8,map);let slots=load64(map);let depth=0;let maximum=0;let child=0;
     while pc<end {
         let op=load64(p_code+pc);let arg=load64(p_code+pc+8);
         if !sass_supported(op,arg) {fail("unsupported SASS kernel instruction");}
@@ -370,19 +397,38 @@ fn sass_function(index,base,result) {
         store64(labels+(pc-start)/2,output_size);sass_acc=acc;
         let op=load64(p_code+pc);let arg=load64(p_code+pc+8);
         let load_kind=0;
-        if op==1 && arg>=0 && arg<=4095 && pc+48<end && load64(p_code+pc+16)==7 && load64(p_code+pc+24)==43 && load64(p_code+pc+32)==2 && load64(p_code+pc+48)==8
+        if op==1 && arg>=0 && arg<=8388607 && pc+48<end && load64(p_code+pc+16)==7 && load64(p_code+pc+24)==43 && load64(p_code+pc+32)==2 && load64(p_code+pc+48)==8
             && !load64(targets+(pc+16-start)/2) && !load64(targets+(pc+32-start)/2) && !load64(targets+(pc+48-start)/2) {
-            let kind=gpu_intrinsic(load64(p_code+pc+56));if kind==53 || kind==55 || kind==59 || kind==60 || kind==61 {load_kind=kind;}
+            let kind=gpu_intrinsic(load64(p_code+pc+56));if ((kind==17 || kind==103) && arg<=49152) || kind==53 || kind==55 || kind==59 || kind==60 || kind==61 {load_kind=kind;}
         }
         let launch_load=0;
         if op==1 && pc+32<end && load64(p_code+pc+16)==2 && load64(p_code+pc+32)==8
             && !load64(targets+(pc+16-start)/2) && !load64(targets+(pc+32-start)/2) {
             launch_load=gpu_intrinsic(load64(p_code+pc+40))==64;
         }
-        if launch_load {
+        let immediate_intrinsic=0;
+        if op==1 && pc+32<end && load64(p_code+pc+16)==2 && load64(p_code+pc+32)==8 && !load64(targets+(pc+16-start)/2) && !load64(targets+(pc+32-start)/2) {
+            let kind=gpu_intrinsic(load64(p_code+pc+40));if kind==105 || kind==106 || kind==107 || (kind>=114 && kind<=119) {immediate_intrinsic=kind;}
+        }
+        if immediate_intrinsic {
+            depth=depth-1;let first=sass_reg(base+slots+1+depth);let value=arg;pc=pc+32;
+            let next=0;if pc+16<end {next=load64(p_code+pc+16);}
+            if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
+                if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}pc=pc+16;
+            }
+            if immediate_intrinsic>=114 {
+                let condition=1;if immediate_intrinsic==115 {condition=3;}else if immediate_intrinsic==116 {condition=4;}else if immediate_intrinsic==117 {condition=6;}else if immediate_intrinsic==118 {condition=2;}else if immediate_intrinsic==119 {condition=5;}
+                sass_instruction(0x780c|(first<<24)|((value&4294967295)<<32),0x03f20270|(condition<<12),0);sass_boolean(0);
+            }else if immediate_intrinsic==107 {
+                if value>0 && !(value&(value-1)) {let n=0;while (1<<n)!=value {n=n+1;}sass_instruction(0x7819|(sass_acc<<16)|(first<<24)|(n<<32),0x6ff,0);}
+                else {sass_instruction(0x7824|(sass_acc<<16)|(first<<24)|((value&4294967295)<<32),0x078e00ff,0);}sass_immediate32(sass_acc+1,0);
+            }else {
+                if immediate_intrinsic==106 {value=-value;}sass_instruction(0x7810|(sass_acc<<16)|(first<<24)|((value&4294967295)<<32),0x078e00ff,0);sass_immediate32(sass_acc+1,0);
+            }
+        }else if launch_load {
             let word=arg&7;pc=pc+32;let next=0;if pc+16<end {next=load64(p_code+pc+16);}
             if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}pc=pc+16;
+                if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}pc=pc+16;
             }
             sass_constant(sass_acc,376+word*8);sass_constant(sass_acc+1,380+word*8);
         }else if load_kind {
@@ -391,7 +437,7 @@ fn sass_function(index,base,result) {
             depth=depth-1;let left=sass_reg(base+slots+1+depth);let value=arg;pc=pc+48;
             let next=0;if pc+16<end {next=load64(p_code+pc+16);}
             if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
                 pc=pc+16;
             }
             sass_load_offset(load_kind,left,value);
@@ -404,7 +450,7 @@ fn sass_function(index,base,result) {
             depth=depth-1;let left=sass_reg(base+slots+1+depth);pc=pc+16;
             let next=0;if pc+16<end {next=load64(p_code+pc+16);}
             if (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
                 sass_constant_binary(left,value,operation);pc=pc+16;
             }else {sass_constant_binary(left,value,operation);}
         }
@@ -414,8 +460,8 @@ fn sass_function(index,base,result) {
         }
         else if op==1 {sass_immediate(acc,arg);}
         else if op==2 {sass_move(sass_reg(base+slots+1+depth),acc);depth=depth+1;}
-        else if op==3 {sass_move(acc,sass_reg(base+arg));}
-        else if op==4 {sass_move(sass_reg(base+arg),acc);}
+        else if op==3 {sass_move(acc,sass_reg(base+sl_slot(index,arg)));}
+        else if op==4 {sass_move(sass_reg(base+sl_slot(index,arg)),acc);}
         else if op==7 {depth=depth-1;sass_binary(arg,sass_reg(base+slots+1+depth));}
         else if op==14 {sass_add(acc,8,acc,1);}
         else if op==16 {sass_logic32(acc,acc,255,0x0f);sass_logic32(acc+1,acc+1,255,0x0f);}
@@ -425,9 +471,9 @@ fn sass_function(index,base,result) {
             if op==17 {sass_memory(arg,first);}
             else if gpu_intrinsic(arg) {
                 let kind=gpu_intrinsic(arg);let next=0;if pc+16<end {next=load64(p_code+pc+16);}
-                let direct=(kind>=53 && kind<=64 && kind!=54) || (kind>=30 && kind<=32) || kind==35;
+                let direct=kind==17 || kind==124 || kind==121 || kind==122 || kind==103 || (kind>=105 && kind<=108) || (kind>=114 && kind<=120) || (kind>=53 && kind<=64 && kind!=54) || (kind>=30 && kind<=32) || kind==35;
                 if direct && (next==2 || next==4) && !load64(targets+(pc+16-start)/2) {
-                    if next==4 {sass_acc=sass_reg(base+load64(p_code+pc+24));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
+                    if next==4 {sass_acc=sass_reg(base+sl_slot(index,load64(p_code+pc+24)));}else {sass_acc=sass_reg(base+slots+1+depth);depth=depth+1;}
                     sass_intrinsic(kind,first);pc=pc+16;
                 }else {sass_intrinsic(kind,first);}
             }
@@ -450,7 +496,7 @@ fn sass_function(index,base,result) {
 }
 fn sass_lower(kernel,code,size) {
     p_launch_words=0;p_code=code;p_size=size;p_seen=alloc(function_count*8);p_visit(kernel,0);
-    sass_frames=alloc(function_count*24);sass_math=0;
+    sass_frames=alloc(function_count*24);sass_slot_maps=alloc(function_count*8);sass_math=0;
     let frame=sass_frame(kernel);sass_math_base=sass_reg(frame);
     sass_registers=18+2*(frame+sass_math*16);
     if sass_registers>254 {fail("SASS kernel exceeds physical register budget; spilling is not implemented");}
@@ -464,8 +510,8 @@ fn sass_lower(kernel,code,size) {
     sass_constant(11,16);sass_logic32(10,10,11,0xfc);sass_constant(11,20);sass_logic32(10,10,11,0xfc);
     sass_immediate32(12,1);sass_instruction(0x720c|(10<<24)|(12<<32),0x03f22070,0);
     let multidimensional=sass_branch(9);
-    sass_special(2,37);sass_constant_word(10,0);sass_multiply(2,2,10);
-    sass_special(10,33);sass_add(2,2,10,0);let indexed=sass_branch(7);
+    sass_special(2,37);sass_constant_word(10,0);sass_special(12,33);
+    sass_instruction(0x7225|(2<<16)|(2<<24)|(10<<32),0x078e000c,0);let indexed=sass_branch(7);
     sass_patch(multidimensional,output_size);
     // Linear block number, then linear thread number; x is fastest in both.
     sass_special(2,39);sass_constant_word(10,16);sass_multiply(2,2,10);
