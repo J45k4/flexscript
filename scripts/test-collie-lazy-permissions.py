@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
   t=step('observation',t['state'],observation=o);config['permissions']['location']=False;t=step('next',t['state']);o=vm(t)
   assert o['state']=='continue' and o['exit_code']==0 and 'denied' in o['stdout'].lower(),o
  passed('multi-permission hardware calls checkpoint separately for each grant before Android I/O and propagate secondary denial')
- for operation in ['ble_connect("02:00:00:00:00:01",1000,1000)','ble_server_open(1000)', 'hid_open("Collie","HID","Collie",0,db_blob("x",1),db_list(),db_list(),1000)']:
+ for operation in ['ble_connect("02:00:00:00:00:01",1000,1000)','ble_server_open(1000)', 'hid_open("Collie","HID","Collie",0,db_blob("x",1),db_list(),db_list(),1000)','ble_set_open(ble_set_options(0,0,0,0,0,1,1,160,-7,1),ble_ad_empty(),db_null(),db_null(),db_null(),0,0,1000)']:
   for approved in [False,True]:
    config['permissions']=dict.fromkeys(keys,'ask');config['permissions']['location']=False
    t=begin('fn main(){'+operation+';let e=db_error();db_io(0,1,e,db_len(e));return 0;}','direct-gatt-'+str(len(operation))+'-'+str(approved));o=vm(t)

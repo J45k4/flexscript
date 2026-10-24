@@ -19,7 +19,7 @@ it does not count as an implementation of an otherwise available adapter.
 | USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt, accessory mode, disconnect handling | implemented; device consent and transfers need a real fixture | UsbManager inventory/events, missing devices, invalid arguments and wrong handle types passed on emulator; physical device approval/transfers/detach pending |
 | USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
 | Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 16 baseline SDK/VM/consent checks passed on the current server APK; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
-| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy advertising, GATT client and GATT server SDK bindings implemented; extended/periodic advertising pending | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
+| BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy and extended/periodic transmission, GATT client/server SDK bindings implemented; remaining lifecycle/SDK gates below | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | public Classic HID device SDK bindings implemented; remaining verification gates below | encrypted510-byte control/interrupt report exchange, registration ownership and reconnect verified against a controlled host; public unplug callback gate remains failing on this emulator |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment and NFC-F service, routing, command/reply and lifecycle SDK bindings implemented; polling/observe extensions and background operation pending | 62 actual Android service/VM and explicitly constructed Binder-peer checks passed; SDK adapter absence is real, successful registration/routing/RF/physical checks remain unverified |
@@ -868,7 +868,8 @@ matches either an advertised service UUID list or service-data UUID; an optional
 address filter is ANDed with either form. Mode0/1/2 selects low-power/balanced/
 low-latency and duration is1000..30000ms. Android can pause unfiltered scans when
 the screen is off. The adapter requests both legacy and extended scan results;
-only legacy PDUs have been positively verified so far.
+only legacy PDUs were verified at this historical checkpoint. Extended results
+are verified in the later advertising-set checkpoint below.
 
 Each `found` event copies raw advertisement bytes for Flexscript protocols to
 parse. Metadata includes address, SID, RSSI, monotonic timestamp, connectable,
@@ -909,7 +910,8 @@ removed. No synthetic ScanResult or advertisement-success callback is used.
 Shared codec/registry,9 core and11 lazy-permission groups also passed, including
 both Bluetooth and Location checkpoints for BLE scans.
 
-**Pending:** GATT connection/service enumeration/characteristic and descriptor
+**At this legacy checkpoint, pending** (see subsequent GATT and advertising-set
+checkpoints): GATT connection/service enumeration/characteristic and descriptor
 I/O, notifications/indications, GATT server requests/responses, extended/periodic
 advertising controls, and positive extended-scan, manufacturer-data, radio-loss,
 live-revocation and physical-device verification. This is not completion of the
@@ -2470,6 +2472,127 @@ python3 scripts/test-collie-android-packaging.py --debug build/android-accessibi
 ```
 
 No phone deployment or physical accessibility proof is claimed. The complete
-inventory remains open, including privileged/vendor reporting, BLE extensions,
+inventory remains open, including privileged/vendor reporting, remaining BLE lifecycle/RF gates,
 older UWB integration, strict UWB effective-interval/HID unplug failures and all
 previously listed physical/software/radio gates.
+
+## BLE extended and periodic advertising sets
+
+This checkpoint adds eight SDK operations and six portable value constructors.
+`ble_set_open` creates public Android advertising sets; `ble_set_enable`,
+`ble_set_data`, `ble_set_parameters`, `ble_set_periodic_parameters` and
+`ble_set_periodic_enable` submit asynchronous changes. `ble_set_request` reads
+their actual callback results; `ble_set_shutdown` retains an observable handle
+while SDK teardown finishes. Advertising/scan-response/periodic payloads, UUIDs,
+manufacturer fields and parameter composition remain ordinary Flexscript data
+through `guest/ble.flex`. The sole model tool and raw-FFI restriction are unchanged.
+
+The existing Bluetooth gate is reused. Starting advertising requires visible
+Collie and actual Android CONNECT/ADVERTISE access, without Location or SCAN.
+The two new capability rows are permission-free and distinguish unknown support
+when the controller cannot be queried from a known unsupported controller.
+All value bounds, SDK compatibility rules and paged API documentation are
+available through `hardware_api()` and `hardware_api_page`.
+
+Eight global set leases include startup and uncertain SDK cleanup. One operation
+per set may be unresolved, with sixteen retained result records. Startup and
+request deadlines are500..30000ms. SDK-call return, callback success, deadline
+expiry and terminal cleanup are reported separately. Exceptions/missing results
+retain ambiguous requests until a real callback or shutdown. Late callbacks
+cannot return a closing handle to ready. Close/revocation/conversation changes
+request SDK stop off the UI thread; actual stopped callback, actual radio OFF or
+known local no-registration rejection, plus local cleanup, release the lease.
+SDK stop-call return alone does not prove radio termination. These new lease
+rules do not retroactively strengthen the older legacy-advertising adapter.
+
+Actual controller expiry exposed an initial state bug: status6 disabled callbacks
+were preserved in the event queue but did not update observed `enabled` state.
+Expiry statuses6/2 now update disabled state as unsolicited SDK events, without
+completing an unrelated pending request. Other failed enable results leave
+observed state unknown. AOSP's
+[termination mapping](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/main/system/gd/hci/le_advertising_manager.cc)
+and [status enum](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/main/system/gd/hci/le_advertising_manager.h)
+distinguish timeout6 and limit2; this actual emulator forwards6 for both cases.
+The fixture therefore also counts real reports at an independent peer: a fresh
+set requested with maximum-events3 produces exactly three matching reports,
+then stops, and its unchanged raw SDK status6 is recorded. No success status or
+cause is synthesized from the requested parameters.
+
+Current artifacts:
+
+- Debug `build/android-ble-sets/collie.apk`: **7,296,287 bytes**,
+  SHA256 `877458ad600266a5f1ae492ef656cee1422e52dd507abba45f592f4b23134a6a`.
+- Non-debug `build/android-ble-sets-release/collie.apk`: **7,083,216 bytes**
+  (7.083MB/6.755MiB), SHA256
+  `9082c9b5331e7e76b6e6062d7af584d1d50d8f82db407d6d1122fde1ff0fe086`.
+- Packaging checks pass; debug fixtures and the separate UI probe are excluded
+  from non-debug. All256 production Java classes, generated Flexscript, native
+  library and native-test bytes match between debug and non-debug outputs.
+
+Shared32KiB codec/registry,9 core groups and15 native lazy-permission groups
+pass, including the advertising-set Bluetooth checkpoint with Location denied.
+All4 reference checks pass with every one of the actual31 grants denied: the
+complete81,670-byte reference and12,824-byte function index survive bounded VM
+RPC reads. Ten Android lazy-permission groups also pass on the same installed
+debug digest, including process restart, worker requests and original-policy
+restoration. Eight actual VPN/TUN scenarios also pass on this same digest,
+including real system consent, kernel packet bytes, protected TCP/model routing
+and teardown before force-stop cleanup.
+
+**23 actual SDK/VM/Netsim checks pass on the exact installed debug digest.**
+Real first-use Collie Bluetooth and Android Nearby consent resume the interrupted
+program while Collie/OS Location remain denied. The peer receives exact96/150-byte
+binary service payloads, a460-byte packet with three manufacturer fields, and
+80/90-byte scan-response payloads. Independent periodic synchronization verifies
+110/125-byte periodic payloads and their replacement/disable. Real primary and
+periodic parameter callbacks, actual controller duration expiry, the three-event
+limit, eight-set saturation/ninth denial, terminal lease release and reopening
+pass. Extended scanning in a separate authorized workspace receives the peer's
+exact114-byte packet, nonlegacy SID9 and periodic interval80 metadata. SCAN and
+Location runtime grants for that final scan are transport-fixture setup, not
+claimed as user-consent evidence. Original conversation/policy, runtime grants,
+user-set/fixed flags and the Location switch are checked after restoration.
+
+Initial fixture failures remain recorded locally. A760-byte update exceeded the
+controller's actual512-byte limit; its genuine `DATA_TOO_LARGE` callback is now a
+negative check before the valid460-byte update. Bumble's ordinary scanner does
+not reassemble extended HCI report fragments, so the host-only oracle now joins
+bounded actual continuation reports before comparing every AD field. No packet
+or SDK callback is fabricated. Empty-event text fields needed typed-null guards.
+The scan requires a separate workspace with Location allowed and an explicit
+SCAN runtime grant; initial-permission fixture data cannot override the existing
+advertising workspace's remembered denial. Failed runs are not successful proof.
+
+Remaining BLE advertising-set requirements are open:
+
+- [ ] Delayed/missing SDK callbacks, startup/request timeout and late-result
+      quarantine, exception/stop-failure paths, history eviction, queue saturation
+      and cleanup while SDK calls are blocked.
+- [ ] Live Collie/OS revocation, adapter off/on, process death, conversation
+      changes, multiple Activity instances and background/OEM behavior.
+- [ ] Positive2M/Coded PHY, anonymous/TX/name/discoverable/solicitation and UUID
+      list variants, older SDKs, additional limits and sustained interoperability.
+- [ ] Periodic interval changes verified at a receiver, resynchronization,
+      physical timing, fragmentation/maximum payloads across controllers and
+      physical devices. The target normal-app SDK has no public periodic receive
+      manager; no hidden-API substitute is exposed.
+- [ ] Older legacy/GATT lifecycle and physical gates listed above remain open.
+
+Repeat on the owned unlocked headless emulator, with host-only
+`bumble[android]==0.0.236`:
+
+```sh
+python scripts/fixtures/collie-ble-sets-peer.py \
+  --transport android-netsim:127.0.0.1:PORT,name=collie-test-UNIQUE \
+  --out build/android-ble-sets/peer-state.json
+python3 scripts/test-collie-ble-sets-android.py \
+  --out build/android-ble-sets --serial emulator-5582 \
+  --peer-state build/android-ble-sets/peer-state.json
+python3 scripts/test-collie-android-packaging.py \
+  --debug build/android-ble-sets/collie.apk \
+  --release build/android-ble-sets-release/collie.apk
+```
+
+This is emulator/Binder/virtual-controller evidence, not physical RF or phone
+deployment proof. The complete hardware objective and strict UWB effective-interval
+and HID unplug gates remain open. The PR remains draft.

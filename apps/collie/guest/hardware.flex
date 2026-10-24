@@ -374,3 +374,13 @@ fn accessibility_global_actions(session,offset,limit){let r=db_request("accessib
 fn accessibility_global_action(session,action){let r=db_request("accessibility_global_action");db_add(r,db_text(session));db_add(r,db_int(action));return db_rpc(r);}
 fn accessibility_gesture(session,strokes,display){let r=db_request("accessibility_gesture");db_add(r,db_text(session));db_add(r,strokes);db_add(r,db_int(display));return db_rpc(r);}
 fn accessibility_gesture_state(session,gesture){let r=db_request("accessibility_gesture_state");db_add(r,db_text(session));db_add(r,db_text(gesture));return db_rpc(r);}
+
+// Public BLE advertising sets; SDK callback completion is separate from submission.
+fn ble_set_open(parameters,data,scan_response,periodic_parameters,periodic_data,duration_units,max_events,timeout_ms){let r=db_request("ble_set_open");db_add(r,parameters);db_add(r,data);db_add(r,scan_response);db_add(r,periodic_parameters);db_add(r,periodic_data);db_add(r,db_int(duration_units));db_add(r,db_int(max_events));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn ble_set_enable(handle,enabled,duration_units,max_events){let r=db_request("ble_set_enable");db_add(r,db_text(handle));db_add(r,db_int(enabled));db_add(r,db_int(duration_units));db_add(r,db_int(max_events));return db_rpc(r);}
+fn ble_set_data(handle,target,data){let r=db_request("ble_set_data");db_add(r,db_text(handle));db_add(r,db_int(target));db_add(r,data);return db_rpc(r);}
+fn ble_set_parameters(handle,parameters){let r=db_request("ble_set_parameters");db_add(r,db_text(handle));db_add(r,parameters);return db_rpc(r);}
+fn ble_set_periodic_parameters(handle,parameters){let r=db_request("ble_set_periodic_parameters");db_add(r,db_text(handle));db_add(r,parameters);return db_rpc(r);}
+fn ble_set_periodic_enable(handle,enabled){let r=db_request("ble_set_periodic_enable");db_add(r,db_text(handle));db_add(r,db_int(enabled));return db_rpc(r);}
+fn ble_set_request(handle,request){let r=db_request("ble_set_request");db_add(r,db_text(handle));db_add(r,db_text(request));return db_rpc(r);}
+fn ble_set_shutdown(handle){let r=db_request("ble_set_shutdown");db_add(r,db_text(handle));return db_rpc(r);}

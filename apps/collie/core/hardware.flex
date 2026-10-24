@@ -341,6 +341,14 @@ fn hw_operations(){
     hw_operation(rows,"accessibility_global_action","hardware_handle",2,2);
     hw_operation(rows,"accessibility_gesture","hardware_handle",3,3);
     hw_operation(rows,"accessibility_gesture_state","hardware_handle",2,2);
+    hw_operation(rows,"ble_set_open","bluetooth",8,8);
+    hw_operation(rows,"ble_set_enable","hardware_handle",4,4);
+    hw_operation(rows,"ble_set_data","hardware_handle",3,3);
+    hw_operation(rows,"ble_set_parameters","hardware_handle",2,2);
+    hw_operation(rows,"ble_set_periodic_parameters","hardware_handle",2,2);
+    hw_operation(rows,"ble_set_periodic_enable","hardware_handle",2,2);
+    hw_operation(rows,"ble_set_request","hardware_handle",2,2);
+    hw_operation(rows,"ble_set_shutdown","hardware_handle",1,1);
     hw_registry=rows;return rows;
 }
 fn hw_find(name){let rows=hw_operations();let i=0;while i<j_count(rows){let row=j_at(rows,i);if h_equal(cj_text(row,"name"),name){return row;}i=i+1;}return 0;}
