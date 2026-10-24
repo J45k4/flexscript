@@ -18,7 +18,13 @@ assert a.transport.startswith(('android-netsim:127.0.0.1:','android-netsim:local
 service=uuid.uuid4();wire_uuid=service.bytes[::-1]
 def payload(seed,size):return bytes((seed+i*73)%256 for i in range(size))
 ads={name:payload(seed,size) for name,seed,size in [('initial',0,96),('updated',129,150),('large',17,100),('scan_response',61,80),('scan_response_update',71,90),('event_limit',155,80)]}
+ads.update({name:payload(seed,80) for name,seed in [
+    ('startup_timeout',19),('startup_close',23),('operation_before',31),
+    ('operation_after',37),('after_timeout',43),('live_revoke',47),
+    ('radio_shutdown',53),('process_death',59),('conversation',67),('queued_close',79),('after_restart',83),('runtime_revoke',89),
+    ('blocked_reopen',97),('background_before',101),('background_update',107),('background_start',109),('queued_expired',113)]})
 periodic={name:payload(seed,size) for name,seed,size in [('initial',215,110),('updated',42,125)]}
+periodic['background_start']=ads['background_start']
 manufacturers={str(0xF000+i):payload(7+i,110) for i in range(3)}
 oversized_manufacturers={str(0xF000+i):payload(7+i,210) for i in range(3)}
 peer_payload=payload(87,96)
@@ -76,7 +82,7 @@ async def main():
     state['ad_seen'][name]+=1
     state['ad_metadata'][name]=dict(address=str(report.address),sid=report.sid,legacy=report.is_legacy,
         scan_response=report.is_scan_response,primary_phy=report.primary_phy,secondary_phy=report.secondary_phy,bytes=len(report.data_bytes))
-    if name=='initial' and not report.is_legacy and not sync_started:
+    if name in ('initial','background_start') and not report.is_legacy and not sync_started:
      sync_started=True;task=asyncio.create_task(synchronize(report.address,report.sid));tasks.add(task);task.add_done_callback(tasks.discard)
     save()
   # Bumble's ordinary AdvertisementDataAccumulator combines scan responses but

@@ -2518,7 +2518,7 @@ set requested with maximum-events3 produces exactly three matching reports,
 then stops, and its unchanged raw SDK status6 is recorded. No success status or
 cause is synthesized from the requested parameters.
 
-Current artifacts:
+Initial advertising-set artifacts:
 
 - Debug `build/android-ble-sets/collie.apk`: **7,296,287 bytes**,
   SHA256 `877458ad600266a5f1ae492ef656cee1422e52dd507abba45f592f4b23134a6a`.
@@ -2563,7 +2563,8 @@ The scan requires a separate workspace with Location allowed and an explicit
 SCAN runtime grant; initial-permission fixture data cannot override the existing
 advertising workspace's remembered denial. Failed runs are not successful proof.
 
-Remaining BLE advertising-set requirements are open:
+At this initial advertising-set checkpoint, the following requirements were
+open; the lifecycle follow-up below addresses several of them:
 
 - [ ] Delayed/missing SDK callbacks, startup/request timeout and late-result
       quarantine, exception/stop-failure paths, history eviction, queue saturation
@@ -2596,3 +2597,137 @@ python3 scripts/test-collie-android-packaging.py \
 This is emulator/Binder/virtual-controller evidence, not physical RF or phone
 deployment proof. The complete hardware objective and strict UWB effective-interval
 and HID unplug gates remain open. The PR remains draft.
+
+## BLE deadline, submission and background lifecycle follow-up
+
+Delayed actual SDK callbacks exposed two deadline bugs in the initial adapter.
+If a callback had been queued before its timer, blocking their shared handler
+past the deadline let that callback clear the timer and report ready/complete.
+The new fixture reproduced both failures without calling a status/result getter
+that would have masked the ordering. Its baseline APK
+`be9aa7528eda967e2f775acad1d2cbe922d7242bd4659402037e8772e6d13466`
+contains byte-identical copies of all five published BLE implementation class
+files; only debug test integration differs. The two failures and APK are retained
+in `build/android-ble-lifecycle-before/`, not counted as successful verification.
+
+Startup and update callbacks now check elapsed time before removing timers.
+`device_info.startup_deadline_expired` distinguishes a late actual start status
+from on-time readiness. A late successful update retains timeout and raw status0
+with `sdk_callback=true`; it does not become on-time success. Actual hardware may
+already have acted before callback delivery, so attempted SDK operations remain
+ambiguous until the real callback or teardown resolves them.
+
+A separate genuine SDK disable action also reproduced an event incorrectly
+completing a VM disable request still waiting in the SDK executor. Baseline APK
+`70277f56ca20f75c343bd0afeb48d41b92698ba7f0df21a2f9640e823d9d12f0`
+preserves that failure in `build/android-ble-queued-before/`. Requests now expose
+`sdk_call_started` and cannot match a callback while unsent. Submission workers
+also check elapsed deadlines: expired queued startups/updates are skipped before
+their SDK operation, even with the timer handler blocked. A skipped update
+reports `sdk_not_submitted=true`, no callback and null status, and releases its
+pending slot only after local confirmation. Neither a callback nor Android
+status is fabricated for work never submitted. SDK events still lack independent
+transaction IDs; the binding does not claim otherwise.
+
+The initial visibility gate also prevented already-approved advertising from
+starting while the Activity was hidden. Advertising-set starts now use the
+existing Collie Bluetooth and actual CONNECT/ADVERTISE approvals without an
+extra Activity-visibility restriction. Missing grants still checkpoint before
+registration. The owned Android36 test executes real `onStop`, starts a new
+extended/periodic set with existing approvals, and receives exact advertising
+and periodic bytes at an independent peer before returning to foreground.
+Background Deny still prevents registration. Both sets stop while hidden and
+their matching advertising/periodic packets cease. This follows the public
+[advertising-set SDK](https://developer.android.com/reference/android/bluetooth/le/BluetoothLeAdvertiser);
+no foreground-service dependency, background Activity-launch exemption or
+process-keepalive guarantee is added. Process/Binder death still ends ownership.
+The older legacy advertiser retains its separately documented behavior.
+
+**52 lifecycle checks pass on the exact installed debug artifact**, with real
+SDK objects, callback delivery and a host-only independent Netsim peer:
+
+- [x] Late startup/update completion with callback-before-timer ordering and no
+      status polling; getter-driven expiry; raw late result preservation.
+- [x] Genuine SDK events cannot acknowledge queued VM calls. Expired unsent
+      startup/update work is cancelled locally; its marker never reaches the peer.
+- [x] Actual UI-thread close while startup results are delayed, and stop-call
+      return does not release an unresolved lease. Late callbacks cannot revive it.
+- [x] Eight queued startups reserve capacity before registration, ninth denial,
+      nonblocking queued close, and queued update cancellation before its SDK call.
+- [x] Another actual VM workspace cannot use the live handle;132 actual SDK
+      updates retain only16 results and a128-event queue. Eviction/overflow return
+      typed errors/loss metadata and preserve the next actual callback.
+- [x] The real production UI-thread Bluetooth policy setter cancels an already
+      running VM wait, persists Deny and prevents later calls. Its genuine delayed
+      terminal callback and local cleanup release capacity; peer packets stop.
+- [x] Existing background updates, preapproved new extended/periodic starts,
+      background Deny and real shutdown while hidden. The peer verifies new bytes
+      before acknowledging the hidden phase to the debug fixture.
+- [x] Actual public Android `STATE_OFF=10` / `STATE_ON=12`, distinct from an
+      intermediate disabled Boolean: packet cessation, terminal/off cleanup,
+      unknown-support capability metadata, typed disabled opens and fresh restart.
+- [x] Actual conversation switch invalidates old handles and stops packets.
+      Actual process death and OS ADVERTISE revocation stop advertisements through
+      Binder cleanup; persisted tokens are stale after cold restart. A missing
+      runtime grant checkpoints before effects, and granting it alone does not
+      replay the yielded direct fixture. A new explicit set works afterward.
+
+One initial background test attempted to restore its Activity from the app while
+hidden. Android's actual ActivityTaskManager blocked that launch; no exemption
+was added. The external owned emulator driver restores the Activity instead.
+Radio verification was strengthened from `isEnabled=false` to the exact public
+SDK OFF/ON states. Original conversation/messages/policy and the six tested Bluetooth/Nearby-Wi-Fi/
+Location runtime grants and their user-set/fixed flags are checked after restoration.
+No successful SDK callback is synthesized. The separate SDK disable action used
+to test request correlation is explicitly constructed, not a VM-originated call.
+
+Current lifecycle artifacts:
+
+- Debug `build/android-ble-lifecycle/collie.apk`: **7,329,055 bytes**,
+  SHA256 `2d4ea360e9ffac25e556d923d25b5607afbe5306a84f021b95a3cbbe6c4f2e79`.
+- Non-debug `build/android-ble-lifecycle-release/collie.apk`: **7,083,216 bytes**
+  (7.083MB/6.755MiB), SHA256
+  `10238ada4e5a96d94b0184bbc29e2701d961120bede9d6388fe5a6f8927a12f1`.
+- Packaging checks exclude `HardwareBleSetChecks` and all other debug fixtures
+  from non-debug. All256 production Java classes, generated Flexscript, native
+  library and native-test bytes match debug/non-debug outputs. The independent
+  Python/Bumble peer and its acknowledgement protocol are not packaged in Collie.
+- The4 reference checks pass with all31 grants denied, including every byte of
+  the82,450-byte detailed reference and12,824-byte index through bounded VM pages.
+
+On this same exact installed digest, the23 original advertising-set checks,
+10 Android lazy-permission groups and8 actual VPN/TUN scenarios also pass with
+before/after installed-APK guards and original-state restoration. Shared32KiB
+codec/registry,9 core groups and15 native lazy-permission groups pass. These
+regressions remain separate from physical RF and unverified inventory gates.
+
+Repeat on the owned, unlocked headless emulator:
+
+```sh
+python scripts/fixtures/collie-ble-sets-peer.py \
+  --transport android-netsim:127.0.0.1:PORT,name=collie-test-UNIQUE \
+  --out build/android-ble-lifecycle/peer-state.json
+python3 scripts/test-collie-ble-lifecycle-android.py \
+  --out build/android-ble-lifecycle --serial emulator-5582 \
+  --peer-state build/android-ble-lifecycle/peer-state.json
+python3 scripts/test-collie-android-packaging.py \
+  --debug build/android-ble-lifecycle/collie.apk \
+  --release build/android-ble-lifecycle-release/collie.apk
+```
+
+Remaining BLE advertising requirements are still open:
+
+- [ ] Indefinitely missing callbacks; blocked SDK call bodies, transport/vendor
+      exceptions and stop failures; duplicate/out-of-order results beyond the
+      verified unsent-request case, including radio loss during active SDK calls.
+- [ ] Multiple Activity ownership, long-lived/Doze/background-consent behavior,
+      older SDKs/OEMs and sustained operation. Retained-process background success
+      is not a background scheduler or a guarantee Android keeps the app alive.
+- [ ] Positive2M/Coded/anonymous/TX/name/discoverable/solicitation/UUID-list variants,
+      further limits and physical controller interoperability.
+- [ ] Receiver-verified periodic interval changes/resynchronization, physical
+      timing and controller fragmentation/maximum payloads. Normal-app public
+      periodic receive support remains unavailable in the target SDK.
+- [ ] Remaining legacy/GATT and full inventory gates above, including the strict
+      UWB effective-interval and HID unplug failures. The full objective is active
+      and the PR remains draft; no physical RF or phone deployment proof is claimed.
