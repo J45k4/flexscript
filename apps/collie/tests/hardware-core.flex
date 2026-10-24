@@ -11,6 +11,7 @@ fn main(argc,argv){
     h_assert(db_word(db_at(restored,0))==(-9223372036854775807-1) && db_kind(db_at(restored,1))==4 && db_word(db_at(restored,1))==0x7ff8000000000001 && db_kind(db_at(restored,2))==0,"integer and float bits preserved");
     h_assert(!hw_value(c_json("9223372036854775808"),0) && !hw_value(c_json("-9223372036854775809"),0) && !hw_value(c_json("1.25"),0),"invalid integer metadata rejection");
     h_assert(hw_find("net_tcp_connect") && !hw_find("net_unknown") && !hw_find("java.lang.Runtime"),"explicit operation registry");
+    h_assert(h_equal(cj_text(hw_find("hardware_access_info"),"permission"),"progress") && !cj_int(hw_find("hardware_access_info"),"min") && !cj_int(hw_find("hardware_access_info"),"max") && !hw_find("usb_gadget"),"read-only access discovery does not register raw hardware dispatch");
     h_assert(h_equal(cj_text(hw_find("usb_control_out"),"permission"),"hardware_handle") && h_equal(cj_text(hw_find("usb_open"),"permission"),"usb") && cj_int(hw_find("usb_control_in"),"min")==7,"USB ownership and permission schema");
     h_assert(h_equal(cj_text(hw_find("cellular_cells"),"permission"),"cellular") && h_equal(cj_text(hw_find("cellular_cells"),"also"),"location"),"cell data requires two grants");
     h_assert(h_equal(cj_text(hw_find("wifi_scan"),"also"),"location") && h_equal(cj_text(hw_find("wifi_suggest"),"permission"),"wifi"),"Wi-Fi scan and suggestion gates differ");

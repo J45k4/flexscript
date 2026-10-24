@@ -4,7 +4,8 @@ fn device_field(map,key){let i=0;while i<db_count(map){let row=db_at(map,i);let 
 fn hardware_call(op,args){let r=db_request(op);let i=0;while i<db_count(args){db_add(r,db_at(args,i));i=i+1;}return db_rpc(r);}
 fn hardware_api(){return db_rpc(db_request("hardware_api"));}
 fn hardware_api_page(offset,limit){let r=db_request("hardware_api_page");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
-fn hardware_capabilities(){return db_rpc(db_request("hardware_capabilities"));}
+fn hardware_capabilities(){let rows=db_rpc(db_request("hardware_capabilities"));if !rows{return 0;}let restricted=hardware_restriction_rows();let i=0;while i<db_count(restricted){db_add(rows,db_at(restricted,i));i=i+1;}return rows;}
+fn hardware_access_info(){return db_rpc(db_request("hardware_access_info"));}
 fn net_list(){return db_rpc(db_request("net_list"));}
 fn net_info(network){let r=db_request("net_info");db_add(r,db_text(network));return db_rpc(r);}
 fn net_watch(){return db_rpc(db_request("net_watch"));}

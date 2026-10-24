@@ -6,6 +6,7 @@ fn hw_operation(rows,name,permission,min,max){let row=j_object();j_set(row,"name
 fn hw_operations(){
     if hw_registry{return hw_registry;}let rows=j_array();
     hw_operation(rows,"hardware_capabilities","progress",0,0);
+    hw_operation(rows,"hardware_access_info","progress",0,0);
     hw_operation(rows,"hardware_api","progress",0,0);
     hw_operation(rows,"hardware_api_page","progress",2,2);
     hw_operation(rows,"net_list","network",0,0);

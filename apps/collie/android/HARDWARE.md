@@ -39,7 +39,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | one-use consent/tickets, foreground projection service, bounded RGBA planes and silent/microphone MP4 SDK bindings implemented; further session/lifecycle gates below | 38 real headless Android checks passed for chooser approval/denial, exact pixels/MP4 bytes, hidden Activity frames and screen-lock Stop; selected-app/older-device/physical and additional lifecycle gates pending |
 | Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | Android-owned service enablement, scoped SDK node/window/event/action bindings and bounded gesture transport implemented; further lifecycle/SDK gates below | 27 actual headless Android checks passed for real Settings consent, tree/text/action/touch effects, resource ownership and delayed callback cleanup; physical/older-device and remaining gates pending |
 | Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | 29 real Android picker/provider/lifecycle checks passed; full-size binary data, asset byte ranges, restart and both revocation layers verified; provider copy/move/remove, actual virtual conversion and physical removable/cloud providers pending |
-| Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | pending capability reporting | pending |
+| Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | read-only SDK privilege facts and16 explicit missing-adapter descriptions implemented in the Flexscript inventory; no vendor bridge configured | 12 real Android metadata/VM/restart checks passed against independent OS package dumps; actual privileged hardware/vendor integration remains unverified |
 
 Cross-cutting requirements:
 
@@ -2960,3 +2960,101 @@ Remaining HCE gates:
 - [ ] Earlier HCE, full inventory and strict UWB effective-interval/HID unplug
       gates remain open. This is an implementation checkpoint, not completion of
       the full objective, a master merge or a phone deployment.
+
+## Privileged and vendor capability discovery
+
+`hardware_access_info()` reads a fresh public-SDK snapshot without requesting
+any hardware grant or Android permission. Fields are `sdk`, `target_sdk`, actual
+process `uid`, `system_app`, `updated_system_app`, `debuggable`, and17 bounded
+permission records. Each record contains `name`, `defined`, `requested`,
+`granted`, and the raw `protection_level` bitmask. A missing OS definition is
+reported as `defined=false` and typed-null protection, rather than permission
+denial being confused with absence. Other SDK errors propagate through the
+existing typed error channel.
+
+Java only reads `ApplicationInfo`, `PackageInfo(GET_PERMISSIONS)`,
+`PackageManager.getPermissionInfo` and `checkSelfPermission`. The permission
+names are fixed, not an arbitrary host-method/device-path selector. No SDK
+handles, shell subprocesses, Settings changes, runtime dialogs, raw Binder/HAL
+calls or device-node probes are introduced. Discovery uses the existing
+grant-free `progress` registry category and does not add another model tool or
+permission setting. Manifest permissions are unchanged.
+
+`hardware_restrictions()` returns `{platform,restrictions}`; `platform` is the
+actual snapshot above. `hardware_capabilities()` also appends the16 restriction
+rows to its ordinary inventory. The descriptions and alternatives are generated
+in `guest/hardware-access.flex`, covering:
+
+- Wi-Fi monitor mode and arbitrary frame transmission.
+- Raw cellular/baseband transport and global modem controls.
+- USB gadget functions and raw Bluetooth HCI/controller commands.
+- Internal I2C, SPI and GPIO buses.
+- CPU/GPU clocks, charging controls and global routing/tethering.
+- Raw input injection, arbitrary device nodes and vendor hardware services.
+
+These rows deliberately have `implemented=false`, `supported=null`,
+`available=false`, `discovery_implemented=true` and
+`code=adapter_unimplemented`. `requires`, `reason` and `alternative` explain the
+missing integration and narrower existing functions. In particular, Bluetooth
+HID does not implement a USB keyboard gadget, VPN/per-network sockets do not
+grant arbitrary global routing, and thermal/battery observations do not grant
+clock/charging control. Device/driver/vendor support remains unknown; discovery
+does not claim that the hardware itself is incapable.
+
+The17 related permission observations never upgrade an absent adapter.
+Debuggable/system flags, UID and even a granted privileged permission do not
+prove root, SELinux access, a particular vendor protocol or successful hardware
+effects. No vendor integration is configured. Actual documented vendor controls
+still require an explicit adapter and the same typed I/O, ownership, consent and
+verification requirements as every other inventory row.
+
+Source boundaries follow Android's
+[Application Sandbox](https://source.android.com/docs/security/app-sandbox) and
+the public [permission metadata](https://developer.android.com/reference/android/content/pm/PermissionInfo)
+and [PackageManager](https://developer.android.com/reference/android/content/pm/PackageManager)
+contracts. The test's independent dump-bit decoder follows AOSP
+[PermissionInfo.protectionToString](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/java/android/content/pm/PermissionInfo.java).
+
+Verified checkpoint (headless Android36 emulator, no phone deployment):
+
+- 12 real Android groups compare SDK/target SDK, process UID, all three package
+  flags, all17 permission definitions and complete protection bitmasks with
+  independent Android shell/package dumps. Actual undefined `NFC_PRIVILEGED`
+  metadata remains typed null. None of these17 permissions is requested or held.
+- All16 restriction rows reach the actual compiled VM. Every proposed public
+  alternative exists in the generated function index, and existing adapter rows
+  remain in the capability inventory. Incorrect arity is rejected by the shared
+  registry; a restriction ID cannot dispatch raw hardware operations. Battery
+  calls still fail with the original grant denied.
+- All31 Deny choices and fresh Ask-only policy remain unchanged. Actual app
+  process restart reads current SDK facts without restored hardware handles.
+  The original conversation/messages/policy are restored and only owned
+  temporary fixtures are removed. No new Java debug test endpoint is needed.
+- Shared32KiB codec/registry,9 core and16 native lazy-permission groups pass. The
+  added native group verifies the genuine non-Android boundary for discovery,
+  rather than supplying fabricated Android metadata. All4 API-reference groups
+  pass with31 grants denied:88,108 detailed and13,094 index bytes.
+- Debug APK `build/android-hardware-access/collie.apk`:7,394,591B,
+  SHA-256 `30688d15a13bd0a41522a744cf93b0be74bf7094d73fe96b6f2d28813322b501`.
+  Nondebug `build/android-hardware-access-release/collie.apk`:7,115,984B,
+  SHA-256 `3e704cf24f700a68a1bebb6e4621525ccf53c560609e6cfba23698a710ecb8ee`.
+  Both pass packaging checks; all263 production Java class files and generated
+  engine/native library/test/UI-library bytes match between variants. Debug
+  fixtures remain absent from nondebug. No artifacts or raw reports are committed.
+- The10 existing real Android lazy-permission UI groups also pass on the same
+  installed digest, for22 Android groups total in this checkpoint. Every report
+  verifies its installed APK before and after execution.
+
+```sh
+python3 scripts/test-collie-hardware-access-android.py \
+  --out build/android-hardware-access --serial emulator-5582
+python3 scripts/test-collie-lazy-permissions.py --out build/android-hardware-access
+python3 scripts/test-collie-android-packaging.py \
+  --debug build/android-hardware-access/collie.apk \
+  --release build/android-hardware-access-release/collie.apk
+```
+
+This closes the missing discovery implementation, not the full hardware goal.
+Remaining supported-device SDK paths, physical/RF gates, older UWB integration,
+background HCE, per-physical camera controls and strict UWB effective-interval/HID
+unplug failures remain open. Privileged/vendor hardware access is unverified.

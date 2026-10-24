@@ -137,6 +137,13 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
  config['permissions']['files_read']='ask';t=step('resume',t['state']);assert t['command']['kind']=='vm',t
  assert vm(t)['state']=='waiting'
  passed('restart after a later worker wait does not repeat an already completed permission request')
+ config['permissions']=dict.fromkeys(keys,False)
+ for operation in ['hardware_access_info()','hardware_restrictions()','hardware_capabilities()']:
+  o=call(3,dict(config=config,history=[],call_id='access-discovery-'+str(len(operation)),source='fn main(){if '+operation+'{return 1;}if !worker_equal(db_word(db_at(device_error(),0)),"platform_unavailable"){return 2;}return 0;}'))
+  assert o['state']=='continue' and o['exit_code']==0,o
+ o=call(3,dict(config=config,history=[],call_id='access-catalog',source='fn main(){let rows=hardware_restriction_rows();if db_count(rows)!=16{return 1;}let i=0;while i<db_count(rows){let r=db_at(rows,i);if db_word(device_field(r,"implemented")) || db_kind(device_field(r,"supported"))!=0 || db_word(device_field(r,"available")) || !db_word(device_field(r,"discovery_implemented")){return 2;}i=i+1;}return 0;}'))
+ assert o['state']=='continue' and o['exit_code']==0,o
+ passed('denied-capability discovery reaches the actual non-Android boundary without prompting or fabricating device facts; the portable restriction catalog keeps absent adapters and unknown support distinct')
 
 (out/'lazy-permissions-report.json').write_text(json.dumps({'count':len(checks),'checks':checks},indent=2)+'\n')
 print(f'{len(checks)} lazy permission groups passed')
