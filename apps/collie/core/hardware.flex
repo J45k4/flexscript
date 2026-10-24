@@ -247,9 +247,12 @@ fn hw_operations(){
     hw_operation(rows,"biometric_info","biometrics",1,1);
     hw_operation(rows,"biometric_auth","biometrics",6,6);
     hw_operation(rows,"biometric_cancel","hardware_handle",1,1);
-    hw_operation(rows,"uwb_info","uwb",0,0);
-    hw_operation(rows,"uwb_watch","uwb",0,0);
+    hw_operation(rows,"uwb_info","uwb",0,1);
+    hw_operation(rows,"uwb_watch","uwb",0,1);
     hw_operation(rows,"uwb_range","uwb",3,3);
+    hw_operation(rows,"uwb_prepare","uwb",2,2);
+    hw_operation(rows,"uwb_start","hardware_handle",3,3);
+    hw_operation(rows,"uwb_request","hardware_handle",2,2);
     hw_operation(rows,"uwb_stop","hardware_handle",1,1);
     hw_operation(rows,"uwb_add","hardware_handle",2,2);
     hw_operation(rows,"uwb_remove","hardware_handle",2,2);

@@ -12,16 +12,19 @@ import org.json.*;
 
 /** Public Android ranging objects and copied UWB callbacks. Peer negotiation stays in Flexscript. */
 final class HardwareUwb {
-    private static final Semaphore WATCHES=new Semaphore(8),SESSIONS=new Semaphore(8);
-    private static final ThreadPoolExecutor CLEANUP=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(16),task->{Thread t=new Thread(task,"collie-uwb-cleanup");t.setDaemon(true);return t;});
+    static final Semaphore WATCHES=new Semaphore(8),SESSIONS=new Semaphore(8);
+    static final ThreadPoolExecutor CLEANUP=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(16),task->{Thread t=new Thread(task,"collie-uwb-cleanup");t.setDaemon(true);return t;});
     static boolean supports(String op){return op.startsWith("uwb_");}
     static boolean feature(VmHardware.Context c){return c.host.getPackageManager().hasSystemFeature("android.hardware.uwb");}
     static boolean api(){return Build.VERSION.SDK_INT>=36;}
-    static void capabilities(VmHardware.Context c,JSONArray out)throws Exception{boolean service=api()&&Api36.present(c);out.put(VmHardware.object("id","uwb_ranging","implemented",true,"supported",service&&feature(c),"available",JSONObject.NULL,"availability_known",false,"permission","uwb","sdk",Build.VERSION.SDK_INT,"public_ranging_api",service,"feature",feature(c),"observer_slots_available",WATCHES.availablePermits(),"session_slots_available",SESSIONS.availablePermits()));}
+    static void capabilities(VmHardware.Context c,JSONArray out)throws Exception{if(!api()){HardwareUwbGms.capabilities(c,out);return;}boolean service=Api36.present(c);out.put(VmHardware.object("id","uwb_ranging","implemented",true,"supported",service&&feature(c),"available",JSONObject.NULL,"availability_known",false,"permission","uwb","sdk",Build.VERSION.SDK_INT,"public_ranging_api",service,"feature",feature(c),"observer_slots_available",WATCHES.availablePermits(),"session_slots_available",SESSIONS.availablePermits()));}
     static JSONArray list(Object value,int min,int max)throws Exception{if(!(value instanceof JSONArray)||((JSONArray)value).length()<min||((JSONArray)value).length()>max)throw new VmHardware.Failure("invalid_argument","Expected a bounded typed UWB list.");return (JSONArray)value;}
     static Object call(VmHardware.Context c,String op,JSONArray a)throws Exception{
-        if(op.equals("uwb_info")&&!api())return VmHardware.object("sdk",Build.VERSION.SDK_INT,"feature",feature(c),"public_ranging_api",false,"availability_known",false,"availability",JSONObject.NULL,"older_binding_implemented",false);
-        if(!api())throw new VmHardware.Failure("unsupported_operation","This binding uses the Android16 public ranging API. Older UWB bindings are not implemented yet.");
+        if((op.equals("uwb_info")||op.equals("uwb_watch"))&&a.length()>0){int backend=VmHardware.integer(a,0,0,2);if(backend==2)return HardwareUwbGms.call(c,op,a);if(backend==1&&!api())throw new VmHardware.Failure("unsupported_operation","The system ranging backend requires Android16+.");}
+        if(!api()||op.equals("uwb_prepare")||op.equals("uwb_start")||op.equals("uwb_request"))return HardwareUwbGms.call(c,op,a);
+        if(op.equals("uwb_stop")||op.equals("uwb_add")||op.equals("uwb_remove")||op.equals("uwb_interval")){
+            if(VmHardware.handle(c,VmHardware.text(a,0,128)) instanceof HardwareUwbGms.Range)return HardwareUwbGms.call(c,op,a);
+        }
         return Api36.call(c,op,a);
     }
     static final class Api36 {

@@ -24,7 +24,7 @@ it does not count as an implementation of an otherwise available adapter.
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment, NFC-F, polling-frame reception and owned exact/pattern-filter/observe SDK bindings implemented; background operation pending | 48 control/recovery scenarios and80 HCE/polling checks passed on the NFC-less emulator; successful filter/observe/routing/RF and physical checks remain unverified |
 | Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | SDK service/readers/sessions/channels and extended APDU byte transport implemented | actual independent service bindings, empty reader inventory, owned asynchronous shutdown and first-use consent verified; real applet/channel/APDU and access-control fixtures pending |
-| UWB | supported-device sessions and ranging events through supported APIs | Android16 public raw-session, capability, peer and interval bindings implemented; older SDK integration pending | actual two-emulator measurements and SDK peer callbacks verified; strict effective-interval check remains failing; physical/older-device checks pending |
+| UWB | supported-device sessions and ranging events through supported APIs | Android16 public raw-session and Android12+ Play services Task bindings implemented; legacy AOSP provider/fusion pending | actual two-emulator measurements and SDK peer callbacks verified; strict effective-interval check remains failing; physical/older-device checks pending |
 | Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
@@ -1669,13 +1669,62 @@ actual SDK identity checks verify it is separate from the app-global manager.
 The scoped manager is dropped after confirmed teardown. No hidden UwbManager,
 raw host FFI, new model tool or bundled Android framework is introduced.
 
-**Older SDK integration remains unimplemented.** Android12..15 UWB access through
-Jetpack/Play services is separate work; this public Android16 binding does not
-complete that requirement. On older devices, uwb_info explicitly reports
-public_ranging_api=false/older_binding_implemented=false and other UWB operations
-reject the missing binding. Physical devices, distance/angle accuracy, nonzero
-position oracles, background support, vendor radios and the remaining profile/
-security/extended-address configurations still need appropriate fixtures.
+### Android12+ Play services provider
+
+The public Google `UwbClient` binding is implemented alongside the Android16
+system backend. Android12..15 default to Play services; Android16 keeps its
+system default. `uwb_backend_info(0default/1system/2play_services)` and
+`uwb_backend_watch(backend)` select explicitly without changing any process-wide
+routing. The SDK is packaged from a hash/size/URL-locked dependency graph;
+`assets/collie-android-dependencies.json` records the exact artifacts and their
+upstream POM license declarations. Embedded SDK notices, including those inside
+AAR class jars, are preserved. Unrelated SDK services are not merged.
+
+`uwb_info` reports actual Google availability status, hardware declaration and
+nullable provider availability/capabilities or actual Task errors. A missing
+provider or radio does not become a fabricated capability. Read-only queries
+require lazy Collie UWB approval and leave Android runtime grants unchanged.
+The availability observer has an8s elapsed startup deadline. Expiry is visible
+while its pending Task still owns capacity. Late exceptions are recorded
+separately from the primary timeout; late callbacks cannot revive an expired
+observer. Actual successful unsubscribe releases a submitted observer lease.
+
+The legacy provider chooses local addresses and controller complex channels.
+`uwb_prepare(role0controlee/1controller,timeout_ms500..30000)` returns an owned
+pending session and lazily asks Android for UWB_RANGING. Wait for `prepared`,
+then negotiate the actual `device_info` address/channel/preamble in Flexscript.
+`uwb_start(session,peers,options)` uses the portable record constructors. Local
+addresses must match the provider allocation; controller channel/preamble must
+match its actual preparation. Google profile IDs are provider-specific,1..7.
+The raw public builder has no measurement-limit field and this adapter does not
+yet bind sensor fusion: both options must currently be0 or explicitly fail.
+The non-Google legacy AOSP provider is also still unimplemented.
+
+Start/add/remove/interval return request IDs. `uwb_request(session,id)` reports
+one of the last16 actual Task records, with invocation, completion, success,
+exception and deadline kept separate. One unsettled mutation is allowed per
+session. Neither timeout nor close frees that slot before actual settlement.
+`opened` requires actual start Task success and an initialized SDK callback.
+Initialization/suspension can name the actual local device: those events use
+`scope=session` and its copied address rather than inventing a peer UUID. Peer
+callbacks still require an owned address. Local initialization does not prove
+a peer connection. The guest unset sub-session sentinel is omitted from the
+SDK builder; explicit unsignedFFFFFFFF remains a distinct supplied value.
+Google notification modes0/1 require their default near0/far20000cm bounds.
+Measurements retain meters/degrees and nanoseconds since boot, with explicit
+binary64 values. Confidence is unknown/null because the public Google class
+has no confidence getter. Acknowledgement does not establish a radio change.
+Peer removal requires both Task success and a suspended callback; bounded
+retired address identities reject ambiguous reassignment. Stop retains capacity
+until actual successful SDK Task completion; errors quarantine the lease.
+
+The8-observer/8-session budgets and bounded cleanup executor are shared across
+both providers. Cleanup SDK calls run off the UI thread. Android still owns
+background/radio policy. Live handles are never snapshotted. Older non-Google
+providers, sensor fusion, actual legacy ranging, physical distance/angle oracles,
+background support, and remaining profiles/security/address modes still need
+implementation or appropriate device fixtures. See the latest verification
+checkpoint below for the exact evidence available for this binding.
 
 The emulator peer suite remains strict about effective interval reconfiguration.
 The SDK accepts skip1 and Android logs the request through RangingSession,
@@ -3215,3 +3264,80 @@ removed. The browser-only follow-up preserves the exact Android production
 sources/APK digest above, so the91 Android scenarios and packaging evidence
 remain the same frozen artifact. This does not change any RF/physical or strict
 UWB/HID result.
+
+
+## Play services UWB checkpoint (2026-10-24)
+
+The public Google UWB provider is now bound for Android12+; Android16 still
+uses its existing system backend by default. The guest adds provider selection,
+SDK address preparation, explicit start and bounded Task-result lookup. No new
+model tool or Collie permission is added: UWB is still one of31 lazy grants.
+Android UWB_RANGING is requested only for session preparation. The API index
+and paged detailed contract describe both providers and their distinct results.
+
+The runtime SDK graph contains35 URL/size/SHA256-locked artifacts, including
+play-services-nearby19.5.1, core1.17.0 and annotation1.9.1. Core/annotation pins
+resolve actual missing SDK class references found by R8, rather than suppressing
+missing-class diagnostics. SDK resources and consumer rules are included;
+unused dependency code is shrunk. Embedded notices and upstream POM license
+declarations are packaged, including the inherited Guava parent declaration.
+Four offline graph checks cover every cached artifact, exact notice bytes,
+single-byte corruption and invalid pins. A separately empty cache was fetched
+and verified successfully. Native-only builds still skip SDK dependencies.
+
+Frozen artifacts:
+
+- Debug `build/android-uwb-legacy/debug-final/collie.apk`:7,915,095 bytes,
+  SHA256 `2455be9bf8f8f3d0459997e255b4ac515a56c296f5c07890015a3cfafb2e0613`.
+- Non-debug `build/android-uwb-legacy/release-final/collie.apk`:7,636,488 bytes,
+  SHA256 `191c15223dad350cb4ca7934729f2ba89dd841d912d69e03b12ce66a1697a69a`.
+- Packaging verifies all DEX files, fixture exclusion, exact dependency lock,
+  protected platform services and both UWB permissions.276 handwritten
+  production Java classes compare identically before DEX shrinking; generated
+  resource classes are excluded from that comparison. Both native libraries,
+  engine object and generated engine source match exactly across these builds.
+
+Headless Android15(API35, emulator5584) passed23 provider/VM/consent/Task checks.
+Its actual Google status is0, availability is known false, UWB feature is false,
+and actual capability lists are empty. This is class-loading, metadata and
+negative-path evidence, not legacy ranging proof. Real Collie first-use approval
+resumes the metadata request without changing Android runtime grants.
+
+Headless Android16(API36, emulator5582) passed27 Google-provider checks. Its
+actual Google status is0 and availability true. In addition to the same labeled
+Task fixtures, the live checks exercise actual Android UWB_RANGING consent,
+SDK capability/local-address Tasks, real radio-off/on availability callbacks,
+real start Task acknowledgement plus local-device initialization, and actual
+successful stop before lease release. This proves the provider session path on
+Android16, not Android12..15 radio behavior or measured peer distance. The
+existing system-backend suite also passed42 checks on the exact debug APK. Test workspaces/handles are removed, original conversation
+messages/grants restored, and changed OS grant/user flags restored.
+
+The real probe found and fixed two conversion mistakes before publication:
+passing the guest unset sub-session(-1) into ordinary SDK profiles, and treating
+local-device initialization as an unknown remote peer. Public SDK builder
+fixtures now distinguish unset from explicit unsignedFFFFFFFF, and actual
+local initialization is session-scoped. Notification modes0/1 use Google's
+near0/far20000cm defaults; invalid bounds are rejected by the public builder
+before a radio start. Empty event polls remain typed null and are checked
+before accessing text fields in the live test.
+
+Constructed public SDK TaskCompletionSource fixtures are explicitly separated
+from actual provider calls. They verify elapsed startup/request deadlines,
+late failure preserving timeout and SDK error separately, capacity retention,
+second-call rejection before invocation, close while pending, and close before
+start/prepare. They do not invent ranging callbacks or RF results. The native
+engine is byte-identical to this turn's already verified27 engine,9 core,
+17 lazy-permission and4 paged-reference groups. Portable hardware registry/
+codec and UWB record tests pass in native/interpreter modes as applicable.
+
+**Still open:** the legacy non-Google AOSP provider, raw-provider sensor fusion,
+nonzero measurement limits, actual legacy peer measurements/accuracy, all
+remaining physical/vendor/profile/security/background gates, background HCE,
+and the separate strict UWB effective-interval and HID unplug failures. The
+full hardware-adapter goal remains active. This checkpoint is not a claim of
+all-adapter or physical-device completion.
+
+Primary SDK contracts: [UwbClient](https://developers.google.com/android/reference/com/google/android/gms/nearby/uwb/UwbClient),
+[RangingSessionCallback](https://developers.google.com/android/reference/com/google/android/gms/nearby/uwb/RangingSessionCallback),
+[notification builder](https://developers.google.com/android/reference/com/google/android/gms/nearby/uwb/UwbRangeDataNtfConfig.Builder).

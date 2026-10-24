@@ -6,6 +6,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.RANGING" />
+    <uses-permission android:name="android.permission.UWB_RANGING" />
     <uses-feature android:name="android.hardware.uwb" android:required="false" />
     <uses-permission android:name="android.permission.NFC" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
@@ -51,7 +52,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <queries><package android:name="com.google.android.gms" /></queries>
+    <permission android:name="org.flexscript.collie.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature" />
+    <uses-permission android:name="org.flexscript.collie.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
     <application android:label="Collie" android:theme="@style/CollieTheme" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:allowBackup="false" android:debuggable="false" android:usesCleartextTraffic="true" android:extractNativeLibs="false">
+        <meta-data android:name="com.google.android.gms.version" android:value="@integer/google_play_services_version" />
         <provider android:name=".CameraAttachmentProvider" android:authorities="org.flexscript.collie.camera" android:exported="false" android:grantUriPermissions="true" />
         <receiver android:name=".UsbConsentReceiver" android:exported="false" />
         <service android:name=".CollieHceService" android:enabled="false" android:exported="true" android:permission="android.permission.BIND_NFC_SERVICE">

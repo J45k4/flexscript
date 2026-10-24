@@ -272,6 +272,11 @@ fn biometric_auth(title,subtitle,description,authenticators,confirmation,timeout
 fn biometric_cancel(handle){let r=db_request("biometric_cancel");db_add(r,db_text(handle));return db_rpc(r);}
 
 fn uwb_info(){return db_rpc(db_request("uwb_info"));}
+fn uwb_backend_info(backend){let r=db_request("uwb_info");db_add(r,db_int(backend));return db_rpc(r);}
+fn uwb_backend_watch(backend){let r=db_request("uwb_watch");db_add(r,db_int(backend));return db_rpc(r);}
+fn uwb_prepare(role,timeout_ms){let r=db_request("uwb_prepare");db_add(r,db_int(role));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn uwb_start(session,peers,options){let r=db_request("uwb_start");db_add(r,db_text(session));db_add(r,peers);db_add(r,options);return db_rpc(r);}
+fn uwb_request(session,request){let r=db_request("uwb_request");db_add(r,db_text(session));db_add(r,db_text(request));return db_rpc(r);}
 fn uwb_watch(){return db_rpc(db_request("uwb_watch"));}
 fn uwb_range(role,peers,options){let r=db_request("uwb_range");db_add(r,db_int(role));db_add(r,peers);db_add(r,options);return db_rpc(r);}
 fn uwb_stop(handle){let r=db_request("uwb_stop");db_add(r,db_text(handle));return db_rpc(r);}

@@ -19,9 +19,13 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  path=path.resolve();manifest=subprocess.check_output([a.aapt2,'dump','xmltree',str(path),'--file','AndroidManifest.xml']).decode()
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
-  dex=apk.read('classes.dex')
-  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
+  dex=b''.join(apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex',name))
+  for name in ['MidiLoopbackFixture','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareUwbGmsChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareHceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
+  assert b'Lorg/flexscript/collie/HardwareUwbGms;' in dex,(label,'GMS UWB adapter present')
+  lock=json.loads(apk.read('assets/collie-android-dependencies.json'))
+  assert lock==json.loads((Path(__file__).resolve().parents[1]/'apps/collie/android/dependencies.json').read_text()),(label,'exact pinned SDK dependency manifest')
+  assert all(row.get('licenses') for row in lock['artifacts']),(label,'SDK license declarations packaged')
   fixture_resource=any('midi_loopback_fixture' in name for name in apk.namelist());assert fixture_resource==debug,(label,'test resource')
  accessibility=next(service for service in sections(manifest,'service') if '.CollieAccessibilityService' in service)
  assert 'android.permission.BIND_ACCESSIBILITY_SERVICE' in accessibility and re.search(r':exported[^=]*=true',accessibility),(label,'Android-only accessibility binding')
@@ -30,18 +34,18 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  for attribute in ['canRetrieveWindowContent','canPerformGestures']:assert re.search(':'+attribute+r'[^=]*=true',xml),(label,attribute)
  assert 'accessibilityEventTypes' not in xml,(label,'no initial event subscription')
  assert 'FLAG_DONT_SUPPRESS' not in manifest and not list(sections(manifest,'instrumentation')),(label,'no UI probe instrumentation in Collie')
- with zipfile.ZipFile(path) as apk:assert b'Lorg/flexscript/collie/uiprobe/UiProbe;' not in apk.read('classes.dex'),(label,'UI probe remains separate test APK')
+ with zipfile.ZipFile(path) as apk:assert b'Lorg/flexscript/collie/uiprobe/UiProbe;' not in dex,(label,'UI probe remains separate test APK')
  projection=next(service for service in sections(manifest,'service') if '.CollieProjectionService' in service)
  assert re.search(r':exported[^=]*=false',projection),(label,'projection private service')
  assert re.search(r'foregroundServiceType[^=]*=0x0*a0\b',projection),(label,'projection/media microphone types')
  for permission in ['android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION','android.permission.FOREGROUND_SERVICE_MICROPHONE']:assert '"'+permission+'"' in manifest,(label,permission)
- services=list(sections(manifest,'service'));assert any('HardwareHcePeerFixture' in service for service in services)==debug
+ services=list(sections(manifest,'service'));assert not any('com.google.' in service for service in services),(label,'no unrelated SDK services merged');assert any('HardwareHcePeerFixture' in service for service in services)==debug
  assert any('MidiLoopbackFixture' in service for service in services)==debug
  vpn=next(service for service in services if '.CollieVpnService' in service)
  assert 'android.permission.BIND_VPN_SERVICE' in vpn,(label,'VPN binding permission')
  assert re.search(r'foregroundServiceType[^=]*=0x0*400\b',vpn),(label,'VPN foreground type')
  assert 'android.net.VpnService.SUPPORTS_ALWAYS_ON' in vpn and re.search(r':value[^=]*=false',vpn),(label,'always-on opt-out')
- for permission in ['android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED','android.permission.USE_BIOMETRIC','android.permission.RANGING','android.permission.CAMERA']:assert '"'+permission+'"' in manifest,(label,permission)
+ for permission in ['android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED','android.permission.USE_BIOMETRIC','android.permission.RANGING','android.permission.UWB_RANGING','android.permission.CAMERA']:assert '"'+permission+'"' in manifest,(label,permission)
  uwb=next(feature for feature in sections(manifest,'uses-feature') if '"android.hardware.uwb"' in feature);assert re.search(r':required[^=]*=false',uwb),(label,'UWB remains optional')
  for feature_name in ['android.hardware.camera','android.hardware.camera.any','android.hardware.camera.autofocus']:
   feature=next(feature for feature in sections(manifest,'uses-feature') if '"'+feature_name+'"' in feature);assert re.search(r':required[^=]*=false',feature),(label,feature_name,'camera remains optional')
