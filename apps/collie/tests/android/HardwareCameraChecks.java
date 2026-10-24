@@ -15,7 +15,7 @@ import org.json.*;
 
 /** Independent SDK/decoder checks. No successful camera callbacks are fabricated. */
 public final class HardwareCameraChecks {
-    final MainActivity host;final File root;final VmHardware.Context context;final JSONArray checks=new JSONArray();final JSONObject outputProfiles=new JSONObject(),rawDepth=new JSONObject();int sequence;
+    final MainActivity host;final File root;final VmHardware.Context context;final JSONArray checks=new JSONArray();final JSONObject outputProfiles=new JSONObject(),rawDepth=new JSONObject(),encoderProfiles=new JSONObject();int sequence;
     HardwareCameraChecks(MainActivity host,File root){this.host=host;this.root=root;context=new VmHardware.Context(host,root);}
     public static JSONObject run(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).run();}
     public static JSONObject runVideo(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).video();}
@@ -26,11 +26,11 @@ public final class HardwareCameraChecks {
     static final class JSONObjectHolder {final JSONObject value;JSONObjectHolder(){try{value=new JSONObject().put("kind","camera");}catch(JSONException e){throw new RuntimeException(e);}}}
     void check(boolean ok,String label)throws Exception{if(!ok)throw new IOException(label);checks.put(label);}
     static String q(String s){return JSONObject.quote(s).replace("\\/","/");}
-    JSONObject vm(File workspace,String source)throws Exception{source="fn fail(n){let e=db_error();db_io(0,2,e,db_len(e));return n;}"+source.replaceAll("return ([1-9][0-9]*);","return fail($1);");JSONObject o=host.engineAt(workspace,3,new JSONObject().put("config",host.workerConfig(workspace,0)).put("source",source).put("call_id","camera-check-"+(++sequence)).put("history",new JSONArray()));if(!o.optString("state").equals("continue")||o.optInt("exit_code")!=0)throw new IOException("Camera scenario "+sequence+": "+o);return o;}
+    JSONObject vm(File workspace,String source)throws Exception{source="fn fail(n){let e=db_error();db_io(0,2,e,db_len(e));return n;}"+source.replaceAll("return ([1-9][0-9]*);","return fail($1);");JSONObject o=host.engineAt(workspace,3,new JSONObject().put("config",host.workerConfig(workspace,0)).put("source",source).put("call_id","camera-check-"+(++sequence)).put("history",new JSONArray()));if(!o.optString("state").equals("continue")||o.optInt("exit_code")!=0)throw new IOException("Camera scenario "+sequence+": "+o+"; program: "+source.substring(0,Math.min(source.length(),500)));return o;}
     JSONObject vm(String source)throws Exception{return vm(root,source);}
     String state(String key)throws Exception{return vm("fn main(){let v=state_get("+q(key)+");if db_kind(v)!=2{return 1;}db_io(0,1,db_word(v),db_bytes(v));return 0;}").getString("stdout");}
     void ui(Runnable action)throws Exception{CountDownLatch ready=new CountDownLatch(1);AtomicReference<Throwable> error=new AtomicReference<>();host.runOnUiThread(()->{try{action.run();}catch(Throwable e){error.set(e);}finally{ready.countDown();}});if(!ready.await(5,TimeUnit.SECONDS))throw new IOException("Camera UI fixture timed out");if(error.get()!=null)throw new IOException(error.get());}
-    JSONObject report()throws Exception{return new JSONObject().put("ok",true).put("checks",checks).put("physical_devices_verified",false).put("output_profiles",outputProfiles).put("raw_depth",rawDepth);}
+    JSONObject report()throws Exception{return new JSONObject().put("ok",true).put("checks",checks).put("physical_devices_verified",false).put("output_profiles",outputProfiles).put("raw_depth",rawDepth).put("encoder_profiles",encoderProfiles);}
     JSONObject run()throws Exception{
         String id=state("camera_id");CameraManager manager=host.getSystemService(CameraManager.class);check(Arrays.asList(manager.getCameraIdList()).contains(id),"the selected VM camera ID belongs to an independent Android CameraManager inventory");CameraCharacteristics ch=manager.getCameraCharacteristics(id);
         vm("fn main(){let d=camera_info("+q(id)+");if db_word(device_field(d,\"lens_facing\"))!="+ch.get(CameraCharacteristics.LENS_FACING)+"||db_word(device_field(d,\"hardware_level\"))!="+ch.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)+"||db_word(device_field(d,\"sensor_orientation\"))!="+ch.get(CameraCharacteristics.SENSOR_ORIENTATION)+"{return 1;}return 0;}");
@@ -54,7 +54,8 @@ public final class HardwareCameraChecks {
             vm("fn main(){if camera_open("+q(id)+",5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"busy\"){return 2;}if camera_frame_info("+q(handle)+",\"frame-unknown\"){return 3;}let outputs=db_list();db_add(outputs,camera_output(256,123,457));if camera_configure("+q(handle)+",outputs,5000){return 4;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported_format\"){return 5;}return 0;}");check(true,"overlapping opens, unknown frames and non-advertised sizes fail without silently changing output geometry");
             profileOutputs(handle,owned);
             HardwareCameraRawChecks.run(this,handle,owned);
-            vm("fn main(){if db_word(camera_shutdown("+q(handle)+"))!=1{return 1;}let i=0;while i<20{let info=device_info("+q(handle)+");if db_word(device_field(info,\"sdk_terminal\"))&&db_word(device_field(info,\"lease_released\")){return 0;}device_wait("+q(handle)+",1000);i=i+1;}return 2;}");check(owned.terminal&&owned.cleaned&&owned.released,"the actual SDK terminal callback and completed component teardown release the owned camera lease");
+            HardwareCameraVideoProfileChecks.run(this,handle,owned);
+            shutdown(handle,owned);check(owned.terminal&&owned.cleaned&&owned.released,"the actual SDK terminal callback and completed component teardown release the owned camera lease after an elapsed wait despite queued capture events");
         }finally{VmHardware.close(context,handle);}
         return report();
     }
@@ -146,7 +147,7 @@ public final class HardwareCameraChecks {
     }
     void wirePage(String expression,JSONObject expected)throws Exception{
         StringBuilder code=new StringBuilder("fn main(){");wire(expression,expected,code,new int[]{0});code.append("return 0;}");
-        if(code.length()>60000)throw new IOException("Metadata oracle source exceeds its test bound");vm(code.toString());
+        if(code.length()>60000)throw new IOException("Metadata oracle source exceeds its test bound");try{vm(code.toString());}catch(Exception error){throw new IOException("Metadata oracle "+expression+": "+error.getMessage(),error);}
     }
     static JSONObject expectedPage(JSONArray rows,int total,int end,String type)throws Exception{
         JSONObject value=new JSONObject().put("value",rows).put("array",true).put("total",total).put("next",end<total?end:-1);
@@ -215,7 +216,13 @@ public final class HardwareCameraChecks {
         check(video==1&&samples>0&&audio==(v.audio?1:0),"the independent container parser sees actual video samples and exactly the requested presence/absence of an audio track");
         Adler32 checksum=new Adler32();long count=0;try(InputStream in=new FileInputStream(v.file)){byte[] bytes=new byte[4096];for(int n;(n=in.read(bytes))!=-1;){checksum.update(bytes,0,n);count+=n;}}
         vm("fn main(){let h="+q(id)+";if db_word(camera_video_seek(h,0))!=0{return 1;}let a=1;let b=0;let count=0;let done=0;while !done{let v=device_read(h,32768,1000);if db_kind(v)==0{done=1;}else{if db_kind(v)!=3{return 2;}let i=0;while i<db_bytes(v){a=(a+load8(db_word(v)+i))%65521;b=(b+a)%65521;i=i+1;}count=count+db_bytes(v);}}if count!="+count+"||((b<<16)|a)!="+checksum.getValue()+"{return 3;}if camera_video_seek(h,"+(count+1)+"){return 4;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 5;}if device_write(h,db_text(\"no\")){return 6;}return 0;}");check(true,"every encoded container byte crosses bounded VM pages and matches an independent whole-file Adler32/length, with EOF, seek bounds and read-only enforcement");
-        File file=v.file;vm("fn main(){return device_close("+q(id)+")-1;}");check(!file.exists()&&v.lease.released,"closing the finalized video resource deletes its owned private spool and releases the retained resource slot");return report();
+        File file=v.file;vm("fn main(){return device_close("+q(id)+")-1;}");check(!file.exists()&&v.lease.released,"closing the finalized video resource deletes its owned private spool and releases the retained resource slot");if(v.audio&&v.selected==null)HardwareCameraVideoProfileChecks.audio(this,state("camera"),v.camera);return report();
+    }
+    void shutdown(String handle,HardwareCamera.Camera owned)throws Exception{
+        encoderProfiles.put("capture_events_before_shutdown",owned.events.size());
+        vm("fn main(){return db_word(camera_shutdown("+q(handle)+"))-1;}");long deadline=SystemClock.elapsedRealtime()+20000;
+        while(SystemClock.elapsedRealtime()<deadline){String ready=vm("fn main(){let d=device_info("+q(handle)+");if !d{return 1;}if db_word(device_field(d,\"sdk_terminal\"))&&db_word(device_field(d,\"lease_released\")){db_io(0,1,\"ready\",5);}return 0;}").getString("stdout");if(ready.equals("ready"))return;Thread.sleep(10);}
+        throw new IOException("Actual camera shutdown exceeded its elapsed deadline: "+owned.info());
     }
     static void checkTime(boolean ok)throws IOException{if(!ok)throw new IOException("Encoded video sample timestamps are not monotonic");}
     static final class ByteBufferHolder {final java.nio.ByteBuffer value=java.nio.ByteBuffer.allocate(4*1024*1024);}

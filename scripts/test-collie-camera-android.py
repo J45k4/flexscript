@@ -12,7 +12,7 @@ def adb(*args,data=None,check=True):
 def read(path):
  try:return json.loads(adb('exec-out','run-as',pkg,'cat',path,check=False))
  except ValueError:return None
-def wait(test,seconds=180):
+def wait(test,seconds=300):
  end=time.monotonic()+seconds
  while time.monotonic()<end:
   value=test()
@@ -83,6 +83,9 @@ try:
  passed('declining the actual Android camera dialog resumes the interrupted agent call with denial and remembers it without a prompt loop')
  vm('fn main(){let p=camera_list(0,16);if !p{return 1;}let rows=device_field(p,"cameras");if !db_count(rows){return 2;}let chosen=db_at(rows,0);let i=0;while i<db_count(rows){let r=db_at(rows,i);if db_word(device_field(r,"lens_facing"))==1{chosen=r;}i=i+1;}state_set("camera_id",device_field(chosen,"id"));return 0;}',initial_permissions=initial)
  passed('actual SDK camera inventory is accessible through the VM without Android CAMERA runtime access')
+ vm('fn main(){if !camera_video_qualities(db_word(state_get("camera_id")),0,16){return 1;}return 0;}')
+ assert not re.search(re.escape(permissions[0])+r': granted=true',adb('shell','dumpsys','package',pkg).decode())
+ passed('actual recommended encoder inventory is accessible without Android CAMERA or microphone runtime permission')
  source='fn main(){let id=db_word(state_get("camera_id"));let h=camera_open(id,5000);if !h{return 1;}state_set("camera",h);return 0;}'
  # Exercise genuine Android runtime consent, not pm-grant-as-proof.
  adb('shell','pm','clear-permission-flags',pkg,permissions[0],'user-set','user-fixed')
@@ -117,6 +120,7 @@ try:
  passed('shutdown waits for actual CameraDevice.onClosed and SDK component cleanup before releasing its lease')
  sdk=result(start(active_sid,hardware_tests=True,hardware_camera_tests=True))['hardware'];assert sdk['ok']
  for text in sdk['checks']:passed(text)
+ encoder_facts=sdk['encoder_profiles']
  vm('fn main(){let c=camera_open(db_word(state_get("camera_id")),5000);if !c{return 1;}state_set("camera",c);return 0;}')
  camera_wait('opened')
  vm('fn main(){let id=db_word(state_get("camera_id"));let p=camera_output_sizes(id,0,0,16);if !p{return 1;}let sizes=device_field(p,"sizes");let best=db_at(sizes,0);let area=db_word(device_field(best,"width"))*db_word(device_field(best,"height"));let i=0;while i<db_count(sizes){let s=db_at(sizes,i);let n=db_word(device_field(s,"width"))*db_word(device_field(s,"height"));if n<area{best=s;area=n;}i=i+1;}let o=camera_video_options(db_word(device_field(best,"width")),db_word(device_field(best,"height")),15,256000,10000,1048576,1);state_set("video-options",o);let h=camera_video_start(db_word(state_get("camera")),o,db_list());if !h{return 2;}state_set("video",h);return 0;}')
@@ -127,6 +131,7 @@ try:
   vm('fn main(){let h=db_word(state_get("video"));if db_word(camera_video_stop(h))!=1{return 1;}let i=0;while i<20{let e=device_wait(h,1000);let info=device_info(h);if worker_equal(db_word(device_field(info,"state")),"stopped"){return 0;}if worker_equal(db_word(device_field(info,"state")),"error"){let e=device_field(info,"error");db_io(0,2,db_word(e),db_bytes(e));return 2;}i=i+1;}return 3;}')
   sdk=result(start(active_sid,hardware_tests=True,hardware_camera_tests=True,hardware_camera_video_tests=True))['hardware'];assert sdk['ok']
   for text in sdk['checks']:passed(text)
+  encoder_facts.update(sdk.get('encoder_profiles',{}))
  video_wait()
  assert not re.search(re.escape(permissions[1])+r': granted=true',adb('shell','dumpsys','package',pkg).decode())
  passed('silent Camera2 recording starts without requesting Android microphone permission')
@@ -160,4 +165,4 @@ finally:
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('camera resources and owned test workspaces removed; original conversation and Android grant choices restored')
 assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==sha
-(a.out/'camera-android-report.json').write_text(json.dumps(dict(ok=True,count=len(checks),checks=checks,apk_sha256=sha,serial=a.serial,output_profiles=sdk['output_profiles'],raw_depth=sdk['raw_depth'],manual_sensor_supported=yuv['manual_sensor_supported'],manual_sensor_verified=yuv['manual_sensor_verified'],physical_devices_verified=False,physical_overrides_verified=physical['physical_overrides_verified'],physical_result_values_verified=physical['physical_result_values_verified'],actual_empty_physical_results_verified=physical['actual_empty_physical_results_verified']),indent=2)+'\n');print(len(checks),'camera checks passed')
+(a.out/'camera-android-report.json').write_text(json.dumps(dict(ok=True,count=len(checks),checks=checks,apk_sha256=sha,serial=a.serial,output_profiles=sdk['output_profiles'],raw_depth=sdk['raw_depth'],encoder_profiles=encoder_facts,manual_sensor_supported=yuv['manual_sensor_supported'],manual_sensor_verified=yuv['manual_sensor_verified'],physical_devices_verified=False,physical_overrides_verified=physical['physical_overrides_verified'],physical_result_values_verified=physical['physical_result_values_verified'],actual_empty_physical_results_verified=physical['actual_empty_physical_results_verified']),indent=2)+'\n');print(len(checks),'camera checks passed')

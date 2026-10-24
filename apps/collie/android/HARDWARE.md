@@ -29,7 +29,7 @@ it does not count as an implementation of an otherwise available adapter.
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
-| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, MediaRecorder and owned torch SDK bindings implemented; additional metadata types and HDR video pending | Actual1856×1392 RAW and independently parsed DNG pixels/calibration pass on Android15/16; actual320×240 depth and every plane byte pass on Android16, while Android15 advertises no DEPTH16. Exact final artifacts and lifecycle checks are recorded below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio encoder inventory and profile-based MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; additional metadata types and positive HDR video verification pending | 144/API36 and140/API35 camera groups pass, including actual recommended-profile video/audio recording, complete preset pages,128-event shutdown backlog,1856×1392 RAW/DNG and prior HDR/P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
@@ -3781,3 +3781,121 @@ they are not relabeled as v3 APK runs.
 Both suites restore original conversations/permission choices and remove their
 owned workspaces. The durable fixture profile is independently confirmed absent
 on each emulator, and both owned headless emulators are stopped.
+
+## Recommended camera encoders and recorder output controls (2026-10-24)
+
+`camera_video_qualities(id,offset,limit)` and
+`camera_video_profiles(id,quality,kind,offset,limit)` now expose actual public
+CamcorderProfile/EncoderProfiles snapshots on Android12+. Pages preserve SDK
+profile order and indices, video/audio codec and MIME, dimensions/rates/bitrate,
+encoder profile, recommended container and duration. On Android13+, video
+records also retain HDR format, bit depth and chroma subsampling; those fields
+are null on older SDKs. Both video and audio profiles page independently with
+at most16 records per request and128 per actual SDK profile list. Defined
+normal/time-lapse/high-speed quality IDs are queried; only actual non-null
+SDK presets enter the quality inventory. Missing presets remain empty with
+available=false, not a fabricated default.
+
+Portable `camera_video_profile_options` produces a tagged record for existing
+video-start operations. The Android SDK profile supplies its exact codec,
+dimensions, FPS and bitrate; the recommended container is passed to the SDK.
+For audio recording, the first recommended audio profile is selected, or an
+explicit index from `camera_video_audio_profile_options`. These use public
+MediaRecorder.setVideoProfile/setAudioProfile, not a guest-selected Java method.
+An audio-only record on silent recording, absent profile indices, invalid
+pages and unsupported mode/profile combinations fail before recorder leases or
+camera reconfiguration. The existing7-field legacy options keep their behavior.
+The current bounded recorder geometry/FPS/bitrate/duration/file limits remain;
+an oversized SDK preset is rejected rather than reduced or substituted.
+
+The recorder's actual OutputConfiguration retains selected dynamic range and
+stream use case. Explicit session color space is validated against the actual
+PRIVATE-surface camera map and applied through SessionConfiguration. Capture
+constraints now include the real recorder range instead of always assuming
+STANDARD. Encoder HDR format and source range must agree: STANDARD for SDR,
+HLG, HDR10, HDR10+, or an advertised matching8/10-bit Dolby Vision range.
+SDK setters can alter encoding characteristics internally. Requested encoder
+records and actual output-configuration getters are reported separately;
+effective output requires inspecting the finalized container. API12 callers
+use default0/0/-1 for output range/use case/color space; explicit controls retain
+their Android13/14 gates. High-speed/time-lapse inventory does not implement
+their distinct capture-rate/session modes; start returns unsupported_operation
+instead of silently performing ordinary recording.
+
+No additional Collie permission is added. Public inventory needs the Camera
+grant but neither Android capture nor microphone runtime approval. Audio start
+still requires both the separate Collie Microphone grant and actual Android
+RECORD_AUDIO approval. Resources remain workspace-owned, read-only after actual
+finalization, bounded and closed by Camera/Microphone denial and Activity hiding.
+No host path is accepted and no raw MediaCodec/Java/FFI bridge is introduced.
+The old API-reference sentence incorrectly claiming physical settings were
+pending is corrected to the already-implemented camera_physical_setting API.
+
+The same frozen debug APK passes144 Camera2 groups on owned headless
+Android16/API36 and140 on Android15/API35. Each independent SDK query reports
+9 qualities,9 video-profile rows and6 audio-profile rows across those presets.
+All pages/EOF/header fields match separate SDK getter calls through the actual
+VM. Both devices successfully record recommended-profile SDR video, including
+actual output range/use case getters and selected session color state. Separate audio-profile
+recording passes after real microphone consent. Independent MediaExtractor
+checks confirm exact video codec MIME/dimensions and audio codec/sample
+rate/channel count, with actual video container profile65536. Profile values
+that the SDK leaves unspecified are not relabeled as explicit encoder choices.
+Existing exact file-byte/Adler32/EOF/read-only/cleanup tests cover both new
+recordings as well as legacy silent/audio recordings.
+
+Both actual SDK inventories contain zero HDR encoder profiles. The adapter
+implements HDR profile/output validation and submission, but HDR recording,
+HDR color/fidelity and physical accuracy remain unverified. No constructed HDR
+preset replaces this absence. The existing actual HLG10/P010 image test remains
+separate from video encoding. RAW/DNG/depth, JPEG/YUV/manual, consent/revocation
+and other camera checks retain their earlier scope and physical limits.
+
+Two prototypes initially failed at the old shutdown fixture after the new
+recording had completed. Its20 event iterations could exhaust immediately on
+queued capture events. Better diagnostics identified camera_shutdown, not a
+metadata mismatch. The corrected oracle waits against an actual20-second
+elapsed deadline and inspects VM-exposed sdk_terminal/lease_released, without
+counting events as time. Both final reports independently record a full128-event
+backlog before shutdown and successful real terminal/cleanup observations.
+This changes no production shutdown semantics or deadlines.
+
+Artifacts and repeatable evidence under `build/android-camera-video-profiles/`:
+
+- `check3-debug/collie.apk`:8,046,167 bytes, SHA256
+  `baa9ddfb7930f010cca48b10a436df99b362ce449dc6498fedfbd806569cd53f`.
+- `check3-release/collie.apk`:7,718,408 bytes, SHA256
+  `e9b885a80f9d4fd33fe4af545d37b647a436ac1151be7fce84a907e274db03c6`.
+- Camera reports: `check3-debug/camera-android-report.json`(API36) and
+  `check3-debug/emulator-5584/camera-android-report.json`(API35). Logs:
+  `camera36-check3.log` and `camera35-check3.log`. Prototype failure logs are
+  `camera36-check1.log` and `camera36-check2.log` and keep their own APK hashes.
+- This exact APK separately passes102 HCE/background-service/VM groups on
+  Android16; `check3-debug/hce-android-report.json` retains its exact hash and
+  false routing/RF/physical flags. No HCE Android15 rerun is claimed here.
+- Packaging passes with the new oracle excluded from non-debug. All296
+  handwritten production Java classes match debug/non-debug, as do both native
+  libraries and the generated engine source/object (`parity.json`).
+- The byte-identical native engine passes9 core,17 lazy-permission,11 callback
+  and4 complete reference groups. All107,809 detailed API bytes and the14,704-byte
+  index remain readable with all31 grants denied. The32KiB codec/registry check
+  and portable camera records pass; native and checked-interpreter tests retain
+  exact profile/audio option records and all depth confidence encodings.
+
+No Python file is added. Existing host-driver changes retain profile facts,
+check pre-runtime-consent inventory and allow bounded time for the extra full
+SDK/profile/file checks. SDK binding/recording/resource code remains Android
+specific; public option helpers, operations/grants and agent reference stay
+Flexscript-owned. Both camera runs restore original conversations and permission
+choices; the HCE regression removes its owned durable profile and workspaces.
+Both owned headless emulators are stopped after independent profile-absence checks.
+
+Remaining video gates include actual HDR encoders/containers/fidelity,
+non-default codec-profile/level controls beyond recommended presets,
+time-lapse/slow-motion/constrained-high-speed modes, additional codec/container
+and audio profiles, physical/older/OEM devices and SDK/storage/lifecycle faults.
+The full hardware objective and the other ledger gates remain active.
+
+Primary contracts: [EncoderProfiles.VideoProfile](https://developer.android.com/reference/android/media/EncoderProfiles.VideoProfile),
+[CamcorderProfile.getAll](https://developer.android.com/reference/android/media/CamcorderProfile#getAll(java.lang.String,%20int)),
+[MediaRecorder.setVideoProfile](https://developer.android.com/reference/android/media/MediaRecorder#setVideoProfile(android.media.EncoderProfiles.VideoProfile)).

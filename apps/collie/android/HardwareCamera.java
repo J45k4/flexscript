@@ -118,7 +118,7 @@ final class HardwareCamera {
                 for(int i=0;i<options.length();i++)specs.add(new HardwareCameraOutput.Spec(manager,ch,options.get(i)));
                 HardwareCameraOutput.validateColor(specs,colorSpace);
                 for(HardwareCameraOutput.Spec spec:specs){Reader reader=new Reader(this,spec);outputs.add(reader);OutputConfiguration config=new OutputConfiguration(reader.sdk.getSurface());if(!spec.physical.isEmpty())config.setPhysicalCameraId(spec.physical);spec.apply(config);reader.configuration=config;configs.add(config);}
-                if(recording!=null)configs.add(new OutputConfiguration(recording.surface()));
+                if(recording!=null){OutputConfiguration config=new OutputConfiguration(recording.surface());recording.configure(config);configs.add(config);}
                 List<Reader> old;synchronized(this){check();captureAccess(context);old=new ArrayList<>(readers.values());readers.clear();for(Reader r:outputs)readers.put(r.id,r);video=recording;configurationColorSpace=-1;token=++generation;state="configuring";deadlineElapsed=SystemClock.elapsedRealtime()+timeout;events().removeCallbacks(deadline);events().postDelayed(deadline,timeout);}clearImages();retire(old);final int version=token;
                 CameraCaptureSession.StateCallback callback=new CameraCaptureSession.StateCallback(){
                     public void onConfigured(CameraCaptureSession value){synchronized(Camera.this){expired();if(closed||generation!=version||!state.equals("configuring")){CLEANUP.execute(value::close);return;}session=value;state="configured";events().removeCallbacks(deadline);event("configured","generation",version,"sdk_callback",true);}if(recording!=null)try{recording.startConfigured();}catch(Exception e){error("video_start_failed",e);synchronized(Camera.this){state="error";cleanup();}}}
@@ -130,7 +130,7 @@ final class HardwareCamera {
         }
         @SuppressWarnings({"unchecked","rawtypes"}) CaptureRequest request(CameraDevice device,int template,JSONArray settings,HardwareCameraVideo.Video recording)throws Exception{
             HashSet<String> physical=new HashSet<>();ArrayList<Surface> targets=new ArrayList<>();boolean logical=false;synchronized(this){for(Reader r:readers.values()){targets.add(r.sdk.getSurface());if(!r.physical.isEmpty())physical.add(r.physical);else logical=true;}if(recording!=null){targets.add(recording.surface());logical=true;}}
-            synchronized(this){HardwareCameraOutput.validateTargets(readers.values(),recording!=null);}
+            synchronized(this){HardwareCameraOutput.validateTargets(readers.values(),recording);}
             List<HardwareCameraPhysical.Setting> parsed=HardwareCameraPhysical.settings(ch,physical,logical,settings);
             CaptureRequest.Builder b=physical.isEmpty()?device.createCaptureRequest(template):device.createCaptureRequest(template,physical);
             HardwareCameraPhysical.apply(b,parsed);
@@ -152,6 +152,7 @@ final class HardwareCamera {
         try{return dispatch(c,op,a);}catch(CameraAccessException e){throw new VmHardware.Failure(e.getReason()==CameraAccessException.CAMERA_DISABLED?"camera_disabled":e.getReason()==CameraAccessException.CAMERA_DISCONNECTED?"disconnected":"camera_error",MainActivity.safe(e));}
     }
     static Object dispatch(VmHardware.Context c,String op,JSONArray a)throws Exception{
+        if(HardwareCameraEncoderProfiles.supports(op))return HardwareCameraEncoderProfiles.call(c,op,a);
         if(op.equals("camera_dng")||op.equals("camera_dng_seek"))return HardwareCameraDng.call(c,op,a);
         if(HardwareCameraPhysical.inventory(op))return HardwareCameraPhysical.inventory(c,op,a);
         if(op.equals("camera_list")){int offset=VmHardware.integer(a,0,0,128),limit=VmHardware.integer(a,1,1,16);String[] ids=ids(c);int end=Math.min(ids.length,offset+limit);JSONArray rows=new JSONArray();for(int i=offset;i<end;i++)rows.put(info(c,ids[i],manager(c).getCameraCharacteristics(ids[i])));return page("cameras",rows,end,ids.length);}

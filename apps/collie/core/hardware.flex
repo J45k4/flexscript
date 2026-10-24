@@ -302,6 +302,8 @@ fn hw_operations(){
     hw_operation(rows,"camera_physical_result_keys","hardware_handle",5,5);
     hw_operation(rows,"camera_physical_result_value","hardware_handle",6,6);
     hw_operation(rows,"camera_video_start","camera",3,3);
+    hw_operation(rows,"camera_video_qualities","camera",3,3);
+    hw_operation(rows,"camera_video_profiles","camera",5,5);
     hw_operation(rows,"camera_video_audio_start","camera",3,3);
     j_set(j_at(rows,j_count(rows)-1),"also",j_string("microphone"));
     hw_operation(rows,"camera_video_stop","hardware_handle",1,1);

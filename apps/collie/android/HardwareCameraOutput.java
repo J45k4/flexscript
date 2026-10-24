@@ -39,13 +39,20 @@ final class HardwareCameraOutput {
         int value=arguments.length()>index?VmHardware.integer(arguments,index,-1,ColorSpace.Named.values().length-1):-1;
         if(value>=0&&Build.VERSION.SDK_INT<34)throw new VmHardware.Failure("unsupported_operation","Explicit camera color space requires Android14+.");return value;
     }
+    static void validateProfile(CameraCharacteristics source,long profile,long useCase)throws Exception{
+        if((profile!=0||useCase!=0)&&Build.VERSION.SDK_INT<33)throw new VmHardware.Failure("unsupported_operation","Explicit output profiles/use cases require Android13+.");
+        if(Build.VERSION.SDK_INT>=33)Api33.validate(source,profile,useCase);
+    }
+    static void apply(OutputConfiguration output,long profile,long useCase){if(Build.VERSION.SDK_INT>=33){if(profile!=0)output.setDynamicRangeProfile(profile);if(useCase!=0)output.setStreamUseCase(useCase);}}
+    static void validateColor(CameraCharacteristics source,int format,long profile,int color)throws Exception{
+        if(color< -1||color>=ColorSpace.Named.values().length)throw new VmHardware.Failure("invalid_argument","Choose a public SDK color-space ID or-1 for default.");
+        if(color>=0){if(Build.VERSION.SDK_INT<34)throw new VmHardware.Failure("unsupported_operation","Explicit camera color space requires Android14+.");Api34.validate(source,format,profile,color);}
+    }
     static void validateColor(List<Spec> specs,int color)throws Exception{
         if(color< -1||color>=ColorSpace.Named.values().length)throw new VmHardware.Failure("invalid_argument","Choose a public SDK color-space ID or-1 for default.");
         if(color>=0){if(Build.VERSION.SDK_INT<34)throw new VmHardware.Failure("unsupported_operation","Explicit camera color space requires Android14+.");Api34.validate(specs,color);}
     }
-    static void validateTargets(Collection<HardwareCamera.Reader> readers,boolean recording)throws Exception{
-        if(Build.VERSION.SDK_INT>=33)Api33.targets(readers,recording);
-    }
+    static void validateTargets(Collection<HardwareCamera.Reader> readers,HardwareCameraVideo.Video recording)throws Exception{if(Build.VERSION.SDK_INT>=33)Api33.targets(readers,recording);}
     static Object profile(OutputConfiguration output){return Build.VERSION.SDK_INT>=33?Api33.profile(output):JSONObject.NULL;}
     static Object useCase(OutputConfiguration output){return Build.VERSION.SDK_INT>=33?Api33.useCase(output):JSONObject.NULL;}
     static Object dataSpace(Image image){return Build.VERSION.SDK_INT>=33?Api33.dataSpace(image):JSONObject.NULL;}
@@ -55,11 +62,14 @@ final class HardwareCameraOutput {
     }
     static final class Api33 {
         static void validate(Spec s)throws Exception{
-            DynamicRangeProfiles profiles=s.source.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES);
+            validate(s.source,s.profile,s.useCase);
+        }
+        static void validate(CameraCharacteristics source,long profile,long useCase)throws Exception{
+            DynamicRangeProfiles profiles=source.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES);
             // STANDARD is the documented SDK default even when the optional
             // ten-bit capability map is absent. No HDR support is inferred.
-            if(s.profile!=0&&s.profile!=DynamicRangeProfiles.STANDARD&&(profiles==null||!profiles.getSupportedProfiles().contains(s.profile)))throw new VmHardware.Failure("unsupported_profile","The camera does not advertise that dynamic-range profile.");
-            if(s.useCase!=0){long[] cases=s.source.get(CameraCharacteristics.SCALER_AVAILABLE_STREAM_USE_CASES);boolean found=false;if(cases!=null)for(long value:cases)if(value==s.useCase)found=true;if(!found)throw new VmHardware.Failure("unsupported_profile","The camera does not advertise that stream use case.");}
+            if(profile!=0&&profile!=DynamicRangeProfiles.STANDARD&&(profiles==null||!profiles.getSupportedProfiles().contains(profile)))throw new VmHardware.Failure("unsupported_profile","The camera does not advertise that dynamic-range profile.");
+            if(useCase!=0){long[] cases=source.get(CameraCharacteristics.SCALER_AVAILABLE_STREAM_USE_CASES);boolean found=false;if(cases!=null)for(long value:cases)if(value==useCase)found=true;if(!found)throw new VmHardware.Failure("unsupported_profile","The camera does not advertise that stream use case.");}
         }
         static void apply(Spec s,OutputConfiguration output){if(s.profile!=0)output.setDynamicRangeProfile(s.profile);if(s.useCase!=0)output.setStreamUseCase(s.useCase);}
         static void constraints(DynamicRangeProfiles profiles,long own,Collection<Long> targets)throws Exception{
@@ -67,9 +77,10 @@ final class HardwareCameraOutput {
             if(allowed.isEmpty())return;
             for(long profile:targets)if(profile!=own&&!allowed.contains(profile))throw new VmHardware.Failure("unsupported_combination","Selected capture targets violate the actual SDK dynamic-range constraints.");
         }
-        static void targets(Collection<HardwareCamera.Reader> readers,boolean recording)throws Exception{
-            ArrayList<Long> targets=new ArrayList<>();for(HardwareCamera.Reader reader:readers)targets.add(reader.options.actualProfile());if(recording)targets.add(DynamicRangeProfiles.STANDARD);
+        static void targets(Collection<HardwareCamera.Reader> readers,HardwareCameraVideo.Video recording)throws Exception{
+            ArrayList<Long> targets=new ArrayList<>();for(HardwareCamera.Reader reader:readers)targets.add(reader.options.actualProfile());if(recording!=null)targets.add(recording.actualProfile());
             for(HardwareCamera.Reader reader:readers){Spec spec=reader.options;constraints(spec.source.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES),spec.actualProfile(),targets);}
+            if(recording!=null)constraints(recording.camera.ch.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES),recording.actualProfile(),targets);
         }
         static long profile(OutputConfiguration output){return output.getDynamicRangeProfile();}
         static long useCase(OutputConfiguration output){return output.getStreamUseCase();}
@@ -77,10 +88,9 @@ final class HardwareCameraOutput {
     }
     static final class Api34 {
         static void validate(List<Spec> specs,int color)throws Exception{
-            ColorSpace.Named named=ColorSpace.Named.values()[color];
-            for(Spec spec:specs){ColorSpaceProfiles profiles=spec.source.get(CameraCharacteristics.REQUEST_AVAILABLE_COLOR_SPACE_PROFILES);
-                if(profiles==null||!profiles.getSupportedColorSpaces(spec.format).contains(named)||!profiles.getSupportedDynamicRangeProfiles(named,spec.format).contains(spec.actualProfile()))throw new VmHardware.Failure("unsupported_profile","The camera does not advertise that color-space/format/dynamic-range combination.");}
+            for(Spec spec:specs)validate(spec.source,spec.format,spec.actualProfile(),color);
         }
+        static void validate(CameraCharacteristics source,int format,long profile,int color)throws Exception{ColorSpace.Named named=ColorSpace.Named.values()[color];ColorSpaceProfiles profiles=source.get(CameraCharacteristics.REQUEST_AVAILABLE_COLOR_SPACE_PROFILES);if(profiles==null||!profiles.getSupportedColorSpaces(format).contains(named)||!profiles.getSupportedDynamicRangeProfiles(named,format).contains(profile))throw new VmHardware.Failure("unsupported_profile","The camera does not advertise that color-space/format/dynamic-range combination.");}
         static SessionConfiguration session(List<OutputConfiguration> outputs,CameraCaptureSession.StateCallback callback,int color){
             SessionConfiguration session=new SessionConfiguration(SessionConfiguration.SESSION_REGULAR,outputs,command->HardwareCamera.events().post(command),callback);
             session.setColorSpace(ColorSpace.Named.values()[color]);return session;
