@@ -29,7 +29,7 @@ it does not count as an implementation of an otherwise available adapter.
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
-| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio encoder inventory and profile-based MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; additional metadata types and positive HDR video verification pending | 144/API36 and140/API35 camera groups pass, including actual recommended-profile video/audio recording, complete preset pages,128-event shutdown backlog,1856×1392 RAW/DNG and prior HDR/P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 167/API36 and163/API35 camera groups pass, including actual fractional/profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
@@ -3899,3 +3899,127 @@ The full hardware objective and the other ledger gates remain active.
 Primary contracts: [EncoderProfiles.VideoProfile](https://developer.android.com/reference/android/media/EncoderProfiles.VideoProfile),
 [CamcorderProfile.getAll](https://developer.android.com/reference/android/media/CamcorderProfile#getAll(java.lang.String,%20int)),
 [MediaRecorder.setVideoProfile](https://developer.android.com/reference/android/media/MediaRecorder#setVideoProfile(android.media.EncoderProfiles.VideoProfile)).
+
+## Paced time-lapse and constrained high-speed SDK transport (2026-10-24)
+
+Portable `camera_video_timelapse_options(base,capture_fps)` wraps either legacy
+or recommended-profile options with a finite typed integer/real capture rate.
+Time-lapse SDK presets now work through this explicit mode. Public MediaRecorder
+rate conversion is combined with individually paced Camera2 single-capture
+requests. One recorder owns that pacing; manual camera_capture calls cannot
+add an uncontrolled repeating stream. The scheduler uses an absolute elapsed
+timeline, skips missed ticks and never submits a catch-up burst. Each actual
+SDK capture stays within the existing sequence/resource bounds. The sampler
+stops on capture failure, permission/lifecycle closure or explicit stop; a
+capture failure cannot publish a partial container as successful. Capture rate
+remains a requested target, not a claim of physically measured sensor cadence.
+
+`camera_high_speed_sizes` and `camera_high_speed_ranges` expose bounded actual
+SDK inventory and the separate constrained-capability flag. Normal FPS or
+encoder presets do not imply constrained support.
+`camera_video_high_speed_options(base,capture_fps,playback_fps,playback_bitrate)`
+selects an exact advertised fixed capture range at the actual encoder size,
+with independent explicit playback FPS/bitrate. SDK high-speed presets require
+this mode. Android9+ receives SESSION_HIGH_SPEED with actual output configs;
+Android8 uses the public constrained-session method. Successful startup requires
+an actual CameraConstrainedHighSpeedCaptureSession callback. Requests use the
+SDK-created list through captureBurst/setRepeatingBurst, without a regular
+session fallback. Conflicting FPS settings fail; SDK auto-control/post-processing
+restrictions remain explicit. The current recording session has one encoder
+surface, not raw/YUV/JPEG readers or a separate preview target.
+
+Time-lapse and slow motion explicitly reject audio because the SDK rate setter
+would ignore it. High-speed real-time mode can retain the existing separately
+approved audio path when capture/playback FPS agree and no rate conversion is
+requested. New modes retain Camera/Microphone grants, visible-Activity checks,
+workspace/file/SDK ownership and the existing limits. No permission or model
+tool is added. Public options/registry/reference remain Flexscript; the Android
+helper transports SDK sizes/ranges, session types, request batches and timers.
+No Python file is added or changed for this checkpoint.
+
+Rate modes retain the SDK's encoded-duration limit and add an independent
+elapsed wall deadline from actual SDK start return, including paused time.
+Whichever limit is reached first requests asynchronous stop. Getter/wait guards
+work even if the camera callback/deadline queue is delayed. Requested rate,
+actual constrained-session type, paced SDK submission count, wall deadline and
+stop-request time are separate observations. SDK release does not release a
+retained finalized-file lease; device_close still removes that owned spool.
+Ordinary recording keeps its prior duration behavior.
+
+Two prototypes exposed a real SURFACE-source issue before publication. Merely
+setting capture rate while repeating normal Camera2 requests kept every incoming
+frame and scaled their timestamps. The first metadata check failed; independent
+sample checks then found166/API36 and164/API35 samples in only92,400/90,666us,
+which did not establish the requested30fps playback. The production fix paces
+the source requests. The final check still independently measures encoded sample
+cadence instead of accepting configuration or timestamp compression alone. Both
+final SDK frame-rate hints also read30; their values remain in the report.
+
+The same frozen debug APK passes167 camera groups on owned headless Android16
+and163 on Android15. Actual0.5fps legacy time-lapse submits3 SDK captures and
+produces3 encoded samples on each. Independent sample spans are66,311us/API36
+and66,933us/API35, within the test's1ms-per-frame tolerance of30fps playback.
+Measured test elapsed times are6,739/6,813ms, including asynchronous startup and
+stop. These observations prove functioning SDK sampling/rate conversion, not
+physical sensor or pixel accuracy.
+
+Both devices also record an actual recommended time-lapse preset at2fps. The
+camera callback/deadline queue is deliberately blocked after initial captures.
+The VM getter/wait guard requests stop at the5,500ms wall deadline, and actual
+recorder stop/release completes while the blocker is still active. Separate
+entry/exit latches verify it did not merely time out and unblock first. The
+result contains multiple real samples at30fps presentation cadence, no audio,
+and a much shorter encoded duration; SDK encoded-duration expiry alone cannot
+explain the stop. Whole-file bytes, EOF, seek/read-only checks and spool cleanup
+pass for both new recordings. An audio-start attempt is separately rejected
+after existing real microphone consent, before SDK preparation or lease use.
+
+Each actual SDK reports constrained capability=false and zero high-speed sizes.
+The VM inventory and genuine unsupported result match independent SDK queries;
+high_speed_capture_verified remains false. No constructed session, ordinary
+capture or preset is relabeled as high-speed I/O. Positive constrained batches,
+real-time/slow-motion/audio timing and physical/OEM verification remain open.
+HDR encoder inventory also remains empty and HDR recording stays unverified.
+Earlier JPEG/YUV/P010/RAW/DNG/depth, manual/profile/audio recording, lazy consent,
+revocation and teardown checks retain their respective evidence limits.
+
+Frozen artifacts under `build/android-camera-rates/`:
+
+- `check3-debug/collie.apk`:8,062,551 bytes, SHA256
+  `59929f605a2bc460bf3dd17b59341d7911de535aa1e9128c48142e955103b860`.
+- `check3-release/collie.apk`:7,734,792 bytes, SHA256
+  `3778ab378bde8650cbc8529253e43aa70020d25a74e8ed356c43106fcb429ea8`.
+- Exact-hash camera reports: `check3-debug/camera-android-report.json`(API36)
+  and `check3-debug/emulator-5584/camera-android-report.json`(API35). Logs are
+  `camera36-check3.log` and `camera35-check3.log`. Prototype failures retain
+  their own artifacts/logs in check1/check2; they are not final-run evidence.
+- Packaging passes;300 handwritten production Java classes, both native
+  libraries and generated engine source/object match debug/non-debug
+  (`parity-v3.json`). No runtime Python or debug oracle is included in the
+  non-debug APK.
+- Current native engine:9 shared-core,17 lazy-permission,11 callback and4
+  complete reference groups pass. All111,283 detailed reference bytes and
+  the14,949-byte index remain readable with31 grants denied. The32KiB codec/
+  registry test and native/checked-interpreter camera records pass, including
+  exact fractional binary64 capture rate and independent playback controls.
+
+The same exact debug APK also passes102 HCE/service/background-VM groups on
+Android16 (`check3-debug/hce-android-report.json`, `hce36-check3.log`). These
+constructed Messenger inputs reach the actual protected separate-process
+service/native VM; AID registration, controller routing, RF and physical-device
+flags remain false. No Android15 HCE rerun is claimed for this snapshot.
+Original conversations, permission choices and runtime choices are restored,
+owned workspaces are removed, and independent run-as checks confirm no durable
+HCE profile remains on either emulator. Both owned headless emulators are
+stopped; adb reports no attached device. The desktop worktree is untouched.
+
+Remaining video gates include positive constrained high-speed/slow-motion
+effects and cadence, high-speed audio and preview combinations, HDR codecs/
+fidelity, additional encoder/profile/level controls, physical/older/OEM
+behavior and native SDK/storage faults. The other hardware inventory gates and
+the full all-adapter objective remain active.
+
+Primary contracts: [MediaRecorder capture rate](https://developer.android.com/reference/android/media/MediaRecorder#setCaptureRate(double)),
+[constrained sessions](https://developer.android.com/reference/android/hardware/camera2/CameraConstrainedHighSpeedCaptureSession),
+[CameraDevice constrained limitations](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#createCaptureSession(android.hardware.camera2.params.SessionConfiguration)),
+[SDK size/range inventory](https://developer.android.com/reference/android/hardware/camera2/params/StreamConfigurationMap#getHighSpeedVideoFpsRangesFor(android.util.Size)).

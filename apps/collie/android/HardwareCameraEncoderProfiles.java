@@ -19,15 +19,15 @@ final class HardwareCameraEncoderProfiles {
     }
     static final class Selection {
         final int quality,index,audioIndex,width,height,fps,bitrate,duration,format,colorSpace;final long limit,dynamicRange,useCase;final Object video,audio;
-        Selection(HardwareCamera.Camera camera,JSONArray row,boolean sound)throws Exception{
+        Selection(HardwareCamera.Camera camera,JSONArray row,boolean sound,int mode)throws Exception{
             if(Build.VERSION.SDK_INT<31)throw new VmHardware.Failure("unsupported_operation","Recommended EncoderProfiles require Android12+.");
             CameraValues.list(row,8,9);if(!VmHardware.text(row,0,32).equals("encoder_profile"))throw new VmHardware.Failure("invalid_argument","Unknown camera video option record.");
-            quality=quality(row,1);if(quality>=1000)throw new VmHardware.Failure("unsupported_operation","Time-lapse and constrained high-speed capture need separate session/rate controls; no regular recording is substituted.");
+            quality=quality(row,1);if(quality>=1000&&quality<2000&&mode!=1||quality>=2000&&mode!=2)throw new VmHardware.Failure("unsupported_operation","Use the explicit time-lapse/high-speed option wrapper for this SDK profile.");
             index=VmHardware.integer(row,2,0,127);duration=VmHardware.integer(row,3,500,120000);limit=VmHardware.longInteger(row,4,65536,64L*1024*1024);dynamicRange=VmHardware.longInteger(row,5,0,Long.MAX_VALUE);useCase=VmHardware.longInteger(row,6,0,Long.MAX_VALUE);colorSpace=HardwareCameraOutput.color(row,7);
             if(!sound&&row.length()==9)throw new VmHardware.Failure("invalid_argument","An explicit audio profile requires camera_video_audio_start.");audioIndex=sound?(row.length()==9?VmHardware.integer(row,8,0,127):0):-1;
             EncoderProfiles profiles=Api31.read(camera.cameraId,quality);if(profiles==null||index>=profiles.getVideoProfiles().size())throw new VmHardware.Failure("unsupported_profile","That recommended video profile is absent.");
             EncoderProfiles.VideoProfile p=profiles.getVideoProfiles().get(index);video=p;width=p.getWidth();height=p.getHeight();fps=p.getFrameRate();bitrate=p.getBitrate();format=profiles.getRecommendedFileFormat();
-            if(width<1||width>32768||height<1||height>32768||fps<1||fps>120||bitrate<64000||bitrate>50000000)throw new VmHardware.Failure("resource_limit","The exact SDK profile exceeds the bounded recorder dimensions/frame-rate/bitrate; no smaller profile is substituted.");
+            if(width<1||width>32768||height<1||height>32768||fps<1||bitrate<1)throw new VmHardware.Failure("resource_limit","The exact SDK profile exceeds the bounded recorder dimensions/frame-rate/bitrate; no smaller profile is substituted.");
             if(sound){if(audioIndex>=profiles.getAudioProfiles().size())throw new VmHardware.Failure("unsupported_profile","That recommended audio profile is absent.");audio=profiles.getAudioProfiles().get(audioIndex);}else audio=null;
             HardwareCameraOutput.validateProfile(camera.ch,dynamicRange,useCase);HardwareCameraOutput.validateColor(camera.ch,ImageFormat.PRIVATE,actualProfile(),colorSpace);
             if(Build.VERSION.SDK_INT>=33)Api33.match(p,actualProfile());
