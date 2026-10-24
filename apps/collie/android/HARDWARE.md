@@ -3176,3 +3176,42 @@ supported-device paths, legacy API28..30, multiple physical targets, SDK/HAL
 failure/late-result paths, additional metadata classes and earlier physical/
 lifecycle gates. Older UWB, background HCE, strict UWB effective-interval/HID
 unplug and the full inventory remain open. No phone deployment or merge is made.
+
+### Browser CI transport follow-up
+
+Physical-camera commit `384e38e063f9bdca3e438b31891e1111d5a81fdf` passed
+compiler/bootstrap, Collie, ARM64 worker/VM and WebAssembly checks in
+[CI40077145068](https://github.com/J45k4/flexscript/actions/runs/40077145068),
+but its installed-library/Monolith browser stage failed with only
+`Flexscript tool:` and no diagnostic. The unchanged CDP HTTP helper treated
+`tcp_read` timeout/failure as EOF and used the raw, possibly empty response as
+its assertion message. Current-source native fixtures reproduce that exact
+blank error for both empty EOF and a3.5-second delayed response; the old3-second
+read window cannot distinguish them. The CI log alone does not establish which
+underlying transport condition happened.
+
+The shared test helper now has a hard10-second total HTTP deadline, drains its
+owned browser's stdout/stderr while waiting, distinguishes transient reads from
+EOF, and reports request path/reason/received-byte count with bounded previews.
+Responses and headers are bounded to1MiB/16KiB. It sends each request once.
+There is no automatic replay of target-creation/close requests.
+
+Real Chromium additionally demonstrated why waiting for connection EOF is wrong:
+it returns `Content-Length` data while keeping the connection open. The first
+stricter read fix exposed that protocol gap locally and was corrected before
+publication. Complete length-framed responses now finish immediately, including
+split/case-insensitive headers. Truncation, duplicate/invalid lengths, received
+excess bytes, bad status and unsupported transfer framing fail explicitly.
+Close-delimited responses still require actual EOF. Slow bytes do not reset the
+total deadline. This is an isolated DevTools test transport, not an application
+HTTP implementation or a change to guest hardware networking.
+
+All16 deterministic native loopback cases pass, including an owned child that
+writes more than each pipe's capacity before its HTTP peer can reply. Both
+freshly compiled real Chromium Monolith modes pass33 UI/reconnect/local-state
+checks each, and the portable UI/Collie browser suite passes. CI runs these
+transport fixtures before the existing browser tests; no existing gate is
+removed. The browser-only follow-up preserves the exact Android production
+sources/APK digest above, so the91 Android scenarios and packaging evidence
+remain the same frozen artifact. This does not change any RF/physical or strict
+UWB/HID result.

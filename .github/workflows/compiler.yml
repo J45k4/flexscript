@@ -134,6 +134,7 @@ jobs:
 
       - name: Test installed libraries and Monolith native and browser apps
         run: |
+          python3 scripts/test-cdp-http.py --compiler build/stage2
           build/tools/test-libraries build/stage2 --report build/library-tests.json
           build/tools/build-monolith --compiler build/stage2
           build/test-monolith-syntax build/stage2 --report build/monolith-syntax-tests.json
