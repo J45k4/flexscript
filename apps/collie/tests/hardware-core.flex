@@ -4,6 +4,7 @@ import "../core/hardware.flex";
 fn ci_load(id,size){return -1;}
 fn main(argc,argv){
     h_environment(argc,argv);let bytes=alloc(32768);let i=0;while i<32768{store8(bytes+i,i%256);i=i+1;}
+    h_assert(h_equal(cj_text(hw_find("haptic_effects"),"permission"),"haptics")&&h_equal(cj_text(hw_find("haptic_primitives"),"permission"),"haptics")&&cj_int(hw_find("haptic_effect"),"min")==2&&h_equal(cj_text(hw_find("haptic_compose"),"permission"),"haptics"),"predefined and composed effects retain the existing Haptics grant");
     let blob=db_blob(bytes,32768);let encoded=hw_json(blob,0);let restored=hw_value(encoded,0);h_assert(db_bytes(restored)==32768,"binary round trip size");i=0;while i<32768{h_assert(load8(db_word(restored)+i)==i%256,"binary round trip content");i=i+1;}
     let bad=h_args("A===","AA=A","AAA=AAAA","AB==","AAB=","!!!!");i=0;while i<h_count(bad){h_assert(!hw_bytes(h_at(bad,i)),"malformed base64 rejection");i=i+1;}
     h_assert(db_bytes(hw_bytes(""))==0,"empty binary value");

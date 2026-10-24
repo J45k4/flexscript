@@ -56,10 +56,13 @@ final class VmHardware {
     private static final class Operation {
         volatile boolean cancelled;
         volatile Runnable cancelIO;
-        void cancel(){cancelled=true;Runnable action=cancelIO;if(action!=null)action.run();}
+        volatile Future<?> job;
+        void attach(Future<?> value){job=value;if(cancelled){value.cancel(true);IO.remove((Runnable)value);}}
+        void cancel(){cancelled=true;Runnable action=cancelIO;Future<?> value=job;if(value!=null){value.cancel(true);IO.remove((Runnable)value);}if(action!=null)action.run();}
     }
     private static final ThreadLocal<Operation> OPERATION=new ThreadLocal<>();
-    private static final ExecutorService IO=new ThreadPoolExecutor(0,2,30,TimeUnit.SECONDS,new SynchronousQueue<Runnable>(),task->{Thread thread=new Thread(task,"collie-hardware-io");thread.setDaemon(true);return thread;});
+    private static final ThreadPoolExecutor IO=ioPool();
+    private static ThreadPoolExecutor ioPool(){ThreadPoolExecutor pool=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(2),task->{Thread thread=new Thread(task,"collie-hardware-io");thread.setDaemon(true);return thread;});pool.allowCoreThreadTimeOut(true);return pool;}
     private static volatile Operation active;
     private static volatile boolean cancelled;
     static void begin(MainActivity host,File root) { CURRENT.set(new Context(host,root)); }
@@ -99,7 +102,7 @@ final class VmHardware {
     }
     static void closeWorkspace(File root) { closeMatching(root,null); }
     static void revoke(File root,String permission) { closeMatching(root,permission); }
-    static void appHidden(){HardwareInput.hidden();closeKind("input_events");HardwareNfc.hidden();HardwareHce.hidden();closeKind("nfc_reader");closeKind("nfc_technology");HardwareHid.hidden();closeKind("bluetooth_hid_device");closeMatching(null,"microphone");closeMatching(null,"camera");}
+    static void appHidden(){HardwareHaptics.hidden();closeMatching(null,"haptics");HardwareInput.hidden();closeKind("input_events");HardwareNfc.hidden();HardwareHce.hidden();closeKind("nfc_reader");closeKind("nfc_technology");HardwareHid.hidden();closeKind("bluetooth_hid_device");closeMatching(null,"microphone");closeMatching(null,"camera");}
     private static void closeKind(String kind) {
         List<Handle> closing=new ArrayList<>();
         synchronized(HANDLES){Iterator<Map.Entry<String,Handle>> it=HANDLES.entrySet().iterator();while(it.hasNext()){Handle h=it.next().getValue();if(h.kind.equals(kind)){closing.add(h);it.remove();}}}
@@ -159,13 +162,13 @@ final class VmHardware {
         try {
             check();if(context==null)throw new Failure("platform_unavailable","Android hardware context is unavailable.");
             active=operation;
-            future=IO.submit(()->{OPERATION.set(operation);try{return perform(context,input);}finally{OPERATION.remove();}});
+            future=IO.submit(()->{OPERATION.set(operation);try{return perform(context,input);}finally{OPERATION.remove();}});operation.attach(future);
             return future.get(9,TimeUnit.SECONDS);
         } catch(Exception error) {
             operation.cancel();
             String code=error instanceof TimeoutException?"timeout":error instanceof RejectedExecutionException?"busy":error instanceof InterruptedException || error instanceof CancellationException?"cancelled":"platform_error";
             try{return encode(object("error",object("code",code,"message",code.equals("timeout")?"Hardware operation exceeded 9 seconds; completion may be uncertain.":MainActivity.safe(error))));}catch(Exception ignored){return fallback();}
-        } finally { if(future!=null)future.cancel(true);if(active==operation)active=null; }
+        } finally { if(future!=null){future.cancel(true);IO.remove((Runnable)future);}if(active==operation)active=null; }
     }
     private static byte[] perform(Context context,byte[] input) {
         try {

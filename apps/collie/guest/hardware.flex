@@ -35,6 +35,10 @@ fn battery_info(){return db_rpc(db_request("battery_info"));}
 fn battery_watch(){return db_rpc(db_request("battery_watch"));}
 fn thermal_info(forecast_seconds){let r=db_request("thermal_info");db_add(r,db_int(forecast_seconds));return db_rpc(r);}
 fn thermal_watch(){return db_rpc(db_request("thermal_watch"));}
+fn haptic_effects(){return db_rpc(db_request("haptic_effects"));}
+fn haptic_primitives(){return db_rpc(db_request("haptic_primitives"));}
+fn haptic_effect(id,duration_ms){let r=db_request("haptic_effect");db_add(r,db_int(id));db_add(r,db_int(duration_ms));return db_rpc(r);}
+fn haptic_compose(steps,duration_ms){let r=db_request("haptic_compose");db_add(r,steps);db_add(r,db_int(duration_ms));return db_rpc(r);}
 fn haptic_info(){return db_rpc(db_request("haptic_info"));}
 fn haptic_play(duration_ms,amplitude){let r=db_request("haptic_play");db_add(r,db_int(duration_ms));db_add(r,db_int(amplitude));return db_rpc(r);}
 fn haptic_waveform(timing,amplitudes){let r=db_request("haptic_waveform");db_add(r,timing);db_add(r,amplitudes);return db_rpc(r);}

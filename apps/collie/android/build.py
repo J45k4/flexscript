@@ -132,7 +132,7 @@ def generate(out, compiler):
     globals_ += re.findall(r'\bglobal\s+([A-Za-z_]\w*)\s*=\s*([^;]+);', extra_globals)
     reset = 'fn ca_reset_globals(){\n' + '\n'.join(f'{n}={v};' for n,v in globals_) + '\n}\n'
     guest = (HERE / 'guest-files.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/workers.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/memory.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/hardware.flex').read_text()
-    guest += '\n' + (ROOT/'apps/collie/guest/usb-serial.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/nfc.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/uwb.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/camera.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/accessibility.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/ble.flex').read_text()
+    guest += '\n' + (ROOT/'apps/collie/guest/usb-serial.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/nfc.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/uwb.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/camera.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/haptics.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/accessibility.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/ble.flex').read_text()
     guest += '\n' + (ROOT/'apps/collie/guest/hardware-access.flex').read_text()
     embedded = 'fn ca_guest_extra(){return '+json.dumps(guest, ensure_ascii=False)+';}\n'
     embedded += 'fn ca_card_guest(){return '+json.dumps((ROOT/'apps/collie/guest/card-handler.flex').read_text(),ensure_ascii=False)+';}\n'
@@ -142,6 +142,7 @@ def generate(out, compiler):
     signatures += [(name,params) for name,params in re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/nfc.flex').read_text(),re.M) if name in {'ndef_record','ndef_encode','ndef_parse'}]
     signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/uwb.flex').read_text(),re.M)
     signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/camera.flex').read_text(),re.M)
+    signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/haptics.flex').read_text(),re.M)
     signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/accessibility.flex').read_text(),re.M)
     signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/ble.flex').read_text(),re.M)
     signatures += [('hardware_restrictions','')]
