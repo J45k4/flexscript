@@ -43,6 +43,7 @@ final class HardwareHaptics {
     }
     static Object start(VmHardware.Context c,Vibrator sdk,VibrationEffect effect,JSONObject requested,int duration)throws Exception{return VmHardware.add(new Haptic(c,sdk,effect,requested,duration));}
     static Object call(VmHardware.Context c,String op,JSONArray a)throws Exception{
+        if(op.startsWith("haptic_envelope_")||op.startsWith("haptic_frequency_"))return HardwareHapticEnvelope.call(c,op,a);
         if(op.equals("haptic_info"))return info(c);Vibrator sdk=present(c);
         if(op.equals("haptic_effects")){JSONArray rows=new JSONArray();int[] support=Build.VERSION.SDK_INT>=30?Api30.effects(sdk):null;for(int i=0;i<EFFECTS.length;i++)rows.put(VmHardware.object("id",EFFECTS[i],"native_support",support==null?JSONObject.NULL:support[i]));return VmHardware.object("effects",rows,"play_api",Build.VERSION.SDK_INT>=29,"support_api",Build.VERSION.SDK_INT>=30);}
         if(op.equals("haptic_primitives")){JSONArray rows=new JSONArray();boolean[] support=Build.VERSION.SDK_INT>=30?Api30.primitives(sdk):null;int[] duration=Build.VERSION.SDK_INT>=31?Api31.durations(sdk):null;for(int i=0;i<PRIMITIVES.length;i++)rows.put(VmHardware.object("id",PRIMITIVES[i],"supported",support==null?JSONObject.NULL:support[i],"duration_ms",duration==null?JSONObject.NULL:duration[i]));return VmHardware.object("primitives",rows,"composition_api",Build.VERSION.SDK_INT>=30,"individual_support_known",Build.VERSION.SDK_INT>=31,"duration_api",Build.VERSION.SDK_INT>=31);}

@@ -28,6 +28,7 @@ fn ht_result(name,probes){
                         if h_equal(state,"idle"){ok=h_has(current,"null") && !h_has(current,"status = running") && (h_has(text,"currentState = IDLE") || h_has(text,"isVibrating = false"));}
                         else if h_equal(state,"running"){ok=h_has(current,"opPkg=org.flexscript.collie") && h_has(current,"status = running") && h_has(current,cj_text(p,"needle")) && (h_has(text,"currentState = VIBRATING") || h_has(text,"isVibrating = true"));}
                         else if h_equal(state,"composition"){ok=h_has(current,"opPkg=org.flexscript.collie") && h_has(current,"Primitive") && h_has(current,"status = running");}
+                        else if h_equal(state,"envelope"){ok=h_has(current,"opPkg=org.flexscript.collie") && h_has(current,cj_text(p,"needle")) && h_has(current,"status = running") && (h_has(text,"currentState = VIBRATING") || h_has(text,"isVibrating = true"));}
                         else if h_equal(state,"predefined"){
                             let id=cj_int(p,"duration");let name="CLICK";if id==1{name="DOUBLE_CLICK";}else if id==2{name="TICK";}else if id==5{name="HEAVY_CLICK";}else{h_assert(id==0,"Invalid SDK predefined-effect probe");}
                             ok=h_has(current,"opPkg=org.flexscript.collie") && h_has(current,"status = running") && h_has(current,h_cat3("Prebaked{effect=",name,","));

@@ -39,6 +39,12 @@ fn haptic_effects(){return db_rpc(db_request("haptic_effects"));}
 fn haptic_primitives(){return db_rpc(db_request("haptic_primitives"));}
 fn haptic_effect(id,duration_ms){let r=db_request("haptic_effect");db_add(r,db_int(id));db_add(r,db_int(duration_ms));return db_rpc(r);}
 fn haptic_compose(steps,duration_ms){let r=db_request("haptic_compose");db_add(r,steps);db_add(r,db_int(duration_ms));return db_rpc(r);}
+fn haptic_envelope_info(){return db_rpc(db_request("haptic_envelope_info"));}
+fn haptic_frequency_profile(offset,limit){let r=db_request("haptic_frequency_profile");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn haptic_frequency_response(frequency_hz){let r=db_request("haptic_frequency_response");db_add(r,frequency_hz);return db_rpc(r);}
+fn haptic_frequency_range(minimum_acceleration_g){let r=db_request("haptic_frequency_range");db_add(r,minimum_acceleration_g);return db_rpc(r);}
+fn haptic_envelope_basic(initial_sharpness,points,duration_limit_ms){let r=db_request("haptic_envelope_basic");db_add(r,initial_sharpness);db_add(r,points);db_add(r,db_int(duration_limit_ms));return db_rpc(r);}
+fn haptic_envelope_waveform(initial_frequency_hz,points,duration_limit_ms){let r=db_request("haptic_envelope_waveform");db_add(r,initial_frequency_hz);db_add(r,points);db_add(r,db_int(duration_limit_ms));return db_rpc(r);}
 fn haptic_info(){return db_rpc(db_request("haptic_info"));}
 fn haptic_play(duration_ms,amplitude){let r=db_request("haptic_play");db_add(r,db_int(duration_ms));db_add(r,db_int(amplitude));return db_rpc(r);}
 fn haptic_waveform(timing,amplitudes){let r=db_request("haptic_waveform");db_add(r,timing);db_add(r,amplitudes);return db_rpc(r);}

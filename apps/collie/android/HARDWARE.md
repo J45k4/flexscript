@@ -32,7 +32,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, named AVC/HEVC/AV1 encoder capabilities and explicit recorder profile/level requests, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 187/API36 and183/API35 camera groups pass, including effective explicit AVC/HEVC/AV1 profile/level settings, combined explicit-profile fractional time-lapse, actual profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
-| Haptics | capabilities/effects/waveforms/cancel | scoped actuator lease, bounded one-shot/waveform/predefined/primitive SDK bindings, foreground lifecycle and asynchronous cancellation implemented; envelope/frequency/multi-actuator bindings pending | 25 SDK/VM/service groups pass on Android15/16, including four real predefined effects, eight-primitive composition, stale/foreign ownership, queued cleanup, blocked timer guards and actual onStop; physical/older/OEM/fault gates remain open |
+| Haptics | capabilities/effects/waveforms/envelopes/frequency/cancel | scoped actuator lease, bounded one-shot/waveform/predefined/primitive and public envelope/frequency SDK bindings, foreground lifecycle and asynchronous cancellation implemented; distinct actuator selection pending | 36/API36 and27/API35 SDK/VM/service groups pass, including30 exact frequency rows, actual basic/frequency/32-point envelopes and blocked-Handler wall limits, plus prior effects/ownership/lifecycle checks; physical/older/OEM/fault gates remain open |
 | Device status | battery/charging/electrical data, thermal state/headroom/events | implemented | battery/thermal status and subscriptions passed; thermal-change injection pending |
 | Biometrics | system authentication result only | SDK availability, owned system prompts and cancellation implemented | 51 enrolled/unenrolled SDK checks passed, including real fingerprint/PIN success, cancellation, expiry, late success and live revocation; physical/older-device checks pending |
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
@@ -4292,3 +4292,104 @@ failures, physical/routing gates and full all-adapter objective remain open.
 Primary contracts: [Vibrator](https://developer.android.com/reference/android/os/Vibrator),
 [public haptic APIs and support provenance](https://developer.android.com/develop/ui/views/haptics/haptics-apis),
 [AOSP shared vibrator cancellation](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/os/SystemVibrator.java).
+
+## Public haptic envelopes and frequency profile (2026-10-25)
+
+Six new operations retain the existing Haptics grant and sole Flexscript model
+tool. `haptic_envelope_info` exposes actual Android14+ resonance/Q values and
+Android16+ envelope support/limits/frequency summary, with typed null for absent
+SDK information. Frequency profile pages copy the actual ordered SDK map with
+1..16 rows, exact EOF/large-offset handling and typed acceleration bits.
+`haptic_frequency_response` delegates interpolation and
+`haptic_frequency_range` delegates achievable acceleration ranges, including
+actual null for impossible requests. Original double/integer input remains
+separate from the effective SDK float. Nonfinite, overflow, float-underflow,
+negative and zero-frequency inputs are rejected before SDK queries/playback.
+The SDK curve is advertised capability, not a measured physical-force receipt.
+
+`haptic_envelope_basic` submits public BasicEnvelopeBuilder intensity/sharpness
+points and `haptic_envelope_waveform` submits public WaveformEnvelopeBuilder
+amplitude/frequency points. Both use portable `haptic_envelope_point` records,
+1..32 points, positive SDK-supported segment durations, total<=2000ms and an
+explicit1..2000ms wall limit. Basic envelopes must end at exact zero intensity;
+waveform envelopes can end at nonzero amplitude. Waveform frequencies must lie
+within the actual SDK profile. Unsupported SDK/device combinations return
+structured errors without fallback effects. The existing visible Activity,
+exclusive app lease, owned handles, asynchronous SDK cancel and getter/wait wall
+guards are reused. SDK builders may split graphs beyond native point capacity;
+Collie does not replace that with a fabricated waveform or claim every segment
+physically played. Distinct physical-actuator selection remains unimplemented.
+
+The frozen final debug APK passes36 actual SDK/VM/service groups on owned
+headless Android16/API36 and27 on Android15/API35. The former includes:
+
+- All30 actual SDK frequency rows, bounded16-row pages and exact/large-offset
+  EOF, with independent typed getter comparisons. The advertised range is
+  30..300Hz and maximum acceleration3Gs on this emulator.
+- Independent public SDK response/range queries at endpoints, interpolated
+  non-float-exact requests and impossible ranges. Requested binary64 values
+  remain distinct from actual binary32 SDK arguments/results.
+- Independent SDK builders equal the VM-submitted basic and waveform effects.
+  Actual vibrator-manager current/played/original effect records show basic
+  intensity/sharpness mapped by Android to amplitude/frequency, plus the
+  unchanged165Hz waveform. Submission/active service state is not full-graph
+  completion or physical force/frequency verification.
+- A32-point,1280ms waveform crosses exact VM request metadata and an independent
+  SDK graph beyond this emulator's native16-point capacity; the actual active
+  service retains all32 PWLE segments. The test then explicitly cancels it.
+- A nonzero-ending1000ms waveform is accepted unchanged with an explicit80ms
+  wall limit. Getter/wait guards finish SDK cancellation and reach actual
+  service idle while the timer Handler is still blocked; a separate latch
+  proves it did not simply time out first. This is cleanup/deadline evidence,
+  not a physical80ms timing measurement.
+- Existing four predefined effects, eight-primitive composition, denied/foreign
+  ownership, queued and in-flight cancellation, stale cleanup, actual onStop
+  and Android-driven foreground restoration remain in the same complete run.
+
+Android15 matches independent resonance getters and returns
+unsupported_operation for the unavailable public envelope/frequency APIs,
+without allocating playback. Its existing haptic/effect/composition/lifecycle
+checks remain positive. Structured report flags keep these older-API negatives
+separate from Android16's positive submissions; physical_output_verified is
+false on both. Android16 has18 independent service/lifecycle probe stages;
+Android15 has11. The native Flexscript host driver is extended, not replaced
+with Python. The initial Android16 v1 attempt stopped before creating an owned
+fixture because credential-encrypted data was still locked; its failure log is
+retained. After actual unlock was confirmed, the v1 suite passed34/27 groups;
+the final v2 suite adds the maximum graph and wall-limit cases.
+
+Final artifacts under `build/android-haptic-envelopes/`:
+
+- `check2-debug/collie.apk`:8,144,471 bytes, SHA256
+  `9d3d2d7f6b638942a5054925cff5975fbc9a7bfbe4799b5fc094c8d5ce3d8dc0`.
+- `check1-release/collie.apk`:7,767,560 bytes, SHA256
+  `b75094e1a0e56bc1b85b37fe793720d2060c10e2c6571f2d27207a98c8422887`.
+- `check2-debug/final36` and `final35`: exact installed-APK hash reports,
+  structured envelope facts and raw service probes. Logs are
+  `haptics36-v2.log` and `haptics35-v2.log`; v1 reports retain their own scope/hash.
+- `packaging-v2.log` and `parity-v2.json`: debug-only oracle excluded from
+  non-debug; all310 handwritten production Java classes, both native libraries
+  and generated engine source/object are identical across debug/non-debug.
+- Native9 core/17 lazy/11 callback/4 complete-reference groups pass on this exact
+  engine, plus the32KiB codec/registry and native/checked-interpreter portable
+  haptic record tests. All120,286 detailed API bytes and the15,686-byte index are
+  readable with31 grants denied. Logs: `core-v2.log`, `lazy-v2.log`, `card-v2.log`,
+  `reference-v2.log`. No Python file or runtime is added.
+
+Independent final checks confirm both original empty conversations/all31 Ask
+grants, no current owned requests/workspaces, actual vibrator idle and no durable
+HCE profile or polling journal. The older Android15 UWB probe workspace is
+preserved. `final-verification-v2.json` and raw final vibrator dumps retain these
+observations. Both owned emulator processes exited successfully; adb reports no
+device. Desktop worktree is untouched. Earlier camera/HCE/general regression
+counts belong to their recorded earlier APKs and are not promoted to
+new-artifact tests. Remaining haptic gates include distinct
+actuator selection/combined effects, older SDK/OEM behavior, absent-profile and
+unsupported-envelope positive-provider coverage, real SDK/Binder/cleanup faults
+and physical effect/scale/frequency/timing. Other adapter families, strict
+HID/UWB failures and the full all-hardware objective remain open.
+
+Primary contracts: [public basic envelope](https://developer.android.com/reference/android/os/VibrationEffect.BasicEnvelopeBuilder),
+[public waveform envelope](https://developer.android.com/reference/android/os/VibrationEffect.WaveformEnvelopeBuilder),
+[frequency profile](https://developer.android.com/reference/android/os/vibrator/VibratorFrequencyProfile),
+[envelope limits](https://developer.android.com/reference/android/os/vibrator/VibratorEnvelopeEffectInfo).
