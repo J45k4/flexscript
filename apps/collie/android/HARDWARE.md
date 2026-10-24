@@ -29,7 +29,7 @@ it does not count as an implementation of an otherwise available adapter.
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
-| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed request/result metadata, bounded JPEG/YUV/SDK planes, MediaRecorder and owned torch SDK bindings implemented; per-physical overrides and additional metadata types pending | actual headless JPEG/YUV bytes, applied manual ISO/exposure, silent/audio video, consent, callback delays, capacity and revocation passed; RAW/depth, torch, physical/older-device and remaining lifecycle gates below |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, bounded JPEG/YUV/SDK planes, MediaRecorder and owned torch SDK bindings implemented; additional metadata types pending | 69 headless camera checks passed, including physical-result absence/ownership/eviction and prior JPEG/YUV/manual/video/consent/lifecycle gates; successful physical overrides/results, RAW/depth, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
@@ -1889,8 +1889,9 @@ explicit typed codecs cover primitive/array, rational, rectangle/size/range,
 metering, color transform/RGGB/tonemap and user-supplied geotag values. Lens
 shading gains are paged. Unimplemented SDK value classes are identified as
 `unsupported_sdk_type`, a software coverage gap rather than hardware absence.
-Physical output selection uses Android9+ public APIs; per-physical request-key
-overrides remain unimplemented. No camera geometry is silently substituted.
+Physical output selection uses Android9+ public APIs. The later physical-camera
+checkpoint below adds per-physical request-key overrides and result metadata.
+No camera geometry is silently substituted.
 
 `camera_open(id,timeout_ms)` returns an owned pending handle. Wait for the actual
 `opened` callback, configure1..3 `camera_output` / `camera_physical_output` records,
@@ -3056,5 +3057,122 @@ python3 scripts/test-collie-android-packaging.py \
 
 This closes the missing discovery implementation, not the full hardware goal.
 Remaining supported-device SDK paths, physical/RF gates, older UWB integration,
-background HCE, per-physical camera controls and strict UWB effective-interval/HID
+background HCE, supported-device physical-camera verification and strict UWB effective-interval/HID
 unplug failures remain open. Privileged/vendor hardware access is unverified.
+
+## Physical Camera2 controls and retained result metadata
+
+Eight ordinary functions extend Camera2 using the existing Camera grant:
+
+- `camera_physical_info(logical,physical)` returns the selected child's actual
+  characteristic summary, with its `logical_camera` parent ID.
+- `camera_physical_keys(logical,physical,offset,limit)` and
+  `camera_physical_value(logical,physical,key,offset,limit)` page that child's
+  actual characteristic names and values. These include physical IDs omitted
+  from the top-level Android camera inventory. They do not expose arbitrary IDs:
+  membership in the current logical camera's `getPhysicalCameraIds()` is checked.
+- `camera_physical_formats(logical,physical,offset,limit)` and
+  `camera_physical_output_sizes(logical,physical,format,offset,limit)` read the
+  child's actual stream configuration, including dimensions and frame/stall
+  durations. Format0 selects advertised MediaRecorder sizes, as in the logical
+  inventory. Logical/physical inventory shares the same bounded stream codec;
+  geometry is never substituted from a different camera.
+- `camera_result_physical(camera,result,offset,limit)` pages child-result IDs,
+  actual frame/sequence numbers and `total_result` flags in the existing retained
+  SDK capture result. It reports `cameras`, `next`, `total` and
+  `total_results_api`. Android12+ uses `getPhysicalCameraTotalResults()`;
+  Android9..11 uses the legacy `getPhysicalCameraResults()` map and preserves
+  its `CaptureResult` values. An empty SDK map is an empty page, not fabricated
+  per-sensor data.
+- `camera_physical_result_keys(camera,result,physical,offset,limit)` and
+  `camera_physical_result_value(camera,result,physical,key,offset,limit)` page
+  that retained child's metadata using the existing exact integer/real codec.
+
+Inventory offsets/limits retain the logical variants' bounds: keys0..10000 with
+pages1..32, values0..1000000 with pages1..32, formats0..10000 with pages1..32,
+sizes0..10000 with pages1..16. Physical-result lists use offsets0..128 and
+pages1..16; SDK maps are bounded to128 named, nonnull records. SDK<28 returns
+`unsupported_operation`. Inventory does not proactively ask for Android CAMERA;
+Android security errors remain actual typed errors.
+
+The portable helper `camera_physical_setting(id,key,type,value)` creates a
+four-field `[key,type,value,id]` row alongside the existing three-field global
+`camera_setting` records. Submit up to64 total rows through `camera_capture`.
+The trusted adapter checks the physical ID against both actual logical-camera
+membership and configured physical output targets. Its key must be in the
+logical camera's `getAvailablePhysicalCameraRequestKeys()` (also exposed by
+`camera_keys(logical,3,...)`); duplicate camera/key pairs and empty/non-text IDs
+are rejected. The regular typed control codec validates values. All records are
+validated before creating/submitting an SDK request. Global values are applied
+first, then physical overrides, independent of input row order.
+
+Physical overrides require physical-only output targets. Android documents
+logical-stream results as undefined when physical overrides are attached, so
+the adapter rejects that combination explicitly. Recorder surfaces remain
+logical and do not accept physical overrides. Existing global-only image/video
+capture retains its previous behavior. A successfully built/submitted request
+still does not prove that a physical sensor applied the requested value.
+
+Result access inherits the camera handle's workspace ownership, current Collie
+grant, actual Android CAMERA grant and foreground checks. There are no separate
+child handles or durable SDK references. Unknown/evicted parent results return
+`stale_result`; a missing child in a retained result returns `unavailable`.
+Existing eight-result eviction, camera shutdown/revocation and process restart
+invalidate child access. The callback copies no data into paused guest memory.
+No permission, model tool, SDK dependency, manifest entry or VM limit is added.
+
+Verification on one frozen Android36 headless-emulator APK:
+
+- **69 camera checks passed**, including14 new physical checks and all prior
+  JPEG/YUV bytes, applied manual ISO/exposure, silent/audio recording,
+  permissions, callback delays, capacity, revocation and cleanup scenarios.
+- The independent actual SDK reports no physical child IDs and an empty
+  physical-result map. The VM preserves that absence, rejects all five unrelated
+  child inventory queries, rejects bad result-page bounds and distinguishes
+  missing children from missing parents. All three result operations deny a
+  different actual VM workspace.
+- Four-field helper records and invalid physical IDs reach trusted validation.
+  Rejected requests release local reservations without submitting SDK capture
+  sequences or adding results. Global values are checked on a real SDK request
+  builder. Nine subsequent actual SDK captures evict an earlier parent, enforce
+  the existing eight-result bound and make all three child query paths stale.
+- Reports explicitly keep `physical_overrides_verified=false`,
+  `physical_result_values_verified=false`, `physical_devices_verified=false`,
+  and `actual_empty_physical_results_verified=true`. No physical success or
+  API28..30 legacy positive-path proof is inferred from compilation/absence.
+- The12 prior Android access-discovery groups pass on the same installed digest.
+  All10 existing Android lazy-permission UI groups pass too, for91 Android checks
+  total. Each suite verifies the installed APK before and after its run and
+  restores the original conversation and permission choices.
+  Shared32KiB codec/registry,9 core,17 native lazy-permission and4 complete
+  API-reference groups pass. The additional native denial fixture explicitly
+  uses the current31-key schema; its initial legacy-only fixture correctly
+  yielded Camera Ask and was fixed without changing production policy.
+  Reference pages read91,185 detailed and13,602 index bytes with31 grants denied.
+- Debug `build/android-camera-physical/collie.apk`:7,427,359B,
+  SHA-256 `049de66b6d874611b57bb622f3d56d57249ef700f22e33a2996636023c88ebb4`.
+  Nondebug `build/android-camera-physical-release/collie.apk`:7,132,368B,
+  SHA-256 `7f45dc162ca9406d9b4c5764c3da27e37c422cde05e7d9355b177635e66546d2`.
+  Packaging passes for both; all266 production Java classes, generated engine
+  and native library/test/UI-library bytes match. Debug fixtures stay absent
+  from nondebug; artifacts/signing keys/raw reports remain uncommitted.
+
+```sh
+python3 scripts/test-collie-camera-android.py \
+  --out build/android-camera-physical --serial emulator-5582
+python3 scripts/test-collie-android-packaging.py \
+  --debug build/android-camera-physical/collie.apk \
+  --release build/android-camera-physical-release/collie.apk
+```
+
+Public contracts: [physical request keys](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#getAvailablePhysicalCameraRequestKeys()),
+[request builder](https://developer.android.com/reference/android/hardware/camera2/CaptureRequest.Builder#setPhysicalCameraKey(android.hardware.camera2.CaptureRequest.Key,%20java.lang.Object,%20java.lang.String)),
+[physical request targets](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#createCaptureRequest(int,%20java.util.Set)),
+and [physical total results](https://developer.android.com/reference/android/hardware/camera2/TotalCaptureResult#getPhysicalCameraTotalResults()).
+
+Still open: successful physical-camera inventory/geometry and override effects,
+nonempty physical result values, same-key/different-camera and duplicate-key
+supported-device paths, legacy API28..30, multiple physical targets, SDK/HAL
+failure/late-result paths, additional metadata classes and earlier physical/
+lifecycle gates. Older UWB, background HCE, strict UWB effective-interval/HID
+unplug and the full inventory remain open. No phone deployment or merge is made.

@@ -144,6 +144,11 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
  o=call(3,dict(config=config,history=[],call_id='access-catalog',source='fn main(){let rows=hardware_restriction_rows();if db_count(rows)!=16{return 1;}let i=0;while i<db_count(rows){let r=db_at(rows,i);if db_word(device_field(r,"implemented")) || db_kind(device_field(r,"supported"))!=0 || db_word(device_field(r,"available")) || !db_word(device_field(r,"discovery_implemented")){return 2;}i=i+1;}return 0;}'))
  assert o['state']=='continue' and o['exit_code']==0,o
  passed('denied-capability discovery reaches the actual non-Android boundary without prompting or fabricating device facts; the portable restriction catalog keeps absent adapters and unknown support distinct')
+ config['permissions']=dict.fromkeys(defaults['policy'],False)
+ for operation in ['camera_physical_info("0","1")','camera_physical_keys("0","1",0,32)','camera_physical_value("0","1","android.sensor.orientation",0,1)','camera_physical_formats("0","1",0,32)','camera_physical_output_sizes("0","1",35,0,16)']:
+  o=call(3,dict(config=config,history=[],call_id='physical-denied-'+str(len(operation)),source='fn main(){if '+operation+'{return 1;}if !worker_equal(db_word(db_at(device_error(),0)),"permission_denied"){return 2;}return 0;}'))
+  assert o['state']=='continue' and o['exit_code']==0,o
+ passed('all five physical-camera inventory functions retain the original Camera denial before crossing the host boundary')
 
 (out/'lazy-permissions-report.json').write_text(json.dumps({'count':len(checks),'checks':checks},indent=2)+'\n')
 print(f'{len(checks)} lazy permission groups passed')

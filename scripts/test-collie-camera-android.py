@@ -111,6 +111,8 @@ try:
  vm('fn main(){let c=db_word(state_get("camera"));if !camera_capture(c,2,db_list(),0){return 1;}let i=0;while i<150{let e=device_wait(c,1000);if db_kind(e)==5 && worker_equal(db_word(device_field(e,"event")),"frame"){state_set("frame",device_field(e,"frame"));return 0;}i=i+1;}return 2;}')
  yuv=result(start(active_sid,hardware_tests=True,hardware_camera_tests=True,hardware_camera_yuv_tests=True))['hardware'];assert yuv['ok']
  for text in yuv['checks']:passed(text)
+ physical=result(start(active_sid,hardware_tests=True,hardware_camera_tests=True,hardware_camera_physical_tests=True))['hardware'];assert physical['ok'] and physical['actual_empty_physical_results_verified'] and not physical['physical_overrides_verified'] and not physical['physical_result_values_verified']
+ for text in physical['checks']:passed(text)
  shutdown_camera()
  passed('shutdown waits for actual CameraDevice.onClosed and SDK component cleanup before releasing its lease')
  sdk=result(start(active_sid,hardware_tests=True,hardware_camera_tests=True))['hardware'];assert sdk['ok']
@@ -158,4 +160,4 @@ finally:
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('camera resources and owned test workspaces removed; original conversation and Android grant choices restored')
 assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==sha
-(a.out/'camera-android-report.json').write_text(json.dumps(dict(ok=True,count=len(checks),checks=checks,apk_sha256=sha,serial=a.serial,manual_sensor_supported=yuv['manual_sensor_supported'],manual_sensor_verified=yuv['manual_sensor_verified'],physical_devices_verified=False),indent=2)+'\n');print(len(checks),'camera checks passed')
+(a.out/'camera-android-report.json').write_text(json.dumps(dict(ok=True,count=len(checks),checks=checks,apk_sha256=sha,serial=a.serial,manual_sensor_supported=yuv['manual_sensor_supported'],manual_sensor_verified=yuv['manual_sensor_verified'],physical_devices_verified=False,physical_overrides_verified=physical['physical_overrides_verified'],physical_result_values_verified=physical['physical_result_values_verified'],actual_empty_physical_results_verified=physical['actual_empty_physical_results_verified']),indent=2)+'\n');print(len(checks),'camera checks passed')

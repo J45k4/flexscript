@@ -20,6 +20,7 @@ public final class HardwareCameraChecks {
     public static JSONObject run(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).run();}
     public static JSONObject runVideo(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).video();}
     public static JSONObject runYuv(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).yuv();}
+    public static JSONObject runPhysical(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).physical();}
     public static JSONObject runLifecycle(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).lifecycle();}
     public static JSONObject runManual(MainActivity host,File root)throws Exception{HardwareCameraChecks t=new HardwareCameraChecks(host,root);t.ui(()->host.uiEffect(new JSONObjectHolder().value));return new JSONObject().put("ok",true).put("manual_action_requested",true);}
     static final class JSONObjectHolder {final JSONObject value;JSONObjectHolder(){try{value=new JSONObject().put("kind","camera");}catch(JSONException e){throw new RuntimeException(e);}}}
@@ -91,6 +92,48 @@ public final class HardwareCameraChecks {
             vm("fn main(){let p=camera_result_value("+q(handle)+","+q(resultId)+",\"android.sensor.exposureTime\",0,1);if db_word(device_field(p,\"value\"))!="+actualExposure+"{return 1;}return 0;}");check(true,"the applied manual exposure returns through the actual result-key VM transport as an exact integer64");
         }
         return report().put("manual_sensor_supported",manual).put("manual_sensor_verified",manual);
+    }
+    JSONObject physical()throws Exception{
+        String handle=state("camera");HardwareCamera.Camera camera=VmHardware.handle(context,handle,HardwareCamera.Camera.class);String logical=camera.cameraId;
+        check(Build.VERSION.SDK_INT>=31&&camera.ch.getPhysicalCameraIds().isEmpty(),"the actual emulator camera advertises no physical children; positive physical overrides/results are not claimed");
+        String[] inventory={"camera_physical_info("+q(logical)+",\"not-a-child\")","camera_physical_keys("+q(logical)+",\"not-a-child\",0,32)","camera_physical_value("+q(logical)+",\"not-a-child\",\"android.sensor.orientation\",0,1)","camera_physical_formats("+q(logical)+",\"not-a-child\",0,32)","camera_physical_output_sizes("+q(logical)+",\"not-a-child\",35,0,16)"};
+        for(String call:inventory)vm("fn main(){if "+call+"{return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(true,"all five physical inventory calls reject an ID absent from the actual logical camera without substituting its metadata");
+        until(()->{synchronized(camera){return !camera.results.isEmpty()&&camera.pendingSequences.isEmpty()&&camera.reservations==0;}});
+        String token;TotalCaptureResult actual;synchronized(camera){token=camera.results.keySet().iterator().next();actual=camera.results.get(token);}
+        check(actual.getPhysicalCameraTotalResults().isEmpty(),"the real completed SDK capture contains an empty physical-result map");
+        vm("fn main(){let p=camera_result_physical("+q(handle)+","+q(token)+",0,16);if !p||db_word(device_field(p,\"total\"))||db_count(device_field(p,\"cameras\"))||db_word(device_field(p,\"next\"))!=-1||!db_word(device_field(p,\"total_results_api\")){return 1;}return 0;}");
+        check(true,"the actual VM returns the SDK's empty physical-result map and Android12+ API provenance without invented child records");
+        for(String suffix:new String[]{"-1,16","0,0","0,17","129,1"})vm("fn main(){if camera_result_physical("+q(handle)+","+q(token)+","+suffix+"){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(true,"physical-result paging rejects negative offsets, zero/oversized pages and offsets above128 through the actual VM");
+        vm("fn main(){if camera_physical_result_keys("+q(handle)+","+q(token)+",\"not-a-child\",0,32){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"unavailable\"){return 2;}if camera_physical_result_value("+q(handle)+","+q(token)+",\"not-a-child\",\"android.sensor.exposureTime\",0,1){return 3;}if !worker_equal(db_word(db_at(device_error(),0)),\"unavailable\"){return 4;}return 0;}");
+        check(true,"physical key/value requests report absent child metadata separately from unknown or evicted parent results");
+        vm("fn main(){if camera_result_physical("+q(handle)+",\"not-a-result\",0,16){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_result\"){return 2;}return 0;}");
+        check(true,"unknown parent capture-result IDs fail with stale_result before physical metadata is inspected");
+        File other=new File(root,"physical-foreign");if(!new File(other,"files").mkdirs())throw new IOException("Cannot create physical-result ownership fixture");
+        for(String call:new String[]{"camera_result_physical("+q(handle)+","+q(token)+",0,16)","camera_physical_result_keys("+q(handle)+","+q(token)+",\"not-a-child\",0,32)","camera_physical_result_value("+q(handle)+","+q(token)+",\"not-a-child\",\"android.sensor.exposureTime\",0,1)"})vm(other,"fn main(){if "+call+"{return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_handle\"){return 2;}return 0;}");
+        check(true,"all three physical-result operations reject a different actual VM workspace before metadata access");
+        int retained;synchronized(camera){retained=camera.results.size();}
+        for(String row:new String[]{"camera_physical_setting(\"not-a-child\",\"android.control.aeMode\",\"int\",db_int(0))","camera_physical_setting(\"\",\"android.control.aeMode\",\"int\",db_int(0))"})vm("fn main(){let s=db_list();db_add(s,"+row+");if camera_capture("+q(handle)+",1,s,0){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(true,"the portable four-field setting helper reaches trusted validation; absent/empty physical IDs are rejected");
+        vm("fn main(){let s=db_list();let r=camera_setting(\"android.control.aeMode\",\"int\",db_int(0));db_add(r,db_int(1));db_add(s,r);if camera_capture("+q(handle)+",1,s,0){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}return 0;}");
+        check(true,"non-text physical identifiers fail as typed invalid arguments instead of reaching SDK request submission");
+        synchronized(camera){check(camera.reservations==0&&camera.pendingSequences.isEmpty()&&camera.results.size()==retained,"rejected physical settings free local reservations and submit no capture sequences or result records");}
+        CaptureRequest.Builder builder=camera.sdk.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+        JSONArray globals=new JSONArray().put(new JSONArray().put("android.control.aeMode").put("int").put(0));
+        HardwareCameraPhysical.apply(builder,HardwareCameraPhysical.settings(camera.ch,Collections.emptySet(),true,globals));
+        check(builder.get(CaptureRequest.CONTROL_AE_MODE)==CaptureRequest.CONTROL_AE_MODE_OFF,"ordinary global settings still set the exact value on a real public SDK request builder");
+        // Nine actual captures exercise parent eviction rather than constructing
+        // SDK results or editing the retained-result table in the fixture.
+        for(int i=0;i<9;i++){
+            final Set<String> previous;synchronized(camera){previous=new HashSet<>(camera.results.keySet());}
+            vm("fn main(){if db_kind(camera_capture("+q(handle)+",1,db_list(),0))!=1{return 1;}return 0;}");
+            until(()->{synchronized(camera){for(String id:camera.results.keySet())if(!previous.contains(id))return camera.pendingSequences.isEmpty()&&camera.reservations==0;return false;}});
+        }
+        vm("fn main(){if camera_result_physical("+q(handle)+","+q(token)+",0,16){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_result\"){return 2;}if camera_physical_result_keys("+q(handle)+","+q(token)+",\"not-a-child\",0,32){return 3;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_result\"){return 4;}if camera_physical_result_value("+q(handle)+","+q(token)+",\"not-a-child\",\"android.sensor.exposureTime\",0,1){return 5;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_result\"){return 6;}return 0;}");
+        synchronized(camera){check(camera.results.size()==8,"nine real SDK capture callbacks evict old parent results while retaining the existing eight-result bound");}
+        check(true,"physical pages and key/value queries all become stale when their parent result is evicted by actual captures");
+        return report().put("physical_overrides_verified",false).put("physical_result_values_verified",false).put("actual_empty_physical_results_verified",true);
     }
     static final class Gate implements AutoCloseable {
         final CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
