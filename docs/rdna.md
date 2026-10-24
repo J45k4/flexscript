@@ -5,7 +5,34 @@ Flexscript supports two AMD GPU backends:
 | Compiler target | Output | Runtime |
 | --- | --- | --- |
 | `hip` | HIP C++ source | HIPRTC / ROCm LLVM compiles it when loaded |
+| `hip --emit code-object --gpu-arch gfx1201` | Offline AMDHSA ELF code object | HIP loads the compiled code object |
 | `rdna-gfx1201` | Directly encoded RDNA4 instructions in an AMDHSA ELF code object | HIP loads machine code directly |
+
+The compiler driver owns offline HIP compilation and code-object extraction:
+
+```sh
+build/flex --target hip --emit code-object --gpu-arch gfx1201 kernel.flex -o kernel.hsaco
+```
+
+`--target hip` still emits HIP source by default; `--emit source` makes that
+choice explicit. Code-object emission requires a base AMD GPU architecture such
+as `gfx1201` or `gfx90a`. The driver invokes ROCm's `hipcc` with `-O3` and
+`-ffp-contract=off`, then extracts the requested architecture's AMD GPU ELF.
+Use `--rocm-root PATH` for an installation outside `/opt/rocm`.
+
+Commands use argument vectors. Work is staged beside the destination, and an
+existing output is replaced only after both tools succeed and the output passes
+ELF header validation. Symlink destinations and aliases of source/import files
+are rejected. Tool errors retain their diagnostics and leave existing output
+intact. The direct `rdna-gfx1201` backend remains a separate emission path.
+
+Driver checks run without a GPU, including mocked tool failures and a second
+architecture's flag forwarding:
+
+```sh
+build/flex scripts/test-gpu-codeobject.flex -o build/test-gpu-codeobject
+build/test-gpu-codeobject build/flex
+```
 
 At inference level, `--backend rdna` selects the native encoder.
 `--backend hip` retains the LLVM-based fallback.
