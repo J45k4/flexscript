@@ -83,9 +83,9 @@ try:
  passed('declining the actual Android camera dialog resumes the interrupted agent call with denial and remembers it without a prompt loop')
  vm('fn main(){let p=camera_list(0,16);if !p{return 1;}let rows=device_field(p,"cameras");if !db_count(rows){return 2;}let chosen=db_at(rows,0);let i=0;while i<db_count(rows){let r=db_at(rows,i);if db_word(device_field(r,"lens_facing"))==1{chosen=r;}i=i+1;}state_set("camera_id",device_field(chosen,"id"));return 0;}',initial_permissions=initial)
  passed('actual SDK camera inventory is accessible through the VM without Android CAMERA runtime access')
- vm('fn main(){if !camera_video_qualities(db_word(state_get("camera_id")),0,16){return 1;}return 0;}')
+ vm('fn main(){if !camera_video_qualities(db_word(state_get("camera_id")),0,16){return 1;}let c=camera_video_codecs(1,0,16);if !c{return 2;}let name=db_word(device_field(db_at(device_field(c,"codecs"),0),"name"));if !camera_video_codec_profiles(1,name,0,16)||!camera_video_codec_info(1,name)||!camera_video_codec_support(1,name,176,144,30,128000){return 3;}return 0;}')
  assert not re.search(re.escape(permissions[0])+r': granted=true',adb('shell','dumpsys','package',pkg).decode())
- passed('actual recommended encoder inventory is accessible without Android CAMERA or microphone runtime permission')
+ passed('actual recommended and named codec/profile/capability inventory is accessible without Android CAMERA or microphone runtime permission')
  source='fn main(){let id=db_word(state_get("camera_id"));let h=camera_open(id,5000);if !h{return 1;}state_set("camera",h);return 0;}'
  # Exercise genuine Android runtime consent, not pm-grant-as-proof.
  adb('shell','pm','clear-permission-flags',pkg,permissions[0],'user-set','user-fixed')

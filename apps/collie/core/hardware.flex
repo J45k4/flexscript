@@ -304,6 +304,10 @@ fn hw_operations(){
     hw_operation(rows,"camera_video_start","camera",3,3);
     hw_operation(rows,"camera_video_qualities","camera",3,3);
     hw_operation(rows,"camera_video_profiles","camera",5,5);
+    hw_operation(rows,"camera_video_codecs","camera",3,3);
+    hw_operation(rows,"camera_video_codec_profiles","camera",4,4);
+    hw_operation(rows,"camera_video_codec_info","camera",2,2);
+    hw_operation(rows,"camera_video_codec_support","camera",6,6);
     hw_operation(rows,"camera_high_speed_sizes","camera",3,3);
     hw_operation(rows,"camera_high_speed_ranges","camera",5,5);
     hw_operation(rows,"camera_video_audio_start","camera",3,3);

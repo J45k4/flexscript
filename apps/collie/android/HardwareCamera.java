@@ -154,6 +154,7 @@ final class HardwareCamera {
         try{return dispatch(c,op,a);}catch(CameraAccessException e){throw new VmHardware.Failure(e.getReason()==CameraAccessException.CAMERA_DISABLED?"camera_disabled":e.getReason()==CameraAccessException.CAMERA_DISCONNECTED?"disconnected":"camera_error",MainActivity.safe(e));}
     }
     static Object dispatch(VmHardware.Context c,String op,JSONArray a)throws Exception{
+        if(HardwareCameraCodecs.supports(op))return HardwareCameraCodecs.call(c,op,a);
         if(HardwareCameraRates.supports(op))return HardwareCameraRates.call(c,op,a);
         if(HardwareCameraEncoderProfiles.supports(op))return HardwareCameraEncoderProfiles.call(c,op,a);
         if(op.equals("camera_dng")||op.equals("camera_dng_seek"))return HardwareCameraDng.call(c,op,a);

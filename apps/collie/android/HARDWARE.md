@@ -29,7 +29,7 @@ it does not count as an implementation of an otherwise available adapter.
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
-| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 167/API36 and163/API35 camera groups pass, including actual fractional/profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, named AVC/HEVC/AV1 encoder capabilities and explicit recorder profile/level requests, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 187/API36 and183/API35 camera groups pass, including effective explicit AVC/HEVC/AV1 profile/level settings, combined explicit-profile fractional time-lapse, actual profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
@@ -4023,3 +4023,122 @@ Primary contracts: [MediaRecorder capture rate](https://developer.android.com/re
 [constrained sessions](https://developer.android.com/reference/android/hardware/camera2/CameraConstrainedHighSpeedCaptureSession),
 [CameraDevice constrained limitations](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#createCaptureSession(android.hardware.camera2.params.SessionConfiguration)),
 [SDK size/range inventory](https://developer.android.com/reference/android/hardware/camera2/params/StreamConfigurationMap#getHighSpeedVideoFpsRangesFor(android.util.Size)).
+
+## Explicit codec inventory and recorder profile/level (2026-10-24)
+
+`camera_video_codecs(codec,offset,limit)` exposes actual REGULAR_CODECS encoders
+for the legacy selector1AVC/2HEVC/3AV1, preserving SDK order and exact names,
+SURFACE-input support and profile/level counts. Android10+ canonical names,
+alias/hardware/software/vendor flags are actual getters; older SDKs return null.
+`camera_video_codec_profiles(codec,name,offset,limit)` preserves ordered public
+profile/level pairs. A listed level may be a maximum, not every usable lower
+level. `camera_video_codec_info` exposes actual bitrate, dimensions, frame-rate
+ranges, alignments, encoder quality/complexity and CQ/VBR/CBR facts.
+`camera_video_codec_support` asks the named SDK capability about the whole
+SURFACE width/height/FPS/bitrate format. Independent ranges do not establish
+support for their arbitrary Cartesian product.
+
+Names must belong to the real regular encoder/MIME inventory. These operations
+instantiate no codec and acquire no live camera or recorder lease. The existing
+Camera grant applies; Android capture and microphone dialogs are not opened.
+SDK lists/pages and text are bounded. Inventory describes named codec support,
+not which codec implementation MediaRecorder will choose.
+
+Portable `camera_video_encoding_options(base,profile,level)` adds an outer tagged
+record around ordinary, time-lapse or constrained high-speed options. It also
+accepts recommended video/audio profiles; the explicit public profile/level
+request is applied after those base encoder settings and before SDK prepare.
+Repeated/reversed wrappers, nonpositive values and legacy DEFAULT encoder
+selection fail before recorder allocation. Public profile/level integers remain
+requests: Android can change or ignore them. The original recommended profile
+and `device_info.encoding_profile_level_requested` are separate observations;
+actual encoded track metadata is the effective-setting evidence. Existing
+Camera/Microphone grants, workspace ownership, visible-Activity rules, I/O bounds,
+rate deadlines and cleanup are retained. There is no new model tool or grant.
+
+Public record composition, guest calls, operation permissions and reference stay
+Flexscript-owned. Java adds only bounded public SDK metadata/recorder transport;
+the existing independent SDK/container oracle is extended. No Python file is
+added. The existing host camera driver only extends its pre-runtime-permission
+metadata call to the new four SDK operations.
+
+Native/interpreter option tests retain an exact nested encoding/time-lapse
+record. The32KiB codec/registry check passes. The exact native engine passes9
+shared-core,17 lazy-permission,11 callback and4 complete reference groups; all
+113,719 detailed API bytes and the15,195-byte index remain readable with31
+grants denied. Check1/check2 debug and check1 non-debug engine source/object and
+both native libraries are byte-identical. All303 handwritten production Java
+classes match debug/non-debug (`build/android-camera-codecs/parity-v2.json`).
+Packaging passes and excludes the debug oracle from the non-debug APK.
+
+The same final debug APK passes187/API36 and183/API35 camera groups. Four
+actual regular AVC/HEVC/AV1 encoders and ten profile/level entries on each match
+independent SDK inventory, ranges, flags and full-format support queries through
+the VM. All four new operations also work before Android capture/microphone
+runtime approval. Invalid pages/names/records preserve the camera generation
+and recorder slots; genuine capture/microphone consent, live revocation and
+cleanup retain their prior checks.
+
+Each version actually records all three codecs at the selected176×144 geometry:
+
+| Codec | Requested profile / level enum | Independent encoded profile / level enum |
+| --- | --- | --- |
+| AVC | Main2 / AVCLevel3=256 | 2 / 256 |
+| HEVC | Main1 / MainTierLevel3=64 | 1 / 64 |
+| AV1 | Main8=1 / AV1Level3=16 | 1 / 16 |
+
+Independent MediaExtractor metadata confirms both values and the exact requested
+MIME for each real file; AVC SPS header bytes separately report level_idc30.
+Every finalized container byte crosses the VM with exact whole-file length/
+Adler32, EOF/seek/read-only enforcement and owned spool removal. These snapshots
+establish actual profile/level effects on the emulator encoders, not physical
+camera quality or a guarantee that Android will honor every future request.
+
+An outer explicit AVC Main/Level3 wrapper around fractional0.5fps time-lapse
+also records Main2 on both versions. Three SDK capture submissions produce
+three encoded samples spanning66,300us at30fps, with6,848/API36 and6,843/API35ms
+measured elapsed time including startup/stop. The blocked-callback preset still
+stops/releases through the VM wall guard. Its estimated SDK frame-rate hint is
+30/API36 and31/API35; the independent sample-PTS cadence check passes. A hint
+alone is deliberately not used as rate-effect proof. Both SDKs still report no
+constrained high-speed capability/sizes or recommended HDR encoder profile;
+those positive-I/O/fidelity flags remain false.
+
+Frozen artifacts under `build/android-camera-codecs/`:
+
+- Final `check2-debug/collie.apk`:8,095,319 bytes, SHA256
+  `99b56c8e20d91d0b3003255bf4c14d6932e15f678b660beed969a46995bc1831`.
+- `check1-release/collie.apk`:7,751,176 bytes, SHA256
+  `7d9053cb9e8de7b81da2bd004f5efa6fb8b73bf344c8592123caca03b78b735f`.
+- Exact-hash final reports: `check2-debug/camera-android-report.json` and
+  `check2-debug/emulator-5584/camera-android-report.json`; logs
+  `camera36-v2.log` / `camera35-v2.log`. Earlier check1 reports retain their
+  own APK hash and narrower AVC-only oracle. The first API36 check1 attempt
+  ended before test setup because credential-encrypted data was still locked;
+  the same APK's unlocked full run passed175 groups. No fixture was recreated
+  or user data cleared to hide that environment failure.
+- Native9/17/11/4 reports are under check1-debug; `parity-v2.json` proves that
+  exact engine is also in the final debug and non-debug builds. Portable native/
+  checked-interpreter camera options and32KiB codec/registry tests also pass.
+- Packaging: `packaging-v2.log`; production/native parity: `parity-v2.json`.
+
+The same final debug APK separately passes102 HCE/service/background-VM groups
+on each Android15/16 emulator (`check2-debug/hce-android-report.json` and
+`check2-debug/emulator-5584/hce-android-report.json`; logs `hce36-v2.log` and
+`hce35-v2.log`). Constructed Messenger commands reach the actual protected
+separate-process service/native VM and durable state. Actual AID/controller
+routing, RF exchange and physical-device flags stay false. The suites restore
+original conversations/grants/runtime choices and remove owned workspaces.
+Independent run-as checks confirm no durable HCE profile on either emulator.
+Both owned emulators are stopped; adb reports no device. Desktop worktree is
+untouched.
+
+Remaining video gates include positive constrained high-speed/slow-motion/
+audio/preview combinations, HDR codecs/color/fidelity, additional container/
+audio/encoder controls and fault cases, physical RAW/depth/HDR accuracy,
+physical-camera outputs/overrides/results and older/OEM behavior. Other adapter
+families and the full all-hardware objective remain open.
+
+Primary contracts: [MediaRecorder profile/level request](https://developer.android.com/reference/android/media/MediaRecorder#setVideoEncodingProfileLevel(int,%20int)),
+[codec capability profile levels](https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#profileLevels),
+[regular codec inventory](https://developer.android.com/reference/android/media/MediaCodecList#REGULAR_CODECS).

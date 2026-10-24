@@ -14,3 +14,4 @@ fn camera_dng_options(orientation,description,location,timeout_ms){let r=db_list
 fn camera_dng_gps(latitude,longitude,time_ms){let r=db_list();db_add(r,latitude);db_add(r,longitude);db_add(r,db_int(time_ms));return r;}
 fn camera_depth_mm(sample){return sample&8191;}
 fn camera_depth_confidence(sample){let c=(sample>>13)&7;if c==0{return 1000;}return (c-1)*1000/7;}
+fn camera_video_encoding_options(options,profile,level){let r=db_list();db_add(r,db_text("video_encoding"));db_add(r,options);db_add(r,db_int(profile));db_add(r,db_int(level));return r;}
