@@ -4,10 +4,12 @@
 Runs only on an explicitly selected emulator. Preserves the original session and
 removes only temporary sessions created by this test.
 """
-import argparse,hashlib,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
+from collie_android_test_artifact import verify_installed_apk
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');a=p.parse_args()
 assert a.serial.startswith('emulator-'),'Use a headless test emulator.'
+sha=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')
 out=a.out.resolve();base=[a.adb,'-s',a.serial];pkg='org.flexscript.collie';prefix='lazy-'+uuid.uuid4().hex[:8];checks=[];sessions=[];names=[]
 def adb(*args,data=None,check=True):
  r=subprocess.run([*base,*map(str,args)],input=data,capture_output=True,timeout=40)
@@ -125,5 +127,6 @@ finally:
   adb('shell','run-as',pkg,'rm','-rf','files/workspaces/'+sid)
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('original conversation and permission choices preserved; temporary test sessions removed')
-report={'count':len(checks),'checks':checks,'serial':a.serial,'apk_sha256':hashlib.sha256((out/'collie.apk').read_bytes()).hexdigest()}
+assert verify_installed_apk(a.adb,a.serial,out/'collie.apk')==sha
+report={'count':len(checks),'checks':checks,'serial':a.serial,'apk_sha256':sha}
 (out/'lazy-permissions-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(f'{len(checks)} Android lazy-permission groups passed')

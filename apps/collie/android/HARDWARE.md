@@ -2159,3 +2159,14 @@ scenarios passed. This covers the added Activity pause/recovery hooks against
 actual camera/microphone and shared system-consent behavior. Every report guards
 the installed APK and restores original conversation/permission choices. NFC and
 OMAPI radio/applet flags remain unverified as in their original suites.
+
+Initial HCE compiler/application CI
+[40044700977](https://github.com/J45k4/flexscript/actions/runs/40044700977) passed
+for `7b4a8d2fbdb54dca49397677c08ff29d523dd696`. A verification follow-up strengthens
+the two older Android permission/VPN scripts: they previously recorded only the
+local APK digest, and now verify installed bytes before/after, like HCE/camera/NFC.
+Both scripts rejected an actually mismatched older camera APK before creating
+any workspace, then passed10 permission groups and8 VPN scenarios with the
+unchanged final HCE APK above. `artifact-guards-report.json` records those4
+positive/negative guard checks. This changes no APK bytes or hardware scope;
+the strict RF/physical/UWB/HID gates remain open.
