@@ -11,6 +11,9 @@ final class HardwareHaptics {
     static final Object LOCK=new Object();
     static Haptic owner;
     static final ExecutorService CLEANUP=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(1),task->{Thread t=new Thread(task,"collie-haptic-close");t.setDaemon(true);return t;});
+    // One app-wide owner bounds this queue to its deadline and cleanup retry.
+    static final ScheduledThreadPoolExecutor TIMERS=timers();
+    static ScheduledThreadPoolExecutor timers(){ScheduledThreadPoolExecutor pool=new ScheduledThreadPoolExecutor(1,task->{Thread t=new Thread(task,"collie-haptic-deadline");t.setDaemon(true);return t;});pool.setRemoveOnCancelPolicy(true);return pool;}
     static final int[] EFFECTS={0,1,2,5},PRIMITIVES={1,2,3,4,5,6,7,8};
     static Vibrator vibrator(VmHardware.Context c){return (Vibrator)c.host.getApplicationContext().getSystemService(Context.VIBRATOR_SERVICE);}
     static void visible(VmHardware.Context c)throws Exception{if(!c.host.hardwareVisible)throw new VmHardware.Failure("foreground_required","Haptic playback requires a visible Collie Activity.");}
@@ -21,20 +24,24 @@ final class HardwareHaptics {
     static double scale(Object value)throws Exception{double n;if(value instanceof JSONObject&&((JSONObject)value).length()==1&&((JSONObject)value).has("$real"))n=Double.longBitsToDouble(VmHardware.longInteger(new JSONArray().put(((JSONObject)value).get("$real")),0,Long.MIN_VALUE,Long.MAX_VALUE));else if(value instanceof Integer||value instanceof Long)n=((Number)value).doubleValue();else throw new VmHardware.Failure("invalid_argument","Primitive scale uses a typed integer or real.");if(!Double.isFinite(n)||n<0||n>1)throw new VmHardware.Failure("invalid_argument","Primitive scale must be finite and0..1.");return n;}
     static final class Haptic extends VmHardware.Handle {
         final Vibrator sdk;final VibrationEffect effect;final JSONObject requested;final int duration;final Runnable timer=this::expired,retry=()->requestStop("cleanup_retry");
+        ScheduledFuture<?> deadlineTask,retryTask;
         boolean starting=true,attempted,submitted,stopRequested,cancelQueued,cancelReturned,released;long deadline,stopAt;String state="starting",error="",stopReason="";
         Haptic(VmHardware.Context c,Vibrator v,VibrationEffect effect,JSONObject requested,int duration)throws Exception{
             super(c,"haptics","haptic");sdk=v;this.effect=effect;this.requested=requested;this.duration=duration;visible(c);synchronized(LOCK){if(owner!=null)throw new VmHardware.Failure("busy","The app vibrator is owned or awaiting SDK cancellation. Close/wait for its current handle.");owner=this;}
             VmHardware.blocking(this);try{VmHardware.check();visible(c);synchronized(this){if(closed||stopRequested)throw new VmHardware.Failure("cancelled","Haptic startup was cancelled.");attempted=true;}sdk.vibrate(effect);synchronized(this){submitted=true;deadline=SystemClock.elapsedRealtime()+duration;state="submitted";try{event("submitted");}catch(Exception ignored){}}visible(c);}
             catch(Exception failure){synchronized(this){error=MainActivity.safe(failure);stopRequested=true;stopReason="startup_failed";}throw failure;}
-            finally{synchronized(this){starting=false;if(closed||stopRequested)queueStop();else HardwareSensors.events().postDelayed(timer,duration);}VmHardware.unblocking();}
+            finally{synchronized(this){starting=false;if(closed||stopRequested)queueStop();else try{deadlineTask=TIMERS.schedule(timer,Math.max(0,deadline-SystemClock.elapsedRealtime()),TimeUnit.MILLISECONDS);}catch(RejectedExecutionException failure){error=MainActivity.safe(failure);requestStop("deadline_unavailable");}}VmHardware.unblocking();}
         }
         synchronized void event(String name)throws Exception{emit(VmHardware.object("event",name,"sdk_vibrate_returned",submitted,"sdk_cancel_returned",cancelReturned,"lease_released",released,"reason",stopReason,"error",error));}
         synchronized void expired(){if(!released&&submitted&&!stopRequested&&SystemClock.elapsedRealtime()>=deadline)requestStop("wall_deadline");else if(stopRequested&&!released&&!cancelQueued&&!starting)queueStop();}
-        synchronized void requestStop(String reason){if(released)return;if(!stopRequested){stopReason=reason;stopAt=SystemClock.elapsedRealtime();}stopRequested=true;state="stopping";HardwareSensors.events().removeCallbacks(timer);if(!starting)queueStop();}
-        synchronized void queueStop(){if(released||cancelQueued||starting)return;cancelQueued=true;try{CLEANUP.execute(this::cancelSdk);}catch(RejectedExecutionException failure){cancelQueued=false;error=MainActivity.safe(failure);HardwareSensors.events().removeCallbacks(retry);HardwareSensors.events().postDelayed(retry,250);}}
+        synchronized void cancelDeadline(){if(deadlineTask!=null){deadlineTask.cancel(false);deadlineTask=null;}}
+        synchronized void cancelRetry(){if(retryTask!=null){retryTask.cancel(false);retryTask=null;}}
+        synchronized void retryLater(){cancelRetry();try{retryTask=TIMERS.schedule(retry,250,TimeUnit.MILLISECONDS);}catch(RejectedExecutionException failure){error=MainActivity.safe(failure);state="cleanup_error";}}
+        synchronized void requestStop(String reason){if(released)return;if(!stopRequested){stopReason=reason;stopAt=SystemClock.elapsedRealtime();}stopRequested=true;state="stopping";cancelDeadline();if(!starting)queueStop();}
+        synchronized void queueStop(){if(released||cancelQueued||starting)return;cancelQueued=true;try{CLEANUP.execute(this::cancelSdk);cancelRetry();}catch(RejectedExecutionException failure){cancelQueued=false;error=MainActivity.safe(failure);retryLater();}}
         void cancelSdk(){
-            try{if(attempted)sdk.cancel();}catch(Exception failure){synchronized(this){cancelQueued=false;error=MainActivity.safe(failure);state="cleanup_error";try{event("cleanup_error");}catch(Exception ignored){}HardwareSensors.events().removeCallbacks(retry);HardwareSensors.events().postDelayed(retry,250);}return;}
-            HardwareSensors.events().removeCallbacks(timer);HardwareSensors.events().removeCallbacks(retry);synchronized(LOCK){if(owner==this)owner=null;}synchronized(this){cancelReturned=attempted;released=true;cancelQueued=false;state="stopped";error="";try{event("stopped");}catch(Exception ignored){}}
+            try{if(attempted)sdk.cancel();}catch(Exception failure){synchronized(this){cancelQueued=false;error=MainActivity.safe(failure);state="cleanup_error";try{event("cleanup_error");}catch(Exception ignored){}retryLater();}return;}
+            synchronized(this){cancelDeadline();cancelRetry();cancelReturned=attempted;released=true;cancelQueued=false;state="stopped";error="";synchronized(LOCK){if(owner==this)owner=null;}try{event("stopped");}catch(Exception ignored){}}
         }
         void access(VmHardware.Context c)throws Exception{super.access(c);expired();}
         synchronized Object info()throws Exception{check();expired();return VmHardware.object("kind",kind,"state",state,"requested",requested,"duration_limit_ms",duration,"sdk_vibrate_called",attempted,"sdk_vibrate_returned",submitted,"sdk_cancel_returned",cancelReturned,"lease_released",released,"wall_deadline_elapsed_ms",deadline==0?JSONObject.NULL:deadline,"stop_requested_elapsed_ms",stopAt==0?JSONObject.NULL:stopAt,"stop_reason",stopReason,"error",error);}
