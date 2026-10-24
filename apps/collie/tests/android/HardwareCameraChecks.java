@@ -46,6 +46,7 @@ public final class HardwareCameraChecks {
         CameraValues.Setting rational=CameraValues.decode("rational",new JSONArray().put(7).put(13));check(rational.type==android.util.Rational.class&&rational.value.equals(new android.util.Rational(7,13)),"an explicitly SDK-constructed rational setting retains its numerator and denominator");
         CameraValues.Setting real=CameraValues.decode("float",VmHardware.real(.625));check(real.type==Float.class&&Float.floatToRawIntBits((Float)real.value)==Float.floatToRawIntBits(.625f),"an explicitly constructed real setting preserves the exact finite binary32 value");
         try{CameraValues.decode("float",VmHardware.real(Double.NaN));throw new IOException("NaN accepted");}catch(VmHardware.Failure expected){check(expected.code.equals("invalid_argument"),"nonfinite control values fail before a Camera2 request is submitted");}
+        metadata(ch,id);
         String handle=vm("fn main(){let h=camera_open("+q(id)+",5000);if !h{return 1;}db_io(0,1,db_word(h),db_bytes(h));return 0;}").getString("stdout");HardwareCamera.Camera owned=VmHardware.handle(context,handle,HardwareCamera.Camera.class);
         try{
             vm("fn main(){let h="+q(handle)+";let i=0;while i<20{let e=device_wait(h,1000);if db_kind(e)==5&&worker_equal(db_word(device_field(e,\"event\")),\"opened\"){return 0;}i=i+1;}return 1;}");
@@ -54,6 +55,87 @@ public final class HardwareCameraChecks {
             vm("fn main(){if db_word(camera_shutdown("+q(handle)+"))!=1{return 1;}let i=0;while i<20{let info=device_info("+q(handle)+");if db_word(device_field(info,\"sdk_terminal\"))&&db_word(device_field(info,\"lease_released\")){return 0;}device_wait("+q(handle)+",1000);i=i+1;}return 2;}");check(owned.terminal&&owned.cleaned&&owned.released,"the actual SDK terminal callback and completed component teardown release the owned camera lease");
         }finally{VmHardware.close(context,handle);}
         return report();
+    }
+    void wire(String expression,Object expected,StringBuilder code,int[] sequence)throws Exception{
+        String name="v"+(sequence[0]++);code.append("let ").append(name).append("=").append(expression).append(";if !").append(name).append("{return 1;}");
+        if(expected==JSONObject.NULL){code.append("if db_kind(").append(name).append(")!=0{return 2;}");return;}
+        if(expected instanceof JSONObject&&((JSONObject)expected).has("$real")){
+            code.append("if db_kind(").append(name).append(")!=4||db_word(").append(name).append(")!=").append(((JSONObject)expected).getLong("$real")).append("{return 3;}");return;
+        }
+        if(expected instanceof JSONObject){
+            JSONObject object=(JSONObject)expected;code.append("if db_kind(").append(name).append(")!=5||db_count(").append(name).append(")!=").append(object.length()).append("{return 4;}");
+            for(Iterator<String> keys=object.keys();keys.hasNext();){String key=keys.next();wire("device_field("+name+","+q(key)+")",object.get(key),code,sequence);}return;
+        }
+        if(expected instanceof JSONArray){
+            JSONArray array=(JSONArray)expected;code.append("if db_kind(").append(name).append(")!=5||db_count(").append(name).append(")!=").append(array.length()).append("{return 5;}");
+            for(int i=0;i<array.length();i++)wire("db_at("+name+","+i+")",array.get(i),code,sequence);return;
+        }
+        if(expected instanceof String){code.append("if db_kind(").append(name).append(")!=2||!worker_equal(db_word(").append(name).append("),").append(q((String)expected)).append("){return 6;}");return;}
+        long number=expected instanceof Boolean?((Boolean)expected?1:0):((Number)expected).longValue();
+        code.append("if db_kind(").append(name).append(")!=1||db_word(").append(name).append(")!=").append(number==Long.MIN_VALUE?"(-9223372036854775807-1)":Long.toString(number)).append("{return 7;}");
+    }
+    void wirePage(String expression,JSONObject expected)throws Exception{
+        StringBuilder code=new StringBuilder("fn main(){");wire(expression,expected,code,new int[]{0});code.append("return 0;}");
+        if(code.length()>60000)throw new IOException("Metadata oracle source exceeds its test bound");vm(code.toString());
+    }
+    static JSONObject expectedPage(JSONArray rows,int total,int end,String type)throws Exception{
+        JSONObject value=new JSONObject().put("value",rows).put("array",true).put("total",total).put("next",end<total?end:-1);
+        if(type!=null)value.put("sdk_type",type);return value;
+    }
+    void metadataFixture(Object value,int offset,int limit,JSONObject expected)throws Exception{
+        VmHardware.Handle fixture=new VmHardware.Handle(context,"camera","camera_metadata_fixture"){
+            public Object info()throws Exception{check();return CameraValues.page(value,offset,limit);}
+        };String handle=VmHardware.add(fixture);
+        try{wirePage("device_info("+q(handle)+")",expected);}finally{VmHardware.close(context,handle);}
+    }
+    void dynamicProfile(Object object,String expression)throws Exception{
+        android.hardware.camera2.params.DynamicRangeProfiles profiles=(android.hardware.camera2.params.DynamicRangeProfiles)object;
+        TreeSet<Long> ids=new TreeSet<>(profiles.getSupportedProfiles());int count=0;
+        for(long id:ids){
+            TreeSet<Long> constraints=new TreeSet<>(profiles.getProfileCaptureRequestConstraints(id));
+            JSONArray rows=new JSONArray().put(new JSONObject().put("profile",id).put("capture_request_constraints",new JSONArray(constraints)).put("extra_latency",profiles.isExtraLatencyPresent(id)));
+            JSONObject expected=expectedPage(rows,ids.size(),count+1,"dynamic_range_profiles");
+            if(expression==null)metadataFixture(object,count,1,expected);else wirePage(expression.replace("OFFSET",Integer.toString(count)),expected);count++;
+        }
+        JSONObject end=expectedPage(new JSONArray(),ids.size(),ids.size(),"dynamic_range_profiles");
+        if(expression==null)metadataFixture(object,ids.size(),1,end);else wirePage(expression.replace("OFFSET",Integer.toString(ids.size())),end);
+    }
+    void colorProfile(Object object,String expression)throws Exception{
+        android.hardware.camera2.params.ColorSpaceProfiles profiles=(android.hardware.camera2.params.ColorSpaceProfiles)object;
+        TreeSet<android.graphics.ColorSpace.Named> colors=new TreeSet<>(profiles.getSupportedColorSpaces(android.hardware.camera2.params.ColorSpaceProfiles.UNSPECIFIED));JSONArray all=new JSONArray();
+        for(android.graphics.ColorSpace.Named color:colors)for(int format:new TreeSet<>(profiles.getSupportedImageFormatsForColorSpace(color))){
+            all.put(new JSONObject().put("color_space_id",color.ordinal()).put("color_space",color.name()).put("image_format",format).put("dynamic_ranges",new JSONArray(new TreeSet<>(profiles.getSupportedDynamicRangeProfiles(color,format)))));
+        }
+        for(int i=0;i<all.length();i++){
+            JSONObject expected=expectedPage(new JSONArray().put(all.get(i)),all.length(),i+1,"color_space_profiles");
+            if(expression==null)metadataFixture(object,i,1,expected);else wirePage(expression.replace("OFFSET",Integer.toString(i)),expected);
+        }
+        JSONObject end=expectedPage(new JSONArray(),all.length(),all.length(),"color_space_profiles");
+        if(expression==null)metadataFixture(object,all.length(),1,end);else wirePage(expression.replace("OFFSET",Integer.toString(all.length())),end);
+    }
+    void metadata(CameraCharacteristics characteristics,String id)throws Exception{
+        android.util.Pair<Double,Double>[] noise=new android.util.Pair[]{new android.util.Pair<>(1.25,.5),new android.util.Pair<>(2.5,.125)};
+        metadataFixture(noise,1,1,expectedPage(new JSONArray().put(new JSONArray().put(VmHardware.real(2.5)).put(VmHardware.real(.125))),2,2,null));
+        metadataFixture(new android.util.Pair<>(null,Double.NaN),0,1,new JSONObject().put("value",new JSONArray().put(JSONObject.NULL).put(new JSONObject().put("non_finite","nan"))).put("array",false).put("total",1).put("next",-1));
+        check(true,"constructed SDK Pair/noise-profile values preserve pagination, binary64 coefficients, null and nonfinite markers through the real VM");
+        if(Build.VERSION.SDK_INT>=33){
+            android.hardware.camera2.params.DynamicRangeProfiles profiles=new android.hardware.camera2.params.DynamicRangeProfiles(new long[]{2,3,0,4,1,1});
+            dynamicProfile(profiles,null);
+            check(true,"constructed public dynamic-range SDK profile, constraint and latency values survive every VM page and exact EOF");
+            android.hardware.camera2.params.DynamicRangeProfiles actual=characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES);
+            if(actual!=null){dynamicProfile(actual,"camera_value("+q(id)+",\"android.request.availableDynamicRangeProfiles\",OFFSET,1)");check(true,"every actual advertised camera dynamic-range profile agrees with independent SDK getter values through camera_value");}
+        }
+        if(Build.VERSION.SDK_INT>=34){
+            android.hardware.camera2.params.ColorSpaceProfiles profiles=new android.hardware.camera2.params.ColorSpaceProfiles(new long[]{0,256,1,7,35,3,7,256,2});
+            colorProfile(profiles,null);colorProfile(new android.hardware.camera2.params.ColorSpaceProfiles(new long[0]),null);
+            check(true,"constructed public color-space SDK mappings preserve sorted color/format identities, exact dynamic-range sets and empty/EOF pages in the VM");
+            android.hardware.camera2.params.Capability capability=new android.hardware.camera2.params.Capability(2,new Size(1920,1080),new android.util.Range<Float>(.5f,4f));
+            metadataFixture(capability,0,1,new JSONObject().put("value",new JSONObject().put("sdk_type","capability").put("mode",2).put("maximum_streaming_size",new JSONArray().put(1920).put(1080)).put("zoom_ratio_range",new JSONArray().put(VmHardware.real(.5)).put(VmHardware.real(4)))).put("array",false).put("total",1).put("next",-1));
+            check(true,"a constructed public Capability transports mode, maximum dimensions and exact zoom range without toString or reflection");
+            android.hardware.camera2.params.ColorSpaceProfiles actual=characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_COLOR_SPACE_PROFILES);
+            if(actual!=null){colorProfile(actual,"camera_value("+q(id)+",\"android.request.availableColorSpaceProfiles\",OFFSET,1)");check(true,"every actual camera color-space/format/profile mapping matches an independent SDK query through camera_value");}
+        }
+        for(int[] bounds:new int[][]{{-1,1},{1000001,1},{0,0},{0,33}})try{CameraValues.page(noise,bounds[0],bounds[1]);throw new IOException("Invalid metadata page accepted");}catch(VmHardware.Failure expected){check(expected.code.equals("invalid_argument"),"invalid direct metadata page bound fails before SDK profile traversal: "+Arrays.toString(bounds));}
     }
     JSONObject video()throws Exception{
         String id=state("video");HardwareCameraVideo.Video v=VmHardware.handle(context,id,HardwareCameraVideo.Video.class);check(v.released&&v.state.equals("stopped")&&v.file.length()>0,"the actual recorder returned from stop/release and produced a nonempty finalized container");
