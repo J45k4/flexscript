@@ -22,7 +22,7 @@ it does not count as an implementation of an otherwise available adapter.
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy and extended/periodic transmission, GATT client/server SDK bindings implemented; remaining lifecycle/SDK gates below | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | public Classic HID device SDK bindings implemented; remaining verification gates below | encrypted510-byte control/interrupt report exchange, registration ownership and reconnect verified against a controlled host; public unplug callback gate remains failing on this emulator |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
-| NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment and NFC-F service, routing, command/reply and lifecycle SDK bindings implemented; polling/observe extensions and background operation pending | 62 actual Android service/VM and explicitly constructed Binder-peer checks passed; SDK adapter absence is real, successful registration/routing/RF/physical checks remain unverified |
+| NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment, NFC-F and bounded ISO-DEP polling-frame reception implemented; polling-filter/observe controls and background operation pending | 62 actual Android service/VM and explicitly constructed Binder-peer checks passed; SDK adapter absence is real, successful registration/routing/RF/physical checks remain unverified |
 | Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | SDK service/readers/sessions/channels and extended APDU byte transport implemented | actual independent service bindings, empty reader inventory, owned asynchronous shutdown and first-use consent verified; real applet/channel/APDU and access-control fixtures pending |
 | UWB | supported-device sessions and ranging events through supported APIs | Android16 public raw-session, capability, peer and interval bindings implemented; older SDK integration pending | actual two-emulator measurements and SDK peer callbacks verified; strict effective-interval check remains failing; physical/older-device checks pending |
 | Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
@@ -2731,3 +2731,85 @@ Remaining BLE advertising requirements are still open:
 - [ ] Remaining legacy/GATT and full inventory gates above, including the strict
       UWB effective-interval and HID unplug failures. The full objective is active
       and the PR remains draft; no physical RF or phone deployment proof is claimed.
+
+
+## HCE polling-frame transport follow-up
+
+Android15+ `HostApduService.processPollingFrames` now forwards copied SDK values
+from both Collie ISO-DEP categories to the existing owned HCE session. No new
+model tool, permission, guest raw host call or live resource in a checkpoint is
+introduced. Frame interpretation remains ordinary Flexscript. Receive events
+with `device_wait`; NFC-F does not expose this ISO-DEP callback.
+
+A `polling_frame` event contains `batch`, `index`, `total`, `sdk_callback=true`
+and `frame={type,data,timestamp_us,vendor_specific_gain,triggered_auto_transact}`.
+Data is a complete blob up to32768 bytes. Larger frames produce `size_limit`
+without truncating bytes; malformed frames produce `invalid_sdk_value`, and later
+frames in that callback are still processed. Type preserves Android's integer
+(A65/B66/F70/ON79/OFF88/UNKNOWN85). Timestamps preserve exact signed64-bit SDK
+values, in relative microseconds, with no wall-clock conversion. Gain remains
+vendor-specific; -1 means absent. The auto-transact flag describes the SDK value;
+it is not a guest command or proof of an APDU exchange. See the public
+[PollingFrame contract](https://developer.android.com/reference/android/nfc/cardemulation/PollingFrame)
+and [service callback](https://developer.android.com/reference/android/nfc/cardemulation/HostApduService#processPollingFrames(java.util.List)).
+
+Each callback copies at most64 frames, then explicitly reports omitted frames in
+`polling_batch_truncated={total,copied,dropped_frames}`. The shared128-event queue
+retains its separate overflow/loss report. Polling metadata does not create an
+APDU request or mark a transaction-active channel. Closed/stopping sessions and
+unresumed Activities reject callbacks; workspace ownership and the lazy NFC grant
+still govern reads. `hce_info().polling` reports the public SDK level, actual
+observe support/enabled queries and size bounds. The global
+`nfc_hce_polling_frames` capability works even with all31 grants denied;
+availability remains unknown where actual frame delivery is not established.
+The newer SDK symbols are isolated behind the Android15 runtime gate.
+
+**80 HCE checks pass on the exact installed debug artifact.** This includes the
+existing service/command/deadline/revocation/background/process-restart checks and
+the polling follow-up. A debug-only peer in another actual Android process
+relays explicitly constructed SDK Parcelables through Binder and the actual
+`HostApduService` dispatcher. Both categories preserve every byte of a32768-byte
+frame, all six SDK types, timestamps above2^53, gain and auto-transact values.
+The tests cover malformed/oversize values, a70-frame batch with six reported
+omissions,193 dispatched frames with128 retained/65 reported losses, another
+actual VM workspace, and explicitly constructed late values at a stopping guard.
+No fake NFC adapter, successful registration or radio observation is substituted.
+The report keeps `constructed_sdk_fixture=true`,
+`polling_binder_transport_verified=true`, `routing_registration_verified=false`,
+`radio_exchange_verified=false` and `physical_devices_verified=false`.
+
+Artifacts and regressions:
+
+- Debug `build/android-hce-polling/collie.apk`: **7,345,439 bytes**, SHA256
+  `5bb2dfe648c6445141d54d0a03dc791975ac40d93cc5c9d59864e03356c2e951`.
+- Non-debug `build/android-hce-polling-release/collie.apk`: **7,083,216 bytes**,
+  SHA256 `8c9613ea94ffe4ab914cf4d28501581f774aea3bbca5746ecc71912ee4ab5a84`.
+- Packaging checks pass; all debug fixtures/peer services remain excluded from
+  non-debug. All258 production Java class files, native library/test and generated
+  engine bytes match between the two outputs.
+- On the same installed debug digest,10 Android lazy-permission groups pass.
+  Original messages, permission choices and selection are restored; temporary
+  workspaces are removed. The4 complete-reference checks pass with all31 grants
+  denied (83,817 detailed bytes,12,824 index bytes). The9 shared-core and15 native
+  lazy-permission groups also pass.
+
+Repeat with the owned unlocked headless emulator:
+
+```sh
+python3 scripts/test-collie-hce-android.py \
+  --out build/android-hce-polling --serial emulator-5582
+python3 scripts/test-collie-android-packaging.py \
+  --debug build/android-hce-polling/collie.apk \
+  --release build/android-hce-polling-release/collie.apk
+```
+
+Dynamic exact/pattern polling-filter registration/removal, observe-mode control,
+its owned cleanup/recovery and their successful hardware effects are **still
+unimplemented**. The API reports `filter_registration_implemented=false` and
+`observe_control_implemented=false`; this receive path changes no such SDK state.
+Those controls are the next HCE implementation work. Real RF frame delivery,
+routing, real late callbacks, paused/background operation, older SDK/OEM and
+physical-reader checks remain open, together with the earlier HCE and full
+inventory gates. The strict UWB interval and HID unplug failures are unchanged.
+The full objective and draft PR remain open; no master merge or phone deployment
+is claimed.

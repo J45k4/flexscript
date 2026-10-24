@@ -3,6 +3,7 @@ package org.flexscript.collie;
 import android.content.*;
 import android.content.pm.*;
 import android.nfc.*;
+import android.nfc.cardemulation.PollingFrame;
 import android.os.*;
 import java.io.*;
 import java.util.*;
@@ -13,7 +14,7 @@ import org.json.*;
 /** Actual Android service binding/SDK Messenger with explicitly constructed command fixtures.
  * This is not a radio or routing-registration oracle. No fake adapter is installed. */
 public final class HardwareHceChecks {
-    final MainActivity host;final File root;final VmHardware.Context context;final JSONArray checks=new JSONArray();int sequence;
+    final MainActivity host;final File root;final VmHardware.Context context;final JSONArray checks=new JSONArray();int sequence;boolean pollingTransport;
     HardwareHceChecks(MainActivity host,File root){this.host=host;this.root=root;context=new VmHardware.Context(host,root);}
     public static JSONObject run(MainActivity host,File root)throws Exception{return new HardwareHceChecks(host,root).run();}
     public static JSONObject runBackground(MainActivity host,File root)throws Exception{return new HardwareHceChecks(host,root).background();}
@@ -26,8 +27,8 @@ public final class HardwareHceChecks {
     static String q(String s){return JSONObject.quote(s).replace("\\/","/");}
     JSONObject vm(File workspace,String source)throws Exception{source="fn fail(n){let e=db_error();db_io(0,2,e,db_len(e));return n;}"+source.replaceAll("return ([1-9][0-9]*);","return fail($1);");JSONObject r=host.engineAt(workspace,3,new JSONObject().put("config",host.workerConfig(workspace,0)).put("source",source).put("call_id","hce-check-"+(++sequence)).put("history",new JSONArray()));if(!r.optString("state").equals("continue")||r.optInt("exit_code")!=0)throw new IOException("HCE scenario "+sequence+": "+r);return r;}
     JSONObject vm(String source)throws Exception{return vm(root,source);}
-    JSONObject report()throws Exception{return new JSONObject().put("ok",true).put("checks",checks).put("constructed_sdk_fixture",true).put("actual_component_binding_verified",true).put("routing_registration_verified",false).put("radio_exchange_verified",false).put("physical_devices_verified",false);}
-    // Values0/1/2/3 below are the AOSP framework's service Messenger protocol.
+    JSONObject report()throws Exception{return new JSONObject().put("ok",true).put("checks",checks).put("constructed_sdk_fixture",true).put("actual_component_binding_verified",true).put("polling_binder_transport_verified",pollingTransport).put("routing_registration_verified",false).put("radio_exchange_verified",false).put("physical_devices_verified",false);}
+    // Values0/1/2/3/4 below are the AOSP framework's service Messenger protocol.
     // They are used only by this independent debug peer, not by production code.
     final class Peer implements AutoCloseable {
         final int mode;final HardwareHce.Session session;final String handle;final BlockingQueue<Message> replies=new LinkedBlockingQueue<>(16);final CountDownLatch connected=new CountDownLatch(1),peerConnected=new CountDownLatch(1);Messenger service,remote;boolean bound,peerBound;
@@ -44,6 +45,7 @@ public final class HardwareHceChecks {
             ui(()->{peerBound=host.bindService(new Intent().setClass(host,HardwareHcePeerFixture.class).setData(android.net.Uri.parse("collie-hce-fixture:"+UUID.randomUUID())),peerConnection,android.content.Context.BIND_AUTO_CREATE);});if(!peerBound||!peerConnected.await(5,TimeUnit.SECONDS))throw new IOException("Independent Binder peer did not bind");Message init=Message.obtain(null,100);init.replyTo=receive;remote.send(init);reply(100);
         }
         void send(int what,byte[] bytes)throws Exception{Message m=Message.obtain(null,what);m.replyTo=remote;if(bytes!=null){Bundle b=new Bundle();b.putByteArray("data",bytes);m.setData(b);}service.send(m);}
+        void polling(ArrayList<PollingFrame> frames)throws Exception{Message m=Message.obtain(null,101);m.replyTo=service;Bundle b=new Bundle();b.putParcelableArrayList("android.nfc.cardemulation.POLLING_FRAMES",frames);m.setData(b);remote.send(m);}
         HardwareHce.Request command(byte[] bytes)throws Exception{send(0,bytes);until(()->{synchronized(session){return session.pending!=null;}});synchronized(session){return session.pending;}}
         Message reply(int what)throws Exception{long end=SystemClock.elapsedRealtime()+5000;while(SystemClock.elapsedRealtime()<end){Message m=replies.poll(100,TimeUnit.MILLISECONDS);if(m!=null&&m.what==what)return m;}throw new IOException("SDK service did not send expected fixture message "+what);}
         void deactivate()throws Exception{send(2,null);until(()->{synchronized(session){return !session.channelActive;}});}
@@ -56,7 +58,47 @@ public final class HardwareHceChecks {
         vm("fn main(){let a=db_list();db_add(a,db_text(\"not-an-AID\"));if hce_open(0,a,1000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 2;}if hcef_open(\"40FF\",\"02FE000000000001\",1000)||hcef_open(\"4000\",\"0000000000000001\",1000){return 3;}if !worker_equal(db_word(db_at(device_error(),0)),\"invalid_argument\"){return 4;}return 0;}");check(true,"malformed AIDs, reserved system codes and invalid NFCID2 fail before SDK routing mutation");
         if(!hce&&!hcef){vm("fn main(){let a=db_list();db_add(a,db_text(\"F0434F4C4C494500\"));if hce_open(0,a,1000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported\"){return 2;}if hcef_open(\"4000\",\"02FE000000000001\",1000){return 3;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported\"){return 4;}return 0;}");check(true,"actual adapter absence is returned through the ordinary VM without a fabricated ready/radio callback");}
         for(int mode=0;mode<3;mode++)transport(mode);
+        if(Build.VERSION.SDK_INT>=35)polling();
         timeout();blockedDeadline();live();return report().put("actual_hce_supported",hce).put("actual_hcef_supported",hcef);
+    }
+    // AOSP Parcelable wire keys are fixture-only; production uses SDK getters.
+    static PollingFrame frame(int type,byte[] bytes,int gain,long timestamp,boolean automatic){
+        Bundle b=new Bundle();b.putInt("android.nfc.cardemulation.TYPE",type);b.putByteArray("android.nfc.cardemulation.DATA",bytes);
+        if(gain!=-1)b.putInt("android.nfc.cardemulation.GAIN",gain);
+        b.putLong("android.nfc.cardemulation.TIMESTAMP",timestamp);b.putBoolean("android.nfc.cardemulation.TRIGGERED_AUTOTRANSACT",automatic);
+        Parcel p=Parcel.obtain();try{p.writeBundle(b);p.setDataPosition(0);return PollingFrame.CREATOR.createFromParcel(p);}finally{p.recycle();}
+    }
+    void polling()throws Exception{
+        NfcAdapter adapter=HardwareNfc.optional(context);boolean hce=HardwareHce.supported(host,adapter,0);
+        boolean observe=hce&&adapter.isObserveModeSupported(),enabled=hce&&adapter.isObserveModeEnabled();
+        vm("fn main(){let p=device_field(hce_info(),\"polling\");if !db_word(device_field(p,\"frames_api\"))||db_word(device_field(p,\"supported\"))!="+(hce?1:0)+"||db_word(device_field(p,\"observe_supported\"))!="+(observe?1:0)+"||db_word(device_field(p,\"observe_enabled\"))!="+(enabled?1:0)+"{return 1;}if db_word(device_field(p,\"filter_registration_implemented\"))||db_word(device_field(p,\"observe_control_implemented\")){return 2;}return 0;}");
+        check(true,"polling/observe capability values match independent public SDK queries and do not claim unimplemented controls");
+        for(int mode=0;mode<2;mode++)try(Peer p=new Peer(mode,5000)){
+            p.session.events.clear();String h=q(p.handle);int[] types={79,88,65,66,70,85};ArrayList<PollingFrame> rows=new ArrayList<>();
+            byte[] binary=new byte[32768];for(int i=0;i<binary.length;i++)binary[i]=(byte)((i*37+11)&255);
+            for(int i=0;i<types.length;i++)rows.add(frame(types[i],i==0?binary:new byte[0],i==0?17:-1,9007199254740993L+i,i%2==1));
+            p.polling(rows);until(()->p.session.events.size()==6);rows.get(0).getData()[0]^=127;
+            StringBuilder code=new StringBuilder("fn main(){let batch=db_null();");
+            for(int i=0;i<6;i++)code.append("{let e=device_wait(").append(h).append(",1000);let f=device_field(e,\"frame\");if !worker_equal(db_word(device_field(e,\"event\")),\"polling_frame\")||db_word(device_field(e,\"index\"))!=").append(i).append("||db_word(device_field(e,\"total\"))!=6||!db_word(device_field(e,\"sdk_callback\")){return 1;}if db_word(device_field(f,\"type\"))!=").append(types[i]).append("||db_word(device_field(f,\"timestamp_us\"))!=").append(9007199254740993L+i).append("||db_word(device_field(f,\"vendor_specific_gain\"))!=").append(i==0?17:-1).append("||db_word(device_field(f,\"triggered_auto_transact\"))!=").append(i%2).append("{return 2;}let b=device_field(e,\"batch\");if db_kind(batch)!=0&& !worker_equal(db_word(b),db_word(batch)){return 3;}batch=b;let bytes=device_field(f,\"data\");if db_bytes(bytes)!=").append(i==0?32768:0).append("{return 4;}").append(i==0?"let j=0;while j<32768{if load8(db_word(bytes)+j)!=(j*37+11)%256{return 5;}j=j+1;}":"").append("}");
+            code.append("if db_kind(hce_request(").append(h).append("))!=0||db_word(device_field(device_info(").append(h).append("),\"channel_active\")){return 6;}return 0;}");vm(code.toString());
+            check(true,"separate-process constructed SDK polling messages reach the actual service and VM for category"+mode+", preserving32KiB/every byte, all six types, exact microsecond timestamps above2^53, gain and auto-transact metadata");
+            check(true,"polling metadata creates neither an APDU command nor a transaction-active lease for category"+mode);
+            ArrayList<PollingFrame> large=new ArrayList<>();for(int i=0;i<70;i++)large.add(frame(85,new byte[0],-1,i,false));p.polling(large);until(()->p.session.events.size()==65);
+            vm("fn main(){let i=0;while i<64{let e=device_wait("+h+",1000);if !worker_equal(db_word(device_field(e,\"event\")),\"polling_frame\")||db_word(device_field(e,\"index\"))!=i||db_word(device_field(e,\"total\"))!=70{return 1;}i=i+1;}let e=device_wait("+h+",1000);if !worker_equal(db_word(device_field(e,\"event\")),\"polling_batch_truncated\")||db_word(device_field(e,\"copied\"))!=64||db_word(device_field(e,\"dropped_frames\"))!=6{return 2;}return 0;}");
+            check(true,"a70-frame SDK batch performs at most64 frame copies and explicitly reports all six dropped frames for category"+mode);
+            ArrayList<PollingFrame> invalid=new ArrayList<>();invalid.add(frame(85,new byte[32769],-1,0,false));invalid.add(null);invalid.add(frame(85,new byte[0],-1,1,false));p.polling(invalid);until(()->p.session.events.size()==3);
+            vm("fn main(){let e=device_wait("+h+",1000);if !worker_equal(db_word(device_field(e,\"code\")),\"size_limit\"){return 1;}e=device_wait("+h+",1000);if !worker_equal(db_word(device_field(e,\"code\")),\"invalid_sdk_value\"){return 2;}e=device_wait("+h+",1000);if !worker_equal(db_word(device_field(e,\"event\")),\"polling_frame\")||db_word(device_field(e,\"index\"))!=2{return 3;}return 0;}");
+            check(true,"oversize/null SDK frames produce bounded typed errors and do not discard a subsequent valid frame for category"+mode);
+            ArrayList<PollingFrame> small=new ArrayList<>();for(int i=0;i<64;i++)small.add(frame(85,new byte[0],-1,i,false));
+            for(int j=0;j<3;j++)p.polling(small);p.polling(new ArrayList<>(Arrays.asList(frame(85,new byte[0],-1,999,false))));
+            until(()->p.session.events.stream().anyMatch(e->e instanceof JSONObject&&((JSONObject)e).optJSONObject("frame")!=null&&((JSONObject)e).optJSONObject("frame").optLong("timestamp_us")==999));
+            vm("fn main(){let e=device_wait("+h+",1000);if !worker_equal(db_word(device_field(e,\"event\")),\"overflow\")||db_word(device_field(e,\"dropped\"))!=65{return 1;}let first=device_field(e,\"next\");if db_word(device_field(device_field(first,\"frame\"),\"timestamp_us\"))!=1{return 2;}let i=0;while i<127{e=device_wait("+h+",1000);i=i+1;}if db_word(device_field(device_field(e,\"frame\"),\"timestamp_us\"))!=999{return 3;}return 0;}");
+            check(true,"193 actual SDK-dispatched constructed frames retain128 events, report65 losses and preserve the final frame for category"+mode);
+            File foreign=new File(root,"polling-foreign");new File(foreign,"files").mkdirs();vm(foreign,"fn main(){if device_wait("+h+",0){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_handle\"){return 2;}return 0;}");
+            check(true,"a different actual VM workspace cannot read the polling-frame handle for category"+mode);
+            p.session.state="stopping";int count=p.session.events.size();HardwareHcePolling.frames(p.session,rows);check(count==p.session.events.size(),"the callback guard discards explicitly constructed late polling values once category"+mode+" is stopping");
+        }
+        pollingTransport=true;
     }
     void transport(int mode)throws Exception{
         try(Peer p=new Peer(mode,5000)){

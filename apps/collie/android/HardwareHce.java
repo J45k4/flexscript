@@ -40,11 +40,16 @@ final class HardwareHce {
     static void serviceCreated(android.app.Service service,int mode){synchronized(HardwareNfc.LEASE){if(owner==null){recovered=false;recoverAsync(service);}}}
     static void capabilities(VmHardware.Context c,JSONArray out)throws Exception{
         NfcAdapter adapter=HardwareNfc.optional(c);for(int mode:new int[]{0,2}){boolean s=supported(c.host,adapter,mode);out.put(VmHardware.object("id",mode==2?"nfc_hcef":"nfc_hce","implemented",true,"supported",s,"available",s&&adapter.isEnabled()&&c.host.hardwareResumed,"permission","nfc","foreground_required",true,"max_sessions",1));}
+        JSONObject polling=HardwareHcePolling.info(adapter,supported(c.host,adapter,0));
+        out.put(polling.put("id","nfc_hce_polling_frames").put("implemented",true).put("permission","nfc")
+            .put("available",polling.getBoolean("supported")&&c.host.hardwareResumed?JSONObject.NULL:false)
+            .put("foreground_required",true));
     }
     static JSONObject info(VmHardware.Context c)throws Exception{
         NfcAdapter a=HardwareNfc.optional(c);JSONObject out=VmHardware.object("supported",supported(c.host,a,0),"supported_f",supported(c.host,a,2),"enabled",a!=null&&a.isEnabled(),"foreground",c.host.hardwareResumed,"foreground_required",true,"maximum_command_bytes",65544,"maximum_response_bytes",65538,"maximum_nfcf_bytes",255);
         synchronized(HardwareNfc.LEASE){out.put("recovery_pending",!recovered).put("recovery_error",recoveryError).put("owned",owner!=null);}
         if(supported(c.host,a,0)){CardEmulation h=CardEmulation.getInstance(a);out.put("aid_prefix_supported",h.supportsAidPrefixRegistration());for(int mode=0;mode<2;mode++)out.put(category(mode),VmHardware.object("foreground_preference_allowed",h.categoryAllowsForegroundPreference(category(mode)),"selection_mode",h.getSelectionModeForCategory(category(mode)),"default_service",h.isDefaultServiceForCategory(component(c.host,mode),category(mode))));}
+        out.put("polling",HardwareHcePolling.info(a,supported(c.host,a,0)));
         return out;
     }
     static ArrayList<String> aids(Object value)throws Exception{
