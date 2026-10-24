@@ -15,7 +15,7 @@ import org.json.*;
 
 /** Independent SDK/decoder checks. No successful camera callbacks are fabricated. */
 public final class HardwareCameraChecks {
-    final MainActivity host;final File root;final VmHardware.Context context;final JSONArray checks=new JSONArray();final JSONObject outputProfiles=new JSONObject();int sequence;
+    final MainActivity host;final File root;final VmHardware.Context context;final JSONArray checks=new JSONArray();final JSONObject outputProfiles=new JSONObject(),rawDepth=new JSONObject();int sequence;
     HardwareCameraChecks(MainActivity host,File root){this.host=host;this.root=root;context=new VmHardware.Context(host,root);}
     public static JSONObject run(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).run();}
     public static JSONObject runVideo(MainActivity host,File root)throws Exception{return new HardwareCameraChecks(host,root).video();}
@@ -30,7 +30,7 @@ public final class HardwareCameraChecks {
     JSONObject vm(String source)throws Exception{return vm(root,source);}
     String state(String key)throws Exception{return vm("fn main(){let v=state_get("+q(key)+");if db_kind(v)!=2{return 1;}db_io(0,1,db_word(v),db_bytes(v));return 0;}").getString("stdout");}
     void ui(Runnable action)throws Exception{CountDownLatch ready=new CountDownLatch(1);AtomicReference<Throwable> error=new AtomicReference<>();host.runOnUiThread(()->{try{action.run();}catch(Throwable e){error.set(e);}finally{ready.countDown();}});if(!ready.await(5,TimeUnit.SECONDS))throw new IOException("Camera UI fixture timed out");if(error.get()!=null)throw new IOException(error.get());}
-    JSONObject report()throws Exception{return new JSONObject().put("ok",true).put("checks",checks).put("physical_devices_verified",false).put("output_profiles",outputProfiles);}
+    JSONObject report()throws Exception{return new JSONObject().put("ok",true).put("checks",checks).put("physical_devices_verified",false).put("output_profiles",outputProfiles).put("raw_depth",rawDepth);}
     JSONObject run()throws Exception{
         String id=state("camera_id");CameraManager manager=host.getSystemService(CameraManager.class);check(Arrays.asList(manager.getCameraIdList()).contains(id),"the selected VM camera ID belongs to an independent Android CameraManager inventory");CameraCharacteristics ch=manager.getCameraCharacteristics(id);
         vm("fn main(){let d=camera_info("+q(id)+");if db_word(device_field(d,\"lens_facing\"))!="+ch.get(CameraCharacteristics.LENS_FACING)+"||db_word(device_field(d,\"hardware_level\"))!="+ch.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)+"||db_word(device_field(d,\"sensor_orientation\"))!="+ch.get(CameraCharacteristics.SENSOR_ORIENTATION)+"{return 1;}return 0;}");
@@ -53,6 +53,7 @@ public final class HardwareCameraChecks {
             File other=new File(root,"camera-foreign");if(!new File(other,"files").mkdirs())throw new IOException("Cannot create camera ownership fixture");vm(other,"fn main(){if device_info("+q(handle)+")||camera_frame_info("+q(handle)+",\"frame-unknown\"){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"stale_handle\"){return 2;}return 0;}");check(true,"another actual VM workspace cannot inspect or use the owned camera");
             vm("fn main(){if camera_open("+q(id)+",5000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),\"busy\"){return 2;}if camera_frame_info("+q(handle)+",\"frame-unknown\"){return 3;}let outputs=db_list();db_add(outputs,camera_output(256,123,457));if camera_configure("+q(handle)+",outputs,5000){return 4;}if !worker_equal(db_word(db_at(device_error(),0)),\"unsupported_format\"){return 5;}return 0;}");check(true,"overlapping opens, unknown frames and non-advertised sizes fail without silently changing output geometry");
             profileOutputs(handle,owned);
+            HardwareCameraRawChecks.run(this,handle,owned);
             vm("fn main(){if db_word(camera_shutdown("+q(handle)+"))!=1{return 1;}let i=0;while i<20{let info=device_info("+q(handle)+");if db_word(device_field(info,\"sdk_terminal\"))&&db_word(device_field(info,\"lease_released\")){return 0;}device_wait("+q(handle)+",1000);i=i+1;}return 2;}");check(owned.terminal&&owned.cleaned&&owned.released,"the actual SDK terminal callback and completed component teardown release the owned camera lease");
         }finally{VmHardware.close(context,handle);}
         return report();

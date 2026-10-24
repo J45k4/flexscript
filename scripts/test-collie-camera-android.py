@@ -12,7 +12,7 @@ def adb(*args,data=None,check=True):
 def read(path):
  try:return json.loads(adb('exec-out','run-as',pkg,'cat',path,check=False))
  except ValueError:return None
-def wait(test,seconds=60):
+def wait(test,seconds=180):
  end=time.monotonic()+seconds
  while time.monotonic()<end:
   value=test()
@@ -160,4 +160,4 @@ finally:
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
 passed('camera resources and owned test workspaces removed; original conversation and Android grant choices restored')
 assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==sha
-(a.out/'camera-android-report.json').write_text(json.dumps(dict(ok=True,count=len(checks),checks=checks,apk_sha256=sha,serial=a.serial,output_profiles=sdk['output_profiles'],manual_sensor_supported=yuv['manual_sensor_supported'],manual_sensor_verified=yuv['manual_sensor_verified'],physical_devices_verified=False,physical_overrides_verified=physical['physical_overrides_verified'],physical_result_values_verified=physical['physical_result_values_verified'],actual_empty_physical_results_verified=physical['actual_empty_physical_results_verified']),indent=2)+'\n');print(len(checks),'camera checks passed')
+(a.out/'camera-android-report.json').write_text(json.dumps(dict(ok=True,count=len(checks),checks=checks,apk_sha256=sha,serial=a.serial,output_profiles=sdk['output_profiles'],raw_depth=sdk['raw_depth'],manual_sensor_supported=yuv['manual_sensor_supported'],manual_sensor_verified=yuv['manual_sensor_verified'],physical_devices_verified=False,physical_overrides_verified=physical['physical_overrides_verified'],physical_result_values_verified=physical['physical_result_values_verified'],actual_empty_physical_results_verified=physical['actual_empty_physical_results_verified']),indent=2)+'\n');print(len(checks),'camera checks passed')

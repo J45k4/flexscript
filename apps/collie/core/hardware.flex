@@ -283,6 +283,8 @@ fn hw_operations(){
     hw_operation(rows,"camera_open","camera",2,2);
     hw_operation(rows,"camera_torch_open","camera",2,2);
     hw_operation(rows,"camera_configure","hardware_handle",3,4);
+    hw_operation(rows,"camera_dng","hardware_handle",4,4);
+    hw_operation(rows,"camera_dng_seek","hardware_handle",2,2);
     hw_operation(rows,"camera_capture","hardware_handle",4,4);
     hw_operation(rows,"camera_stop","hardware_handle",1,1);
     hw_operation(rows,"camera_frames","hardware_handle",3,3);

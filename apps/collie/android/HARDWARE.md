@@ -29,7 +29,7 @@ it does not count as an implementation of an otherwise available adapter.
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
-| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, MediaRecorder and owned torch SDK bindings implemented; additional metadata types and HDR video pending | 97 headless camera checks passed on each of Android15/16, including actual HLG10/P010 capture and complete plane transport, typed profiles/noise metadata and prior JPEG/YUV/manual/video/consent/lifecycle gates; physical HDR accuracy, successful physical overrides/results, RAW/depth, torch and physical/older-device gates remain open |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, MediaRecorder and owned torch SDK bindings implemented; additional metadata types and HDR video pending | Actual1856×1392 RAW and independently parsed DNG pixels/calibration pass on Android15/16; actual320×240 depth and every plane byte pass on Android16, while Android15 advertises no DEPTH16. Exact final artifacts and lifecycle checks are recorded below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/cancel | implemented | actuator inventory passed; effect/cancel checks pending |
@@ -3636,3 +3636,114 @@ Primary contracts: [HCE guide](https://developer.android.com/develop/connectivit
 [CardEmulation](https://developer.android.com/reference/android/nfc/cardemulation/CardEmulation),
 [NFC-F enableService](https://developer.android.com/reference/android/nfc/cardemulation/NfcFCardEmulation#enableService(android.app.Activity,%20android.content.ComponentName)),
 [framework Messenger implementation](https://android.googlesource.com/platform/packages/modules/Nfc/+/refs/heads/main/framework/java/android/nfc/cardemulation/HostApduService.java).
+
+## RAW/depth capture and streaming DNG checkpoint (2026-10-24)
+
+Actual advertised RAW_SENSOR and DEPTH16 outputs use the existing Camera2
+configuration/capture/frame APIs without size or format substitution. Portable
+`camera_depth_mm` and `camera_depth_confidence` decode Android's packed range and
+confidence fields; they do not establish physical measurement accuracy.
+
+`camera_dng(camera,frame,result,options)` adds an asynchronous public DngCreator
+export. `camera_dng_options(orientation,description,gps_or_null,timeout_ms)`
+supports EXIF orientation0..8, a bounded description and optional caller-supplied
+`camera_dng_gps(latitude,longitude,time_ms)`. Coordinates use typed db_int/db_real
+values; GPS metadata does not request a device Location or grant. Only the SDK's
+latitude/longitude/time fields are promised, without silently accepting ignored
+altitude/provider fields. The source must be actual16-bit RAW_SENSOR with the
+same sensor timestamp as its retained capture result. Physical outputs require
+their actual physical result and characteristics, not a substituted logical
+result. Missing physical metadata returns an error; successful physical DNG
+capture is not verified here.
+
+The Android adapter streams tightly packed rows through at most32KiB copies,
+removing row padding without another full-image allocation. Input retains the
+existing128MiB image budget; finalized output is at most129MiB. One global
+export includes queued/running work, its retained file and unsettled cleanup.
+The whole500..30000ms elapsed deadline includes queueing, input/output and SDK
+close. Getters and stream guards enforce elapsed time even if callback delivery
+is delayed. A timeout already reported remains the terminal error, and typed
+causes survive I/O wrappers. SDK cleanup runs off the UI thread. Local close
+does not claim queued or native work has settled and does not release its lease
+early. Ready is published only after actual write, file sync and SDK close.
+
+Reads and `camera_dng_seek` use a workspace-owned read-only handle and the
+existing Camera grant. EOF is typed null and byte reads retain the32KiB bound.
+There is no caller path or additional filesystem grant. The private cache spool
+is deleted on close/error after cleanup; startup removes only owned interrupted
+spool names. Failed or expired work exposes no partial container. Source
+frame/result retention is required until ready; a ready container is independent
+of the source camera. Activity hiding or Camera revocation closes the export.
+Actual blocked-native/storage/OEM failure behavior remains a separate gate.
+
+The frozen revised debug APK passes125 camera groups on owned headless
+Android16/API36 and121 on Android15/API35. Both independently advertise and
+capture1856×1392 RAW_SENSOR. All four optional calibration fields are actually
+present: neutral point, RGGB gains, color transform and noise profile. Each
+matches independent SDK getters/copies through the VM. All884 lens-shading
+gains match independent SDK copies across bounded metadata pages. The public
+synthetic lens-shading key name comes from CaptureResult's actual key; a
+prototype fixture's hardcoded native alias was correctly rejected as absent.
+
+On each version, independent EXIF/TIFF readers accept the generated DNG,
+requested orientation/description/GPS, and every unpadded RAW pixel byte.
+Every container byte crosses VM pages with exact length/Adler32 and EOF/seek
+checks. Android16's DNG is5,178,100 bytes; Android15's is5,177,996 bytes. These
+different SDK outputs are reported independently. Android16 also advertises
+and captures320×240 DEPTH16; all actual plane bytes/strides and packed sample
+decoding pass. Android15 advertises no DEPTH16, so its depth_capture_verified
+flag remains false. Physical accuracy remains false on both versions.
+
+Lifecycle checks use real images, SDK callbacks and VM calls. A mismatched
+actual result fails before DngCreator entry. Invalid options allocate no lease;
+foreign workspaces cannot use the export. Closing/expiring work queued behind
+a blocked SDK executor retains ownership until actual settlement and performs
+no late SDK write. Closing a source image before queue entry rejects stale_frame.
+A separate check blocks the actual bounded row copy after DngCreator has entered
+its input stream, closes that real Image through the adapter, then verifies
+stale_frame through VM error transport, actual SDK release and deletion of the
+partial spool. The queue fixture is not proof of a hung native DngCreator call.
+
+Frozen artifacts and reports:
+
+- `build/android-camera-raw/final-v2-debug/collie.apk`:8,029,783 bytes
+  (7.658MiB), SHA256
+  `977118d4392212e14da4dffe9a95cbab65135e70783aa79e2eda9b70531549b1`.
+- `build/android-camera-raw/final-v2-release/collie.apk`:7,718,408 bytes
+  (7.361MiB), SHA256
+  `d1ffe3ed1eb51690f1278baa521d81b1fc0a9ab35ded0e83fbb4735f18d15926`.
+- Per-device exact-hash camera reports are in
+  `final-v2-debug/emulator-5582/camera-android-report.json` and
+  `final-v2-debug/emulator-5584/camera-android-report.json`; logs are
+  `camera36-final-v2.log` and `camera35-final-v2.log`.
+- Packaging passes for both. All292 handwritten production Java class files
+  match debug/non-debug, as do both native libraries and generated engine
+  source/object. Generated R classes are excluded. The new RAW oracle is
+  debug-only; no Python runtime is packaged. `parity-v2.json` retains exact
+  comparisons against both non-debug and the preceding frozen prototype.
+- The byte-identical native engine passes9 shared-core,17 lazy-permission,
+  11 callback and4 complete API-reference groups; the32KiB codec/registry test
+  also passes. All104,927 detailed reference bytes and the14,358-byte index
+  remain readable with all31 grants denied. Portable camera records and all
+  eight depth-confidence encodings pass native and checked-interpreter checks.
+
+No Python file is added. The existing camera host driver only retains the new
+RAW/depth facts and increases its bounded SDK-case wait for the additional
+full-image/container paging checks. The new production Java is Android SDK,
+resource and spool transport; public record/decoding helpers and permission
+registry remain Flexscript. The earlier frozen prototype independently passed
+123/API36 and119/API35 groups; its distinct hashes remain in `final-debug` and
+are not relabeled as revised-APK results.
+
+Remaining camera gates include physical RAW/depth/HDR accuracy, successful
+physical output/override/result/DNG paths, HDR video/codec and additional
+metadata controls/types, RAW10/12 or other format-specific processing,
+thumbnails, older/OEM devices and interrupted-storage/native-cleanup faults.
+The other hardware inventory gates, legacy AOSP UWB/fusion, failing strict
+UWB interval and public HID unplug checks, RF fixtures and16 missing
+privileged/vendor integrations remain open. The all-adapter objective remains
+active; there is no master merge or physical-phone deployment.
+
+Primary contracts: [DngCreator](https://developer.android.com/reference/android/hardware/camera2/DngCreator),
+[DEPTH16 layout](https://developer.android.com/reference/android/graphics/ImageFormat#DEPTH16),
+[public DngCreator implementation](https://android.googlesource.com/platform/frameworks/base/+/main/core/java/android/hardware/camera2/DngCreator.java).
