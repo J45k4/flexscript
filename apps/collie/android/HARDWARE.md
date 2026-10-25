@@ -32,7 +32,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, named AVC/HEVC/AV1 encoder capabilities and explicit recorder profile/level requests, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 187/API36 and183/API35 camera groups pass, including effective explicit AVC/HEVC/AV1 profile/level settings, combined explicit-profile fractional time-lapse, actual profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
-| Haptics | capabilities/effects/waveforms/primitive timing/envelopes/frequency/actuator selection/parallel/cancel | scoped app playback lease, explicit pause/Android16 relative-start primitive timing, public per-ID metadata/selection and parallel SDK graphs with portable effect records, bounded direct effects/envelopes, independent deadline/retry scheduling and foreground cleanup implemented | 69/API36 and56/API35 SDK/VM/service groups pass, including direct/selected timing, actual relative-offset adaptation, exact metadata/frequency queries, independent deadlines and stale cleanup in both default/selected directions. Each SDK exposes one ID; two-actuator and physical/older/OEM/fault gates remain open |
+| Haptics | capabilities/effects/waveforms/repeating/primitive timing/envelopes/frequency/actuator selection/parallel/cancel | scoped app playback lease, default/selected portable records, bounded waveform loops and Android16 arbitrary/preamble repeats, explicit pause/relative-start timing, public per-ID metadata/frequency queries, envelopes and parallel graphs, independent deadline/retry scheduling and foreground cleanup implemented | 90/API36 and69/API35 SDK/VM/service groups pass;76/52 independent actual service dumps plus two foreground probes per SDK verify repeat graphs/deadlines, relative-offset adaptation, exact metadata and stale ownership. Each SDK exposes one ID; two-actuator and physical/older/OEM/fault gates remain open |
 | Device status | battery/charging/electrical data, thermal state/headroom/events | implemented | battery/thermal status and subscriptions passed; thermal-change injection pending |
 | Biometrics | system authentication result only | SDK availability, owned system prompts and cancellation implemented | 51 enrolled/unenrolled SDK checks passed, including real fingerprint/PIN success, cancellation, expiry, late success and live revocation; physical/older-device checks pending |
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
@@ -4899,8 +4899,9 @@ primitive support/duration and physical timing. Both new pure helpers appear
 in the generated model API index; no RPC operation, grant, manifest permission,
 dependency, Python file/runtime or UI flow is added.
 
-The same frozen final installed debug APK passes **69 groups/49 independent
-service probes on Android16/API36** and **56 groups/36 probes on Android15/API35**:
+The same frozen final installed debug APK passes **69 groups/49 SDK/service/
+lifecycle probes on Android16/API36** and **56 groups/36 probes on Android15/API35**
+(47/34 actual service dumps plus two foreground-restoration checks per SDK):
 
 - Default and selected per-ID primitive metadata match independent public SDK
   getters, including the new API-version field. Both actual inventories contain
@@ -4955,3 +4956,99 @@ actuators and physical simultaneity/onset/force/frequency, older/OEM and actual
 SDK/Binder/cleanup faults. Prior HID/UWB strict failures and all other inventory
 gates retain their own artifacts/scopes; this batch does not complete the full
 hardware objective.
+
+## Bounded repeating effects and default record submission
+
+`haptic_submit(effect_record,duration_limit_ms)` now submits the same portable
+records to the default actuator, retaining the existing Haptics grant and an
+explicit common1..2000ms deadline. `requested` preserves the exact record and
+common limit. The selected/parallel record factory has moved into the common
+haptic adapter, so default and selected playback share every finite/repeating
+builder and its validation; existing direct APIs retain their behavior.
+
+Three inert portable helpers add public repeating controls:
+
+- `haptic_loop(timings,amplitudes,repeat_index)` uses the public Android8+
+  waveform repeat API. A once-only prefix precedes the suffix at the exact
+  requested index. Arrays must match, contain1..64 integer entries, have a
+  positive total<=2000ms and a positive-duration suffix; invalid indices and
+  zero-duration suffixes are rejected before playback.
+- `haptic_repeating(effect)` uses Android16's one-input repeating constructor.
+- `haptic_repeating_after(preamble,effect)` uses its two-input constructor,
+  playing the finite preamble once. Both arbitrary-repeat constructors accept
+  existing finite records, reject nested repeats/loops and return
+  `unsupported_operation` on older SDKs without a substitute.
+
+The SDK effect is infinite; the existing independent scheduler and actual SDK
+cancellation still bound ownership/playback after submission. No additional
+model tool, Collie grant, manifest permission, SDK dependency or Python file/
+runtime is added. The new registry operation and guest functions are Flexscript;
+Java supplies public SDK objects. `haptic_info` and selected metadata distinguish
+`waveform_loop_api` from `repeating_effect_api`, separate from physical support.
+The sole playback lease is retained through actual SDK cancellation, including
+close, revocation and existing foreground/workspace/program lifecycle rules.
+The public contracts are
+[VibrationEffect](https://developer.android.com/reference/android/os/VibrationEffect).
+
+The same frozen final installed repeat APK passes **90 groups on Android16/API36**
+and **69 on Android15/API35**. These totals include the prior complete haptic
+suite. The report's legacy `sdk_service_probes` field counts service/lifecycle
+requests:78/54 totals comprise **76/52 actual service dumps plus two foreground
+restoration requests on each SDK**, not78/54 distinct service dumps. The prior
+primitive-timing totals49/36 similarly include47/34 service dumps and two
+foreground requests; this clarifies their evidence scope without changing tests.
+
+- Exact default and selected metadata/API flags match independent SDK getters.
+  Both inventories contain only ID1. Eleven/six selected graph scenarios pass;
+  these include timing/repeat variants, not eleven/six distinct effect kinds.
+  Two-actuator and physical verification remain false.
+- Default finite-record submission and waveform loops match independently built
+  public SDK effects and exact VM requested-record/common-limit bytes. The
+  actual running service retains `repeat=1`, a once-only80ms prefix and the
+  requested120ms off/120ms on suffix; it remains running beyond its320ms finite
+  source pattern. Explicit close reaches actual service idle.
+- API36 one-shot repetition, once-only preamble followed by a repeated waveform,
+  and repeated primitive composition match independent public constructors.
+  Real current-service records retain infinite duration/repeat indices after
+ 450ms, longer than each finite source. Default samples are probes10/13/16/19;
+  selected loop/arbitrary/preamble graphs also reach the real service.
+- With the shared event Handler blocked, actual default and selected infinite
+  waveforms remain running beyond their finite source, then are cancelled by
+  the independent1400ms common deadline without further VM access. Independent
+  service-idle probes and actual cancellation/lease release pass.
+- A repeating owner excludes a foreign allowed workspace, rejects foreign close
+  and is actually cancelled on revocation. Stale repeat cleanup cannot stop a
+  later foreign repeat. Existing startup/queue/cancellation/retry, stale
+  default/selected ownership, hidden Activity and restoration checks still pass.
+- API35 waveform loops work in both playback paths; both arbitrary constructors
+  reject direct requests with exact `unsupported_operation`, and selected
+  requests retain that typed error before rendering. Invalid suffix/index,
+  mismatched arrays, malformed/nested repeats and invalid wall limits return
+  `invalid_argument` before lease/playback.
+- Native ARM64 QEMU27 core groups and four complete-reference groups pass,
+  including all128,529 API bytes and the16,431-byte index under31 denied grants,
+ 32KiB paging and EOF/invalid bounds. Portable repeat records pass native and
+  checked-interpreter exact-wire checks; shared registry/codec checks pass.
+
+Frozen artifacts under `build/android-haptic-repeat`:
+
+- Debug `check1-debug/collie.apk`:8,193,623 bytes, SHA256
+  `dfa4f5cb9e9365ad9581a343013a4704d586fbbdbc1fbeeeb271631c9de747cc`.
+- Non-debug `check1-release/collie.apk`:7,800,328 bytes, SHA256
+  `c51d01f2d2ae9c022bb96b931301a65109575c9276f8df2553b0c067a6cc29d8`.
+- All316 production Java classes and both native libraries/generated engine/UI
+  sources/objects match debug/non-debug. The UI native library is unchanged.
+  Packaging verifies the repeat oracle is present only in the debug build,
+  along with existing protected services/pinned dependencies.
+- Actual final reports/dumps are in `check1-debug/sdk36` and `sdk35`; independent
+  baseline/cleanup and infinite-current-service evidence is retained in
+  `verified36.json`, `verified35.json`, `baseline36.json`, `baseline35.json` and
+  `parity.json`.
+
+Original conversations/all31 Ask grants and Android15's pre-existing UWB
+workspace remain preserved; actual service idle and scoped fixture removal were
+independently verified. Both owned headless emulators exited. No phone deployment,
+master merge or desktop worktree edit is included. Physical onset/force/frequency,
+distinct real actuators, older/OEM/absent-provider and real SDK/Binder/cleanup
+faults remain open with the prior HID/UWB strict failures and every other
+inventory gate. This implements repeating controls, not the full hardware goal.

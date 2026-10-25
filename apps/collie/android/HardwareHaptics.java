@@ -22,7 +22,7 @@ final class HardwareHaptics {
     static boolean busy(){synchronized(LOCK){return owner!=null;}}
     static void hidden(){Haptic h;synchronized(LOCK){h=owner;}if(h!=null)h.close();}
     static Object info(VmHardware.Context c)throws Exception{return info(vibrator(c));}
-    static Object info(Vibrator v)throws Exception{return VmHardware.object("present",v!=null&&v.hasVibrator(),"amplitude_control",v!=null&&v.hasAmplitudeControl(),"predefined_api",Build.VERSION.SDK_INT>=29,"support_api",Build.VERSION.SDK_INT>=30,"primitive_duration_api",Build.VERSION.SDK_INT>=31,"individual_primitive_support_known",Build.VERSION.SDK_INT>=31,"foreground_required",true,"busy",busy(),"maximum_duration_ms",2000);}
+    static Object info(Vibrator v)throws Exception{return VmHardware.object("present",v!=null&&v.hasVibrator(),"amplitude_control",v!=null&&v.hasAmplitudeControl(),"predefined_api",Build.VERSION.SDK_INT>=29,"support_api",Build.VERSION.SDK_INT>=30,"primitive_duration_api",Build.VERSION.SDK_INT>=31,"individual_primitive_support_known",Build.VERSION.SDK_INT>=31,"foreground_required",true,"busy",busy(),"maximum_duration_ms",2000,"waveform_loop_api",true,"repeating_effect_api",Build.VERSION.SDK_INT>=36);}
     interface Playback {void play();void cancel();}
     static final class Prepared {
         final VibrationEffect effect;final JSONObject requested;final int duration;
@@ -73,13 +73,33 @@ final class HardwareHaptics {
         throw new VmHardware.Failure("unsupported_operation","Unknown haptic metadata operation.");
     }
     static Prepared prepare(Vibrator sdk,String op,JSONArray a)throws Exception{
+        if(op.equals("haptic_submit")){int limit=VmHardware.integer(a,1,1,2000);JSONArray record=a.getJSONArray(0);Prepared p=record(sdk,record,limit,false);return new Prepared(p.effect,VmHardware.object("type","effect","effect",record,"common_duration_limit_ms",limit),limit);}
         if(op.equals("haptic_envelope_basic")||op.equals("haptic_envelope_waveform"))return HardwareHapticEnvelope.prepare(sdk,op,a);
         if(op.equals("haptic_play")){int duration=VmHardware.integer(a,0,1,2000),amplitude=VmHardware.integer(a,1,-1,255);return new Prepared(VibrationEffect.createOneShot(duration,amplitude),VmHardware.object("type","one_shot","duration_ms",duration,"amplitude",amplitude),duration);}
-        if(op.equals("haptic_waveform")){JSONArray times=a.getJSONArray(0),amplitudes=a.getJSONArray(1);if(times.length()<1||times.length()>64||times.length()!=amplitudes.length())throw new VmHardware.Failure("invalid_argument","Use1..64 matching timing/amplitude values.");long[] timing=new long[times.length()];int[] values=new int[times.length()];int total=0;for(int i=0;i<timing.length;i++){timing[i]=VmHardware.integer(times,i,0,2000);values[i]=VmHardware.integer(amplitudes,i,-1,255);total+=timing[i];}if(total<1||total>2000)throw new VmHardware.Failure("invalid_argument","Waveforms must last1..2000ms.");return new Prepared(VibrationEffect.createWaveform(timing,values,-1),VmHardware.object("type","waveform","timings",times,"amplitudes",amplitudes),total);}
+        if(op.equals("haptic_waveform")){JSONArray times=a.getJSONArray(0),amplitudes=a.getJSONArray(1);VibrationEffect effect=waveform(times,amplitudes,-1);int total=0;for(int i=0;i<times.length();i++)total+=times.getInt(i);return new Prepared(effect,VmHardware.object("type","waveform","timings",times,"amplitudes",amplitudes),total);}
         int limit=VmHardware.integer(a,1,1,2000);
         if(op.equals("haptic_effect")){if(Build.VERSION.SDK_INT<29)throw new VmHardware.Failure("unsupported_operation","Predefined effects require Android10+.");int id=VmHardware.integer(a,0,0,5);if(id==3||id==4)throw new VmHardware.Failure("invalid_argument","Choose public effect0click/1double-click/2tick/5heavy-click.");return new Prepared(Api29.effect(id),VmHardware.object("type","predefined","effect",id),limit);}
         if(!op.equals("haptic_compose"))throw new VmHardware.Failure("unsupported_operation","Unknown haptic operation.");if(Build.VERSION.SDK_INT<30)throw new VmHardware.Failure("unsupported_operation","Primitive composition requires Android11+.");
         JSONArray steps=a.getJSONArray(0);if(steps.length()<1||steps.length()>32)throw new VmHardware.Failure("invalid_argument","Composition requires1..32 primitives.");return new Prepared(Api30.compose(sdk,steps),VmHardware.object("type","composition","steps",steps),limit);
+    }
+    static VibrationEffect waveform(JSONArray times,JSONArray amplitudes,int repeat)throws Exception{
+        if(times.length()<1||times.length()>64||times.length()!=amplitudes.length()||repeat< -1||repeat>=times.length())throw new VmHardware.Failure("invalid_argument","Use1..64 matching timing/amplitude values and an in-range repeat index.");
+        long[] timing=new long[times.length()];int[] values=new int[times.length()];int total=0,cycle=0;
+        for(int i=0;i<timing.length;i++){timing[i]=VmHardware.integer(times,i,0,2000);values[i]=VmHardware.integer(amplitudes,i,-1,255);total+=timing[i];if(i>=repeat)cycle+=timing[i];}
+        if(total<1||total>2000||cycle<1)throw new VmHardware.Failure("invalid_argument","Waveforms and any repeating suffix require positive duration within a2000ms source pattern.");return VibrationEffect.createWaveform(timing,values,repeat);
+    }
+    static Prepared record(Vibrator sdk,JSONArray record,int limit,boolean finite)throws Exception{
+        String type=record.getString(0),op;int fields;boolean wall;
+        if(type.equals("waveform_loop")||type.equals("repeating")||type.equals("repeating_after")){
+            if(finite)throw new VmHardware.Failure("invalid_argument","A repeating effect requires finite inputs; nested repeats are not accepted.");
+            fields=type.equals("waveform_loop")?4:type.equals("repeating")?2:3;if(record.length()!=fields)throw new VmHardware.Failure("invalid_argument","Repeating effect record has the wrong number of fields.");
+            VibrationEffect effect;
+            if(type.equals("waveform_loop")){JSONArray times=record.getJSONArray(1);int repeat=VmHardware.integer(record,3,0,63);effect=waveform(times,record.getJSONArray(2),repeat);}
+            else{Prepared first=record(sdk,record.getJSONArray(1),limit,true),second=fields==3?record(sdk,record.getJSONArray(2),limit,true):null;if(Build.VERSION.SDK_INT<36)throw new VmHardware.Failure("unsupported_operation","Repeating arbitrary effects require Android16+; no waveform substitute is played.");effect=second==null?Api36.repeat(first.effect):Api36.repeat(first.effect,second.effect);}
+            return new Prepared(effect,VmHardware.object("type",type,"record",record),limit);
+        }
+        switch(type){case "one_shot":op="haptic_play";fields=3;wall=false;break;case "waveform":op="haptic_waveform";fields=3;wall=false;break;case "predefined":op="haptic_effect";fields=2;wall=true;break;case "composition":op="haptic_compose";fields=2;wall=true;break;case "basic_envelope":op="haptic_envelope_basic";fields=3;wall=true;break;case "waveform_envelope":op="haptic_envelope_waveform";fields=3;wall=true;break;default:throw new VmHardware.Failure("invalid_argument","Unknown haptic effect record; use the portable haptic factories.");}
+        if(record.length()!=fields)throw new VmHardware.Failure("invalid_argument","Haptic effect record has the wrong number of fields.");JSONArray args=new JSONArray();for(int i=1;i<fields;i++)args.put(record.get(i));if(wall)args.put(limit);return prepare(sdk,op,args);
     }
     static final class Api29 {static VibrationEffect effect(int id){return VibrationEffect.createPredefined(id);}}
     static final class Api30 {
@@ -98,5 +118,9 @@ final class HardwareHaptics {
         }
     }
     static final class Api31 {static int[] durations(Vibrator v){return v.getPrimitiveDurations(PRIMITIVES);}}
-    static final class Api36 {static void add(VibrationEffect.Composition effect,int id,float scale,int delay,int type){effect.addPrimitive(id,scale,delay,type);}}
+    static final class Api36 {
+        static void add(VibrationEffect.Composition effect,int id,float scale,int delay,int type){effect.addPrimitive(id,scale,delay,type);}
+        static VibrationEffect repeat(VibrationEffect effect){return VibrationEffect.createRepeatingEffect(effect);}
+        static VibrationEffect repeat(VibrationEffect preamble,VibrationEffect effect){return VibrationEffect.createRepeatingEffect(preamble,effect);}
+    }
 }

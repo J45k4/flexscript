@@ -38,6 +38,7 @@ fn hw_operations(){
     hw_operation(rows,"haptic_info","haptics",0,0);
     hw_operation(rows,"haptic_play","haptics",2,2);
     hw_operation(rows,"haptic_waveform","haptics",2,2);
+    hw_operation(rows,"haptic_submit","haptics",2,2);
     hw_operation(rows,"haptic_effects","haptics",0,0);
     hw_operation(rows,"haptic_primitives","haptics",0,0);
     hw_operation(rows,"haptic_effect","haptics",2,2);
