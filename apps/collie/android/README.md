@@ -13,6 +13,12 @@ external compiler executable, Python runtime, Gradle dependency or NDK sysroot.
 Requirements: a current native Flexscript compiler, Clang/LLD, JDK 17, Android
 SDK platform 36 and Build Tools 36.1.0. The compiler must include ARM64 indirect
 integer calls from this change; rebuild it from `compiler/main.flex` first.
+Full APK builds also use the public Android NDK headers and `libandroid` link
+interface for a small HardwareBuffer CPU-read bridge. Install SDK package
+`ndk;27.3.13750724`, set `ANDROID_NDK_HOME`, or pass `--ndk /path/to/ndk`.
+The existing compiler/VM and `--native-only` QEMU builds remain freestanding
+and require no NDK. The APK uses Android's system `libandroid.so`; it does not
+bundle the NDK or an extra runtime.
 
 From the repository root:
 

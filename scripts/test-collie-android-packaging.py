@@ -20,9 +20,12 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
   dex=b''.join(apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex',name))
-  for name in ['MidiLoopbackFixture','HardwareSensorChecks','HardwareHapticChecks','HardwareHapticRepeatChecks','HardwareHapticEnvelopeChecks','HardwareHapticDeviceChecks','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareUwbGmsChecks','HardwareDocumentChecks','HardwareDocumentProviderChecks','HardwareCameraChecks','HardwareCameraRawChecks','HardwareCameraVideoProfileChecks','HardwareHceChecks','HardwareCardServiceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
+  for name in ['MidiLoopbackFixture','HardwareSensorChecks','HardwareSensorDirectChecks','HardwareHapticChecks','HardwareHapticRepeatChecks','HardwareHapticEnvelopeChecks','HardwareHapticDeviceChecks','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareUwbGmsChecks','HardwareDocumentChecks','HardwareDocumentProviderChecks','HardwareCameraChecks','HardwareCameraRawChecks','HardwareCameraVideoProfileChecks','HardwareHceChecks','HardwareCardServiceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
   assert b'Lorg/flexscript/collie/HardwareUwbGms;' in dex,(label,'GMS UWB adapter present')
+  assert 'lib/arm64-v8a/libcollie_hardware.so' in apk.namelist(),(label,'public sensor HardwareBuffer bridge')
+  assert ('lib/arm64-v8a/libcollie_sensor_fixture.so' in apk.namelist())==debug,(label,'native memory writer stays debug-only')
+  assert b'Lorg/flexscript/collie/HardwareSensorDirect;' in dex,(label,'production direct sensor adapter')
   lock=json.loads(apk.read('assets/collie-android-dependencies.json'))
   assert lock==json.loads((Path(__file__).resolve().parents[1]/'apps/collie/android/dependencies.json').read_text()),(label,'exact pinned SDK dependency manifest')
   assert all(row.get('licenses') for row in lock['artifacts']),(label,'SDK license declarations packaged')
@@ -48,7 +51,7 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert 'android.permission.BIND_VPN_SERVICE' in vpn,(label,'VPN binding permission')
  assert re.search(r'foregroundServiceType[^=]*=0x0*400\b',vpn),(label,'VPN foreground type')
  assert 'android.net.VpnService.SUPPORTS_ALWAYS_ON' in vpn and re.search(r':value[^=]*=false',vpn),(label,'always-on opt-out')
- for permission in ['android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED','android.permission.USE_BIOMETRIC','android.permission.RANGING','android.permission.UWB_RANGING','android.permission.CAMERA']:assert '"'+permission+'"' in manifest,(label,permission)
+ for permission in ['android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED','android.permission.USE_BIOMETRIC','android.permission.HIGH_SAMPLING_RATE_SENSORS','android.permission.RANGING','android.permission.UWB_RANGING','android.permission.CAMERA']:assert '"'+permission+'"' in manifest,(label,permission)
  uwb=next(feature for feature in sections(manifest,'uses-feature') if '"android.hardware.uwb"' in feature);assert re.search(r':required[^=]*=false',uwb),(label,'UWB remains optional')
  for feature_name in ['android.hardware.camera','android.hardware.camera.any','android.hardware.camera.autofocus']:
   feature=next(feature for feature in sections(manifest,'uses-feature') if '"'+feature_name+'"' in feature);assert re.search(r':required[^=]*=false',feature),(label,feature_name,'camera remains optional')

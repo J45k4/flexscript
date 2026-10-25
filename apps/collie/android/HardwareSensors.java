@@ -17,7 +17,7 @@ final class HardwareSensors {
     private static ScheduledThreadPoolExecutor timers(){ScheduledThreadPoolExecutor pool=new ScheduledThreadPoolExecutor(1,task->{Thread t=new Thread(task,"collie-sensor-deadline");t.setDaemon(true);return t;});pool.setRemoveOnCancelPolicy(true);pool.setKeepAliveTime(30,TimeUnit.SECONDS);pool.allowCoreThreadTimeOut(true);return pool;}
     static synchronized Handler events(){if(thread==null){thread=new HandlerThread("collie-hardware-events");thread.setDaemon(true);thread.start();handler=new Handler(thread.getLooper());}return handler;}
     static SensorManager manager(VmHardware.Context c){return (SensorManager)c.host.getApplicationContext().getSystemService(Context.SENSOR_SERVICE);}
-    static boolean supports(String op){switch(op){case "sensor_list":case "sensor_info":case "sensor_open":case "sensor_batch_open":case "sensor_configure":case "sensor_flush":case "sensor_watch":return true;default:return false;}}
+    static boolean supports(String op){switch(op){case "sensor_list":case "sensor_info":case "sensor_open":case "sensor_batch_open":case "sensor_configure":case "sensor_flush":case "sensor_watch":return true;default:return HardwareSensorDirect.supports(op);}}
     static String id(Sensor s){return "sensor-"+s.getId()+"-"+s.getType()+"-"+Integer.toHexString((s.getName()+s.getVendor()).hashCode());}
     static java.util.List<Sensor> sensors(VmHardware.Context c){
         SensorManager manager=manager(c);TreeMap<String,Sensor> values=new TreeMap<>();for(Sensor sensor:manager.getSensorList(Sensor.TYPE_ALL))values.put(id(sensor),sensor);
@@ -95,6 +95,7 @@ final class HardwareSensors {
     }
     private static JSONObject error(Exception e){try{return VmHardware.object("event","error","message",MainActivity.safe(e));}catch(Exception impossible){return new JSONObject();}}
     static Object call(VmHardware.Context c,String op,JSONArray args)throws Exception{
+        if(HardwareSensorDirect.supports(op))return HardwareSensorDirect.call(c,op,args);
         if(op.equals("sensor_list")){
             if(args.length()!=0 && args.length()!=2)throw new VmHardware.Failure("invalid_argument","Use no sensor-list arguments or an offset and page limit.");
             int offset=args.length()==0?0:VmHardware.integer(args,0,0,100000),limit=args.length()==0?16:VmHardware.integer(args,1,1,32);java.util.List<Sensor> list=sensors(c);JSONArray out=new JSONArray();int end=Math.min(list.size(),offset+limit);for(int i=offset;i<end;i++)out.put(info(list.get(i)));return VmHardware.object("sensors",out,"next",end<list.size()?end:-1,"total",list.size());

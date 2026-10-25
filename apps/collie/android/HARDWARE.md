@@ -5347,3 +5347,118 @@ failure. The full hardware objective remains incomplete.
 Primary contracts: [SDK sensor batching/flush/dynamic callbacks](https://developer.android.com/reference/android/hardware/SensorManager),
 [additional-info callbacks](https://developer.android.com/reference/android/hardware/SensorEventCallback),
 [SDK listener registration behavior](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/SystemSensorManager.java).
+
+### 2026-10-25: direct-sensor shared-memory bindings and portable ABI codec
+
+`sensor_direct_open` now uses the actual public `SensorManager` channel API
+with either `MemoryFile` or `HardwareBuffer` backing. Five registered operations
+cover owned allocation, configuration, stop-all, producer close with retained
+capture memory, and bounded raw record pages. Allocation remains behind lazy
+Sensors consent. Subsequent calls inherit the owned handle; activity/health
+permissions are checked for retained token mappings, including frozen captures.
+The normal `HIGH_SAMPLING_RATE_SENSORS` manifest permission enables requesting
+public direct rates above NORMAL on Android12+, subject to actual hardware,
+privacy/background policy and SDK results. It adds no Collie grant or runtime
+permission dialog. Requested rates are not measured delivery cadence.
+
+Captures have1..4096 slots of104 bytes; pages contain1..315 slots, at most32760
+bytes. Eight app-wide leases include active, starting and pending-cleanup
+captures. SDK/copy operations run without holding the handle monitor across
+blocking Android calls. Cancellation marks a handle closed; backing cleanup
+waits for an in-flight operation, closes the producer first, and retains the
+lease on cleanup failure. A later open retries pending cleanup. No failed
+configuration is replayed. Stop/freeze preserve bounded token-to-sensor/type
+history; frozen memory remains readable under its original grant but cannot
+restart. Dynamic sensor removal closes a matching active report. Live copies
+are explicitly raw candidates, not promised coherent atomic snapshots;
+counter equality and successful parsing do not prove a record was untorn.
+Freeze requires the actual public channel close to return before capture reads;
+it does not invent a stronger hardware memory-ordering contract.
+
+The platform CPU-read bridge is **4016 bytes** and links only Android's system
+`libandroid.so`. Full APK builds now require public NDK headers/link interfaces
+(`--ndk`, `ANDROID_NDK_HOME`, or SDK `ndk;27.3.13750724`). The freestanding
+compiler/VM, static ARM64 QEMU host and native-only CI require no NDK. No NDK or
+new language runtime is bundled. The JNI method accepts a Java HardwareBuffer,
+validates BLOB dimensions/copy bounds, locks/copies/unlocks with public APIs,
+and returns a bounded byte array; no native address is exposed to the VM.
+
+The preloaded **portable Flexscript** codec validates the104-byte little-endian
+record ABI and preserves physical slots, null uninitialized slots, unsigned
+counters and opaque64-byte unions. Explicit float and integer union accessors
+retain exact bits, including float subnormal/NaN payloads and signed zero.
+Counter distance skips zero and does not infer full wrap cycles. Native,
+interpreter and JIT tests cover independent wire vectors, malformed headers,
+binary payloads, floating edges and the315-record bound. The actual Android VM
+also runs the helpers on a clearly constructed ABI fixture.
+
+Final evidence is under `build/android-sensor-direct`:
+
+- **Same final APK on both SDKs:** `check4-debug/collie.apk`,8,304,383 bytes,
+  SHA256 `fac1644fece867e58d0507b564559d9858edf077a342a93f0034db7b75beb765`.
+  Android15/API35 and Android16/API36 each pass28 sensor integration groups,
+  including all prior batching/flush/additional-info groups, six independent
+  actual SensorService probes, and24 separately reported direct-channel checks.
+  Reports in `check4-debug/sdk35` and `sdk36` bind the installed APK/guest hashes
+  to the results. The first ordinary VM allocation now checkpoints at
+  `sensor_direct_open` for the actual Sensors Ask/Allow UI; both allocation
+  paths are blocked after real UI-thread Sensors denial.
+- Both SDKs successfully allocate the actual production `MemoryFile` and
+  sensor-usage `HardwareBuffer` backings, agreeing with separate public SDK
+  allocations. MemoryFile nonzero binary canaries survive a maximum page.
+  A separate debug-only native writer fills a generic CPU BLOB, and every
+  canary byte survives the production JNI copy. This constructed memory is
+  **not HAL sensor data**. Native negative/out-of-bounds/oversized/image-format
+  copies reject; actual production sensor BLOBs also lock/read at maximum size.
+- **Neither emulator advertises any direct-report sensor.** Independent SDK
+  channel creation fails with `UncheckedIOException`/native result-12 for both
+  backing types on both SDKs; normal VM allocation returns the same real
+  refusal. All failed-open resources finish cleanup. Reports explicitly retain
+  `independent_sdk_channel_created=false`, `sdk_direct_reporting_verified=false`,
+  `vm_direct_reporting_verified=false`, and physical proof flags false. Real
+  successful channel/configure/stop/freeze/report lifecycle is **unverified**,
+  not counted as passed through the unsupported branch. The device suite
+  requires real channel/report success whenever a sensor advertises support.
+- Non-debug `check2-release/collie.apk` is7,845,465 bytes, SHA256
+  `df04aa33c1829824c4e222026d17f80f1261c13a8745e6f09a9e7d24286d2168`.
+  `parity4.json` verifies327 identical non-resource production Java classes and
+  identical debug/non-debug engine/UI/generated/native files, including the
+  platform bridge. The fixture Java class and native writer are debug-only;
+  actual APK packaging/manifest checks verify their non-debug absence and the
+  higher-rate permission. ELF/APK libraries retain16KiB alignment. This is a
+  non-debug development-signed build, not a store release.
+- Final ARM64 QEMU native27/core9 and complete-reference4 checks pass. The
+  detailed API is138,315 bytes; its16,906-byte compact index and every detailed
+  byte survive the actual VM with all31 grants denied. Shared codec/registry
+  tests and native sensor-driver parser checks pass. CI runs the new portable
+  ABI regression natively, interpreted and with JIT. Existing host build/test
+  Python files are extended; **no new Python file** is added.
+- `verified35.json`/`verified36.json` independently verify the exact installed
+  APK, original selected conversation/messages/all31 permissions, original
+  workspace sets, original acceleration console readbacks, no owned event
+  subscription and zero actual SDK direct connections. Results are saved and
+  both owned headless emulators stopped; no phone or desktop worktree is used.
+
+Intermediate artifacts remain separate: `build1.log` exposed a missing C
+standard header, fixed before a successful build. `check2-debug/sdk35` rejected
+the original unnecessary `GPU_DATA_BUFFER` allocation flag in the actual
+emulator allocator. Source inspection confirms it is not required by the
+public sensor-channel contract; minimal CPU_READ/SENSOR_DIRECT_DATA allocation
+then succeeds. `check3-debug/sdk35` reached a test-only permission-helper
+signature error, corrected before the final checks. A direct invocation of the
+shared JSON host without its request input is a failed harness invocation;
+the final `core4.log` runs the actual nine-scenario driver. None of these
+intermediate outcomes contributes to final pass counts.
+
+Still open: actual successful direct channels and live ring delivery, real
+multi-sensor tokens/rates/reconfiguration, wrap under a producer, physical
+timing/accuracy, privacy/runtime permission changes during reporting, dynamic
+removal, blocked SDK/Binder/cleanup faults and older/OEM behavior. Physical
+FIFO/power/cadence, trigger/activity/health paths and all prior family gates,
+including the strict HID/UWB failures, remain open. The complete hardware goal
+is **not finished**.
+
+Primary contracts: [direct record ABI and channel lifetime](https://developer.android.com/reference/android/hardware/SensorDirectChannel),
+[public CPU buffer lock/copy semantics](https://developer.android.com/ndk/reference/group/a-hardware-buffer),
+[sensor rate/privacy restrictions](https://developer.android.com/develop/sensors-and-location/sensors/sensors_overview),
+[SDK backing requirements and public dispatch](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/SystemSensorManager.java).

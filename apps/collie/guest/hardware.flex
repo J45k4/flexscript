@@ -35,6 +35,11 @@ fn sensor_batch_open(id,period_us,max_report_latency_us){let r=db_request("senso
 fn sensor_configure(handle,period_us,max_report_latency_us){let r=db_request("sensor_configure");db_add(r,db_text(handle));db_add(r,db_int(period_us));db_add(r,db_int(max_report_latency_us));return db_rpc(r);}
 fn sensor_flush(handle,timeout_ms){let r=db_request("sensor_flush");db_add(r,db_text(handle));db_add(r,db_int(timeout_ms));return db_rpc(r);}
 fn sensor_watch(){return db_rpc(db_request("sensor_watch"));}
+fn sensor_direct_open(memory_type,slots){let r=db_request("sensor_direct_open");db_add(r,db_text(memory_type));db_add(r,db_int(slots));return db_rpc(r);}
+fn sensor_direct_configure(handle,sensor,rate){let r=db_request("sensor_direct_configure");db_add(r,db_text(handle));db_add(r,db_text(sensor));db_add(r,db_int(rate));return db_rpc(r);}
+fn sensor_direct_stop(handle){let r=db_request("sensor_direct_stop");db_add(r,db_text(handle));return db_rpc(r);}
+fn sensor_direct_freeze(handle){let r=db_request("sensor_direct_freeze");db_add(r,db_text(handle));return db_rpc(r);}
+fn sensor_direct_read(handle,offset,count){let r=db_request("sensor_direct_read");db_add(r,db_text(handle));db_add(r,db_int(offset));db_add(r,db_int(count));return db_rpc(r);}
 fn battery_info(){return db_rpc(db_request("battery_info"));}
 fn battery_watch(){return db_rpc(db_request("battery_watch"));}
 fn thermal_info(forecast_seconds){let r=db_request("thermal_info");db_add(r,db_int(forecast_seconds));return db_rpc(r);}

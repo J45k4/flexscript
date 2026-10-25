@@ -134,6 +134,7 @@ def generate(out, compiler):
     guest = (HERE / 'guest-files.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/workers.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/memory.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/hardware.flex').read_text()
     guest += '\n' + (ROOT/'apps/collie/guest/usb-serial.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/nfc.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/uwb.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/camera.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/haptics.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/accessibility.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/ble.flex').read_text()
     guest += '\n' + (ROOT/'apps/collie/guest/hardware-access.flex').read_text()
+    guest += '\n' + (ROOT/'apps/collie/guest/sensor-direct.flex').read_text()
     embedded = 'fn ca_guest_extra(){return '+json.dumps(guest, ensure_ascii=False)+';}\n'
     embedded += 'fn ca_card_guest(){return '+json.dumps((ROOT/'apps/collie/guest/card-handler.flex').read_text(),ensure_ascii=False)+';}\n'
     signatures=re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/hardware.flex').read_text(),re.M)
@@ -145,6 +146,7 @@ def generate(out, compiler):
     signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/haptics.flex').read_text(),re.M)
     signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/accessibility.flex').read_text(),re.M)
     signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/ble.flex').read_text(),re.M)
+    signatures += [(name,params) for name,params in re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/sensor-direct.flex').read_text(),re.M) if name.startswith('sensor_direct_')]
     signatures += [('hardware_restrictions','')]
     api="Android hardware API. All results are typed db values; device_field finds a map field.\n"+"\n".join(name+"("+params+")" for name,params in signatures)
     api += (ROOT/'apps/collie/guest/hardware-api.txt').read_text()
@@ -182,6 +184,7 @@ def main():
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--out', type=Path, default=ROOT/'build/collie-android')
     parser.add_argument('--sdk', type=Path, default=Path(os.environ.get('ANDROID_HOME','/opt/android-sdk')))
+    parser.add_argument('--ndk', type=Path, help='Android NDK root; defaults to ANDROID_NDK_HOME or SDK ndk/27.3.13750724')
     parser.add_argument('--java-home', type=Path)
     parser.add_argument('--native-only', action='store_true')
     parser.add_argument('--debug', action='store_true', help='Enable private ADB testing; development only')
@@ -217,6 +220,21 @@ def main():
         print(out/'native-test')
         return
     sdk = args.sdk.resolve()
+    ndk = (args.ndk or Path(os.environ.get('ANDROID_NDK_HOME',str(sdk/'ndk/27.3.13750724')))).resolve()
+    sysroot = ndk/'toolchains/llvm/prebuilt/linux-x86_64/sysroot'
+    if not (sysroot/'usr/include/android/hardware_buffer_jni.h').is_file():
+        raise SystemExit('Public HardwareBuffer JNI requires an Android NDK. Pass --ndk PATH or set ANDROID_NDK_HOME (SDK package ndk;27.3.13750724). Native-only builds need no NDK.')
+    run([*flags,'--sysroot='+str(sysroot),'-c',HERE/'hardware-buffer.c','-o',out/'hardware-buffer.o'])
+    run(['ld.lld','-shared','-z','defs','-z','relro','-z','now','-z','noexecstack',
+         '-z','max-page-size=16384','--hash-style=both','-soname','libcollie_hardware.so',
+         out/'hardware-buffer.o','-L'+str(sysroot/'usr/lib/aarch64-linux-android/26'),'-landroid',
+         '-o',out/'libcollie_hardware.so'])
+    if args.debug:
+        run([*flags,'--sysroot='+str(sysroot),'-c',ROOT/'apps/collie/tests/android/sensor-direct-fixture.c','-o',out/'sensor-direct-fixture.o'])
+        run(['ld.lld','-shared','-z','defs','-z','relro','-z','now','-z','noexecstack',
+             '-z','max-page-size=16384','--hash-style=both','-soname','libcollie_sensor_fixture.so',
+             out/'sensor-direct-fixture.o','-L'+str(sysroot/'usr/lib/aarch64-linux-android/26'),'-landroid',
+             '-o',out/'libcollie_sensor_fixture.so'])
     tools = sdk/'build-tools/36.1.0'
     android = sdk/'platforms/android-36/android.jar'
     assert android.is_file(), android
@@ -267,6 +285,8 @@ def main():
             apk.writestr(name,data,compress_type=zipfile.ZIP_DEFLATED)
         apk.write(out/'libcollie.so','lib/arm64-v8a/libcollie.so')
         apk.write(out/'libcollie_ui.so','lib/arm64-v8a/libcollie_ui.so')
+        apk.write(out/'libcollie_hardware.so','lib/arm64-v8a/libcollie_hardware.so')
+        if args.debug:apk.write(out/'libcollie_sensor_fixture.so','lib/arm64-v8a/libcollie_sensor_fixture.so')
     run([tools/'zipalign','-f','-P','16','4',out/'unsigned.apk',out/'aligned.apk'])
     key = out/'development.keystore'
     if not key.exists():
