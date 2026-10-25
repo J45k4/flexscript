@@ -1285,7 +1285,8 @@ Classic Bluetooth checks. These are separate from the17 partial HID assertions
 and do not turn the failing strict HID gate into a pass.
 
 **Remaining HID gates:** public virtual-cable callback, additional control and
-lifecycle faults, targeted permission revocation and radio/service loss,
+lifecycle faults, the examined API35 Android-initiated radio reconnect and
+service-loss/revocation races,
 custom QoS, ID0/no-report-ID descriptors, keyboard/mouse OS integration,
 older-SDK compatibility and physical hosts. This batch does not complete the
 HID family or the full hardware inventory.
@@ -1428,6 +1429,126 @@ The native-library ordering diagnosis above remains specific to the examined
 API36 module and is not inferred for this API35 build.
 Android9..14/OEM/physical behavior,
 targeted permission/radio/service faults and the other HID gates remain open.
+
+### HID radio, grant and process lifecycle
+
+`apps/collie/tests/hid-lifecycle.flex` executes request ownership, stale-token,
+radio-state, permission and fresh-report assertions in the actual VM. The
+existing host fixture supplies real packets, Android radio/permission commands
+and taps on Collie's shared Permissions UI. No new model tool, permission,
+dependency or Python file is added. The guest policy compiles natively in CI;
+that compilation does not simulate an Android hardware result.
+
+The private debug Activity result file previously became visible before
+`begin()` finished saving the conversation and clearing `busy`; the next ADB
+test intent could therefore be ignored. Result publication now queues on the
+same single-thread executor after that cleanup. The entry remains guarded by
+the actual debuggable flag and app-private test directory. An attempted UI-idle
+poll was rejected because a real pairing dialog can legitimately cover the
+composer. Earlier partial/failed runs remain separate from final evidence.
+
+The final debug APK is8,177,239 bytes, SHA256
+`497b0bad9d83458d695125eeea2ace16fc587d041cb8768ade159530377ef905`.
+Its existing development certificate was reused to upgrade the owned emulator
+without deleting app data. The non-debug APK is7,783,944 bytes, SHA256
+`067dc8d72653515988dd9137246a6ab4be2ba282ef091479ee1c689fd03ab4bb`.
+Packaging checks pass; all315 production Java class files match between these
+debug/non-debug builds. Both native libraries and generated engine/UI sources
+and objects are byte-identical to the actuator checkpoint. MainActivity's
+debug result handoff is the only production Java source change in this batch.
+
+On those exact installed debug bytes, **14 groups pass on Android15/API35**
+with `--scenario lifecycle --host-reconnect`:
+
+- An actual pending GET_REPORT is held through public Android STATE_OFF. The
+  VM receives `bluetooth_disabled`, clears peers/requests, confirms teardown,
+  rejects its late response and rejects a new radio-off registration. After
+  real STATE_ON, the paired host establishes genuine authenticated/encrypted
+  ACL and HID control/interrupt channels to a fresh registration.
+- Tapping **Deny Bluetooth devices** in Collie's real Permissions page changes
+  the saved conversation grant, closes the pending request's SDK transport and
+  invalidates its handle. A new registration fails `permission_denied` before
+  SDK access. The same UI explicitly allows access again before continuing.
+- Actual Android CONNECT revocation replaces the owning app process and closes
+  its pending transport. A new VM can read the durable token, but the old SDK
+  handle is stale and capability metadata reports the missing runtime grant.
+  After explicit regrant, a fresh registration rejects old tokens and returns
+  exactly its own `safe` report bytes to the independent host.
+- Four actual connections open eight channels. Every channel's actual OPEN
+  state/encryption is checked, actual close events are observed and every
+  opened channel is confirmed CLOSED at the end. Closure timestamps measured
+  from the host's fault markers are347ms for radio-off,137ms for Collie Deny
+  and60ms for Android revocation. These are emulator observations, not physical
+  timing bounds. All three failed transactions return no report-data response.
+- Actual Activity onStop/reopen and denied SCAN/ADVERTISE/Location checks pass.
+  The original conversation/all31 Ask grants, exact Android permission flags,
+  enabled-radio baseline, pairing removal and original/UWB workspaces were
+  independently verified restored before the owned emulator exited.
+
+**Direction matters:** the explicit host mode registers a fresh Android
+endpoint and lets the paired host initiate real secured ACL/L2CAP connections;
+it does not issue a competing Android `hid_connect` for those reconnects.
+The initial connection still uses the actual Android call. This positively
+verifies incoming host recovery without upgrading Android-initiated recovery.
+
+The default lifecycle scenario retains that separate gate. On the same final
+APK, Android15 accepts a post-radio-on registration/connect command and creates
+a second ACL link, but no HID channels follow; the lifecycle test exits1 with
+`ok=false` after four partial groups. Earlier non-secret HCI metadata shows
+that passive link remains unencrypted. A separately labelled earlier host
+mode successfully requested real authentication/encryption yet still did not
+obtain Android-initiated HID channels. That earlier attempt belongs to the
+preceding APK. The underlying reconnect cause is unproven; no controller image,
+Android callback or successful report was fabricated to replace it.
+
+The final APK also retains **13 passing control groups** and the original
+**17 partial strict report groups** on API35. The strict report test still
+exits1 solely for the missing public unplug callback. These outcomes are
+separate from the14 passing host-mode lifecycle groups. Native ARM64 QEMU
+execution passes27 groups; four full-reference groups verify all124,602 API
+bytes and the16,184-byte index with31 grants denied, including32KiB pages.
+
+Final evidence is in `build/android-hid-lifecycle/final35`, `controls35`,
+`strict35`, `negative35`, `final-cleanup35.json`, `parity.json` and
+`check9-debug`/`check9-release`. Initial diagnostics, channel-observer fixes,
+failed handoff/UI-idle attempts and baseline recovery records remain under
+their own check directories and are not counted as complete suite passes.
+
+On the **same final APK**, the owned Android16/API36 image additionally passes
+the full **14-group Android-initiated lifecycle scenario with a passive peer**.
+`peer_initiates_reconnect=false` and
+`android_initiated_after_radio_verified=true`; all four actual ACL links are
+encrypted and all eight HID channels are confirmed closed. Measured radio-off,
+Collie Deny and Android-revocation closures are387/80/34ms. This is a positive
+outgoing-recovery result for the examined API36 image; it does not close the
+negative API35 image/peer gate or establish its underlying cause.
+
+API36 also passes the separate **14-group host-initiated scenario** with
+423/125/63ms measured closures, plus all13 original control groups. Its strict
+report suite retains17 partial groups and exits1 solely for the missing public
+unplug callback. Every run checks the installed APK hash before and after.
+Those reports are in `passive36`, `final36-host`, `controls36` and `strict36`
+under the same evidence directory. Native/library parity and packaging scope
+above are unchanged. Emulator/provider observations are not physical-radio,
+keyboard/mouse OS integration or older/OEM proof.
+An independent final API36 audit confirms original messages/all31 Ask grants,
+exact Android permission flags, the original workspace alone, enabled radio,
+pairing removal and stopped test processes. Both owned emulator sessions then
+exited; no phone deployment or desktop worktree change is included.
+
+```sh
+# Positive, explicitly host-initiated secured recovery.
+python3 scripts/test-collie-hid-android.py --out build/android-hid-lifecycle \
+  --serial emulator-5584 --netsim-port PORT --scenario lifecycle --host-reconnect
+# Separate strict Android-initiated reconnect; currently exits1 on this API35 fixture.
+python3 scripts/test-collie-hid-android.py --out build/android-hid-passive \
+  --serial emulator-5584 --netsim-port PORT --scenario lifecycle
+```
+
+Public unplug, the examined API35 Android-initiated post-radio reconnect, actual Bluetooth service
+crash/Binder/blocked-SDK/cleanup faults, additional revocation races, custom
+QoS, no-report-ID descriptors, OS keyboard/mouse integration, older/OEM and
+physical behavior remain open. The full hardware objective is unfinished.
 
 Primary contracts: [HID device API](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.html),
 [callbacks](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.Callback),

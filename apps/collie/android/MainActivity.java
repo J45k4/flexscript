@@ -1103,13 +1103,20 @@ public class MainActivity extends Activity {
                 }
                 showError(safe(e));
             } finally {
-                try {
-                    File dir = new File(getFilesDir(), "test");
-                    dir.mkdirs();
-                    atomic(new File(dir, name + ".result.json"), report.toString());
-                } catch (Exception e) {
-                    showError("Cannot save test result.");
-                }
+                // A result hands control back to the external debug driver.
+                // Publish on this single-thread executor after begin() finishes
+                // saving the conversation and clears busy; otherwise the next
+                // test intent can arrive during that cleanup and be ignored.
+                String resultText=report.toString();
+                worker.execute(() -> {
+                    try {
+                        File dir = new File(getFilesDir(), "test");
+                        dir.mkdirs();
+                        atomic(new File(dir, name + ".result.json"), resultText);
+                    } catch (Exception e) {
+                        showError("Cannot save test result.");
+                    }
+                });
             }
         });
     }

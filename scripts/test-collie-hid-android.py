@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """Real Android HID device SDK and VM I/O against a controlled localhost host."""
-import argparse,fcntl,json,os,re,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,fcntl,json,os,re,subprocess,sys,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
 from collie_android_test_artifact import verify_installed_apk
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--netsim-port',type=int,required=True);p.add_argument('--peer-python',type=Path,default=Path('build/bluetooth-fixture-env/bin/python'));p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');p.add_argument('--scenario',choices=['reports','controls'],default='reports');a=p.parse_args();assert re.fullmatch(r'emulator-[0-9]+',a.serial) and 1<=a.netsim_port<=65535
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--netsim-port',type=int,required=True);p.add_argument('--peer-python',type=Path,default=Path('build/bluetooth-fixture-env/bin/python'));p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');p.add_argument('--scenario',choices=['reports','controls','lifecycle'],default='reports');p.add_argument('--secure-reconnect',action='store_true',help='Controlled peer requests actual HCI authentication/encryption on new bonded ACL links; passive reconnect remains a separate gate');p.add_argument('--host-reconnect',action='store_true',help='Controlled HID host initiates real secured channels on reconnection; Android-initiated reconnect remains separate');a=p.parse_args();assert not(a.host_reconnect and a.secure_reconnect);assert re.fullmatch(r'emulator-[0-9]+',a.serial) and 1<=a.netsim_port<=65535
 # An OS-held lock, not a stale PID file, prevents competing SDK/UI cleanup.
 lock=os.fdopen(os.open('/tmp/collie-hid-'+str(os.getuid())+'-'+a.serial+'.lock',os.O_CREAT|os.O_RDWR|os.O_CLOEXEC|os.O_NOFOLLOW,0o600),'a')
 try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 except BlockingIOError:p.error('Another HID test owns this emulator; wait for its terminal result before starting another scenario')
-unplug_observed=False;controls_verified=False
+unplug_observed=False;controls_verified=False;lifecycle_verified=False;radio_changed=False
 tested_apk=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk');pkg='org.flexscript.collie';sid='hid-hw-'+uuid.uuid4().hex[:8];names=[];checks=[];child=None;paired=False;peer={};log=None
 proof_file=a.out/'hid-host.json';proof_file.unlink(missing_ok=True);command_file=a.out/'hid-host-command.json';command_file.unlink(missing_ok=True)
+def failure_report(kind,value,tb):
+ if a.scenario=='lifecycle':
+  peer=json.loads(proof_file.read_text()) if proof_file.exists() else None
+  report=dict(ok=False,count=len(checks),checks=checks,scenario='lifecycle',error=str(value),peer=peer,apk_sha256=tested_apk,peer_initiates_reconnect=a.host_reconnect,physical_radio_verified=False,public_unplug_gate_tested=False)
+  (a.out/'hid-lifecycle-failed-report.json').write_text(json.dumps(report,indent=2)+'\n')
+ sys.__excepthook__(kind,value,tb)
+sys.excepthook=failure_report
 def adb(*args,data=None,check=True):
  r=subprocess.run([a.adb,'-s',a.serial,*map(str,args)],input=data,capture_output=True,timeout=40)
  if check:assert r.returncode==0,(args,r.stdout[:500],r.stderr[:500])
@@ -63,7 +70,8 @@ def source(body):
 def vm(body,initial=False):
  payload=dict(source=source(body))
  if initial:payload['initial_permissions']=dict(bluetooth=True,location=False,db_read=True,db_write=True)
- o=result(start(sid,**payload))['observation'];assert o['state']=='continue' and o['exit_code']==0,o;return o
+ o=result(start(sid,**payload))['observation'];assert o['state']=='continue' and o['exit_code']==0,o
+ return o
 
 def controls_flow():
  global controls_verified
@@ -96,6 +104,45 @@ def controls_flow():
   passed('old tokens cannot answer a fresh registration, and cancelled old request deadlines do not retire the fresh answered connection')
   controls_verified=True
  finally:helpers=original_helpers
+
+def marker(phase):
+ temp=command_file.with_suffix('.tmp');temp.write_text(json.dumps(dict(phase=phase,at=time.monotonic())));temp.replace(command_file)
+def ui_bluetooth(allowed,phase=None):
+ root=tree();tap(next(n for n in root.iter('node') if n.get('content-desc')=='Menu'));root=tree();tap(next(n for n in root.iter('node') if n.get('text')=='Permissions'))
+ description=('Allow' if allowed else 'Deny')+' Bluetooth devices'
+ for _ in range(12):
+  root=tree();node=next((n for n in root.iter('node') if n.get('content-desc')==description),None)
+  if node is not None:
+   if phase:marker(phase)
+   tap(node);wait(lambda:(r if r.get('permissions',{}).get('bluetooth')==allowed else None) if (r:=read('files/workspaces/'+sid+'/session.json')) else None,10);return
+  # Scroll only the foreground Collie Permissions page to its named button.
+  size=adb('shell','wm','size').decode();width,height=map(int,re.search(r'Physical size: (\d+)x(\d+)',size).groups());adb('shell','input','swipe',width//2,height*4//5,width//2,height//3,200)
+ raise AssertionError('The named Collie Bluetooth permission button was not visible')
+def lifecycle_flow():
+ global lifecycle_verified,radio_changed
+ program=Path('apps/collie/tests/hid-lifecycle.flex').read_text();assert program.count('fn main(){return 0;}')==1,'Unexpected lifecycle fixture entry point';program=re.sub(r'^import .*;\n','',program,flags=re.M).replace('fn main(){return 0;}','fn hl_unused_main(){return 0;}')
+ def step(mode):return vm(program+'\nfn main(){let n=hl_step('+str(mode)+');if n{return fail(n);}return 0;}')
+ def proof():
+  data=json.loads(proof_file.read_text());assert not data.get('error'),(data.get('error'),data.get('phase'),data.get('connections'));assert child.poll() is None,data.get('phase');return data
+ def phase(name):return wait(lambda:(v if v['phase']==name else None) if (v:=proof()) else None,40)
+ def connect(label):
+  step(8 if a.host_reconnect else 1)
+  if a.host_reconnect:marker(label+'_connect_requested')
+ def radio_at(value):return vm('fn main(){let r=bt_info();if !r{return 1;}if db_word(device_field(r,"state"))=='+str(value)+'{db_io(0,1,"yes",3);}return 0;}')['stdout']=='yes'
+ vm('fn main(){state_set("lifecycle_address",db_text("'+address+'"));return 0;}');assert radio_at(12),'Preserve an initially disabled Bluetooth adapter'
+ step(1);phase('radio_request_sent');step(2);radio_changed=True;marker('radio_started');adb('shell','cmd','bluetooth_manager','disable');wait(lambda:radio_at(10),25);observed=step(3)['stdout'];assert observed in ['bluetooth_disabled','service_disconnected','unregistered'],observed;phase('waiting_collie_revoke_channels')
+ passed('actual Android STATE_OFF retires the pending HID request, clears peers/tokens and confirms teardown; observed error '+observed)
+ adb('shell','cmd','bluetooth_manager','enable');wait(lambda:radio_at(12),25);radio_changed=False
+ connect('collie_revoke');phase('collie_revoke_request_sent');step(2);ui_bluetooth(False,'collie_revoke_started');phase('waiting_runtime_revoke_channels');step(4)
+ passed('the real Collie Deny Bluetooth control closes its pending SDK channels, invalidates the handle and denies reopening')
+ ui_bluetooth(True);connect('runtime_revoke');phase('runtime_revoke_request_sent');step(2);pid=adb('shell','pidof',pkg).strip();assert re.fullmatch(rb'[0-9]+',pid)
+ marker('runtime_revoke_started');adb('shell','pm','revoke',pkg,permissions[0]);wait(lambda:adb('shell','pidof',pkg,check=False).strip()!=pid,15);phase('waiting_fresh_channels');step(5)
+ package=adb('shell','dumpsys','package',pkg).decode();assert not re.search(re.escape(permissions[0])+r': granted=true',package)
+ passed('actual Android CONNECT revocation replaces the owning app process, closes its pending channels and leaves durable tokens without live SDK handles')
+ adb('shell','pm','grant',pkg,permissions[0]);connect('fresh');step(6);phase('fresh_report_received');step(7);data=wait(lambda:(v if v.get('done') else None) if (v:=proof()) else None,25)
+ assert data['connections']==4 and data['closed_channels']==8 and data.get('encrypted') is True and data.get('all_opened_channels_closed') is True,data
+ for label in data['checks']:passed(label)
+ lifecycle_verified=True
 
 def tree():
  adb('shell','uiautomator','dump','/data/local/tmp/collie-hid.xml');return ET.fromstring(adb('exec-out','cat','/data/local/tmp/collie-hid.xml'))
@@ -141,12 +188,13 @@ try:
  vm('fn main(){let d=bt_device("02:00:00:00:00:FA");state_set("unpaired",d);let h=open_hid();if !h || !registered(db_word(h)){return 9;}if hid_connect(db_word(h),db_word(d)){return 10;}if !worker_equal(db_word(db_at(device_error(),0)),"not_paired"){return 11;}if !device_close(db_word(h)) || !idle(0){return 12;}return device_close(db_word(d))-1;}')
  passed('permission-free capability metadata stays unknown until an actual HID profile is observed; invalid descriptors do not reserve registration')
  passed('actual SDK registration/unregistration succeeds, concurrent registration is rejected, confirmed teardown permits reopening and unpaired HID connect fails before I/O')
- log=(a.out/'hid-host.log').open('w');child=subprocess.Popen([str(a.peer_python),'scripts/fixtures/collie-hid-host.py','--transport','android-netsim:127.0.0.1:'+str(a.netsim_port)+',name=collie-test-'+uuid.uuid4().hex,'--out',str(proof_file),'--scenario',a.scenario,'--command',str(command_file)],stdout=log,stderr=subprocess.STDOUT)
+ log=(a.out/'hid-host.log').open('w');child=subprocess.Popen([str(a.peer_python),'scripts/fixtures/collie-hid-host.py','--transport','android-netsim:127.0.0.1:'+str(a.netsim_port)+',name=collie-test-'+uuid.uuid4().hex,'--out',str(proof_file),'--scenario',a.scenario,'--command',str(command_file),*(['--secure-reconnect'] if a.secure_reconnect else []),*(['--host-reconnect'] if a.host_reconnect else [])],stdout=log,stderr=subprocess.STDOUT)
  peer=wait(lambda:(s if s.get('ready') else None) if proof_file.exists() and (s:=json.loads(proof_file.read_text())) else None);assert re.fullmatch(r'Collie HID test peer [a-f0-9]{8}',peer['name']);address=peer['address'].split('/')[0];assert re.fullmatch(r'[0-9A-F]{2}(:[0-9A-F]{2}){5}',address)
  vm('fn main(){let d=bt_device("'+address+'");if !d{return 1;}state_set("device",d);return db_word(bt_bond(db_word(d)))-1;}');paired=True;approve_pair()
  vm('fn main(){let d=db_word(state_get("device"));let i=0;while i<20{if db_word(device_field(device_info(d),"bond_state"))==12{return 0;}device_wait(d,500);i=i+1;}return 1;}')
  passed('the explicitly named virtual HID host is paired through Android confirmation before registration, without requesting Location or scanning')
  if a.scenario=='controls':controls_flow()
+ elif a.scenario=='lifecycle':lifecycle_flow()
  else:
   vm('''fn main(){let h=open_hid();if !h || !registered(db_word(h)){return 1;}state_set("hid",h);let b=alloc(510);let i=0;while i<510{store8(b+i,i%256);i=i+1;}state_set("initial",db_blob(b,510));state_set("output",db_blob(b,510));let peer=hid_connect(db_word(h),db_word(state_get("device")));if !peer{return 2;}state_set("peer",peer);state_set("disconnected",db_int(0));return 0;}''')
   loop=source('fn main(){let h=db_word(state_get("hid"));state_set("batches",db_int(db_word(state_get("batches"))+1));let i=0;while i<8{let e=device_wait(h,1000);if db_kind(e)==5 && !handle(h,e){return 1;}i=i+1;}return 0;}')
@@ -183,6 +231,12 @@ try:
  passed('all HID report traffic and lifecycle checks keep Android SCAN/ADVERTISE and Location denied')
 finally:
  adb('shell','am','force-stop',pkg);cleanup_error=None
+ if radio_changed:
+  adb('shell','cmd','bluetooth_manager','enable');adb('shell','cmd','bluetooth_manager','wait-for-state:STATE_ON');radio_changed=False
+ if a.scenario=='lifecycle':
+  adb('shell','pm','grant',pkg,permissions[0]);owned=read('files/workspaces/'+sid+'/session.json')
+  if owned and owned.get('permissions',{}).get('bluetooth') is not True:
+   result(start(sid,resume_only=True));ui_bluetooth(True)
  try:forget()
  except Exception as error:cleanup_error=error
  if child is not None and child.poll() is None:child.terminate();child.wait(timeout=15)
@@ -201,6 +255,8 @@ finally:
  if cleanup_error:raise cleanup_error
 passed('test HID registrations, grants, pairing and private fixtures removed; original conversation preserved')
 assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==tested_apk,'APK changed during test'
+if a.scenario=='lifecycle':
+ report=dict(count=len(checks),checks=checks,serial=a.serial,scenario='lifecycle',ok=lifecycle_verified,hid_lifecycle_verified=lifecycle_verified,peer_initiates_reconnect=a.host_reconnect,android_initiated_after_radio_verified=lifecycle_verified and not a.host_reconnect,public_unplug_gate_tested=False,physical_radio_verified=False,apk_sha256=tested_apk,peer=json.loads(proof_file.read_text()));(a.out/'hid-lifecycle-android-report.json').write_text(json.dumps(report,indent=2)+'\n');assert lifecycle_verified;print(len(checks),'Android HID lifecycle checks passed; public unplug and service-crash gates remain separate');raise SystemExit(0)
 if a.scenario=='controls':
  report=dict(count=len(checks),checks=checks,serial=a.serial,scenario='controls',ok=controls_verified,hid_controls_verified=controls_verified,public_unplug_gate_tested=False,physical_radio_verified=False,apk_sha256=tested_apk,peer=json.loads(proof_file.read_text()));(a.out/'hid-controls-android-report.json').write_text(json.dumps(report,indent=2)+'\n');assert controls_verified;print(len(checks),'Android HID control checks passed; public unplug gate remains separate');raise SystemExit(0)
 report=dict(count=len(checks),checks=checks,serial=a.serial,hid_payload_verified=True,unplug_callback_observed=unplug_observed,ok=unplug_observed,missing_gates=[] if unplug_observed else ['public virtual-cable unplug callback'],physical_radio_verified=False,apk_sha256=tested_apk);(a.out/'hid-android-report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(checks),'Android HID checks passed; strict unplug gate', 'passed' if unplug_observed else 'FAILED')
