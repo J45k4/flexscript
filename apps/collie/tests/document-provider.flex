@@ -1,5 +1,7 @@
 // Executed by the actual Collie VM; the Android fixture supplies SDK oracles.
-fn dp_find(tree,parent,name){let p=document_children(tree,parent,0,16);if !p{return "";}let rows=device_field(p,"documents");let i=0;while i<db_count(rows){let row=db_at(rows,i);if worker_equal(db_word(device_field(row,"name")),name){return db_word(device_field(row,"id"));}i=i+1;}return "";}
+fn dp_find(tree,parent,name){
+    let offset=0;while offset>=0&&offset<512{let p=document_children(tree,parent,offset,16);if !p{return "";}let rows=device_field(p,"documents");let i=0;while i<db_count(rows){let row=db_at(rows,i);if worker_equal(db_word(device_field(row,"name")),name){return db_word(device_field(row,"id"));}i=i+1;}let next=db_word(device_field(p,"next"));if next<0||next<=offset{return "";}offset=next;}return "";
+}
 fn dp_tree(){return db_word(state_get("provider-tree"));}
 fn dp_open(){let tree=document_tree_open(db_word(state_get("provider-grant")));if !tree{return 1;}state_set("provider-tree",tree);let t=db_word(tree);if !load8(dp_find(t,"root","source"))||!load8(dp_find(t,"root","target"))||!load8(dp_find(t,"root","virtual-note")){return 2;}return 0;}
 fn dp_write(){let t=dp_tree();let source=dp_find(t,"root","source");let d=document_create(t,source,"payload.bin","application/octet-stream");if !d{return 1;}let id=db_word(device_field(d,"id"));let h=document_file_open(t,id,"rwt");if !h{return 2;}let b=alloc(32768);let i=0;while i<32768{store8(b+i,i%256);i=i+1;}if db_word(device_write(db_word(h),db_blob(b,32768)))!=32768||db_word(device_write(db_word(h),db_blob(b,23)))!=23{return 3;}state_set("provider-write-handle",h);state_set("provider-old-node",db_text(id));return 0;}
@@ -18,3 +20,15 @@ fn dp_pipe_prefix(){let h=db_word(state_get("provider-pipe"));let v=device_read(
 fn dp_death_setup(){if dp_open(){return 1;}if dp_raw_pipe(){return 2;}state_set("provider-death-raw",state_get("provider-pipe"));if dp_pipe(){return 3;}state_set("provider-death-typed",state_get("provider-pipe"));return 0;}
 fn dp_death_read(){let h=db_word(state_get("provider-death-typed"));if device_read(h,32,8000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),"disconnected"){return 2;}return 0;}
 fn dp_death_raw_read(){let h=db_word(state_get("provider-death-raw"));if device_read(h,32,1000){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),"disconnected"){return 2;}return 0;}
+
+fn dp_binder_prepare(name){
+    if dp_open(){return 1;}let t=dp_tree();let source=dp_find(t,"root","source");let target=dp_find(t,"root","target");let virtual=dp_find(t,"root","virtual-note");
+    let d=document_create(t,source,name,"application/octet-stream");if !d{return 2;}let id=db_word(device_field(d,"id"));let writer=document_file_open(t,id,"rwt");if !writer{return 3;}let b=alloc(32);let i=0;while i<32{store8(b+i,(37+i*17)%256);i=i+1;}if db_word(device_write(db_word(writer),db_blob(b,32)))!=32{return 4;}if !device_close(db_word(writer)){return 5;}
+    source=dp_find(t,"root","source");target=dp_find(t,"root","target");virtual=dp_find(t,"root","virtual-note");id=dp_find(t,source,name);
+    state_set("binder-subject",db_text(id));state_set("binder-source",db_text(source));state_set("binder-target",db_text(target));state_set("binder-virtual",db_text(virtual));let witness=document_file_open(t,id,"r");if !witness{return 6;}state_set("binder-witness",witness);state_set("binder-marker",db_text(name));return 0;
+}
+fn dp_binder_call(op,name){
+    let t=dp_tree();let id=db_word(state_get("binder-subject"));let source=db_word(state_get("binder-source"));let target=db_word(state_get("binder-target"));let virtual=db_word(state_get("binder-virtual"));let r=0;
+    if worker_equal(op,"query"){r=document_info(t,id);}else if worker_equal(op,"children"){r=document_children(t,source,0,16);}else if worker_equal(op,"open"){r=document_file_open(t,id,"rwt");}else if worker_equal(op,"typed"){r=document_typed_open(t,virtual,"text/plain");}else if worker_equal(op,"types"){r=document_types(t,virtual,"text/*");}else if worker_equal(op,"create"){r=document_create(t,source,name,"application/octet-stream");}else if worker_equal(op,"rename"){r=document_rename(t,id,name);}else if worker_equal(op,"copy"){r=document_copy(t,id,target);}else if worker_equal(op,"move"){r=document_move(t,id,source,target);}else if worker_equal(op,"remove"){r=document_remove(t,id,source);}else if worker_equal(op,"delete"){r=document_delete(t,id);}else{return 1;}
+    if r{db_io(0,1,"unexpected-success",18);return 0;}let code=db_at(device_error(),0);db_io(0,1,db_word(code),db_bytes(code));return 0;
+}

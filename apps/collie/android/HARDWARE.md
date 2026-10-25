@@ -38,7 +38,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
 | Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | one-use consent/tickets, foreground projection service, bounded RGBA planes and silent/microphone MP4 SDK bindings implemented; further session/lifecycle gates below | 38 real headless Android checks passed for chooser approval/denial, exact pixels/MP4 bytes, hidden Activity frames and screen-lock Stop; selected-app/older-device/physical and additional lifecycle gates pending |
 | Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | Android-owned service enablement, scoped SDK node/window/event/action bindings and bounded gesture transport implemented; further lifecycle/SDK gates below | 27 actual headless Android checks passed for real Settings consent, tree/text/action/touch effects, resource ownership and delayed callback cleanup; physical/older-device and remaining gates pending |
-| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | the e0ee662 document checkpoint passes29 system-folder plus40 separate-UID provider groups per Android15/16 SDK, including reliable errors and provider-only death/client survival. Query/open/mutation Binder death, write-side/offline/cleanup faults and physical removable/cloud gates remain open; exact APK scopes are below |
+| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | the 2026-10-26 checkpoint passes29 system-folder checks,41 provider baseline checks and19 actual Binder-death scenarios per Android15/16 SDK. Queries/opens and all six lost-reply mutations preserve the client, retire owned resources and avoid replay. Write-side/offline/cleanup faults, older/OEM providers and physical removable/cloud gates remain open; exact APK scopes are below |
 | Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | read-only SDK privilege facts and16 explicit missing-adapter descriptions implemented in the Flexscript inventory; no vendor bridge configured | 12 real Android metadata/VM/restart checks passed against independent OS package dumps; actual privileged hardware/vendor integration remains unverified |
 
 Cross-cutting requirements:
@@ -5997,3 +5997,119 @@ privileged/vendor integrations, physical radios, strict HID unplug/recovery,
 strict UWB interval, sensor-direct success, Camera2 physical/HDR/high-speed,
 HCE routing/RF and remaining document/provider/lifecycle faults. This checkpoint
 does not complete the full hardware objective.
+
+
+## Provider Binder death and uncertain mutations (2026-10-26)
+
+A real provider-only crash exposed a production lifetime bug. Read/query/open
+paths already used unstable SDK clients, but mutations called the ordinary
+`DocumentsContract` resolver helpers. The framework acquired a stable provider
+reference; after a create committed but before its reply, Android killed Collie
+as a dependent. `build/android-document-binder/baseline-regression.json` matches
+client PID3429/provider PID4530 to the actual ActivityManager dependency-kill
+message in `old36-system.log`. This is an observed Android16 failure, not a
+manually thrown Binder exception or an inferred crash.
+
+All six document mutations now use an owned unstable public
+`ContentProviderClient.call` with fixed document-protocol methods. Method names,
+Bundle fields and authorities cannot be supplied by guest programs; source,
+parent and target URIs still come only from checked tokens in the selected tree.
+The lazy Documents policy, real persisted grants, writable/root/name/MIME checks
+and typed return format remain. A dead remote connection closes the tree and
+its streams and returns `disconnected`, explicitly reporting uncertain mutation
+completion. No mutation is automatically retried. An invalid/missing value reply
+retires uncertain ownership; a normal void delete/remove reply may legitimately
+be null. The test provider exercises this compatibility path directly.
+
+Only Android-specific transport/lifecycle code changes in production Java.
+Portable guest API policy and VM execution remain Flexscript. The detailed
+preloaded reference now explains provider death and lost-reply recovery. There
+is no new public tool, raw Binder/Bundle/URI dispatch, reflection, host-file
+access, Python source, dependency or runtime permission.
+
+Frozen evidence is under `build/android-document-binder/`:
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `frozen-debug/collie.apk` |8451959|`1800e73116c90c7a8a5d61df29b3a77c42da602033ed7197f6343c77b8c488e5`|
+| `frozen-release/collie.apk` |7952081|`a837d75882c930c92fc5f522c2a8b62c6da3acca34c24c86fe115f307adc2128`|
+| Separate test-only `frozen-provider/provider.apk` |20907|`f1b8a244d9bb6e8b9b5bffa1f9374a48464501b43865fd05f0179f939fc54fb2`|
+
+Release is nondebug and development-signed. `parity-frozen.json` verifies350
+identical production Java class files, generated/native sources, objects and
+libraries, actual APK library bytes, signatures and16KiB alignment. Release DEX
+has no Collie fixture/check definitions. The separate provider is not packaged
+into either Collie APK. The native payload is byte-identical to the engine that
+passes27 native,9 shared-core and4 complete-reference checks in `native-final`,
+`core-final` and `reference-final` logs. `source-hashes.json` freezes relevant
+source and compiler inputs.
+
+- `frozen35/document-provider-android-report.json` and the corresponding
+  `frozen36` report each pass262 low-level assertions across41 baseline provider
+  checks and19 fault scenarios. Both also pass29 real system-folder SAF checks
+  in `documents-android-report.json`. These are constructed SDK/provider tests,
+  not physical removable/cloud-provider proof.
+- Each scenario is an actual Binder transaction from the ordinary Collie app
+  UID into a separate APK/UID. One-shot crash points cover query, directory
+  query, raw open, typed open, stream-type query and all six mutations before
+  work; all six mutations after durable commit but before reply; and raw/typed
+  opens after an actual descriptor exists but before return. The provider
+  fsyncs its nonce/journal, disarms the fault, then terminates only its own PID
+  while the transaction is pending. No guest result is fabricated.
+- An independently observed client PID remains unchanged across all19 scenarios
+  per SDK, while the actual provider PID changes on each death. The VM returns
+  `disconnected`; the owned tree and a previously live witness fd close before
+  any client force-stop. A durable per-operation call journal requires exactly
+  one entry, and monotonic mutation counters require exactly the committed
+  effect or zero before-work effects. Actual independent SDK enumeration and
+  bytes verify created/renamed/copied/moved/removed/deleted data and truncation
+  after a lost raw-open reply. Original persisted grants and exact FlexDB
+  markers survive; old handles reject later use. Explicit reopen is required.
+- The existing40 provider baseline checks now include one additional actual
+  null-Bundle void-reply check. The guest lookup helper follows document pages
+  instead of searching only the first16 children. An earlier17-scenario run
+  stopped in that setup helper; it is retained as incomplete evidence and is
+  not counted as a full run. Both final suites use the frozen artifacts and
+  corrected paging. Host transport observation failure is distinct from an
+  authoritative missing/replaced client PID.
+- `audit35.json`/`audit36.json` independently verify the exact original full
+  sessions, selected preferences, workspace sets and every package `granted=`
+  flag. All31 original Collie permissions remain Ask. The test-only signature
+  CONTROL grant appears only while the provider is installed and is removed
+  with it. Only the hash-verified owned provider is uninstalled after its graph
+  is archived empty. SAF UI dumps are archived/hash-checked before exact-path
+  removal. Both guests synchronize private state and their owned headless
+  emulators stop successfully. No phone is used or deployed to.
+
+Reproduce from the repository root on an explicitly owned, unlocked headless
+emulator initialized with the exact debug APK and identically signed separate
+provider. Existing user-selected folders or grants are never used as fixtures:
+
+```sh
+build/flex-hardware scripts/build-collie-document-provider.flex -o build/build-document-provider
+build/build-document-provider --out build/document-provider --collie-out build/android-document-binder/frozen-debug
+build/flex-hardware scripts/test-collie-document-provider-android.flex -o build/test-document-provider
+build/test-document-provider --self-test
+# --out contains the exact installed collie.apk; the fixture package is separate.
+build/test-document-provider --out build/document-check --serial emulator-5584 --fixture-apk build/document-provider/provider.apk
+python3 scripts/test-collie-documents-android.py --out build/document-check --serial emulator-5584
+```
+
+Use a configured JDK supported by the Android build tools for the provider
+builder. The existing native driver owns the19-case matrix, real picker consent,
+independent PID observations, results and parent restoration. Java supplies only
+actual SDK/provider oracles and test crash boundaries. The system-folder Python
+driver is pre-existing; none was added in this checkpoint.
+
+Primary implementation references:
+[AOSP Android16 DocumentsContract mutation wire format](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/core/java/android/provider/DocumentsContract.java),
+[AOSP resolver lifetime and unstable-client API](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/core/java/android/content/ContentResolver.java).
+The fixed protocol uses public SDK client calls without referencing hidden SDK
+constants/classes; actual older/OEM protocol compatibility remains unverified.
+
+**Still open:** document write-side reliable-pipe/SDK/cleanup faults, offline and
+physical cloud/removable providers, additional directory/alias and older/OEM
+behavior. Every other full inventory and strict gate above remains required,
+including16 privileged/vendor integrations, physical radios, strict HID/UWB,
+ISO IN, sensor-direct success, Camera2 physical/HDR/high-speed and HCE routing/RF.
+This document checkpoint does not complete the full hardware objective.

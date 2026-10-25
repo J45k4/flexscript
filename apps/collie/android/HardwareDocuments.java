@@ -124,6 +124,40 @@ final class HardwareDocuments {
         Object info()throws Exception{check();return VmHardware.object("kind",kind,"grant",tree.grantId,"mime_type",mime,"bytes_transferred",position,"declared_length",asset.getDeclaredLength(),"reliable_errors",asset.getParcelFileDescriptor().canDetectErrors());}
         public void close()throws IOException{synchronized(this){if(closed)return;super.close();}synchronized(tree){tree.streams.remove(this);}try{input.close();}finally{if(client!=null)client.close();}}
     }
+    // The public DocumentsContract resolver helpers acquire a stable provider
+    // dependency. Use the same fixed document wire operations through an owned
+    // unstable public SDK client, so remote death cannot kill this app. No raw
+    // method, Bundle, authority or URI is accepted from the guest.
+    @SuppressWarnings("deprecation")
+    static Uri mutate(Tree tree,String op,JSONArray args,Uri node)throws Exception{
+        Bundle request=new Bundle();request.putParcelable("uri",node);String method;
+        switch(op){
+            case "document_create":
+                String display=name(args,2),mime=VmHardware.text(args,3,256);
+                if(!mime.matches("[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+"))throw new VmHardware.Failure("invalid_argument","Use a concrete MIME type, or vnd.android.document/directory for a folder.");
+                request.putString(DocumentsContract.Document.COLUMN_DISPLAY_NAME,display);request.putString(DocumentsContract.Document.COLUMN_MIME_TYPE,mime);method="android:createDocument";break;
+            case "document_rename":request.putString(DocumentsContract.Document.COLUMN_DISPLAY_NAME,name(args,2));method="android:renameDocument";break;
+            case "document_copy":request.putParcelable("android.content.extra.TARGET_URI",tree.node(VmHardware.text(args,2,128)));method="android:copyDocument";break;
+            case "document_move":request.putParcelable("parentUri",tree.node(VmHardware.text(args,2,128)));request.putParcelable("android.content.extra.TARGET_URI",tree.node(VmHardware.text(args,3,128)));method="android:moveDocument";break;
+            case "document_remove":request.putParcelable("parentUri",tree.node(VmHardware.text(args,2,128)));method="android:removeDocument";break;
+            case "document_delete":method="android:deleteDocument";break;
+            default:throw new VmHardware.Failure("unsupported_operation","Unknown document mutation.");
+        }
+        Bundle reply;
+        try(ContentProviderClient client=provider(tree,node)){
+            VmHardware.check();reply=client.call(method,null,request);VmHardware.check();
+        }catch(RemoteException error){tree.close();throw new VmHardware.Failure("disconnected","The document provider connection died during mutation. Completion is uncertain; reopen and enumerate the tree. It was not retried.");}
+        catch(RuntimeException error){Throwable cause=error;for(int i=0;i<4&&cause!=null;i++,cause=cause.getCause())if(cause instanceof FileNotFoundException)throw (FileNotFoundException)cause;throw error;}
+        // A normal Binder return is the acknowledgement for void operations;
+        // their Bundle may legitimately be null. Remote failures above throw.
+        if(op.equals("document_delete")||op.equals("document_remove"))return null;
+        if(reply==null){tree.close();throw new VmHardware.Failure("io_error","The provider returned no mutation acknowledgement. Completion is uncertain; reopen and enumerate the tree. The mutation was not retried.");}
+        Parcelable value;
+        try{value=reply.getParcelable("uri");}catch(RuntimeException error){tree.close();throw new VmHardware.Failure("invalid_response","The provider returned an unreadable mutation acknowledgement. Completion is uncertain; it was not retried.");}
+        if(value==null&&op.equals("document_rename"))return node;
+        if(!(value instanceof Uri)){tree.close();throw new VmHardware.Failure("invalid_response","The provider returned no valid document URI after mutation. Completion is uncertain; it was not retried.");}
+        return (Uri)value;
+    }
     static Object call(VmHardware.Context c,String op,JSONArray args)throws Exception{
         if(op.equals("document_pick"))return pick(c,args);
         if(op.equals("document_trees")){int offset=VmHardware.integer(args,0,0,128),limit=VmHardware.integer(args,1,1,16);JSONArray own=new JSONArray();synchronized(LOCK){JSONArray rows=records(c.host);String scope=scope(c.root);for(int i=0;i<rows.length();i++){JSONObject r=rows.getJSONObject(i);if(scope.equals(r.getString("scope")))own.put(describe(c.host,r));}}JSONArray page=new JSONArray();int end=Math.min(own.length(),offset+limit);for(int i=offset;i<end;i++)page.put(own.get(i));return VmHardware.object("trees",page,"next",end<own.length()?end:-1,"total",own.length());}
@@ -132,23 +166,17 @@ final class HardwareDocuments {
         if(op.equals("document_seek")){DocumentFile f=VmHardware.handle(c,VmHardware.text(args,0,128),DocumentFile.class);f.access(c);long offset=VmHardware.longInteger(args,1,0,Long.MAX_VALUE);try{return Os.lseek(f.descriptor.getFileDescriptor(),offset,OsConstants.SEEK_SET);}catch(ErrnoException error){if(error.errno==OsConstants.ESPIPE)throw new VmHardware.Failure("unsupported_operation","This provider supplied a non-seekable stream.");throw error;}}
         Tree tree=VmHardware.handle(c,VmHardware.text(args,0,128),Tree.class);tree.access(c);CancellationSignal signal=tree.begin();VmHardware.blocking(tree);
         try{
-            String token=VmHardware.text(args,1,128);Uri node=tree.node(token);ContentResolver resolver=c.host.getContentResolver();
+            String token=VmHardware.text(args,1,128);Uri node=tree.node(token);
             if(op.equals("document_info"))return metadata(tree,node,signal);
             if(op.equals("document_children")){int offset=VmHardware.integer(args,2,0,1000000),limit=VmHardware.integer(args,3,1,16);Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(tree.uri,DocumentsContract.getDocumentId(node));try(ContentProviderClient client=provider(tree,children);Cursor cursor=client.query(children,COLUMNS,null,null,null,signal)){if(cursor==null)throw new VmHardware.Failure("unavailable","The provider returned no directory cursor.");int total=cursor.getCount(),end=Math.min(total,offset+limit);JSONArray page=new JSONArray();for(int i=offset;i<end;i++){VmHardware.check();if(!cursor.moveToPosition(i))throw new VmHardware.Failure("invalid_response","The directory cursor changed during enumeration.");page.put(row(tree,cursor));}return VmHardware.object("documents",page,"next",end<total?end:-1,"total",total,"loading",cursor.getExtras().getBoolean(DocumentsContract.EXTRA_LOADING,false));}}
             if(op.equals("document_file_open")){String mode=VmHardware.text(args,2,3);if(!Arrays.asList("r","w","wt","wa","rw","rwt").contains(mode))throw new VmHardware.Failure("invalid_argument","Use SDK stream mode r/w/wt/wa/rw/rwt; w truncation is provider-dependent.");if(!mode.equals("r"))tree.writable();ContentProviderClient client=provider(tree,node);boolean owned=false;try{ParcelFileDescriptor fd=client.openFile(node,mode,signal);if(fd==null)throw new VmHardware.Failure("unavailable","The provider did not open a stream.");DocumentFile file=new DocumentFile(c,tree,fd,mode,client);owned=true;return VmHardware.add(file);}finally{if(!owned)client.close();}}
             if(op.equals("document_types")){String filter=VmHardware.text(args,2,256);try(ContentProviderClient client=provider(tree,node)){String[] types=client.getStreamTypes(node,filter);JSONArray out=new JSONArray();if(types!=null){if(types.length>64)throw new VmHardware.Failure("size_limit","The provider returned more than64 stream types.");for(String type:types)out.put(bounded(type,256));}return out;}}
             if(op.equals("document_typed_open")){String mime=VmHardware.text(args,2,256);if(mime.indexOf('/')<=0||mime.indexOf('*')>=0)throw new VmHardware.Failure("invalid_argument","Choose a concrete stream MIME type from document_types.");ContentProviderClient client=provider(tree,node);boolean owned=false;try{android.content.res.AssetFileDescriptor asset=client.openTypedAssetFileDescriptor(node,mime,null,signal);if(asset==null)throw new VmHardware.Failure("unavailable","The provider did not open a converted stream.");TypedFile file=new TypedFile(c,tree,asset,mime,client);owned=true;return VmHardware.add(file);}finally{if(!owned)client.close();}}
-            tree.writable();Uri result;
-            if(op.equals("document_create")){String name=name(args,2),mime=VmHardware.text(args,3,256);if(!mime.matches("[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+"))throw new VmHardware.Failure("invalid_argument","Use a concrete MIME type, or vnd.android.document/directory for a folder.");result=DocumentsContract.createDocument(resolver,node,mime,name);}
-            else{if(token.equals("root"))throw new VmHardware.Failure("invalid_argument","The selected root cannot be renamed or deleted through this adapter.");
-                if(op.equals("document_rename"))result=DocumentsContract.renameDocument(resolver,node,name(args,2));
-                else if(op.equals("document_copy"))result=DocumentsContract.copyDocument(resolver,node,tree.node(VmHardware.text(args,2,128)));
-                else if(op.equals("document_move"))result=DocumentsContract.moveDocument(resolver,node,tree.node(VmHardware.text(args,2,128)),tree.node(VmHardware.text(args,3,128)));
-                else if(op.equals("document_remove")){if(!DocumentsContract.removeDocument(resolver,node,tree.node(VmHardware.text(args,2,128))))throw new VmHardware.Failure("io_error","The provider did not remove this document from its parent.");tree.invalidate();return 1;}
-                else if(op.equals("document_delete")){if(!DocumentsContract.deleteDocument(resolver,node))throw new VmHardware.Failure("io_error","The provider did not delete the document.");tree.invalidate();return 1;}
-                else throw new VmHardware.Failure("unsupported_operation","Unknown document operation.");}
-            if(result==null)throw new VmHardware.Failure("io_error","The document provider did not complete the mutation.");
-            if(!tree.uri.getAuthority().equals(result.getAuthority())||!DocumentsContract.isTreeUri(result)||!DocumentsContract.getTreeDocumentId(tree.uri).equals(DocumentsContract.getTreeDocumentId(result)))throw new VmHardware.Failure("invalid_response","The provider returned a document outside the selected tree.");
+            tree.writable();
+            if(!op.equals("document_create")&&token.equals("root"))throw new VmHardware.Failure("invalid_argument","The selected root cannot be renamed or deleted through this adapter.");
+            Uri result=mutate(tree,op,args,node);
+            if(op.equals("document_delete")||op.equals("document_remove")){tree.invalidate();return 1;}
+            if(!tree.uri.getAuthority().equals(result.getAuthority())||!DocumentsContract.isTreeUri(result)||!DocumentsContract.getTreeDocumentId(tree.uri).equals(DocumentsContract.getTreeDocumentId(result))){tree.close();throw new VmHardware.Failure("invalid_response","The provider returned a document outside the selected tree after mutation. Completion is uncertain; it was not retried.");}
             tree.invalidate();return metadata(tree,result,signal);
         }catch(DeadObjectException error){tree.close();throw new VmHardware.Failure("disconnected","The document provider process died; reopen the tree and enumerate it again. A mutation may have completed; it was not retried.");}
         catch(FileNotFoundException error){throw new VmHardware.Failure("not_found",MainActivity.safe(error));}
