@@ -135,6 +135,7 @@ def generate(out, compiler):
     guest += '\n' + (ROOT/'apps/collie/guest/usb-serial.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/nfc.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/uwb.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/camera.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/haptics.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/accessibility.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/ble.flex').read_text()
     guest += '\n' + (ROOT/'apps/collie/guest/hardware-access.flex').read_text()
     guest += '\n' + (ROOT/'apps/collie/guest/sensor-direct.flex').read_text()
+    guest += '\n' + (ROOT/'apps/collie/guest/usb-iso.flex').read_text()
     embedded = 'fn ca_guest_extra(){return '+json.dumps(guest, ensure_ascii=False)+';}\n'
     embedded += 'fn ca_card_guest(){return '+json.dumps((ROOT/'apps/collie/guest/card-handler.flex').read_text(),ensure_ascii=False)+';}\n'
     signatures=re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/hardware.flex').read_text(),re.M)
@@ -148,6 +149,7 @@ def generate(out, compiler):
     signatures += re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/ble.flex').read_text(),re.M)
     signatures += [(name,params) for name,params in re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/sensor-direct.flex').read_text(),re.M) if name.startswith('sensor_direct_')]
     signatures += [('hardware_restrictions','')]
+    signatures += [(name,params) for name,params in re.findall(r'^fn\s+(\w+)\(([^)]*)\)',(ROOT/'apps/collie/guest/usb-iso.flex').read_text(),re.M) if name.startswith('usb_iso_')]
     api="Android hardware API. All results are typed db values; device_field finds a map field.\n"+"\n".join(name+"("+params+")" for name,params in signatures)
     api += (ROOT/'apps/collie/guest/hardware-api.txt').read_text()
     index="Android hardware function index. All results are typed db values. Detailed contracts: hardware_api_page(offset,limit1..32768) returns {text,total,next}; follow next until-1.\n"+"\n".join(name+"("+params+")" for name,params in signatures)
@@ -225,9 +227,10 @@ def main():
     if not (sysroot/'usr/include/android/hardware_buffer_jni.h').is_file():
         raise SystemExit('Public HardwareBuffer JNI requires an Android NDK. Pass --ndk PATH or set ANDROID_NDK_HOME (SDK package ndk;27.3.13750724). Native-only builds need no NDK.')
     run([*flags,'--sysroot='+str(sysroot),'-c',HERE/'hardware-buffer.c','-o',out/'hardware-buffer.o'])
+    run([*flags,'--sysroot='+str(sysroot),'-c',HERE/'usb-iso.c','-o',out/'usb-iso.o'])
     run(['ld.lld','-shared','-z','defs','-z','relro','-z','now','-z','noexecstack',
          '-z','max-page-size=16384','--hash-style=both','-soname','libcollie_hardware.so',
-         out/'hardware-buffer.o','-L'+str(sysroot/'usr/lib/aarch64-linux-android/26'),'-landroid',
+         out/'hardware-buffer.o',out/'usb-iso.o','-L'+str(sysroot/'usr/lib/aarch64-linux-android/26'),'-landroid','-lc',
          '-o',out/'libcollie_hardware.so'])
     if args.debug:
         run([*flags,'--sysroot='+str(sysroot),'-c',ROOT/'apps/collie/tests/android/sensor-direct-fixture.c','-o',out/'sensor-direct-fixture.o'])

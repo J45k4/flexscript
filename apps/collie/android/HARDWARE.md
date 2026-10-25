@@ -16,7 +16,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Wi-Fi | scans, connection requests/suggestions, Direct, Aware, local-only hotspot, RTT | status/scans, scoped network requests/suggestions and local-only hotspot SDK adapter implemented; Direct channel/group/service/socket bindings implemented with integration in progress; RTT AP and Aware attachment/discovery/message/data-path/peer RTT SDK bindings implemented; Aware radio integration pending | virtual-AP scans, actual precise Location/Nearby consent and TCP through an approved request passed; hotspot error callback passed, successful AP/device checks pending; orphan recovery after actual process death passed; P2P discovery/pairing/TCP/UDP passed in earlier headless runs, DNS-SD exchange unresolved; RTT unsupported/validation checks passed, measured distance pending; 10 Aware permission/unsupported/ownership/API-reference checks passed, NAN radio proof pending |
 | Network services | DNS-SD discovery/advertising, approved VPN IP transport | implemented | actual Android DNS-SD over virtual Wi-Fi and approved foreground TUN read/write/protection/teardown passed; encrypted mesh/gateway is separate work |
 | Cellular diagnostics | subscriptions, signal/service/cell data with platform permissions | implemented; read-only diagnostics, separate cellular + location gates | 19 headless Android scenarios passed, including real runtime prompts, NR cell data, refresh, roaming callbacks and both grants; physical SIM/multi-SIM/radio checks pending |
-| USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt, accessory mode, disconnect handling | implemented; device consent and transfers need a real fixture | UsbManager inventory/events, missing devices, invalid arguments and wrong handle types passed on emulator; physical device approval/transfers/detach pending |
+| USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt/isochronous, accessory mode, disconnect handling | SDK device/accessory bindings plus bounded asynchronous native USBFS ISO batches and portable Flexscript packet decoding implemented |28 groups on each Android15/16 SDK verify actual lazy/system consent, virtual-kernel ISO OUT transfers/cancellation and owned cleanup;15 native fault fixtures and portable codec checks pass. ISO IN, physical device I/O/detach, bulk/interrupt/accessory fixtures and older/OEM gates remain open |
 | USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
 | Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 16 baseline SDK/VM/consent checks passed on the current server APK; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy and extended/periodic transmission, GATT client/server SDK bindings implemented; remaining lifecycle/SDK gates below | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
@@ -5701,3 +5701,156 @@ Camera2 multi-resolution/physical fold/lens/HDR/high-speed paths, HCE routing/RF
 document query/open/mutation/write/cloud/removable faults and older/OEM/
 cross-cutting lifecycles remain in scope. The full hardware goal is unfinished;
 this is a transport checkpoint, not completion of that goal.
+
+## USB isochronous transport checkpoint (2026-10-25)
+
+`usb_iso_submit(device,endpoint,packet_lengths,data,timeout_ms)` now submits an
+owned asynchronous ISO batch through the public SDK connection's native file
+descriptor. `usb_iso_frame`, `usb_iso_result`, `usb_iso_decode` and
+`usb_iso_cancel` expose copied results, portable decoding and cancellation.
+Guests never receive a host descriptor, pointer, device path or arbitrary ioctl.
+The ordinary USB grant and Android device chooser remain lazy. There is no new
+manifest permission, SDK dependency or Python source file.
+
+The Java adapter owns scheduling, SDK objects and lifecycle; `usb-iso.c` owns
+USBFS URBs, buffers and bounded native leases. Packet/result decoding and the
+protocol tests are pure Flexscript in `guest/usb-iso.flex` and
+`tests/usb-iso.flex`; the independent codec commit can be reused by desktop.
+The headless emulator controller is also Flexscript:
+`scripts/test-collie-usb-iso-android.flex`.
+
+Each request has1..128 explicit packet lengths and at most24576 payload bytes.
+Input takes an empty blob; output takes exactly the requested total. The actual
+claimed endpoint and bounded configuration/alternate/endpoint/SS-companion
+metadata determine the service-interval payload limit. One batch exclusively
+reserves its SDK connection, including normal control/interface/interrupt calls,
+to keep SDK and native consumers from stealing one another's URB completions.
+These are explicit batches; continuous gapless USB streaming is not verified.
+
+At most8 native requests include queued, running and pending teardown; at most16
+SDK connections include outstanding SDK cleanup. The wall deadline starts at
+admission, including queue time. A separate timer exposes expiry while a worker
+is still pending. Close/revocation remain responsive. Cancellation discards once,
+then requires an actual reap or retirement of the SDK connection before the
+last native duplicate and buffers are released. Unconfirmed cleanup retains
+capacity and a visible error. Neither timeout nor a missing completion replays
+an uncertain transfer. Live SDK/native resources do not survive snapshots.
+
+The complete maximum result is26688 bytes. It preserves every packet's requested
+and actual lengths, signed status and requested-layout bytes, plus exact64-bit
+native-run duration, errno and separate submitted/reaped/cancel/expiry flags.
+Untransferred gaps are zeroed. Unreaped data/status stay unknown. Output data is
+the submitted snapshot indexed by kernel byte counts, not a device readback or
+proof that a peripheral performed the requested action. `cleanup_required` is a
+native-return snapshot; current cleanup/lease status comes from `device_info`.
+USBFS does not copy the actual bus start frame back on reap: `start_frame=null`
+and `start_frame_known=false`; the raw request field remains separately named
+`requested_start_frame` and is ignored for ISO_ASAP.
+
+### Exact artifacts and verification
+
+All artifacts below are under ignored `build/android-usb-iso/`:
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `check2-debug/collie.apk` | 8451959 | `e2df1a0fca1bda858953e7ac4a2b9113ac8661ec9969ce2b6bfa78f447d57e29` |
+| `check3-release/collie.apk` | 7952081 | `48c59992152c32d1c601be697b075130ec54a1c5182d80dbd77b66f46685df97` |
+
+The release APK is non-debug and development-signed. `artifact-parity-final.json`
+verifies350 identical non-resource production Java class files, identical
+production generated sources/engine/UI/native objects and libraries, exact
+native bytes inside each APK, signatures and16KiB alignment. Generated resource
+class `R$xml` differs because debug includes fixture resources. Actual release
+DEX class definitions contain the ISO adapter/JNI classes and no Collie fixture
+or check classes; reflection-name strings are not class definitions. Hardware
+JNI imports only public Android/C libraries. Release growth since the preceding
+OEM UWB checkpoint is40960 bytes.
+
+- The **same exact debug APK** passes28 groups on Android15/API35 and
+  Android16/API36. Final reports are
+  `check2-debug/sdk35/usb-iso-android-report.json` and
+  `check2-debug/sdk36-warm/usb-iso-android-report.json`, with
+  `sdk35-final10.log` / `sdk36-warm.log`. Independent final audit JSON and
+  before/after package dumps are in those same directories.
+- These are actual app-UID SDK/JNI/USBFS calls to an explicitly owned QEMU USB
+  audio OUT endpoint, not mocked URB completions. Each SDK completes16×192 bytes
+  and a maximum128×192-byte request. Every maximum-request output snapshot byte
+  survives the actual VM/JNI/portable codec path. Both SDKs submit a real50ms
+  deadline request, observe actual cancellation/reap and retain a working SDK
+  connection for a subsequent real control transfer. Per-packet outcomes and
+  actual byte counts come from the kernel; this is virtual USB, not physical
+  peripheral/readback proof.
+- The stock SDK images have no USB-host feature declaration. Separate disposable
+  AVDs use their own writable system overlay with that declaration and a QEMU
+  xHCI/audio device. Root configures only this owned fixture; Collie still runs
+  as an ordinary UID above10000 and obtains device access through actual system
+  approval. Shared SDK images, the phone and earlier UWB/camera AVD userdata are
+  untouched. The final tests separately exercise Collie denial, Android denial
+  and actual Android approval.
+- Constructed worker holds exercise the real bounded scheduler: queued expiry is
+  visible before native completion; cancellation prevents submission; normal SDK
+  operations remain blocked while the ISO lease is unsettled. Parent close and
+  shared permission revocation return promptly and defer teardown. Sixteen real
+  SDK opens reach the declared limit, reject the seventeenth before another
+  descriptor, then restore all16 SDK and8 ISO slots. Independent USB device fd
+  counts return from zero to zero.
+- `native-iso-final.log` and `native-iso-sanitized-final.log` pass15 native
+  state-machine groups, including partial input/holes, output snapshots,
+  submit failure, late success after deadline, concurrent cancellation,
+  missing/foreign/disconnected completions, malformed lengths, exact maximum
+  bounds, stale identities and actual host descriptor restoration. These
+  compile-only ioctl fixtures are separate from the actual Android kernel
+  evidence. ASan/UBSan runs outside the ptrace-restricted sandbox; the final
+  concurrency check observes atomic submission rather than guessing thread
+  startup from a sleep.
+- The portable codec passes native, checked interpreter and JIT execution
+  (`codec-*-final.log`). `native-final10.log`, `core-final10.log` and
+  `reference-final10.log` pass27 frontend/VM/provider/DB,9 shared-core and4
+  complete reference-paging groups respectively. The hardware registry/32KiB
+  typed codec check passes in `hardware-core-final10.log`. CI includes the
+  portable modes, native fixtures and compilation of the Flexscript controller.
+- Initial controller attempts had a consent-label mismatch and a reboot/package
+  readiness race. A later complete28-group run lost its post-reboot metadata
+  result during actual wallpaper/overlay Activity recreation. Those failed
+  logs/results remain preserved; metadata-only recovery restored the original
+  state without replaying USB. The final controller warms the ordinary Activity
+  and observes10s of stable resumed identity/configuration before submitting
+  any test intent. Both final controller runs exit0, including restoration.
+- Both final runs restore original messages/cards/archive/pending attachments,
+  all31 Ask policies, selected conversation, exact workspace sets and transient
+  USB consent. Independent audits compare actual package runtime grant flags.
+  The earliest API35 fresh-install capture preceded the welcome card; its exact
+  stable pre-test session, including that card, is preserved. After the host
+  restarted between the completed API35 controller and independent audit, the
+  old emulator process was confirmed absent. Only its saved userdata was
+  reopened for the read-only audit; no USB transfer was replayed. Android36's
+  two obsolete owned exploratory workspaces were archived before removal, and
+  its initial original-only workspace set was restored. Both owned emulators
+  are stopped after evidence preservation.
+
+Reproduce against a disposable, explicitly owned headless USB-host fixture:
+
+```sh
+build/flex-hardware apps/collie/tests/usb-iso.flex -o build/test-usb-iso
+build/test-usb-iso
+clang -std=c11 -Wall -Wextra -Werror -O2 -pthread apps/collie/tests/android/usb-iso-native-test.c -o build/test-usb-iso-native
+build/test-usb-iso-native
+build/flex-hardware scripts/test-collie-usb-iso-android.flex -o build/test-usb-iso-android
+# --out must contain the exact installed collie.apk; cleanup reboots this guest.
+build/test-usb-iso-android --out build/android-usb-iso/check2-debug/sdk35 --serial emulator-5588 --fixture-reboot
+```
+
+Sources: [public SDK native descriptor contract](https://developer.android.com/reference/android/hardware/usb/UsbDeviceConnection#getFileDescriptor()),
+[Linux USB asynchronous userspace I/O](https://www.kernel.org/doc/html/latest/driver-api/usb/usb.html),
+[Linux6.12 usbfs submit/reap/discard/close implementation](https://github.com/torvalds/linux/blob/v6.12/drivers/usb/core/devio.c).
+The transport uses the NDK's public Linux UAPI definitions.
+
+**Still open:** real ISO IN completions, physical device/readback/timing/detach,
+real HS/SS/hub and continuous streaming behavior, additional driver/SDK/cleanup
+faults and older/OEM kernels, plus physical bulk/interrupt/accessory and serial
+fixtures. Every other inventory gate above remains in scope, including the16
+missing privileged/vendor adapters, strict HID unplug/recovery and UWB interval
+failures, real OEM UWB compatibility, successful sensor-direct reporting,
+Camera2 physical/fold/lens/HDR/high-speed paths, HCE routing/RF, document/provider
+faults and physical/older-device/cross-cutting lifecycles. This USB checkpoint
+does not complete the full hardware objective.

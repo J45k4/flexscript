@@ -111,6 +111,9 @@ jobs:
           build/test-collie-usb-iso
           build/stage2 run --interpret --fuel=10000000 apps/collie/tests/usb-iso.flex
           build/stage2 run --jit --fuel=10000000 apps/collie/tests/usb-iso.flex
+          clang -std=c11 -Wall -Wextra -Werror -O2 -pthread apps/collie/tests/android/usb-iso-native-test.c -o build/test-collie-usb-iso-native
+          build/test-collie-usb-iso-native
+          build/stage2 scripts/test-collie-usb-iso-android.flex -o build/test-collie-usb-iso-android-driver
           build/stage2 apps/collie/tests/uwb.flex -o build/test-collie-uwb
           build/test-collie-uwb
           build/stage2 run --interpret --fuel=10000000 apps/collie/tests/uwb.flex

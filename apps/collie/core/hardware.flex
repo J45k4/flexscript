@@ -87,6 +87,9 @@ fn hw_operations(){
     hw_operation(rows,"usb_control_out","hardware_handle",7,7);
     hw_operation(rows,"usb_transfer_in","hardware_handle",4,4);
     hw_operation(rows,"usb_transfer_out","hardware_handle",4,4);
+    hw_operation(rows,"usb_iso_submit","hardware_handle",5,5);
+    hw_operation(rows,"usb_iso_frame","hardware_handle",1,1);
+    hw_operation(rows,"usb_iso_cancel","hardware_handle",1,1);
     hw_operation(rows,"usb_accessories","usb",0,0);
     hw_operation(rows,"usb_accessory_open","usb",1,1);
     hw_operation(rows,"key_list","keystore",2,2);

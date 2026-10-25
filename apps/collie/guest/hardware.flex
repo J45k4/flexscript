@@ -91,6 +91,10 @@ fn usb_control_in(handle,request_type,request,value,index,limit,timeout_ms){let 
 fn usb_control_out(handle,request_type,request,value,index,data,timeout_ms){let r=db_request("usb_control_out");db_add(r,db_text(handle));db_add(r,db_int(request_type));db_add(r,db_int(request));db_add(r,db_int(value));db_add(r,db_int(index));db_add(r,data);db_add(r,db_int(timeout_ms));return db_rpc(r);}
 fn usb_transfer_in(handle,endpoint,limit,timeout_ms){let r=db_request("usb_transfer_in");db_add(r,db_text(handle));db_add(r,db_int(endpoint));db_add(r,db_int(limit));db_add(r,db_int(timeout_ms));return db_rpc(r);}
 fn usb_transfer_out(handle,endpoint,data,timeout_ms){let r=db_request("usb_transfer_out");db_add(r,db_text(handle));db_add(r,db_int(endpoint));db_add(r,data);db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn usb_iso_submit(handle,endpoint,packet_lengths,data,timeout_ms){let r=db_request("usb_iso_submit");db_add(r,db_text(handle));db_add(r,db_int(endpoint));db_add(r,packet_lengths);db_add(r,data);db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn usb_iso_frame(handle){let r=db_request("usb_iso_frame");db_add(r,db_text(handle));return db_rpc(r);}
+fn usb_iso_result(handle){let frame=usb_iso_frame(handle);if !frame{return 0;}return usb_iso_decode(frame);}
+fn usb_iso_cancel(handle){let r=db_request("usb_iso_cancel");db_add(r,db_text(handle));return db_rpc(r);}
 fn usb_accessories(){return db_rpc(db_request("usb_accessories"));}
 fn usb_accessory_open(id){let r=db_request("usb_accessory_open");db_add(r,db_text(id));return db_rpc(r);}
 
