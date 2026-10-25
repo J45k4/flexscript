@@ -38,7 +38,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
 | Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | one-use consent/tickets, foreground projection service, bounded RGBA planes and silent/microphone MP4 SDK bindings implemented; further session/lifecycle gates below | 38 real headless Android checks passed for chooser approval/denial, exact pixels/MP4 bytes, hidden Activity frames and screen-lock Stop; selected-app/older-device/physical and additional lifecycle gates pending |
 | Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | Android-owned service enablement, scoped SDK node/window/event/action bindings and bounded gesture transport implemented; further lifecycle/SDK gates below | 27 actual headless Android checks passed for real Settings consent, tree/text/action/touch effects, resource ownership and delayed callback cleanup; physical/older-device and remaining gates pending |
-| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | 29 real Android picker/provider/lifecycle checks passed; full-size binary data, asset byte ranges, restart and both revocation layers verified; provider copy/move/remove, actual virtual conversion and physical removable/cloud providers pending |
+| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | 29 system-folder plus15 separate-UID controlled-provider groups pass on each Android15/16 SDK; actual copy/move/parent-link removal, virtual conversions, binary frames, pipe timeout/EOF/live revocation, persisted grants and restart verified. Provider-death/error/offline, additional directory/provider behavior and physical removable/cloud gates remain open |
 | Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | read-only SDK privilege facts and16 explicit missing-adapter descriptions implemented in the Flexscript inventory; no vendor bridge configured | 12 real Android metadata/VM/restart checks passed against independent OS package dumps; actual privileged hardware/vendor integration remains unverified |
 
 Cross-cutting requirements:
@@ -2142,10 +2142,10 @@ Android's persisted URI grant closed existing access and blocked the durable ID.
 The test restored original conversations, permissions and preexisting saved
 selections and removed only its uniquely owned folder, grants and workspaces.
 
-Provider-dependent copy/move/remove calls are bound but their successful effects
-remain unverified. Actual virtual conversion, pipe/disconnect behavior, offline
-cloud/removable providers, older Android and physical devices remain open gates.
-No successful provider effects were synthesized to replace those checks.
+At this original checkpoint, successful provider-dependent copy/move/remove and
+actual virtual conversion remained unverified. The separate-provider results below
+add controlled SDK proof. Additional provider/pipe-error/offline, cloud/removable,
+older Android and physical-device gates remain open.
 
 ### Document batch artifacts
 
@@ -5052,3 +5052,106 @@ master merge or desktop worktree edit is included. Physical onset/force/frequenc
 distinct real actuators, older/OEM/absent-provider and real SDK/Binder/cleanup
 faults remain open with the prior HID/UWB strict failures and every other
 inventory gate. This implements repeating controls, not the full hardware goal.
+
+## Separate-UID document provider, virtual conversion and mutation verification
+
+The existing document adapter now has positive SDK verification for provider
+copy/move/remove and virtual conversion. Guest operations and exact byte/codec
+checks are in `tests/document-provider.flex`; native Flexscript builds the test
+provider APK and drives actual Android first-use/picker UI. Java supplies a real
+`DocumentsProvider` and independent SDK/file/descriptor observations. No model
+operation, Collie grant, SDK dependency or new Python file/runtime is added.
+`HardwareDocuments.java`, native engine and UI library remain unchanged.
+
+The controlled provider is a **separate APK, app UID and process**, not a class in
+Collie's APK. Its public document endpoint retains Android's normal
+`MANAGE_DOCUMENTS` protection. Actual ACTION_OPEN_DOCUMENT_TREE approval supplies
+the persisted read/write grant. Preparation/cleanup uses a different endpoint
+protected by a test-certificate signature permission and a check for the exact
+installed Collie UID/signature. Only debug Collie requests that test signature
+permission and visibility; non-debug manifests contain neither. The provider and
+control classes are excluded from both Collie APKs. Unapproved actual UID2000 is
+rejected by both endpoints on each SDK. These are controlled provider/Android
+framework results, not evidence of a physical cloud/removable provider.
+
+The **same frozen final installed APK** passes **15 controlled-provider groups
+plus29 system-folder groups on each Android16/API36 and Android15/API35**:
+
+- Actual first-use Ask/Allow and the real folder picker execute the normal
+  checkpoint/resume path. Persisted SDK grants are real; the controlled-provider
+  app/client UIDs differ (10217/10216 on API36,10210/10209 on API35). Public typed
+  callbacks record the real client PID crossing Binder into another process.
+- VM copy creates a distinct object with all32791 bytes intact; an independent
+  ContentResolver verifies both copies and the preserved original. Mutation
+  invalidates old tokens and closes the captured real open descriptor.
+- Actual move changes parent membership while retaining object identity/data.
+  The provider links one document under two parents; VM remove detaches only
+  the selected link and preserves the other document/link. SDK metadata and
+  provider callback records independently verify each mutation once.
+- The SDK reports a virtual-document flag/source MIME. Advertised export types
+  filter correctly; raw virtual access and invalid/unsupported conversions fail.
+  Actual typed conversion yields exact23-byte text and32791 binary bytes with
+  every byte checked, a17-byte asset offset, declared lengths, bounded reads and
+  exact EOF. Independent ContentResolver conversion confirms the text/range.
+- A real non-seekable provider pipe times out with zero transferred bytes and
+  no repeated typed-open request, then delivers37/0/255 bytes and actual EOF.
+  With the VM observed blocked in a second real pipe read, live UI-thread
+  Documents denial cancels execution and closes the actual captured descriptor.
+- The29-group system-folder suite retains real denial/approval/cancellation,
+  metadata/binary/seek/EOF, asset slice, read-only stream/tree, foreign ownership,
+  rename/delete/nesting, capacity, shared persisted read/write-bit release,
+  process restart and both conversation/Android-grant revocation checks.
+
+The old combined binary-write/seek/read fixture hit the unchanged VM execution
+deadline during its first current-APK run. Its assertions now run in two normal
+VM executions over the **same actual open SDK stream**, with all32KiB/full-file,
+second-write, seek, short-read and EOF checks retained. Production fuel/deadline
+limits are unchanged. No failed initial run is counted as a successful suite.
+
+The native host uses argv-based ADB, installed main/provider APK hash checks,
+strict emulator serials, actual UI attributes/bounds and an OS-held per-emulator
+lock before Android access. An independently held lock verifies exit2 without
+Android access. The parent restores the original conversation even if provider
+cleanup fails, retains scoped recovery evidence and never replays a mutation.
+CI compiles both native Flexscript builder/driver and executes its UI parser
+checks. Native ARM64 QEMU27 core and four complete-reference groups pass on the
+byte-identical final engine (128,529 API bytes/16,431-byte index,31 denied grants).
+All316 production Java classes/native/generated files match debug/non-debug;
+packaging verifies fixture separation and the debug-only control permission.
+
+Artifacts (`build/android-document-provider`):
+
+- Final debug `check4-debug/collie.apk`:8,210,007 bytes, SHA256
+  `8a4f9deb6611767ccc5a5a784a668e8102799b8c6836293ce36677b79bffa96b`.
+- Non-debug `check1-release/collie.apk`:7,800,328 bytes, SHA256
+  `d06b0b4da908c8e2c5ddc089c7b6e86592a26c02efc3b859b4491fd3db1abfbf`.
+- Separate `provider3/provider.apk`:20,907 bytes, SHA256
+  `7cffcd5ce00368009c38c58b8562a91675dbe8dac49782167f3fc0200c9abc5c`.
+- Final15-/29-group reports: `check4-debug/sdk36` and `sdk35`; exact main/provider
+  hashes, actual PID/UID and callback metadata are retained. `parity4.json`,
+  `packaging4.log`, native reports in `check3-debug`, unapproved-UID SDK errors
+  and `verified36.json`/`verified35.json` retain independent evidence.
+- Initial package-visibility/public-provider pre-access failures and their
+  recovery are retained separately (`check1/2-debug`). The first API35 UI run
+  was blocked by an actual System UI ANR; Wait recovered the UI. The earlier
+  legacy combined-program deadline and the intermediate successful15-group
+  API36 run retain their own artifacts/scopes.
+
+After the completed API35 suites, the host emulator aborted over five minutes
+later, before the independent final audit. Systemd records SIGABRT in its C++
+gRPC event-engine callback (`libcpp_verbose_abort`); the emulator log also records
+a Wi-Fi stream disconnect. The checked kernel interval has no OOM entry; the
+underlying cause remains unproven. Only read-only crash metadata was retained,
+without extracting a core. After reopening the preserved AVD, independent SDK/
+file audits confirmed original messages/all31 Ask grants, the existing UWB
+workspace, empty persisted URI grants and an empty provider graph/byte store.
+No mutation was replayed. Both originally absent test-provider packages were
+removed; both owned headless emulators are now stopped. Desktop untouched; no
+phone deployment or master merge.
+
+Physical/cloud/removable and older SDK/OEM/provider behavior, directory/alias
+variants, provider-death/Binder/pipe-error/offline/cleanup faults and all other
+hardware inventory gates remain open. Prior strict HID/UWB failures retain their
+scope. The full hardware objective is not complete.
+
+Primary contract: [DocumentsProvider](https://developer.android.com/reference/android/provider/DocumentsProvider).

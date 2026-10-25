@@ -232,6 +232,7 @@ def main():
     if args.debug:
         manifest_text=manifest_text.replace('</application>', '<service android:name=".MidiLoopbackFixture" android:exported="true" android:permission="android.permission.BIND_MIDI_DEVICE_SERVICE"><intent-filter><action android:name="android.media.midi.MidiDeviceService" /></intent-filter><meta-data android:name="android.media.midi.MidiDeviceService" android:resource="@xml/midi_loopback_fixture" /></service></application>')
     if args.debug: manifest_text=manifest_text.replace('</application>', '<service android:name=".HardwareHcePeerFixture" android:exported="false" android:process=":hce_fixture_peer" /></application>')
+    if args.debug: manifest_text=manifest_text.replace('</queries>', '<provider android:authorities="org.flexscript.collie.document_fixture;org.flexscript.collie.document_fixture.control" /></queries>').replace('<application', '<uses-permission android:name="org.flexscript.collie.documentfixture.CONTROL" /><application',1)
     manifest.write_text(manifest_text)
     run([tools/'aapt2','compile','--dir',HERE/'res','-o',out/'resources.zip'])
     resources=[]

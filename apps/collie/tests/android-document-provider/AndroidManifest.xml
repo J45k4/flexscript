@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.flexscript.collie.documentfixture">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
+    <permission android:name="org.flexscript.collie.documentfixture.CONTROL" android:protectionLevel="signature" />
+    <queries><package android:name="org.flexscript.collie" /></queries>
+    <application android:label="Collie provider fixture" android:debuggable="true" android:allowBackup="false">
+        <provider android:name=".HardwareDocumentControlFixture" android:authorities="org.flexscript.collie.document_fixture.control" android:exported="true" android:permission="org.flexscript.collie.documentfixture.CONTROL" />
+        <provider android:name=".HardwareDocumentProviderFixture" android:authorities="org.flexscript.collie.document_fixture" android:exported="true" android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER" /></intent-filter>
+        </provider>
+    </application>
+</manifest>

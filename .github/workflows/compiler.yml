@@ -113,6 +113,9 @@ jobs:
           build/test-collie-haptic-records
           build/stage2 run --interpret --fuel=10000000 apps/collie/tests/haptics.flex
           build/stage2 scripts/test-collie-haptics-android.flex -o build/test-collie-haptics-android-driver
+          build/stage2 scripts/build-collie-document-provider.flex -o build/build-collie-document-provider
+          build/stage2 scripts/test-collie-document-provider-android.flex -o build/test-collie-document-provider-android-driver
+          build/test-collie-document-provider-android-driver --self-test
           build/stage2 scripts/check-collie-hid-platform.flex -o build/check-collie-hid-platform
           build/stage2 apps/collie/tests/hid-lifecycle.flex -o build/check-collie-hid-lifecycle
           python3 -m py_compile scripts/test-collie-hid-android.py scripts/fixtures/collie-hid-host.py

@@ -20,7 +20,7 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r'debuggable[^=]*='+str(debug).lower(),manifest),(label,'debuggable')
  with zipfile.ZipFile(path) as apk:
   dex=b''.join(apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex',name))
-  for name in ['MidiLoopbackFixture','HardwareHapticChecks','HardwareHapticRepeatChecks','HardwareHapticEnvelopeChecks','HardwareHapticDeviceChecks','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareUwbGmsChecks','HardwareDocumentChecks','HardwareCameraChecks','HardwareCameraRawChecks','HardwareCameraVideoProfileChecks','HardwareHceChecks','HardwareCardServiceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
+  for name in ['MidiLoopbackFixture','HardwareHapticChecks','HardwareHapticRepeatChecks','HardwareHapticEnvelopeChecks','HardwareHapticDeviceChecks','HardwareNetworkChecks','HardwareInputChecks','HardwareBiometricChecks','HardwareUwbChecks','HardwareUwbGmsChecks','HardwareDocumentChecks','HardwareDocumentProviderChecks','HardwareCameraChecks','HardwareCameraRawChecks','HardwareCameraVideoProfileChecks','HardwareHceChecks','HardwareCardServiceChecks','HardwareHceControlChecks','HardwareScreenChecks','HardwareAccessibilityChecks','HardwareBleSetChecks','HardwareHcePeerFixture','UiRendererChecks']:
    assert (('Lorg/flexscript/collie/'+name+';').encode() in dex)==debug,(label,name)
   assert b'Lorg/flexscript/collie/HardwareUwbGms;' in dex,(label,'GMS UWB adapter present')
   lock=json.loads(apk.read('assets/collie-android-dependencies.json'))
@@ -39,6 +39,9 @@ for label,path,debug in [('debug',a.debug,True),('release',a.release,False)]:
  assert re.search(r':exported[^=]*=false',projection),(label,'projection private service')
  assert re.search(r'foregroundServiceType[^=]*=0x0*a0\b',projection),(label,'projection/media microphone types')
  for permission in ['android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION','android.permission.FOREGROUND_SERVICE_MICROPHONE']:assert '"'+permission+'"' in manifest,(label,permission)
+ providers=[provider for provider in sections(manifest,'provider') if 'HardwareDocumentProviderFixture' in provider]
+ assert not providers and b'HardwareDocumentProviderFixture' not in dex,(label,'document fixture stays in a separate test APK')
+ assert ('org.flexscript.collie.documentfixture.CONTROL' in manifest)==debug,(label,'test-signature provider control permission stays debug-only')
  services=list(sections(manifest,'service'));assert not any('com.google.' in service for service in services),(label,'no unrelated SDK services merged');assert any('HardwareHcePeerFixture' in service for service in services)==debug
  assert any('MidiLoopbackFixture' in service for service in services)==debug
  vpn=next(service for service in services if '.CollieVpnService' in service)
