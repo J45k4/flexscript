@@ -32,7 +32,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, named AVC/HEVC/AV1 encoder capabilities and explicit recorder profile/level requests, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 187/API36 and183/API35 camera groups pass, including effective explicit AVC/HEVC/AV1 profile/level settings, combined explicit-profile fractional time-lapse, actual profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
-| Haptics | capabilities/effects/waveforms/envelopes/frequency/cancel | scoped actuator lease, bounded one-shot/waveform/predefined/primitive and public envelope/frequency SDK bindings, independent deadline/retry scheduling, foreground lifecycle and asynchronous cancellation implemented; distinct actuator selection pending | 41/API36 and32/API35 SDK/VM/service groups pass, including autonomous deadlines/retry without VM access, doubly blocked fallback,30 exact frequency rows and actual basic/frequency/32-point envelopes; physical/older/OEM/fault gates remain open |
+| Haptics | capabilities/effects/waveforms/envelopes/frequency/actuator selection/parallel/cancel | scoped app playback lease, public per-ID metadata/selection and parallel SDK graphs with portable effect records, bounded direct effects/envelopes, independent deadline/retry scheduling and foreground cleanup implemented | 62/API36 and50/API35 SDK/VM/service groups pass, including selected SDK ID1 and six/four effect types, exact metadata/frequency queries, independent deadlines and stale cleanup in both default/selected directions. Each SDK exposes one ID; two-actuator and physical/older/OEM/fault gates remain open |
 | Device status | battery/charging/electrical data, thermal state/headroom/events | implemented | battery/thermal status and subscriptions passed; thermal-change injection pending |
 | Biometrics | system authentication result only | SDK availability, owned system prompts and cancellation implemented | 51 enrolled/unenrolled SDK checks passed, including real fingerprint/PIN success, cancellation, expiry, late success and live revocation; physical/older-device checks pending |
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
@@ -4487,3 +4487,126 @@ reports retain their own earlier APK scope; they are not new-artifact tests.
 
 Primary contracts: [scheduled execution and remove-on-cancel](https://developer.android.com/reference/java/util/concurrent/ScheduledThreadPoolExecutor),
 [elapsed versus sleep interval clocks](https://developer.android.com/reference/android/os/SystemClock).
+
+## Public actuator IDs, selection and parallel effect records (2026-10-25)
+
+The Android12+ public VibratorManager inventory is now exposed through bounded
+`haptic_actuators` pages, complete per-ID `haptic_actuator_info` and selected
+frequency-profile/response/range queries. IDs are validated against the actual
+SDK inventory; absent/changed actuators are rejected rather than replaced with
+the default motor. Older SDKs report unsupported_operation. SDK metadata may
+represent a different capability set for a selected motor than for the composite
+default, so selected queries pass the actual SDK vibrator through the existing
+metadata transport. Inventory capability metadata now distinguishes one owned
+playback from up to eight requested target actuators; the old misleading
+maximum_owned_actuators=1 field is replaced accordingly.
+
+Seven pure Flexscript helpers build inert one-shot, waveform, predefined,
+composition, basic-envelope, frequency-envelope and target records. Constructing
+these records does not acquire a lease or emit output. `haptic_on` submits a
+single real actuator; `haptic_render` submits1..8 distinct real IDs as one public
+CombinedVibration parallel graph. All IDs, shapes and publicly available support
+checks run before a single SDK submission. Malformed later targets cannot cause
+an earlier target to start. One explicit1..2000ms wall limit applies to the whole
+graph; no independent per-target clipping or physical-onset guarantee is
+implied. Exact original targets and the common limit remain in handle metadata.
+
+Direct and selected/parallel rendering share one SDK effect-preparation path,
+so the refactor retains waveform/primitive/envelope bounds and public builders
+rather than copying separate validators. The existing haptic handle wraps a
+public manager playback/cancel backend for parallel graphs. Default, selected
+and parallel operations retain one app-wide lease, held through actual SDK
+startup/cancellation, with independent deadline/retry scheduling and visible-
+Activity/revocation/workspace cleanup. AOSP SingleVibrator.cancel delegates to
+manager cancellation; a different actuator ID is not an independent app token.
+No new grant, Android runtime permission, model tool, Python file/runtime or
+external dependency is added. Portable records, registry/policy and guest APIs
+remain Flexscript; Java transports actual SDK metadata/builders/resources.
+
+The same final frozen debug APK passes62 actual SDK/VM/service groups on owned
+headless Android16 and50 on Android15, with40/29 independent service/lifecycle
+probe stages. Both actual SDK inventories expose only ID1. Structured report
+flags retain two_actuator_sdk_verified=false and physical_actuators_verified=
+false, rather than turning a one-entry parallel graph into two-motor proof.
+
+Verification includes:
+
+- Every ordered actual SDK ID,1-/16-row pages and exact/large-offset EOF; complete
+  per-ID effect/primitive/envelope metadata agrees with independent SDK getters.
+  Selected Android16 profile pages/interpolation/ranges match that SDK vibrator.
+  Android15 selected frequency/envelope calls retain unsupported errors.
+- All new calls still deny the original Haptics grant before SDK access. Unknown
+  and duplicate IDs, more than eight targets, malformed/unknown effect tags,
+  invalid limits and a later invalid target reject without actuator ownership
+  or partial submission. Actual service idle is checked independently.
+- Selected ID1 one-shot, multi-segment waveform, predefined and primitive
+  composition graphs on both SDKs equal independently constructed public
+  CombinedVibration objects. Android16 additionally passes selected basic and
+  frequency envelopes. Exact requested IDs/common limits cross VM metadata.
+  Independent vibrator-manager current records contain the exact target graph;
+  short predefined effects use fresh completion history instead of requiring a
+  long-lived current record.
+- Stale default close/revocation cannot cancel a selected graph in another
+  allowed workspace, and stale selected manager cleanup cannot cancel a later
+  default playback. Foreign close is stale; new overlapping default playback
+  remains busy. Independent service records establish both continued effects.
+- A selected1500ms one-shot is cancelled at the common120ms deadline without
+  further VM access while the shared Handler is blocked. Actual Activity onStop
+  cancels selected manager playback, invalidates the handle and rejects hidden
+  selected playback; the external fixture restores foreground through Android.
+- All earlier direct effects/envelopes,30 exact default frequency rows,
+  32-point graph, blocked-scheduler fallback, cleanup retry, retention,
+  cancellation and lifecycle cases remain in the same complete suite.
+
+The first new selected-composition fixture used a1500ms primitive delay. The
+public SDK reported CLICK support and returned from vibrate, but actual service
+history recorded ignored_unsupported; its dump exposes primitiveDelayMax=1000.
+The strict current-service probe failed on both SDKs rather than promoting that
+return to successful playback (`haptics35-v1.log`, `haptics36-v1.log` and check1
+raw probes). The positive fixture now uses500ms and reaches the actual service
+with the same exact-object/current-record assertion. Requested programs are not
+silently clamped or replaced. Public per-primitive support does not prove every
+delay/graph combination, and this public API exposes no controller delay-limit
+getter; reference text now states that SDK return is not full graph acceptance.
+
+This also limits the earlier autonomous1500ms-delay primitive fixture's evidence:
+it establishes app lease/cancel-call cleanup, not acceptance of that primitive
+graph. Positive earlier envelope traces and the current selected one-shot
+cancellation remain separate accepted-graph/service evidence. Earlier artifacts
+and the failing selected fixtures are retained rather than rewritten.
+
+Final artifacts under `build/android-haptic-actuators/`:
+
+- `check2-debug/collie.apk`:8,177,239 bytes, SHA256
+  `e3f52ed541c961208fccd2fd17b1113e967f5495aa0f4d35bdbb494ba7f15c4d`.
+- `check1-release/collie.apk`:7,800,328 bytes, SHA256
+  `0074e0d0f9c7f75dad433d9ec6dca534aecb2bf68427e0755b13090466c7b0f3`.
+- Final exact installed-hash reports/raw probes: `check2-debug/final36` and
+  `final35`; logs `haptics36-v2.log`, `haptics35-v2.log`. V1 failure evidence keeps
+  its own hash/oracle scope.
+- Packaging excludes the new debug oracle (`packaging-v2.log`). All315 handwritten
+  production Java classes, both native libraries and generated engine source/
+  object match debug/non-debug (`parity-v2.json`). Native9 core/17 lazy/11 callback/
+  4 complete-reference groups pass on the final engine (`core-v2.log`,
+  `lazy-v2.log`, `card-v2.log`, `reference-v2.log`). All124,602 detailed API bytes
+  and the16,184-byte index remain readable with31 grants denied. Native and
+  checked-interpreter portable record tests and32KiB registry checks also pass.
+
+Independent final checks confirm original empty conversations/all31 Ask grants,
+no current owned requests/workspaces, actual vibrator idle and no durable HCE
+profile or polling journal; the older Android15 UWB workspace is preserved
+(`final-verification-v2.json`). Fresh selected-ID predefined completion and
+accepted1500ms one-shot cancellation history on both SDKs is independently
+retained in `selected-service-verification-v2.json`. Both owned emulator processes
+exited successfully; adb reports no device. Desktop worktree is untouched.
+Remaining gates
+include two distinct actual SDK actuator targets, physical placement/onset/
+force/frequency, additional timing/effect controls, older SDK/OEM behavior and
+real SDK/Binder/cleanup faults. The strict HID/UWB failures, privileged/vendor
+integrations and all remaining adapter families remain open. Earlier camera/
+HCE/general reports retain their earlier APK scope. No phone deployment or
+master merge is made.
+
+Primary contracts: [VibratorManager](https://developer.android.com/reference/android/os/VibratorManager),
+[public parallel builder](https://developer.android.com/reference/android/os/CombinedVibration.ParallelCombination),
+[AOSP selected-vibrator cancellation](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/os/SystemVibratorManager.java).

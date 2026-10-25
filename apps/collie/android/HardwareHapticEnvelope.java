@@ -20,12 +20,16 @@ final class HardwareHapticEnvelope {
     }
     static Object known(float value)throws Exception{return Float.isNaN(value)?JSONObject.NULL:VmHardware.real(value);}
     static Object call(VmHardware.Context c,String op,JSONArray a)throws Exception{
+        return call(c,HardwareHaptics.vibrator(c),op,a);
+    }
+    static HardwareHaptics.Prepared prepare(Vibrator sdk,String op,JSONArray a)throws Exception{if(Build.VERSION.SDK_INT<36)throw new VmHardware.Failure("unsupported_operation","Envelope effects require Android16+.");return Api36.prepare(sdk,op,a);}
+    static Object call(VmHardware.Context c,Vibrator v,String op,JSONArray a)throws Exception{
         if(op.equals("haptic_envelope_info")){
-            Vibrator v=HardwareHaptics.vibrator(c);boolean present=v!=null&&v.hasVibrator();
+            boolean present=v!=null&&v.hasVibrator();
             return VmHardware.object("present",present,"resonance_api",Build.VERSION.SDK_INT>=34,"resonant_frequency_hz",present&&Build.VERSION.SDK_INT>=34?Api34.resonance(v):JSONObject.NULL,"q_factor",present&&Build.VERSION.SDK_INT>=34?Api34.q(v):JSONObject.NULL,"envelope_api",Build.VERSION.SDK_INT>=36,"envelopes_supported",present&&Build.VERSION.SDK_INT>=36?Api36.supported(v):JSONObject.NULL,"envelope_limits",present&&Build.VERSION.SDK_INT>=36?Api36.limits(v):JSONObject.NULL,"frequency_profile",present&&Build.VERSION.SDK_INT>=36?Api36.profile(v):JSONObject.NULL,"maximum_points",32,"maximum_duration_ms",2000);
         }
         if(Build.VERSION.SDK_INT<36)throw new VmHardware.Failure("unsupported_operation","Envelope effects and frequency profiles require Android16+.");
-        return Api36.call(c,HardwareHaptics.present(c),op,a);
+        return Api36.call(c,HardwareHaptics.present(v),op,a);
     }
     static final class Api34 {
         static Object resonance(Vibrator v)throws Exception{return known(v.getResonantFrequency());}
@@ -43,6 +47,9 @@ final class HardwareHapticEnvelope {
             }
             if(op.equals("haptic_frequency_response")){float value=number(a.get(0),true);return VmHardware.object("requested_frequency_hz",a.get(0),"sdk_frequency_hz",VmHardware.real(value),"output_acceleration_g",VmHardware.real(frequency(v).getOutputAccelerationGs(value)));}
             if(op.equals("haptic_frequency_range")){float value=number(a.get(0),false);Range<Float> r=frequency(v).getFrequencyRange(value);return VmHardware.object("requested_minimum_acceleration_g",a.get(0),"sdk_minimum_acceleration_g",VmHardware.real(value),"range",r==null?JSONObject.NULL:VmHardware.object("minimum_hz",VmHardware.real(r.getLower()),"maximum_hz",VmHardware.real(r.getUpper())));}
+            HardwareHaptics.Prepared p=prepare(v,op,a);return HardwareHaptics.start(c,v,p.effect,p.requested,p.duration);
+        }
+        static HardwareHaptics.Prepared prepare(Vibrator v,String op,JSONArray a)throws Exception{
             boolean basic=op.equals("haptic_envelope_basic");if(!basic&&!op.equals("haptic_envelope_waveform"))throw new VmHardware.Failure("unsupported_operation","Unknown envelope operation.");
             int limit=VmHardware.integer(a,2,1,2000);JSONArray points=a.getJSONArray(1);if(points.length()<1||points.length()>32)throw new VmHardware.Failure("invalid_argument","Use1..32 envelope points.");
             if(!v.areEnvelopeEffectsSupported())throw new VmHardware.Failure("unsupported_combination","This vibrator does not support public envelope effects.");
@@ -54,7 +61,7 @@ final class HardwareHapticEnvelope {
                 if(duration<bounds.getMinControlPointDurationMillis()||duration>bounds.getMaxControlPointDurationMillis()||total>bounds.getMaxDurationMillis())throw new VmHardware.Failure("unsupported_combination","Envelope timing exceeds the actual SDK limits.");
                 if(basic){if(i==points.length()-1&&HardwareHaptics.scale(row.get(0))!=0)throw new VmHardware.Failure("invalid_argument","A basic envelope must end at zero intensity.");b.addControlPoint(strength,target,duration);}else w.addControlPoint(strength,target,duration);
             }
-            VibrationEffect effect=basic?b.build():w.build();return HardwareHaptics.start(c,v,effect,VmHardware.object("type",basic?"basic_envelope":"waveform_envelope","initial",a.get(0),"points",points,"requested_duration_ms",total),limit);
+            VibrationEffect effect=basic?b.build():w.build();return new HardwareHaptics.Prepared(effect,VmHardware.object("type",basic?"basic_envelope":"waveform_envelope","initial",a.get(0),"points",points,"requested_duration_ms",total),limit);
         }
     }
 }

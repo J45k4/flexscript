@@ -48,6 +48,12 @@ fn hw_operations(){
     hw_operation(rows,"haptic_frequency_range","haptics",1,1);
     hw_operation(rows,"haptic_envelope_basic","haptics",3,3);
     hw_operation(rows,"haptic_envelope_waveform","haptics",3,3);
+    hw_operation(rows,"haptic_actuators","haptics",2,2);
+    hw_operation(rows,"haptic_actuator_info","haptics",1,1);
+    hw_operation(rows,"haptic_actuator_frequency_profile","haptics",3,3);
+    hw_operation(rows,"haptic_actuator_frequency_response","haptics",2,2);
+    hw_operation(rows,"haptic_actuator_frequency_range","haptics",2,2);
+    hw_operation(rows,"haptic_render","haptics",2,2);
     hw_operation(rows,"ir_info","infrared",0,0);
     hw_operation(rows,"ir_transmit","infrared",2,2);
     hw_operation(rows,"location_providers","location",0,0);

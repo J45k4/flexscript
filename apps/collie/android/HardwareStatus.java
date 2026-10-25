@@ -39,7 +39,7 @@ final class HardwareStatus {
     }
     static void capabilities(VmHardware.Context c,JSONArray out)throws Exception{
         out.put(VmHardware.capability("battery",true,true,"device_status"));out.put(VmHardware.capability("thermal",Build.VERSION.SDK_INT>=29,Build.VERSION.SDK_INT>=29,"device_status"));
-        Vibrator v=vibrator(c);out.put(VmHardware.object("id","haptics","implemented",true,"supported",v!=null&&v.hasVibrator(),"available",v!=null&&v.hasVibrator()&&c.host.hardwareVisible&&!HardwareHaptics.busy(),"permission","haptics","foreground_required",true,"maximum_owned_actuators",1,"maximum_duration_ms",2000,"predefined_implemented",true,"composition_implemented",true));ConsumerIrManager ir=infrared(c);out.put(VmHardware.capability("infrared",ir!=null&&ir.hasIrEmitter(),ir!=null&&ir.hasIrEmitter(),"infrared"));
+        Vibrator v=vibrator(c);out.put(VmHardware.object("id","haptics","implemented",true,"supported",v!=null&&v.hasVibrator(),"available",v!=null&&v.hasVibrator()&&c.host.hardwareVisible&&!HardwareHaptics.busy(),"permission","haptics","foreground_required",true,"maximum_owned_playbacks",1,"maximum_target_actuators",8,"actuator_selection_api",Build.VERSION.SDK_INT>=31,"parallel_implemented",true,"maximum_duration_ms",2000,"predefined_implemented",true,"composition_implemented",true));ConsumerIrManager ir=infrared(c);out.put(VmHardware.capability("infrared",ir!=null&&ir.hasIrEmitter(),ir!=null&&ir.hasIrEmitter(),"infrared"));
     }
     static Object call(VmHardware.Context c,String op,JSONArray a)throws Exception{
         if(op.startsWith("haptic_"))return HardwareHaptics.call(c,op,a);

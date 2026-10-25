@@ -48,6 +48,13 @@ fn haptic_envelope_waveform(initial_frequency_hz,points,duration_limit_ms){let r
 fn haptic_info(){return db_rpc(db_request("haptic_info"));}
 fn haptic_play(duration_ms,amplitude){let r=db_request("haptic_play");db_add(r,db_int(duration_ms));db_add(r,db_int(amplitude));return db_rpc(r);}
 fn haptic_waveform(timing,amplitudes){let r=db_request("haptic_waveform");db_add(r,timing);db_add(r,amplitudes);return db_rpc(r);}
+fn haptic_actuators(offset,limit){let r=db_request("haptic_actuators");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn haptic_actuator_info(id){let r=db_request("haptic_actuator_info");db_add(r,db_int(id));return db_rpc(r);}
+fn haptic_actuator_frequency_profile(id,offset,limit){let r=db_request("haptic_actuator_frequency_profile");db_add(r,db_int(id));db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
+fn haptic_actuator_frequency_response(id,hz){let r=db_request("haptic_actuator_frequency_response");db_add(r,db_int(id));db_add(r,hz);return db_rpc(r);}
+fn haptic_actuator_frequency_range(id,acceleration_g){let r=db_request("haptic_actuator_frequency_range");db_add(r,db_int(id));db_add(r,acceleration_g);return db_rpc(r);}
+fn haptic_render(targets,duration_limit_ms){let r=db_request("haptic_render");db_add(r,targets);db_add(r,db_int(duration_limit_ms));return db_rpc(r);}
+fn haptic_on(id,effect,duration_limit_ms){let targets=db_list();db_add(targets,haptic_target(id,effect));return haptic_render(targets,duration_limit_ms);}
 fn ir_info(){return db_rpc(db_request("ir_info"));}
 fn ir_transmit(frequency_hz,pattern){let r=db_request("ir_transmit");db_add(r,db_int(frequency_hz));db_add(r,pattern);return db_word(db_rpc(r));}
 
