@@ -127,11 +127,12 @@ public final class HardwareCameraChecks {
         vm("fn main(){let f=camera_frame_info("+q(handle)+","+q(id)+");if db_kind(device_field(f,\"data_space\"))!=1||db_word(device_field(f,\"data_space\"))!="+dataSpace+"||db_word(device_field(f,\"format\"))!=54{return 1;}return db_word(camera_frame_close("+q(handle)+","+q(id)+"))-1;}");
         outputProfiles.put("hdr_capture_verified",true).put("hdr_profile",2).put("hdr_format",54).put("hdr_width",size.getWidth()).put("hdr_height",size.getHeight()).put("hdr_data_space",dataSpace).put("hdr_color_space_id",color<0?JSONObject.NULL:color).put("hdr_plane_paging_verified",true).put("hdr_has_plane_above32k",large);
     }
+    static String word(long value){return value==Long.MIN_VALUE?"(-9223372036854775807-1)":Long.toString(value);}
     void wire(String expression,Object expected,StringBuilder code,int[] sequence)throws Exception{
         String name="v"+(sequence[0]++);code.append("let ").append(name).append("=").append(expression).append(";if !").append(name).append("{return 1;}");
         if(expected==JSONObject.NULL){code.append("if db_kind(").append(name).append(")!=0{return 2;}");return;}
         if(expected instanceof JSONObject&&((JSONObject)expected).has("$real")){
-            code.append("if db_kind(").append(name).append(")!=4||db_word(").append(name).append(")!=").append(((JSONObject)expected).getLong("$real")).append("{return 3;}");return;
+            code.append("if db_kind(").append(name).append(")!=4||db_word(").append(name).append(")!=").append(word(((JSONObject)expected).getLong("$real"))).append("{return 3;}");return;
         }
         if(expected instanceof JSONObject){
             JSONObject object=(JSONObject)expected;code.append("if db_kind(").append(name).append(")!=5||db_count(").append(name).append(")!=").append(object.length()).append("{return 4;}");
@@ -145,17 +146,19 @@ public final class HardwareCameraChecks {
         long number=expected instanceof Boolean?((Boolean)expected?1:0):((Number)expected).longValue();
         code.append("if db_kind(").append(name).append(")!=1||db_word(").append(name).append(")!=").append(number==Long.MIN_VALUE?"(-9223372036854775807-1)":Long.toString(number)).append("{return 7;}");
     }
-    void wirePage(String expression,JSONObject expected)throws Exception{
-        StringBuilder code=new StringBuilder("fn main(){");wire(expression,expected,code,new int[]{0});code.append("return 0;}");
+    void wirePage(String expression,JSONObject expected)throws Exception{wirePage(expression,expected,"");}
+    void wirePage(String expression,JSONObject expected,String setup)throws Exception{
+        StringBuilder code=new StringBuilder("fn main(){"+setup);wire(expression,expected,code,new int[]{0});code.append("return 0;}");
         if(code.length()>60000)throw new IOException("Metadata oracle source exceeds its test bound");try{vm(code.toString());}catch(Exception error){throw new IOException("Metadata oracle "+expression+": "+error.getMessage(),error);}
     }
     static JSONObject expectedPage(JSONArray rows,int total,int end,String type)throws Exception{
         JSONObject value=new JSONObject().put("value",rows).put("array",true).put("total",total).put("next",end<total?end:-1);
         if(type!=null)value.put("sdk_type",type);return value;
     }
-    void metadataFixture(Object value,int offset,int limit,JSONObject expected)throws Exception{
+    void metadataFixture(Object value,int offset,int limit,JSONObject expected)throws Exception{metadataFixture(value,null,offset,limit,expected);}
+    void metadataFixture(Object value,JSONArray path,int offset,int limit,JSONObject expected)throws Exception{
         VmHardware.Handle fixture=new VmHardware.Handle(context,"camera","camera_metadata_fixture"){
-            public Object info()throws Exception{check();return CameraValues.page(value,offset,limit);}
+            public Object info()throws Exception{check();return CameraValues.page(value,offset,limit,path);}
         };String handle=VmHardware.add(fixture);
         try{wirePage("device_info("+q(handle)+")",expected);}finally{VmHardware.close(context,handle);}
     }
@@ -185,6 +188,7 @@ public final class HardwareCameraChecks {
         if(expression==null)metadataFixture(object,all.length(),1,end);else wirePage(expression.replace("OFFSET",Integer.toString(all.length())),end);
     }
     void metadata(CameraCharacteristics characteristics,String id)throws Exception{
+        new HardwareCameraMetadataChecks(this).run(characteristics,id);
         android.util.Pair<Double,Double>[] noise=new android.util.Pair[]{new android.util.Pair<>(1.25,.5),new android.util.Pair<>(2.5,.125)};
         metadataFixture(noise,1,1,expectedPage(new JSONArray().put(new JSONArray().put(VmHardware.real(2.5)).put(VmHardware.real(.125))),2,2,null));
         metadataFixture(new android.util.Pair<>(null,Double.NaN),0,1,new JSONObject().put("value",new JSONArray().put(JSONObject.NULL).put(new JSONObject().put("non_finite","nan"))).put("array",false).put("total",1).put("next",-1));

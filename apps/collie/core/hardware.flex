@@ -302,7 +302,7 @@ fn hw_operations(){
     hw_operation(rows,"camera_list","camera",2,2);
     hw_operation(rows,"camera_info","camera",1,1);
     hw_operation(rows,"camera_keys","camera",4,4);
-    hw_operation(rows,"camera_value","camera",4,4);
+    hw_operation(rows,"camera_value","camera",4,5);
     hw_operation(rows,"camera_formats","camera",3,3);
     hw_operation(rows,"camera_output_sizes","camera",4,4);
     hw_operation(rows,"camera_watch","camera",0,0);
@@ -318,15 +318,15 @@ fn hw_operations(){
     hw_operation(rows,"camera_frame_read","hardware_handle",5,5);
     hw_operation(rows,"camera_frame_close","hardware_handle",2,2);
     hw_operation(rows,"camera_result_keys","hardware_handle",4,4);
-    hw_operation(rows,"camera_result_value","hardware_handle",5,5);
+    hw_operation(rows,"camera_result_value","hardware_handle",5,6);
     hw_operation(rows,"camera_physical_info","camera",2,2);
     hw_operation(rows,"camera_physical_keys","camera",4,4);
-    hw_operation(rows,"camera_physical_value","camera",5,5);
+    hw_operation(rows,"camera_physical_value","camera",5,6);
     hw_operation(rows,"camera_physical_formats","camera",4,4);
     hw_operation(rows,"camera_physical_output_sizes","camera",5,5);
     hw_operation(rows,"camera_result_physical","hardware_handle",4,4);
     hw_operation(rows,"camera_physical_result_keys","hardware_handle",5,5);
-    hw_operation(rows,"camera_physical_result_value","hardware_handle",6,6);
+    hw_operation(rows,"camera_physical_result_value","hardware_handle",6,7);
     hw_operation(rows,"camera_video_start","camera",3,3);
     hw_operation(rows,"camera_video_qualities","camera",3,3);
     hw_operation(rows,"camera_video_profiles","camera",5,5);

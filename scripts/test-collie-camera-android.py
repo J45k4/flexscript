@@ -35,7 +35,13 @@ def passed(text):checks.append(text);print('PASS',text,flush=True)
 def tree():
  adb('shell','uiautomator','dump','/data/local/tmp/collie-camera.xml');return ET.fromstring(adb('exec-out','cat','/data/local/tmp/collie-camera.xml'))
 def button(label=None,suffix=None):
- root=tree();node=next((n for n in root.iter('node') if n.get('class')=='android.widget.Button' and ((label and label in [n.get('text'),n.get('content-desc')]) or (suffix and n.get('resource-id','').endswith(suffix)))),None);assert node is not None,ET.tostring(root).decode();x,y,z,w=map(int,re.findall(r'\d+',node.get('bounds')));adb('shell','input','tap',(x+z)//2,(y+w)//2)
+ # A checkpoint may precede Android's dialog window. Wait for the actual
+ # enabled target; a stale Collie permission panel is not the OS dialog.
+ def target():
+  root=tree()
+  node=next((n for n in root.iter('node') if n.get('class')=='android.widget.Button' and n.get('enabled')=='true' and ((label and label in [n.get('text'),n.get('content-desc')]) or (suffix and n.get('resource-id','').endswith(suffix)))),None)
+  return (node,) if node is not None else None
+ node=wait(target,seconds=15)[0];x,y,z,w=map(int,re.findall(r'\d+',node.get('bounds')));adb('shell','input','tap',(x+z)//2,(y+w)//2)
 def pending(sid,phase='permission',case=None):
  def probe():
   s=read('files/workspaces/'+sid+'/session.json')
@@ -109,6 +115,8 @@ try:
  passed('an independent JPEG decoder validates the VM-paged encoded frame and exact SDK-selected dimensions')
  vm('fn main(){let c=db_word(state_get("camera"));let r=camera_result_value(c,db_word(state_get("result")),"android.sensor.timestamp",0,1);if !r{return 1;}let f=camera_frame_info(c,db_word(state_get("frame")));if db_word(device_field(r,"value"))!=db_word(device_field(f,"timestamp_ns")){return 2;}if !camera_frame_close(c,db_word(state_get("frame"))){return 3;}if camera_frame_info(c,db_word(state_get("frame"))){return 4;}return 0;}')
  passed('actual image/result sensor timestamps match and explicit frame close invalidates its ID')
+ vm('fn main(){let c=db_word(state_get("camera"));let result=db_word(state_get("result"));let page=camera_result_value_path(c,result,"android.sensor.timestamp",db_list(),0,1);let legacy=camera_result_value(c,result,"android.sensor.timestamp",0,1);if !page||!legacy||db_word(device_field(page,"value"))!=db_word(device_field(legacy,"value")){return 1;}let path=db_list();db_add(path,db_int(0));if camera_result_value_path(c,"result-unknown","android.sensor.timestamp",path,0,1){return 2;}if !worker_equal(db_word(db_at(device_error(),0)),"stale_result"){return 3;}return 0;}')
+ passed('retained SDK result path queries preserve actual timestamps and reject stale parents before path traversal')
  vm('fn main(){let id=db_word(state_get("camera_id"));let p=camera_output_sizes(id,35,0,16);if !p{return 1;}let sizes=device_field(p,"sizes");let best=db_at(sizes,0);let found=0;let i=0;while i<db_count(sizes){let row=db_at(sizes,i);if db_word(device_field(row,"width"))==320 && db_word(device_field(row,"height"))==240{best=row;found=1;}i=i+1;}if !found{return 2;}let outputs=db_list();db_add(outputs,camera_output(35,db_word(device_field(best,"width")),db_word(device_field(best,"height"))));if !camera_configure(db_word(state_get("camera")),outputs,5000){return 3;}return 0;}')
  camera_wait('configured')
  vm('fn main(){let c=db_word(state_get("camera"));if !camera_capture(c,2,db_list(),0){return 1;}let i=0;while i<150{let e=device_wait(c,1000);if db_kind(e)==5 && worker_equal(db_word(device_field(e,"event")),"frame"){state_set("frame",device_field(e,"frame"));return 0;}i=i+1;}return 2;}')

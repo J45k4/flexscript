@@ -17,7 +17,7 @@ final class HardwareCameraPhysical {
         CameraCharacteristics ch=HardwareCamera.manager(c).getCameraCharacteristics(id);
         if(op.equals("camera_physical_info"))return HardwareCamera.info(c,id,ch).put("logical_camera",logical);
         if(op.equals("camera_physical_keys"))return HardwareCamera.keys(ch,VmHardware.integer(a,2,0,10000),VmHardware.integer(a,3,1,32));
-        if(op.equals("camera_physical_value"))return HardwareCamera.value(ch,VmHardware.text(a,2,256),VmHardware.integer(a,3,0,1000000),VmHardware.integer(a,4,1,32));
+        if(op.equals("camera_physical_value"))return HardwareCamera.value(ch,VmHardware.text(a,2,256),VmHardware.integer(a,3,0,1000000),VmHardware.integer(a,4,1,32),CameraValues.path(a,5));
         if(op.equals("camera_physical_formats"))return HardwareCamera.formats(ch,VmHardware.integer(a,2,0,10000),VmHardware.integer(a,3,1,32));
         return HardwareCamera.sizes(ch,VmHardware.integer(a,2,0,Integer.MAX_VALUE),VmHardware.integer(a,3,0,10000),VmHardware.integer(a,4,1,16));
     }
@@ -73,7 +73,7 @@ final class HardwareCameraPhysical {
         String id=VmHardware.text(a,2,128);CaptureResult selected=records.get(id);
         if(selected==null)throw new VmHardware.Failure("unavailable","This retained SDK result contains no metadata for that physical camera.");
         if(op.equals("camera_physical_result_keys"))return HardwareCamera.keys(selected,VmHardware.integer(a,3,0,10000),VmHardware.integer(a,4,1,32));
-        return HardwareCamera.value(selected,VmHardware.text(a,3,256),VmHardware.integer(a,4,0,1000000),VmHardware.integer(a,5,1,32));
+        return HardwareCamera.value(selected,VmHardware.text(a,3,256),VmHardware.integer(a,4,0,1000000),VmHardware.integer(a,5,1,32),CameraValues.path(a,6));
     }
     private static final class Api31 {
         static Map<String,TotalCaptureResult> results(TotalCaptureResult result){return result.getPhysicalCameraTotalResults();}

@@ -1,4 +1,8 @@
 // Portable Camera2 record construction. The host validates advertised keys/types.
+fn camera_value_path(camera,key,path,offset,limit){let r=db_request("camera_value");db_add(r,db_text(camera));db_add(r,db_text(key));db_add(r,db_int(offset));db_add(r,db_int(limit));db_add(r,path);return db_rpc(r);}
+fn camera_physical_value_path(logical,physical,key,path,offset,limit){let r=db_request("camera_physical_value");db_add(r,db_text(logical));db_add(r,db_text(physical));db_add(r,db_text(key));db_add(r,db_int(offset));db_add(r,db_int(limit));db_add(r,path);return db_rpc(r);}
+fn camera_result_value_path(camera,result,key,path,offset,limit){let r=db_request("camera_result_value");db_add(r,db_text(camera));db_add(r,db_text(result));db_add(r,db_text(key));db_add(r,db_int(offset));db_add(r,db_int(limit));db_add(r,path);return db_rpc(r);}
+fn camera_physical_result_value_path(camera,result,physical,key,path,offset,limit){let r=db_request("camera_physical_result_value");db_add(r,db_text(camera));db_add(r,db_text(result));db_add(r,db_text(physical));db_add(r,db_text(key));db_add(r,db_int(offset));db_add(r,db_int(limit));db_add(r,path);return db_rpc(r);}
 fn camera_setting(key,type,value){let r=db_list();db_add(r,db_text(key));db_add(r,db_text(type));db_add(r,value);return r;}
 fn camera_physical_setting(physical_id,key,type,value){let r=camera_setting(key,type,value);db_add(r,db_text(physical_id));return r;}
 fn camera_physical_output(format,width,height,physical_id){let r=db_list();db_add(r,db_int(format));db_add(r,db_int(width));db_add(r,db_int(height));db_add(r,db_text(physical_id));return r;}

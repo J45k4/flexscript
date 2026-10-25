@@ -29,7 +29,7 @@ it does not count as an implementation of an otherwise available adapter.
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
 | Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors, direct shared-memory captures | paged static/dynamic inventory, batching/reconfiguration/flush/additional/dynamic bindings plus public MemoryFile/HardwareBuffer direct-channel operations and portable record/union decoding implemented |28 sensor integration groups and24 separate direct checks per Android15/16 SDK, including6 independent SensorService probes. Both memory backings and actual JNI byte copies pass; neither emulator advertises direct reporting and independent SDK channel opens also fail, so successful direct reporting/lifecycle is unverified. Physical FIFO/cadence, dynamic/trigger/activity/health, older/OEM and fault gates remain open |
-| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, named AVC/HEVC/AV1 encoder capabilities and explicit recorder profile/level requests, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 187/API36 and183/API35 camera groups pass, including effective explicit AVC/HEVC/AV1 profile/level settings, combined explicit-profile fractional time-lapse, actual profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
+| Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata with bounded nested stream tables, orientation maps and lens-intrinsics transport, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, named AVC/HEVC/AV1 encoder capabilities and explicit recorder profile/level requests, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 207/API36 and203/API35 camera groups pass, including1125 real metadata path queries per SDK (114 mandatory combinations/299 streams/1264 sizes), effective explicit AVC/HEVC/AV1 profile/level settings, combined explicit-profile fractional time-lapse, actual profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
 | Haptics | capabilities/effects/waveforms/repeating/primitive timing/envelopes/frequency/actuator selection/parallel/cancel | scoped app playback lease, default/selected portable records, bounded waveform loops and Android16 arbitrary/preamble repeats, explicit pause/relative-start timing, public per-ID metadata/frequency queries, envelopes and parallel graphs, independent deadline/retry scheduling and foreground cleanup implemented | 90/API36 and69/API35 SDK/VM/service groups pass;76/52 independent actual service dumps plus two foreground probes per SDK verify repeat graphs/deadlines, relative-offset adaptation, exact metadata and stale ownership. Each SDK exposes one ID; two-actuator and physical/older/OEM/fault gates remain open |
@@ -5462,3 +5462,102 @@ Primary contracts: [direct record ABI and channel lifetime](https://developer.an
 [public CPU buffer lock/copy semantics](https://developer.android.com/ndk/reference/group/a-hardware-buffer),
 [sensor rate/privacy restrictions](https://developer.android.com/develop/sensors-and-location/sensors/sensors_overview),
 [SDK backing requirements and public dispatch](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/SystemSensorManager.java).
+
+### 2026-10-25: structured camera metadata and bounded nested paths
+
+Four public SDK metadata families that previously returned
+`unsupported_sdk_type` now have explicit transport: mandatory stream
+combinations/information (API29+), multi-resolution maps/stream information
+(API31+), device-state sensor orientation maps (API32+), and lens-intrinsics
+samples (API35+). Later stream-information getters are guarded at their actual
+API31/API33 introduction. Lens samples retain exact integer64 timestamps and
+five typed real calibration values. Orientation root pages explicitly query
+the two documented NORMAL/FOLDED constants, marking an SDK-rejected state
+unsupported/null; they do not claim to enumerate internal/vendor states.
+
+Four ordinary `_path` helpers extend the existing logical/physical
+`camera_value` and retained-result operations with an optional final path;
+legacy arities remain valid. At most8 integer/fixed-field segments select
+array/list entries, combination `streams`/`sizes`, multi-resolution
+`inputs`/`outputs` and actual format IDs, or an explicit orientation state.
+Every nested collection remains readable through normal32-entry pages and
+exact EOF. SDK-returned stream/size/format groups are bounded to4096 entries;
+large inline data is not silently truncated. Multi-resolution stream ordering
+is physical ID, width, height with duplicates retained. This is explicit public
+SDK getter dispatch, not reflection, arbitrary Java fields/methods or raw FFI.
+Camera consent, physical-parent validation, result ownership/eviction and
+read-only inventory behavior are retained; no new permission, dependency,
+native bridge or model tool is added.
+
+Evidence under `build/android-camera-values`:
+
+- The **same final `check4-debug/collie.apk` passes207 camera checks on
+  Android16/API36 and203 on Android15/API35**. Size8,337,151 bytes, SHA256
+  `fd6b37327f5b7031cb034cec3b9cedb1cd4c36ab913498675c321964ef4ab522`.
+  Existing actual consent, Camera2/image plane/RAW/DNG/video/profile/metadata,
+  result eviction, physical-parent denial and lifecycle checks remain covered.
+  A new actual retained-result path preserves the image/result timestamp and
+  rejects an unknown parent before traversal. Reports are in
+  `check4-debug/sdk36-final` and `sdk35-final`.
+- Per SDK, **1125 actual metadata path queries in190 bounded VM programs**
+  compare every entry of five actual mandatory-combination keys against a
+  separate traversal of public SDK getters:114 combinations,299 streams and
+  1264 available sizes. Every description, reprocess/input/maximum/ultra-high/
+  10-bit flag, supported10-bit format and stream-use-case value is copied
+  exactly, including each list's EOF. A camera-metadata descriptor or
+  constructed object cannot satisfy the required nonempty actual-table gate.
+  This validates SDK metadata; it does not prove every combination has been
+  configured/captured or its physical performance measured.
+- Clearly constructed public SDK fixtures verify a timestamp above2^53,
+  all five lens-intrinsics values including negative zero, scalar/array/path
+  transport, normal/folded/absent orientation entries, exact EOF, public
+  multi-resolution stream identity/size, a selected typed null and a1100-entry
+  list read through bounded pages. Malformed/wrong-type/deep/out-of-range/
+  method-like selectors reject. An actual bad metadata path leaves ordinary
+  camera inventory usable. **Neither selected camera exposes an actual multi-resolution map; physical
+  fold/intrinsics oracles were not verified**. Reports retain
+  `sdk_multi_resolution_maps=0`, `physical_intrinsics_verified=false` and
+  `physical_fold_orientation_verified=false`. Those positive device gates
+  remain unverified; no hidden SDK constructor or fabricated camera is used.
+- Non-debug `check1-release/collie.apk` is7,861,849 bytes, SHA256
+  `b84a0087d19f9c66760e77db46ee8a0501706a32cbfbd31e369ab44817b4d0ce`.
+  `parity4.json` verifies334 identical non-resource production Java classes and
+  identical debug/non-debug engine/UI/generated/native bytes. The SDK oracle
+  class stays debug-only; actual APK isolation/security checks pass. No new
+  Python file or app runtime is added.
+- Native27 (`native2.log`), core9 (`core3.log`) and full API-reference4
+  (`reference3.log`) checks pass. Their actual native executable is byte-equal
+  to final check4, verified explicitly before evidence reuse. All142,330
+  detailed reference bytes and the17,163-byte compact index cross the actual
+  VM with all31 permissions denied. Shared registry/ownership/legacy-arity
+  guards and native/interpreted portable camera-record checks pass.
+- Independent `verified35.json`/`verified36.json` audits confirm the exact
+  installed final APK, original selected conversation/messages/all31
+  permissions and original workspace sets; Android CAMERA/RECORD_AUDIO grants
+  and USER_SET/USER_FIXED flags match their recorded originals. Actual
+  CameraService has zero active clients. Results are saved and both owned
+  headless emulators stopped. Desktop and the physical phone are untouched.
+
+Intermediate failures remain separate from final pass counts. The check2
+calibration fixture exposed a test-generator signed-minimum decimal literal;
+the formatter now emits its valid integer64 expression, without changing the
+compiler or calibration value. The first exhaustive check3 loop compiled one
+VM program per query and reached the unchanged300s test-case limit. The final
+oracle batches at most6 queries per bounded ordinary VM program,
+preserves every entry/assertion and saves completed batch counters; bounds and
+timeout are not raised. An Android16 screenshot caught the previous Collie
+panel before the asynchronous Android dialog appeared. The runner now waits
+for the actual enabled target; its initial leaf-Element truth-value bug is
+also fixed. The failed synthetic Android16 workspaces are saved in
+`sdk36-recovery3`, and original state was independently restored before retry.
+
+Successful multi-resolution map getter paths, physical fold/calibration samples,
+older/OEM behavior and the prior HDR/high-speed/RAW/depth/torch/physical-output,
+SDK/HAL/storage/lifecycle gates remain open, alongside all other hardware
+families and the strict HID/UWB failures. The full hardware goal remains
+**incomplete**.
+
+Primary contracts: [mandatory stream information](https://developer.android.com/reference/android/hardware/camera2/params/MandatoryStreamCombination.MandatoryStreamInformation),
+[multi-resolution SDK maps](https://developer.android.com/reference/android/hardware/camera2/params/MultiResolutionStreamConfigurationMap),
+[documented device-state lookup](https://developer.android.com/reference/android/hardware/camera2/params/DeviceStateSensorOrientationMap),
+[lens-intrinsics sample](https://developer.android.com/reference/android/hardware/camera2/params/LensIntrinsicsSample).
