@@ -103,6 +103,10 @@ jobs:
           build/stage2 apps/collie/tests/nfc.flex -o build/test-collie-nfc
           build/test-collie-nfc
           build/stage2 run --interpret --fuel=10000000 apps/collie/tests/nfc.flex
+          build/stage2 apps/collie/tests/sensor-direct.flex -o build/test-collie-sensor-direct
+          build/test-collie-sensor-direct
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/sensor-direct.flex
+          build/stage2 run --jit --fuel=10000000 apps/collie/tests/sensor-direct.flex
           build/stage2 apps/collie/tests/uwb.flex -o build/test-collie-uwb
           build/test-collie-uwb
           build/stage2 run --interpret --fuel=10000000 apps/collie/tests/uwb.flex
