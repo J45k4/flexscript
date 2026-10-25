@@ -16,8 +16,8 @@ it does not count as an implementation of an otherwise available adapter.
 | Wi-Fi | scans, connection requests/suggestions, Direct, Aware, local-only hotspot, RTT | status/scans, scoped network requests/suggestions and local-only hotspot SDK adapter implemented; Direct channel/group/service/socket bindings implemented with integration in progress; RTT AP and Aware attachment/discovery/message/data-path/peer RTT SDK bindings implemented; Aware radio integration pending | virtual-AP scans, actual precise Location/Nearby consent and TCP through an approved request passed; hotspot error callback passed, successful AP/device checks pending; orphan recovery after actual process death passed; P2P discovery/pairing/TCP/UDP passed in earlier headless runs, DNS-SD exchange unresolved; RTT unsupported/validation checks passed, measured distance pending; 10 Aware permission/unsupported/ownership/API-reference checks passed, NAN radio proof pending |
 | Network services | DNS-SD discovery/advertising, approved VPN IP transport | implemented | actual Android DNS-SD over virtual Wi-Fi and approved foreground TUN read/write/protection/teardown passed; encrypted mesh/gateway is separate work |
 | Cellular diagnostics | subscriptions, signal/service/cell data with platform permissions | implemented; read-only diagnostics, separate cellular + location gates | 19 headless Android scenarios passed, including real runtime prompts, NR cell data, refresh, roaming callbacks and both grants; physical SIM/multi-SIM/radio checks pending |
-| USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt/isochronous, accessory mode, disconnect handling | SDK device/accessory bindings plus bounded asynchronous native USBFS ISO batches and portable Flexscript packet decoding implemented |28 groups on each Android15/16 SDK verify actual lazy/system consent, virtual-kernel ISO OUT transfers/cancellation and owned cleanup;15 native fault fixtures and portable codec checks pass. ISO IN, physical device I/O/detach, bulk/interrupt/accessory fixtures and older/OEM gates remain open |
-| USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual Android guest preload passed; physical loopback fixtures pending |
+| USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt/isochronous, accessory mode, disconnect handling | SDK device/accessory bindings plus bounded asynchronous native USBFS ISO batches and portable Flexscript packet decoding implemented |28 groups on each Android15/16 SDK verify actual lazy/system consent, virtual-kernel ISO OUT transfers/cancellation and owned cleanup;15 native fault fixtures and portable codec checks pass. Constructed kernel CDC bulk/interrupt/detach checks also pass on SDK35/36 (checkpoint below). ISO IN, physical device I/O/detach, accessory fixtures and older/OEM gates remain open |
+| USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual SDK35/36 VM CDC line-coding readback,32768-byte loopback, break-on/off interrupt frames and detach passed; physical UART and non-CDC chip fixtures remain pending |
 | Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 16 baseline SDK/VM/consent checks passed on the current server APK; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy and extended/periodic transmission, GATT client/server SDK bindings implemented; remaining lifecycle/SDK gates below | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | public Classic HID device SDK bindings implemented; remaining verification gates below | encrypted510-byte control/interrupt report exchange, registration ownership and reconnect verified against a controlled host; public unplug callback gate remains failing on this emulator |
@@ -5870,4 +5870,130 @@ missing privileged/vendor adapters, strict HID unplug/recovery and UWB interval
 failures, real OEM UWB compatibility, successful sensor-direct reporting,
 Camera2 physical/fold/lens/HDR/high-speed paths, HCE routing/RF, document/provider
 faults and physical/older-device/cross-cutting lifecycles. This USB checkpoint
+does not complete the full hardware objective.
+
+
+## Actual kernel CDC I/O and single-frame notifications (2026-10-25)
+
+This checkpoint fixes a real portable-driver error: `serial_status()` requested
+64 bytes for a ten-byte CDC `SERIAL_STATE` notification. On the controlled
+kernel endpoint, whose maximum packet size is10, that request waited for more
+full packets and timed out, closing the owned SDK handle. It now requests one
+ten-byte frame. Two consecutive notifications remain separate typed results.
+The new protocol regression fails against the previous64-byte implementation
+and passes native, interpreter and JIT modes (`serial-regression.json`).
+No Java adapter or guest API signature changes are required.
+
+Frozen artifacts and evidence are under `build/android-serial-fixture/`:
+
+- `debug/collie.apk`: **8,451,959 bytes**, SHA256
+  `154d4dd8e84c7da8ab10754496c09746c55cc4a4e7dc54bb9416c7f739eca87c`.
+- `release/collie.apk`: **7,952,081 bytes**, SHA256
+  `411abb1d6d50f11efe5e848b9babb28f44aae8f61e59c149294a2e139aa513a6`.
+  Release is nondebug, development-signed. `artifact-parity.json` verifies350
+  identical production Java class files, identical generated/native sources,
+  objects and libraries, actual APK library bytes, signatures and16KiB ZIP
+  alignment. Release DEX contains no Collie fixture/check classes. The new
+  serial endpoint is test-only and is packaged in neither APK.
+- `sdk35-fixed2/serial-report.json` and `sdk36-fixed/serial-report.json` record
+  successful real SDK calls from the ordinary app UID and programs in the
+  actual checked VM. A stock configfs ACM function on the owned emulator's
+  dummy UDC provides the USB device; root is used only to construct/remove
+  this test fixture. Collie's first-use USB Ask/Allow and Android's actual
+  device consent are exercised, not replaced with fixture permission values.
+- The program uses the production portable CDC driver. USB GET_LINE_CODING
+  independently reads back115200/8N1 and230400/7E2. It compares all32768 unique,
+  epoch-specific binary bytes inside the unchanged default VM fuel. The raw
+  tty endpoint independently reports exactly32768 input/output bytes, pending0,
+  error0 and the same canonical64-bit FNV1a hash. Hashes are hex strings to
+  preserve full precision. The full payload SHA256 is recorded separately.
+- After the binary exchange the endpoint performs actual tty break-on/off
+  ioctls. Linux ACM supplies real interrupt-IN frames
+  `a1200000000002000700` then `a1200000000002000300`; both are independently
+  checked against literal wire bytes in the host controller. This covers
+  `serial_status()` and USB interrupt transfer completion. DTR/RTS requests
+  also receive real class-control acknowledgements. Neither physical pins,
+  baud accuracy nor electrical break timing is measured by a virtual gadget.
+- A second VM program installs `usb_watch`, opens the real SDK device and waits.
+  The host first independently observes its actual `/dev/bus/usb/BBB/DDD` fd,
+  then unbinds only its owned gadget. The VM receives the actual detach event,
+  rejects the stale/disconnected/revoked handle, and the descriptor disappears
+  from the same app PID before the controller force-stops or restarts it.
+- The final controller shares the native ADB/consent/workspace transport with
+  the ISO driver. A per-user/per-emulator flock coordinates both runners even
+  with different output directories. A durable recovery manifest and copied
+  hash-checked helper are saved before root mutations; the actual endpoint PID
+  lease is saved before the data worker starts. Cleanup signals only a process
+  whose `/proc/PID/exe` matches the owned helper and removes only the validated
+  fixture namespace and hash-matching helper. The queue is bounded1MiB and the
+  endpoint lifetime300s. It never exposes a host path or fd to guest programs.
+- An early repeat exposed a kernel cleanup gap: configfs removal left an
+  `android1` sysfs entry, and the next `mkdir` reported ENOMEM with a duplicate
+  sysfs-name kernel trace. The initial success report did not audit this class
+  and must not be used as complete kernel-restoration proof. The strengthened
+  controller requires `--fixture-reboot`, synchronizes owned cleanup, reboots
+  the same guest, observes a changed boot ID and stable Activity, and compares
+  the original Android USB class links as well as existing gadget bindings.
+  It never restarts the emulator in response to an observation timeout.
+- `sdk35-cleanup2` retains a successful constructed setup interruption against
+  the preceding e2df1a0 debug APK; no guest serial code was executed in that
+  failure case. `sdk36-cleanup` tests the same interruption on the new APK and
+  a validated `--recover` path. Recovery checks the SDK, APK, helper ownership
+  and unchanged original conversation; it performs cleanup/restoration only,
+  never setup, data replay or an invented successful transfer. Reports keep
+  `constructed_setup_failure_verified`, `recovery_only`, `data_verified` and
+  `cdc_interrupt_notification_verified` separate.
+- The shared-driver regression reports are `iso35` and `iso36`: all28 existing
+  real ISO/consent groups per SDK, with the new debug APK. Original full sessions,
+  selected conversations, workspace sets, all31 Ask policies, actual runtime
+  grant flags, transient USB permissions, existing g1 binding, dummy UDC and
+  Android USB sysfs class are checked independently after the relevant suites.
+  Six historical Android16 exploratory UI dumps were archived and hash-verified
+  before exact-path removal; the final audit then passed and both owned
+  emulators shut down cleanly. APK upgrades preserve exact app state and runtime flags. Native27, shared
+  core9 and complete API-reference4 groups also pass on the rebuilt engine.
+- Earlier failures remain preserved, including a stale periodic-payload false
+  oracle, bytewise-compare fuel exhaustion, the64-byte interrupt timeout and a
+  too-small four-notification startup drain. None counts as a successful
+  end-to-end run. The final guest drains at most16 notifications, each with a
+  four-second deadline, and requires both actual break transitions. The endpoint
+  independently verifies that both tty break ioctls succeeded.
+
+Reproduce from the repository root with the cached Android NDK and a disposable,
+explicitly owned x86_64 Android emulator, initialized with the exact debug APK:
+
+```sh
+build/flex-hardware scripts/build-collie-serial-fixture.flex -o build/build-serial-fixture
+build/build-serial-fixture --ndk /path/to/android-ndk --out build/serial-endpoint
+build/flex-hardware scripts/test-collie-usb-serial-android.flex -o build/test-usb-serial-android
+build/test-usb-serial-android --self-test
+# --out is a fresh existing directory containing the exact installed collie.apk.
+# adb root must already be enabled on this owned emulator; keep SELinux enforcing.
+build/test-usb-serial-android --out build/serial-check --serial emulator-5586 --helper build/serial-endpoint/serial-gadget-loopback --fixture-gadget --fixture-reboot
+# In another fresh output directory, add --exercise-cleanup to interrupt setup.
+# Recover the saved directory without replaying any I/O:
+build/test-usb-serial-android --out build/serial-check --serial emulator-5586 --fixture-gadget --fixture-reboot --recover
+```
+
+CI compiles the real guest template, both native Flexscript drivers and the
+endpoint C source, runs the independent full-payload/counter/state self-test,
+and exercises the portable serial protocol in native/interpreter/JIT modes.
+CI compilation is not an Android or physical-I/O proof. The on-device-style
+emulator source is `apps/collie/tests/usb-serial-live.flex`; the raw endpoint is
+`apps/collie/tests/android/serial-gadget-loopback.c`. No new Python source or
+runtime dependency is introduced.
+
+Primary protocol implementation reference:
+[Linux6.12 ACM serial-state notifications and tty break callbacks](https://github.com/torvalds/linux/blob/v6.12/drivers/usb/gadget/function/f_acm.c).
+The implementation does not copy kernel driver code.
+
+**Still open:** physical USB/UART, FTDI/CP210x/CH34x chip I/O, accessory fixtures,
+actual ISO IN, HS/SS/hub/continuous streaming, timing/electrical accuracy and
+older/OEM kernels. Stock dummy_hcd is not an ISO test device. The experimental
+USB/IP route remains blocked by stock enforcing kernel/socket SELinux policy;
+no policy was changed and no actual ISO IN completion was obtained. All other
+inventory and strict gates above remain required, including the16 missing
+privileged/vendor integrations, physical radios, strict HID unplug/recovery,
+strict UWB interval, sensor-direct success, Camera2 physical/HDR/high-speed,
+HCE routing/RF and remaining document/provider/lifecycle faults. This checkpoint
 does not complete the full hardware objective.

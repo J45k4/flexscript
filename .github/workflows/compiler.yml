@@ -135,6 +135,13 @@ jobs:
           build/stage2 apps/collie/tests/usb-serial.flex -o build/test-collie-usb-serial
           build/test-collie-usb-serial
           build/stage2 run --interpret apps/collie/tests/usb-serial.flex
+          build/stage2 run --jit apps/collie/tests/usb-serial.flex
+          build/stage2 scripts/build-collie-serial-fixture.flex -o build/build-collie-serial-fixture
+          build/stage2 scripts/test-collie-usb-serial-android.flex -o build/test-collie-usb-serial-android-driver
+          build/test-collie-usb-serial-android-driver --self-test
+          build/stage2 apps/collie/tests/usb-serial-live.flex -o build/test-collie-usb-serial-live-template
+          build/test-collie-usb-serial-live-template
+          clang -std=c11 -Wall -Wextra -Werror -O2 -c apps/collie/tests/android/serial-gadget-loopback.c -o build/test-collie-serial-fixture.o
           build/stage2 apps/collie/tests/guest-copy.flex -o build/test-collie-guest-copy
           build/test-collie-guest-copy
           build/stage2 run --interpret --fuel=50000000 apps/collie/tests/guest-copy.flex
