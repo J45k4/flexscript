@@ -3,7 +3,8 @@ import "host.flex";
 global j_source=0;
 global j_offset=0;
 global j_depth=0;
-// Node: type (0 null,1 integer,2 string,3 array,4 object,5 boolean), value.
+// Node: type (0 null,1 integer,2 string,3 array,4 object,5 boolean,
+// 6 exact JSON numeric text), value.
 fn j_node(kind,value) {
     let p=h_take(16);
     store64(p,kind);
@@ -313,6 +314,15 @@ fn j_quote(b,s) {
     h_text(b,"\"");
     return 0;
 }
+fn j_raw_digit(c){return c>=48&&c<=57;}
+fn j_raw_number(s){
+    if !s{return 0;}let i=0;if load8(s+i)==45{i=i+1;}
+    let c=load8(s+i);
+    if c==48{i=i+1;}else{if c<49||c>57{return 0;}while j_raw_digit(load8(s+i)){i=i+1;}}
+    if load8(s+i)==46{i=i+1;if !j_raw_digit(load8(s+i)){return 0;}while j_raw_digit(load8(s+i)){i=i+1;}}
+    c=load8(s+i);if c==101||c==69{i=i+1;c=load8(s+i);if c==43||c==45{i=i+1;}if !j_raw_digit(load8(s+i)){return 0;}while j_raw_digit(load8(s+i)){i=i+1;}}
+    return load8(s+i)==0;
+}
 fn j_emit(b,p) {
     let kind=j_kind(p);
     let value=j_value(p);
@@ -328,7 +338,11 @@ fn j_emit(b,p) {
         }else {
             h_text(b,"false");
         }
+    }else if kind==6 {
+        h_assert(j_raw_number(value),"invalid raw JSON numeric metadata");
+        h_text(b,value);
     }else {
+        h_assert(kind==3||kind==4,"unknown JSON node kind");
         let end="]";
         h_text(b,"[");
         if kind==4 {
