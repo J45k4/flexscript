@@ -5155,3 +5155,86 @@ hardware inventory gates remain open. Prior strict HID/UWB failures retain their
 scope. The full hardware objective is not complete.
 
 Primary contract: [DocumentsProvider](https://developer.android.com/reference/android/provider/DocumentsProvider).
+
+## Document stream errors and provider process isolation
+
+Real reliable-pipe tests exposed a production defect: a provider's
+`closeWithError` appeared to the VM as clean EOF, even though an independent
+public SDK `checkError()` detected the provider error. Raw and converted streams
+now check their reliable error channel at EOF. Terminal I/O/poll errors return
+`disconnected`, retire that stream and release its actual descriptor/provider
+client. Stream metadata reports the SDK's `reliable_errors` capability. Exact
+partial bytes remain partial data; clean EOF stays null, and ordinary read
+timeouts preserve the resource for an explicit later read. Descriptors without
+reliable error channels cannot distinguish every remote failure from EOF.
+
+A second actual process-death test showed Android terminating Collie because it
+held a stable provider dependency. Queries, conversion metadata and file opens
+now use public unstable `ContentProviderClient` leases. Each stream owns its
+lease until close/failure; failed acquisition/construction/publication releases
+owned resources too. Binder death during a tree operation closes that tree and
+its streams. A stream error closes that stream; other streams observe their own
+failures when explicitly used. No provider operation or mutation is retried.
+
+The **same frozen final APK passes40 controlled-provider groups and29 existing
+system-folder groups on both Android16/API36 and Android15/API35**. In addition
+to the preceding copy/move/remove/conversion/picker/grant checks:
+
+- Real raw and converted pipes close with an explicit provider error, both
+  before data and after exact37/0/255 partial bytes. Independent SDK pipes
+  verify the actual reliable status. All four VM cases return `disconnected`,
+  close captured real descriptors and reject later use. Timeout/reuse, clean
+  EOF and cancellation/revocation checks still pass.
+- The separate-UID provider persists a termination receipt, then terminates
+  its own real Android process while the actual VM is observed waiting in a
+  typed-pipe read. Collie remains in its exact original PID. The VM receives
+  `disconnected`, closes that descriptor and continues. The existing raw pipe
+  independently detects death and closes on the next explicit VM read.
+- Native ADB observations verify provider-only PID replacement and client PID
+  survival, independently of Java assertions. A later Android request verifies
+  the committed FlexDB marker, retained persisted URI grant, dead stream
+  rejection, unchanged mutation count, exactly one termination and a new VM
+  tree resolving real SDK metadata after the provider restarts.
+
+Artifacts under `build/android-document-failures`:
+
+- Final debug `check5-debug/collie.apk`:8,210,007 bytes, SHA256
+  `540cb4e97fee24cc9d2f1dbeee17301c2883ff39fe01aa3c7c2e1379c860e7b7`.
+- Non-debug `check1-release/collie.apk`:7,800,328 bytes, SHA256
+  `98417045f6c5405b88865e340a8a077fed1bed3df6b1141c3aa1b4313a7d5858`.
+- Separate `provider1/provider.apk`:20,907 bytes, SHA256
+  `b7d8a1f916dc2c44aa17f1cfab5a01bfe2dbf7c3cd185c11ac9fdd63c60b0867`.
+- `check5-debug/sdk36` and `sdk35` retain installed hashes, actual PID/UID,
+  waiting/death/recovery receipts and complete40-/29-group reports.
+  `parity5.json` verifies318 matching non-resource compiled Java classes and
+  identical debug/non-debug native/generated files. Android generated resource
+  tables differ because debug includes test resources; those are excluded.
+  `packaging5.log` verifies fixture isolation/debug-only control access.
+- The final native engine passes27 ARM64 QEMU checks,9 shared-core checks and
+  four complete-reference checks (129,891 detailed bytes,16,431-byte index,
+  all31 permissions denied). The native driver compiles and its UI-parser
+  self-check passes. No new Python file, dependency, permission or model tool
+  is added; existing Python build/regression scripts remain host-only.
+- `repro36` preserves the original raw-pipe false EOF. `check2-debug` preserves
+  the intermediate timeout regression caused by catching structured VM failures
+  as `IOException`; explicit failure-first handling fixes it. `check3-debug/
+  stable36` preserves the actual stable-binding baseline:37 groups, public
+  `ApplicationExitInfo.REASON_DEPENDENCY_DIED`12 for the exact killed client PID,
+  then marker/grant recovery. `check4-debug/sdk36` is an intermediate40-group
+  unstable-client pass, not the final same-APK evidence.
+
+Physical/cloud/removable, older SDK/OEM providers, directory/alias variants,
+death during query/open/mutation Binder calls, write-side pipe/SDK/cleanup
+faults and offline behavior remain open. These controlled provider process and
+framework checks do not prove those cases or complete the hardware objective.
+
+Independent final `verified36.json`/`verified35.json` audits confirm preserved
+original messages/all31 Ask permissions, the exact original workspace sets
+(including Android15's existing UWB workspace), empty persisted URI grants and
+an empty provider graph/byte store. Unapproved UID2000 is rejected by both
+endpoints on both SDKs. Both test-provider packages were absent initially and
+were removed after verification; both owned headless emulators are stopped.
+No phone deployment, desktop worktree edit or master merge is included.
+
+Primary contracts: [reliable descriptor errors](https://developer.android.com/reference/android/os/ParcelFileDescriptor#checkError()),
+[unstable provider clients](https://developer.android.com/reference/android/content/ContentResolver#acquireUnstableContentProviderClient(android.net.Uri)).
