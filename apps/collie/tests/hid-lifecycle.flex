@@ -3,6 +3,7 @@
 import "../guest/runtime.flex";
 import "../guest/workers.flex";
 import "../guest/hardware.flex";
+import "../guest/usb-iso.flex";
 import "../guest/hardware-access.flex";
 import "../guest/haptics.flex";
 

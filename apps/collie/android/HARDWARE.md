@@ -5809,6 +5809,10 @@ OEM UWB checkpoint is40960 bytes.
   complete reference-paging groups respectively. The hardware registry/32KiB
   typed codec check passes in `hardware-core-final10.log`. CI includes the
   portable modes, native fixtures and compilation of the Flexscript controller.
+  The first CI run at `b8b9bef` passed all three codec modes and15 native USB
+  checks, then exposed a missing decoder dependency in the standalone HID
+  lifecycle fixture. That fixture now imports the real portable codec and
+  compiles/runs its no-op entry locally; no production or APK bytes change.
 - Initial controller attempts had a consent-label mismatch and a reboot/package
   readiness race. A later complete28-group run lost its post-reboot metadata
   result during actual wallpaper/overlay Activity recreation. Those failed
