@@ -1290,6 +1290,52 @@ custom QoS, ID0/no-report-ID descriptors, keyboard/mouse OS integration,
 older-SDK compatibility and physical hosts. This batch does not complete the
 HID family or the full hardware inventory.
 
+### Installed Bluetooth module diagnosis
+
+The strict suite was rerun against the current actuator-checkpoint debug APK
+`e3f52ed541c961208fccd2fd17b1113e967f5495aa0f4d35bdbb494ba7f15c4d`
+(8,177,239 bytes). It again passed17 groups, completed fixture restoration,
+and exited1 with `ok=false`, `unplug_callback_observed=false`. This is current
+HID evidence for those exact bytes; the older GATT/Classic regression counts
+above remain evidence for their earlier APK only.
+
+The examined stock API36 image is
+`google/sdk_gphone64_x86_64/emu64xa:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys`,
+with Bluetooth APEX `com.google.android.bt` version360527520. The installed
+`/apex/com.android.bt/lib64/libbluetooth_jni.so` has SHA256
+`a0aaf7e51cfcce7dddf83b708086af6fffb8a97fd6b905e8ed27543d955de275`.
+Its own extracted `.gnu_debugdata` symbols identify the receive and synchronous
+disconnect functions. Disassembly of the actual library shows the receive path
+calling disconnect **before** setting `pending_vc_unplug`; the synchronous
+disconnect helper checks that same flag while it is still false. This ordering
+explains the ordinary disconnect callbacks and missing public unplug callback
+in this controlled run. It is an installed-module defect, not a positive test
+of Collie's public unplug callback path. No platform bytes were modified, and
+generic disconnect was not converted into unplug.
+
+`scripts/check-collie-hid-platform.flex` repeats the read-only hash, symbol and
+instruction checks. It accepts only this exact known module and its matching
+extracted mini-debug ELF, rejects mismatched symbols/provenance, and reports
+other module hashes as unknown. Its successful diagnosis does **not** pass the
+strict HID gate; the report preserves the actual callback and strict-suite
+booleans. The real captured library passed the diagnostic; an unrelated module
+was reported unknown and mismatched symbols were rejected. CI compiles the
+native Flexscript tool; it does not bundle or simulate the Android library.
+
+```sh
+build/stage2 scripts/check-collie-hid-platform.flex -o build/check-collie-hid-platform
+build/check-collie-hid-platform --lib LIBBLUETOOTH_JNI_SO \
+  --symbols EXTRACTED_MINI_DEBUG_ELF --hid-report STRICT_HID_REPORT_JSON \
+  --platform PLATFORM_JSON --out DIAGNOSIS_JSON
+# PLATFORM_JSON records lib_sha256 and the observed fingerprint/module version.
+# A diagnosis exit0 is separate from the still-failing strict callback suite.
+```
+
+Both temporary Bluetooth log properties were restored. The platform limitation
+is specific to the examined module; it does not establish behavior on another
+SDK/OEM build or physical host. The public callback gate and all remaining HID
+requirements above stay open.
+
 Primary contracts: [HID device API](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.html),
 [callbacks](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.Callback),
 [SDP settings](https://developer.android.com/reference/android/bluetooth/BluetoothHidDeviceAppSdpSettings),
