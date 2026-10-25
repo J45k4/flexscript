@@ -1,5 +1,7 @@
 // Portable composition records; Android validates bounded supported primitives.
 fn haptic_primitive(id,scale,delay_ms){let r=db_list();db_add(r,db_int(id));db_add(r,scale);db_add(r,db_int(delay_ms));return r;}
+fn haptic_primitive_delay(id,scale,delay_ms,delay_type){let r=haptic_primitive(id,scale,delay_ms);db_add(r,db_int(delay_type));return r;}
+fn haptic_primitive_offset(id,scale,offset_ms){return haptic_primitive_delay(id,scale,offset_ms,1);}
 fn haptic_envelope_point(strength,sharpness_or_frequency,duration_ms){let r=db_list();db_add(r,strength);db_add(r,sharpness_or_frequency);db_add(r,db_int(duration_ms));return r;}
 fn haptic_once(duration_ms,amplitude){let r=db_list();db_add(r,db_text("one_shot"));db_add(r,db_int(duration_ms));db_add(r,db_int(amplitude));return r;}
 fn haptic_pattern(timings,amplitudes){let r=db_list();db_add(r,db_text("waveform"));db_add(r,timings);db_add(r,amplitudes);return r;}

@@ -69,7 +69,7 @@ final class HardwareHaptics {
     static Object metadata(Vibrator sdk,String op)throws Exception{
         if(op.equals("haptic_info"))return info(sdk);present(sdk);
         if(op.equals("haptic_effects")){JSONArray rows=new JSONArray();int[] support=Build.VERSION.SDK_INT>=30?Api30.effects(sdk):null;for(int i=0;i<EFFECTS.length;i++)rows.put(VmHardware.object("id",EFFECTS[i],"native_support",support==null?JSONObject.NULL:support[i]));return VmHardware.object("effects",rows,"play_api",Build.VERSION.SDK_INT>=29,"support_api",Build.VERSION.SDK_INT>=30);}
-        if(op.equals("haptic_primitives")){JSONArray rows=new JSONArray();boolean[] support=Build.VERSION.SDK_INT>=30?Api30.primitives(sdk):null;int[] duration=Build.VERSION.SDK_INT>=31?Api31.durations(sdk):null;for(int i=0;i<PRIMITIVES.length;i++)rows.put(VmHardware.object("id",PRIMITIVES[i],"supported",support==null?JSONObject.NULL:support[i],"duration_ms",duration==null?JSONObject.NULL:duration[i]));return VmHardware.object("primitives",rows,"composition_api",Build.VERSION.SDK_INT>=30,"individual_support_known",Build.VERSION.SDK_INT>=31,"duration_api",Build.VERSION.SDK_INT>=31);}
+        if(op.equals("haptic_primitives")){JSONArray rows=new JSONArray();boolean[] support=Build.VERSION.SDK_INT>=30?Api30.primitives(sdk):null;int[] duration=Build.VERSION.SDK_INT>=31?Api31.durations(sdk):null;for(int i=0;i<PRIMITIVES.length;i++)rows.put(VmHardware.object("id",PRIMITIVES[i],"supported",support==null?JSONObject.NULL:support[i],"duration_ms",duration==null?JSONObject.NULL:duration[i]));return VmHardware.object("primitives",rows,"composition_api",Build.VERSION.SDK_INT>=30,"individual_support_known",Build.VERSION.SDK_INT>=31,"duration_api",Build.VERSION.SDK_INT>=31,"relative_start_offset_api",Build.VERSION.SDK_INT>=36);}
         throw new VmHardware.Failure("unsupported_operation","Unknown haptic metadata operation.");
     }
     static Prepared prepare(Vibrator sdk,String op,JSONArray a)throws Exception{
@@ -85,7 +85,18 @@ final class HardwareHaptics {
     static final class Api30 {
         static int[] effects(Vibrator v){return v.areEffectsSupported(EFFECTS);}
         static boolean[] primitives(Vibrator v){return v.arePrimitivesSupported(PRIMITIVES);}
-        static VibrationEffect compose(Vibrator sdk,JSONArray steps)throws Exception{VibrationEffect.Composition result=VibrationEffect.startComposition();int[] ids=new int[steps.length()];int total=0;for(int i=0;i<ids.length;i++){JSONArray row=steps.getJSONArray(i);if(row.length()!=3)throw new VmHardware.Failure("invalid_argument","A primitive is[id,typed scale,delay_ms].");ids[i]=VmHardware.integer(row,0,1,8);float amount=(float)scale(row.get(1));int delay=VmHardware.integer(row,2,0,2000);total+=delay;if(total>2000)throw new VmHardware.Failure("invalid_argument","Composition delays exceed2000ms.");result.addPrimitive(ids[i],amount,delay);}if(!sdk.areAllPrimitivesSupported(ids))throw new VmHardware.Failure("unsupported_combination","At least one requested primitive is unsupported; no fallback composition is substituted.");return result.compose();}
+        static VibrationEffect compose(Vibrator sdk,JSONArray steps)throws Exception{
+            VibrationEffect.Composition result=VibrationEffect.startComposition();int[] ids=new int[steps.length()];int total=0;
+            for(int i=0;i<ids.length;i++){
+                JSONArray row=steps.getJSONArray(i);if(row.length()!=3&&row.length()!=4)throw new VmHardware.Failure("invalid_argument","A primitive is[id,typed scale,delay_ms] or[id,typed scale,delay_ms,delay_type0pause/1relative-start].");
+                ids[i]=VmHardware.integer(row,0,1,8);float amount=(float)scale(row.get(1));int delay=VmHardware.integer(row,2,0,2000),type=row.length()==4?VmHardware.integer(row,3,0,1):0;
+                if(type==1&&Build.VERSION.SDK_INT<36)throw new VmHardware.Failure("unsupported_operation","Relative primitive start offsets require Android16+; they are not converted to pauses.");
+                total+=delay;if(total>2000)throw new VmHardware.Failure("invalid_argument","Composition delays exceed2000ms.");
+                if(row.length()==4&&Build.VERSION.SDK_INT>=36)Api36.add(result,ids[i],amount,delay,type);else result.addPrimitive(ids[i],amount,delay);
+            }
+            if(!sdk.areAllPrimitivesSupported(ids))throw new VmHardware.Failure("unsupported_combination","At least one requested primitive is unsupported; no fallback composition is substituted.");return result.compose();
+        }
     }
     static final class Api31 {static int[] durations(Vibrator v){return v.getPrimitiveDurations(PRIMITIVES);}}
+    static final class Api36 {static void add(VibrationEffect.Composition effect,int id,float scale,int delay,int type){effect.addPrimitive(id,scale,delay,type);}}
 }
