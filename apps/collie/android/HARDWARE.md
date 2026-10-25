@@ -1284,8 +1284,8 @@ On the same final debug APK, **34 regressions passed**:18 GATT server and16
 Classic Bluetooth checks. These are separate from the17 partial HID assertions
 and do not turn the failing strict HID gate into a pass.
 
-**Remaining HID gates:** public virtual-cable callback, timeout/overlapping
-control transactions, targeted permission revocation and radio/service loss,
+**Remaining HID gates:** public virtual-cable callback, additional control and
+lifecycle faults, targeted permission revocation and radio/service loss,
 custom QoS, ID0/no-report-ID descriptors, keyboard/mouse OS integration,
 older-SDK compatibility and physical hosts. This batch does not complete the
 HID family or the full hardware inventory.
@@ -1335,6 +1335,54 @@ Both temporary Bluetooth log properties were restored. The platform limitation
 is specific to the examined module; it does not establish behavior on another
 SDK/OEM build or physical host. The public callback gate and all remaining HID
 requirements above stay open.
+
+### Actual unanswered and overlapping control transactions
+
+The same current debug APK above passes **13 control/lifecycle groups** using
+`--scenario controls` on the owned API36 emulator. The existing localhost
+Bumble fixture supplies actual encrypted HID packets; the real Flexscript VM
+owns request tokens, error handling and reopening. No production Java/guest
+runtime source, APK, dependency or Python file is added by this test extension.
+
+- A real unanswered GET_REPORT publishes exactly one pending token. An invalid
+  success handshake leaves it live, and disconnect is busy while it is pending.
+  At the configured2500ms deadline, the VM receives `timeout`, owned peers and
+  requests are cleared, and late replies fail. The independent host received
+  the actual NOT_READY handshake01 and observed both channels closed after
+  **2558ms**. This is measured emulator behavior, not a physical timing bound.
+- After confirmed teardown, a fresh registration rejects the old token. The
+  host sends one GET_REPORT, waits until the VM has observed its token, then
+  sends a second without answering the first. The VM receives
+  `callback_mismatch`; both real channels close after **51ms**, without report
+  data returned for either ambiguous request. Late replies and reuse of that
+  token are rejected.
+- A third registration rejects the previous token and returns exactly its own
+  `safe` bytes to the host. It remains registered for more than the old2500ms
+  deadline after its request is answered, verifying cancelled request deadlines
+  do not retire the new generation. Final close tears down both channels.
+- The host records three actual connections, six channel closures and link
+  encryption. The existing actual Activity onStop/reopen, denied SCAN/ADVERTISE
+  and Location, original conversation/grant preservation, explicit pairing
+  removal and owned private-fixture cleanup checks also pass.
+
+`build/android-hid-controls/final36/hid-controls-android-report.json` retains
+the exact installed APK hash and independent host measurements/response bytes.
+Its `ok` is scoped to this scenario: `public_unplug_gate_tested=false` and
+`physical_radio_verified=false`. It does not upgrade the separate strict
+unplug failure. The initial run also passed13 groups (2559ms/51ms); the final
+fixture additionally checks that neither failed transaction returns report
+data. CI syntax-checks the two existing host fixture files.
+
+```sh
+python3 scripts/test-collie-hid-android.py --out build/android-hid-controls \
+  --serial emulator-5582 --netsim-port PORT --scenario controls
+# The default scenario retains the full original strict callback gate.
+```
+
+Targeted permission/radio/service loss, blocked SDK/cleanup failures, custom
+QoS, no-report-ID descriptors, OS keyboard/mouse integration, older SDK/OEM and
+physical-host behavior remain open. These results close only the ordinary
+API36 unanswered/overlapping control and stale-generation test gaps.
 
 Primary contracts: [HID device API](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.html),
 [callbacks](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.Callback),

@@ -5,7 +5,7 @@ from pathlib import Path
 from bumble.device import Device,DeviceConfiguration
 from bumble.hid import Host,Message
 from bumble.transport import open_transport
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--transport',required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--transport',required=True);p.add_argument('--out',type=Path,required=True);p.add_argument('--scenario',choices=['reports','controls'],default='reports');p.add_argument('--command',type=Path);a=p.parse_args();assert a.scenario!='controls' or a.command
 assert a.transport.startswith(('android-netsim:127.0.0.1:','android-netsim:localhost:')) and ',name=collie-test-' in a.transport
 state=dict(ready=False,error=None,checks=[],phase='starting',connections=0,closed_channels=0,done=False)
 def save():
@@ -61,8 +61,35 @@ async def main():
    state['phase']='unplug';save();host.send_pdu_on_ctrl(b'\x15');await wait(lambda:state['closed_channels']>=4)
    passed('host virtual-cable unplug causes Android to close both actual HID channels')
    state['done']=True;state['phase']='done';save()
+  async def command(phase):
+   def observed():
+    try:return json.loads(a.command.read_text()).get('phase')==phase
+    except (FileNotFoundError,ValueError):return False
+   await wait(observed,25)
+  async def controls_exchange():
+   state['phase']='waiting_timeout_channels';save();await wait(lambda:state['connections']>=1,120)
+   began=loop.time();host.get_report(3,1,0);state['phase']='timeout_request_sent';save()
+   await wait(lambda:state['closed_channels']>=2,12);state['timeout_close_ms']=round((loop.time()-began)*1000);save()
+   passed('an unanswered real GET_REPORT retires both host channels within the configured bounded deadline')
+   state['phase']='waiting_overlap_channels';save();await wait(lambda:state['connections']>=2)
+   state['timeout_responses']=[]
+   while not controls.empty():state['timeout_responses'].append(controls.get_nowait().hex())
+   assert all(not bytes.fromhex(value)[0]&0xf0==0xa0 for value in state['timeout_responses']),state
+   host.get_report(3,1,0);state['phase']='overlap_first_sent';save();await command('overlap_first_observed')
+   began=loop.time();host.get_report(3,1,0);state['phase']='overlap_second_sent';save()
+   await wait(lambda:state['closed_channels']>=4,12);state['overlap_close_ms']=round((loop.time()-began)*1000);save()
+   state['overlap_responses']=[]
+   while not controls.empty():state['overlap_responses'].append(controls.get_nowait().hex())
+   assert all(not bytes.fromhex(value)[0]&0xf0==0xa0 for value in state['overlap_responses']),state
+   passed('two actual overlapping GET_REPORT packets close the ambiguous registration instead of receiving a guessed reply')
+   state['phase']='waiting_fresh_channels';save();await wait(lambda:state['connections']>=3)
+   await control(lambda:host.get_report(3,1,0),b'\xa3\x01safe')
+   passed('a fresh registration returns only its own report bytes after both failed generations')
+   state['phase']='fresh_report_received';save();await command('fresh_survived');await wait(lambda:state['closed_channels']>=6)
+   passed('closing the final fresh registration tears down both actual host channels')
+   state['done']=True;state['phase']='done';save()
   await device.power_on();await device.set_discoverable(True);await device.set_connectable(True);state.update(ready=True,address=str(device.public_address),name=config.name);save()
-  task=asyncio.create_task(exchange())
+  task=asyncio.create_task(controls_exchange() if a.scenario=='controls' else exchange())
   try:
    done,_=await asyncio.wait([task,asyncio.create_task(stop.wait())],timeout=300,return_when=asyncio.FIRST_COMPLETED)
    if task in done:await task;await asyncio.wait_for(stop.wait(),120)

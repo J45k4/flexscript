@@ -114,6 +114,7 @@ jobs:
           build/stage2 run --interpret --fuel=10000000 apps/collie/tests/haptics.flex
           build/stage2 scripts/test-collie-haptics-android.flex -o build/test-collie-haptics-android-driver
           build/stage2 scripts/check-collie-hid-platform.flex -o build/check-collie-hid-platform
+          python3 -m py_compile scripts/test-collie-hid-android.py scripts/fixtures/collie-hid-host.py
           build/stage2 apps/collie/tests/usb-serial.flex -o build/test-collie-usb-serial
           build/test-collie-usb-serial
           build/stage2 run --interpret apps/collie/tests/usb-serial.flex
