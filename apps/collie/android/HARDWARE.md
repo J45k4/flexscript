@@ -28,7 +28,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
-| Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | subscriptions, triggers and paged static/dynamic inventory implemented | actual accelerometer callback passed; activity/health device checks pending |
+| Sensors | enumerate/capabilities/subscriptions, motion/environment/activity and available health sensors | paged static/dynamic inventory, batched subscriptions, explicit listener replacement, bounded asynchronous flush, additional-info frames and dynamic notification/teardown bindings implemented |27 integration groups per Android15/16 SDK, including6 independent SensorService probes and1 manually delivered stale callback; exact received sample/additional-info data, flush, deadlines, ownership and revocation verified. Both emulators have no FIFO; physical batching, dynamic attach/detach, one-shot/activity/health and older/OEM/fault gates remain open |
 | Camera | devices/characteristics, capture/frames/video, supported manual/RAW/depth controls, torch | Camera2, typed logical/physical request/result metadata, output dynamic-range/use-case/session-color controls, bounded SDK image planes, streaming RAW_SENSOR DNG export, portable DEPTH16 decoding, recommended video/audio profiles, named AVC/HEVC/AV1 encoder capabilities and explicit recorder profile/level requests, paced time-lapse and constrained high-speed session/burst SDK bindings, MediaRecorder/HDR output controls, and owned torch SDK bindings implemented; positive high-speed/HDR and additional metadata verification pending | 187/API36 and183/API35 camera groups pass, including effective explicit AVC/HEVC/AV1 profile/level settings, combined explicit-profile fractional time-lapse, actual profile time-lapse, encoded sample cadence, blocked-callback wall-stop/cleanup, recommended-profile audio/video,128-event shutdown backlog and prior RAW/DNG/HDR-P010 controls. Actual320×240 depth passes on Android16; Android15 advertises no DEPTH16. Neither emulator advertises an HDR encoder preset, so HDR recording remains unverified. Exact artifacts are below. Physical HDR/RAW/depth accuracy, successful physical overrides/results, torch and physical/older-device gates remain open |
 | Audio | input/output devices, PCM capture/playback/routing, recording | PCM16 mono/stereo streams, metadata, route preference, control and events implemented | actual AudioRecord/AudioTrack calls and runtime microphone consent passed; onStop closes capture and blocks background opens; physical inputs/output routes pending |
 | Input | delivered touch/stylus/key/mouse/gamepad events | SDK inventory/ranges/key query and passive own-Activity event bindings implemented | 24 input checks passed: real emulator events, kernel keyboard add/remove and filtering, copied SDK history, bounds, ownership and live revocation; physical devices, actual device-changed callbacks and older Android pending |
@@ -38,7 +38,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
 | Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | one-use consent/tickets, foreground projection service, bounded RGBA planes and silent/microphone MP4 SDK bindings implemented; further session/lifecycle gates below | 38 real headless Android checks passed for chooser approval/denial, exact pixels/MP4 bytes, hidden Activity frames and screen-lock Stop; selected-app/older-device/physical and additional lifecycle gates pending |
 | Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | Android-owned service enablement, scoped SDK node/window/event/action bindings and bounded gesture transport implemented; further lifecycle/SDK gates below | 27 actual headless Android checks passed for real Settings consent, tree/text/action/touch effects, resource ownership and delayed callback cleanup; physical/older-device and remaining gates pending |
-| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | 29 system-folder plus15 separate-UID controlled-provider groups pass on each Android15/16 SDK; actual copy/move/parent-link removal, virtual conversions, binary frames, pipe timeout/EOF/live revocation, persisted grants and restart verified. Provider-death/error/offline, additional directory/provider behavior and physical removable/cloud gates remain open |
+| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | the e0ee662 document checkpoint passes29 system-folder plus40 separate-UID provider groups per Android15/16 SDK, including reliable errors and provider-only death/client survival. Query/open/mutation Binder death, write-side/offline/cleanup faults and physical removable/cloud gates remain open; exact APK scopes are below |
 | Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | read-only SDK privilege facts and16 explicit missing-adapter descriptions implemented in the Flexscript inventory; no vendor bridge configured | 12 real Android metadata/VM/restart checks passed against independent OS package dumps; actual privileged hardware/vendor integration remains unverified |
 
 Cross-cutting requirements:
@@ -5238,3 +5238,112 @@ No phone deployment, desktop worktree edit or master merge is included.
 
 Primary contracts: [reliable descriptor errors](https://developer.android.com/reference/android/os/ParcelFileDescriptor#checkError()),
 [unstable provider clients](https://developer.android.com/reference/android/content/ContentResolver#acquireUnstableContentProviderClient(android.net.Uri)).
+
+## Sensor batching, flush, metadata and listener lifecycle
+
+`sensor_batch_open(id,period_us,max_report_latency_us)` forwards bounded public
+SDK registration parameters. Existing `sensor_open` retains its two arguments
+and zero latency. `sensor_configure` replaces the actual SDK listener under the
+same owned handle: Android rejects adding an already-registered sensor to the
+same listener instead of updating its rate. Each replacement has a distinct
+callback object/configuration number, so old callbacks cannot complete a new
+flush or publish new data. Already queued earlier events retain their original
+configuration number. SDK refusal closes the resource; nothing is retried.
+
+`sensor_flush(handle,timeout_ms)` returns a positive per-listener request ID and
+delivers its matching `flush_complete` only after the actual SDK callback.
+Another flush or configuration is busy while pending. Its independent scheduled
+deadline closes an unfinished subscription even if the shared callback Handler
+is blocked; late callbacks cannot revive it. Successful completion permits the
+next request. The common bounded queue and `last_flush_completed` metadata make
+overflow distinct from SDK completion. All existing workspace and Sensors
+permission rules remain; no new manifest permission, SDK dependency or model
+tool is added.
+
+Inventory now reports actual FIFO counts, additional-info support and direct
+report/channel-type capability getters. Additional-info callbacks copy actual
+type/serial and bounded nullable integer/typed-real arrays. `sensor_watch`
+forwards public dynamic connection/disconnection notifications when supported;
+dynamic removal retires a matching subscription/trigger. One-shot metadata
+reports whether its trigger remains armed. Shared-memory direct-channel I/O is
+not implemented by these metadata fields.
+
+The **same frozen final debug APK passes27 integration groups on each owned
+Android16/API36 and Android15/API35 emulator**, including:
+
+- The real first-use Sensors Ask/Allow UI checkpoints/resumes an ordinary VM
+  batching program. SDK getter snapshots match VM metadata. Six independent
+  SensorService dumps per SDK verify actual active registration requests,
+  client PID/UID,20,000us/1,000,000us and40,000us/500,000us parameter forwarding,
+  legacy zero latency, and absence of owned registrations after cleanup.
+  The native verifier checks each SDK's actual format: Android15 requires the
+  owned active-status line and positive registration record; Android16 also
+  checks the explicit SDK result field. History alone cannot prove idle.
+- The console requests12.25/-7.5/9.125 acceleration. A distinct SDK listener
+  observes12.250000953674316/-7.500000476837158/9.125000953674316. The requested
+  signal is checked within this small observed conversion difference; the VM
+  must preserve the independently received float-to-double bit patterns exactly.
+  Six additional-info payload frames per SDK agree with a distinct real SDK
+  listener, including sequence/array data and converted floating bits.
+- An independent SDK flush receives a real callback, and the actual VM receives
+  its own matching completion. Real listener replacement, actual post-replace
+  completion and exact service registration parameters are verified. One
+  **manually delivered** stale callback separately checks source identity; it
+  is not described as an OS-delivered callback or physical-device evidence.
+- Invalid bounds preserve the valid existing resource; foreign workspaces and
+  wrong handle types reject. A pending request blocks overlap/reconfiguration.
+  Holding the actual callback Handler proves independent deadline retirement
+  without another VM access. Queued callbacks do not revive the closed handle;
+  a fresh legacy subscription receives its own real flush completion.
+- Actual UI-thread Sensors denial closes the SDK subscription and blocks later
+  VM batching/discovery. The observed dynamic-discovery support flag controls
+  the watch result; no attachment/removal event is invented.
+
+The host-result test exposed a separate portable JSON writer defect: numeric
+metadata nodes from `c_json` were treated as arrays by `j_emit`. Systemd records
+SIGSEGV in the native test worker after all six SDK probes; no core was stored
+and no backtrace is claimed. The shared writer now validates/emits exact JSON
+numeric text, preserving fractional/exponent and arbitrarily long integer
+tokens without floating conversion. Invalid/compound raw numeric text and
+unknown node kinds fail explicitly. Collie's122 native CLI checks include the
+new number round-trip/validation regression. This is a shared Flexscript fix,
+not an Android-only workaround or stringification of measured values.
+
+Final artifacts under `build/android-sensors`:
+
+- Debug `check5-debug/collie.apk`:8,263,255 bytes, SHA256
+  `b2c5dfce373a725344178ea5ba3c52dcc01b85c4a336099b1df09bf1c4d7996b`.
+- Non-debug `check2-release/collie.apk`:7,820,808 bytes, SHA256
+  `706421ab7393d918b76ffcdf49a465b30c3f43b7b95699299bf8bc3b8f199218`.
+- Complete reports in `check5-debug/sdk36` and `sdk35-final` bind the exact
+  installed APK and guest-source hashes to27 checks/six actual service probes,
+  copied samples, actual additional-info counts and explicit physical/constructed
+  callback scope flags. Raw SDK results and all service dumps are retained.
+- `parity5.json` verifies323 identical non-resource production Java classes and
+  identical debug/non-debug native/generated files. Final native27/core9 and
+  complete-reference4 checks pass (133,510 detailed bytes,16,589-byte index,
+  all31 permissions denied); shared codec/registry, packaging, native driver
+  parser and independent OS-lock conflict checks also pass. No new Python file
+  or app runtime is added; existing host Python build/regression scripts remain.
+- Earlier strict console-value comparison, atomic-ack race, insufficient
+  one-program queue draining, local test compilation failure, native host JSON
+  crash and first Android15 dump-format failure retain separate artifacts/logs.
+  They are excluded from the final pass counts. Flush observation now drains
+  the bounded queue in small normal VM executions, without raising limits.
+
+Independent `verified36.json`/`verified35.json` audits confirm the exact installed
+APK, original messages/all31 Ask permissions and original workspace sets,
+including Android15's existing UWB workspace. Acceleration console triplets match
+their original readback; no owned SDK sensor connections remain. Both owned
+headless emulators are stopped. Desktop is untouched; no phone deployment or
+master merge is included.
+
+Both emulators report zero FIFO capacity. Physical batching/power/cadence,
+dynamic attach/detach, actual one-shot/activity/health permission and data paths,
+shared-memory direct reporting, older/OEM behavior and SDK/Binder/cleanup faults
+remain open alongside every other inventory gate and prior HID/UWB strict
+failure. The full hardware objective remains incomplete.
+
+Primary contracts: [SDK sensor batching/flush/dynamic callbacks](https://developer.android.com/reference/android/hardware/SensorManager),
+[additional-info callbacks](https://developer.android.com/reference/android/hardware/SensorEventCallback),
+[SDK listener registration behavior](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/SystemSensorManager.java).

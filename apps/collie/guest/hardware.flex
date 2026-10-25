@@ -31,6 +31,10 @@ fn sensor_list(){return db_rpc(db_request("sensor_list"));}
 fn sensor_list_page(offset,limit){let r=db_request("sensor_list");db_add(r,db_int(offset));db_add(r,db_int(limit));return db_rpc(r);}
 fn sensor_info(id){let r=db_request("sensor_info");db_add(r,db_text(id));return db_rpc(r);}
 fn sensor_open(id,period_us){let r=db_request("sensor_open");db_add(r,db_text(id));db_add(r,db_int(period_us));return db_rpc(r);}
+fn sensor_batch_open(id,period_us,max_report_latency_us){let r=db_request("sensor_batch_open");db_add(r,db_text(id));db_add(r,db_int(period_us));db_add(r,db_int(max_report_latency_us));return db_rpc(r);}
+fn sensor_configure(handle,period_us,max_report_latency_us){let r=db_request("sensor_configure");db_add(r,db_text(handle));db_add(r,db_int(period_us));db_add(r,db_int(max_report_latency_us));return db_rpc(r);}
+fn sensor_flush(handle,timeout_ms){let r=db_request("sensor_flush");db_add(r,db_text(handle));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn sensor_watch(){return db_rpc(db_request("sensor_watch"));}
 fn battery_info(){return db_rpc(db_request("battery_info"));}
 fn battery_watch(){return db_rpc(db_request("battery_watch"));}
 fn thermal_info(forecast_seconds){let r=db_request("thermal_info");db_add(r,db_int(forecast_seconds));return db_rpc(r);}

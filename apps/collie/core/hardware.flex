@@ -31,6 +31,10 @@ fn hw_operations(){
     hw_operation(rows,"sensor_list","sensors",0,2);
     hw_operation(rows,"sensor_info","sensors",1,1);
     hw_operation(rows,"sensor_open","sensors",2,2);
+    hw_operation(rows,"sensor_batch_open","sensors",3,3);
+    hw_operation(rows,"sensor_configure","hardware_handle",3,3);
+    hw_operation(rows,"sensor_flush","hardware_handle",2,2);
+    hw_operation(rows,"sensor_watch","sensors",0,0);
     hw_operation(rows,"battery_info","device_status",0,0);
     hw_operation(rows,"battery_watch","device_status",0,0);
     hw_operation(rows,"thermal_info","device_status",1,1);
