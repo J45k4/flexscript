@@ -5813,6 +5813,9 @@ OEM UWB checkpoint is40960 bytes.
   checks, then exposed a missing decoder dependency in the standalone HID
   lifecycle fixture. That fixture now imports the real portable codec and
   compiles/runs its no-op entry locally; no production or APK bytes change.
+  Follow-up `24aeddd` passed all44 native workflow steps in
+  [CI40219295111](https://github.com/J45k4/flexscript/actions/runs/40219295111);
+  the tag-only release job was skipped.
 - Initial controller attempts had a consent-label mismatch and a reboot/package
   readiness race. A later complete28-group run lost its post-reboot metadata
   result during actual wallpaper/overlay Activity recreation. Those failed
@@ -5831,6 +5834,16 @@ OEM UWB checkpoint is40960 bytes.
   two obsolete owned exploratory workspaces were archived before removal, and
   its initial original-only workspace set was restored. Both owned emulators
   are stopped after evidence preservation.
+- A subsequent kernel capability probe found stock `usbip_core`/`vhci_hcd`
+  modules and16 unused virtual USB ports. No USB/IP device was attached and
+  ISO input remains unverified. This cold start also exposed two old exploratory
+  directories that had reappeared after an unsynchronized cleanup. The
+  controller now calls guest `sync` after removing its owned test files. The
+  two known directories were archived, removed and synchronized; a separate
+  actual emulator shutdown/cold boot verifies the complete original session
+  and original-only workspace set persist. `usbip-capability-probe.json` and
+  `cleanup-coldboot-state.json` retain this narrower scope and evidence. The
+  probe/audit emulator is stopped; production/APK inputs are unchanged.
 
 Reproduce against a disposable, explicitly owned headless USB-host fixture:
 
