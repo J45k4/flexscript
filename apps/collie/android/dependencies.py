@@ -34,6 +34,22 @@ def notices(archive,prefix,licenses):
         if re.search(r'(^|/)(license|notice|copying)([._-]|$)',str(name),re.I):
             licenses['META-INF/collie-dependencies/'+prefix+'/'+str(name)]=archive.read(info)
 
+def protocol_classes(target,prefixes):
+    # A pinned AAR may supply only its stable OEM protocol, without pulling its
+    # unrelated higher-level implementation and runtime dependency graph.
+    if (not isinstance(prefixes,list) or not 1<=len(prefixes)<=4 or
+        any(not isinstance(p,str) or len(p)>128 or not re.fullmatch(r'(?:[A-Za-z_$][A-Za-z0-9_$]*/)+',p) for p in prefixes)):
+        raise ValueError('Invalid SDK protocol class prefixes')
+    selected=[]
+    with zipfile.ZipFile(target) as source:
+        for info in source.infolist():
+            if info.filename.endswith('.class') and any(info.filename.startswith(p) for p in prefixes):
+                if info.file_size>1048576 or len(selected)>=4096:raise ValueError('Oversized SDK protocol class set')
+                selected.append((info.filename,source.read(info)))
+    if not selected:raise ValueError('Empty SDK protocol class selection')
+    with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED) as output:
+        for name,data in sorted(selected):output.writestr(name,data)
+
 def prepare(out,cache):
     lock=json.loads((HERE/'dependencies.json').read_text())
     if lock.get('schema')!=1 or not 1<=len(lock['artifacts'])<=64:raise ValueError('Unsupported Android dependency lock')
@@ -61,6 +77,7 @@ def prepare(out,cache):
                     if text.endswith('.jar'):
                         jars.append(target)
                         with zipfile.ZipFile(target) as classes:notices(classes,str(index)+'/'+text,licenses)
+                        if row.get('class_prefixes') is not None:protocol_classes(target,row['class_prefixes'])
                 elif text=='proguard.txt' or text=='consumer-rules.pro':
                     target=directory/name.name;target.write_bytes(archive.read(info));rules.append(target)
                 elif text.startswith('assets/'):

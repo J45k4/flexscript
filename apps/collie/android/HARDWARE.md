@@ -24,7 +24,7 @@ it does not count as an implementation of an otherwise available adapter.
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
 | NFC emulation | host APDU services and supported HCE-F; OS-controlled routing | public ISO-DEP other/payment, durable background Flexscript callbacks, foreground NFC-F, polling-frame reception and owned filter/observe SDK bindings implemented | 102 HCE/service/VM checks passed on each Android15/16 emulator, including background execution, process restart and retained channel leases; 48 control/recovery checks passed separately; successful AID/filter/observe/routing/RF and physical checks remain unverified |
 | Secure elements | OMAPI readers/sessions/channels/APDUs with real access-control errors | SDK service/readers/sessions/channels and extended APDU byte transport implemented | actual independent service bindings, empty reader inventory, owned asynchronous shutdown and first-use consent verified; real applet/channel/APDU and access-control fixtures pending |
-| UWB | supported-device sessions and ranging events through supported APIs | Android16 public raw-session and Android12+ Play services Task bindings implemented; legacy AOSP provider/fusion pending | actual two-emulator measurements and SDK peer callbacks verified; strict effective-interval check remains failing; physical/older-device checks pending |
+| UWB | supported-device sessions and ranging events through supported APIs | Android16 public raw-session, Android12+ Play services Task and pinned OEM AndroidX protocol bindings implemented; real OEM compatibility/fusion pending | earlier two-emulator system measurements and SDK peer callbacks verified; separate-UID OEM protocol fixtures pass on API35/36; strict effective interval and physical/real OEM gates remain open |
 | Infrared | capabilities/carrier ranges/transmit | implemented | emitter absence correctly reported on emulator; real IR fixture pending |
 | MIDI | enumerate/open/ports/messages/events | implemented, including byte-stream/UMP inventory and known-address BLE-MIDI open | Android virtual-service loopback passed, including 32 KiB binary payloads, timestamps, exclusivity, flush and child cleanup; physical USB/BLE/UMP fixtures pending |
 | Location | location providers/updates/status, GNSS satellites/raw measurements/navigation messages | implemented | actual Android runtime prompt and injected GPS callback passed; raw GNSS device data pending |
@@ -5561,3 +5561,143 @@ Primary contracts: [mandatory stream information](https://developer.android.com/
 [multi-resolution SDK maps](https://developer.android.com/reference/android/hardware/camera2/params/MultiResolutionStreamConfigurationMap),
 [documented device-state lookup](https://developer.android.com/reference/android/hardware/camera2/params/DeviceStateSensorOrientationMap),
 [lens-intrinsics sample](https://developer.android.com/reference/android/hardware/camera2/params/LensIntrinsicsSample).
+
+
+## Pinned OEM UWB protocol backend (2026-10-25)
+
+The non-Google legacy UWB transport is now implemented in
+`HardwareUwbAosp.java`. This supersedes earlier statements that the legacy
+binding itself was absent; real OEM compatibility and physical ranging remain
+unverified. `uwb_backend_info(3)`, `uwb_backend_watch(3)` and
+`uwb_backend_prepare(3,role,timeout_ms)` select it explicitly. The existing
+`uwb_prepare(role,timeout_ms)` form chooses compatible Google Play services,
+except on the two-feature China configuration used by AndroidX; otherwise it
+selects the OEM backend. The Android16 system info/watch/range defaults remain.
+Owned handle operations route to their original provider. No failed mutation
+is replayed through another backend.
+
+This is the pinned AndroidX1.0.0 stable OEM-service protocol, not a hidden
+Android `UwbManager` API. Upstream marks these generated interfaces
+library-restricted; this integration negotiates protocol version1 and needs
+real OEM compatibility testing. The canonical package/action must resolve to
+one enabled exported system/updated-system service. A debuggable same-signature
+provider is accepted only by debug Collie for transport tests. Actual callback
+UIDs must match the resolved service. Guests see typed UWB functions, never raw
+Binder methods, component selection or arbitrary Java calls. The production
+manifest adds package visibility, with no new runtime permission.
+
+The adapter copies actual capabilities/local addresses/controller channels,
+start options, peers, measurements and availability. It requires both local
+initialization callback and start RPC return before opening. The v1 transport
+retains exact int64 timestamps, float-to-double bits including negative zero,
+angles in degrees and confidence0..2; absent RSSI/validity stay unknown.
+`uwb_notifications(handle,mode,near,far)` now binds actual range-data
+notification reconfiguration for OEM and Play services sessions; the public
+system ranging SDK reports unsupported. Raw measurement limits and fusion
+remain unsupported. SDK capability lists and input/peer counts are bounded.
+
+Independent deadlines, four bounded RPC workers and the existing cleanup pool
+keep blocking Binder calls outside resource monitors. Expiry and queued
+cancellation retain leases until actual worker settlement. One pending mutation,
+16 retained request results and64 lifetime UUID/address mappings prevent
+unbounded growth and callback identity reassignment. At most8 active peers
+include pending removals; a removal needs both callback and RPC return.
+Stop/close retain shared session capacity until stop RPC completion and an
+actual local terminal callback; availability cleanup calls unsubscribe before
+local unbind. Lost provider/process status is distinct from confirmed stop.
+Errors retain the primary timeout plus a late operation error. The v1 void
+methods can hide provider-internal failures, so return is not an effect
+acknowledgement and `provider_close_status_known` always remains false.
+
+Only35 generated protocol classes are extracted from the SHA-pinned
+165644-byte AAR, SHA256
+`74e8d6b66b0fbaa7c0e23ea0caa89edae1a2f4570c9db0c7bb1c6569b6e4601e`.
+No AndroidX high-level implementation, Kotlin/ARCore/Rx dependency graph or
+Python runtime was added. Existing Python builders/test runners were extended;
+the separate fixture APK builder is Flexscript.
+
+### Frozen artifacts and verification
+
+Artifacts are under ignored `build/android-uwb-aosp/`:
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `check2-debug/collie.apk` | 8402807 | `948fb4574281313a5c71f7cd466a84a2f4747737974ccb9fce2d5a75d0316b8d` |
+| `check2-release/collie.apk` | 7911121 | `5f91c340631a2b0bb904f86daee708f149f14c2bb039d1e83e83e06f0b37841d` |
+| `provider/provider.apk` | 29099 | `35075f0f48dbdbcb59ff052d2241ee5348ffc37be63a165dccc112558ea6c24a` |
+
+The release APK is non-debug, development-signed. `parity-final.json` verifies
+346 production Java class files and identical engine/UI/generated/native
+bytes across builds. Actual DEX class definitions show no fixture service in
+either APK and no debug-check class in release; a remaining reflection name
+string is not counted as a packaged class. Production growth relative to the
+preceding camera checkpoint is49272 bytes.
+
+- The **same debug APK** passes49/API35 and48/API36 groups with the separate,
+signature-protected provider APK. Reports are
+`check2-debug/uwb-aosp-emulator-5584-report.json` and
+`check2-debug/uwb-aosp-emulator-5582-report.json`; logs are
+`oem35-final2.log` / `oem36-final2.log`. These are constructed protocol checks,
+not radio measurements or real OEM support. API35 has no actual UWB feature:
+the VM correctly rejects preparation, and only debug test code constructs
+owned handles directly to exercise transport. API36 exercises the normal
+feature-gated prepare path. Both SDKs exercise real cross-UID Binder calls.
+- Checks cover exact parameter/measurement transport, callback UID/peer/workspace
+ownership, initialization-before-return/return-before-initialization,
+wrong-parameters rejection, peer add/remove, interval/notification arguments,
+blocked stop and responsive close, missing terminal retention, late callback,
+real preparation/mutation deadlines, queued cancellation with no SDK mutation,
+actual separate-provider process death and exact capacity restoration. The
+fixture's measurements are explicitly constructed; it never opens a radio.
+- `release-policy36.log`: actual installed non-debug Collie rejects the
+same-signature user-installed provider as `untrusted_provider`, with
+`provider_usable=false` / `debug_signature_fixture=false`; debug checks are
+absent. The tested debug APK is then restored.
+- Existing Google provider metadata/Task checks pass23/API35 and22/API36
+(`gms35-final.log` / `gms36-final.log`). Those scopes remain distinct from
+actual Google radio I/O. The earlier strict effective-interval failure remains.
+- `native-final.log`:27 production frontend/VM/provider/DB checks;
+`core-final.log`:9 shared conversation/scheduler/provider checks;
+`reference-final.log`:4 complete reference paging checks with all31 grants
+denied. Shared hardware codec and pure UWB record checks pass. The offline
+SDK graph/notices/filter/corruption suite passes6 checks. The broader CLI suite
+passes172 checks on the host; its first sandboxed attempt could not exercise
+Bubblewrap and failed before being rerun with working host namespaces.
+- `verified35.json` / `verified36.json` independently confirm final installed
+APK bytes, removal of only the hash-verified test provider, exact original
+workspace sets/messages/cards/archive/all31 Ask grants, and unchanged Android
+runtime grants/flags. The API35 pre-existing UWB workspace is preserved.
+After provider removal the actual VM reports missing hardware on API35 and
+missing provider on API36 before runtime consent. One audit initially read an
+empty in-progress result file; the already completed successful result was
+inspected and retained without replaying its program, then restoration resumed.
+Both owned headless emulators are shut down after these checks.
+
+Reproduce the separate provider with:
+
+```sh
+build/flex-hardware scripts/build-collie-uwb-provider.flex -o build/uwb-provider-builder
+build/uwb-provider-builder --out build/uwb-provider --collie-out build/android-uwb-aosp/check2-debug --protocol build/android-uwb-aosp/check2-debug/dependencies/35/classes.jar
+# Install only on an owned emulator, then run each SDK separately:
+python3 scripts/test-collie-uwb-gms-android.py --out build/android-uwb-aosp/check2-debug --serial emulator-5582 --aosp
+# Non-debug policy proof uses the same-certificate separate fixture instrumentation:
+adb -s emulator-5582 shell am instrument -w androidx.core.uwb.backend/.fixture.ReleaseUwbProbe
+```
+
+Sources: [AndroidX release/version history](https://developer.android.com/jetpack/androidx/releases/core-uwb),
+[pinned stable AIDL](https://android.googlesource.com/platform/frameworks/support/+/129e1333d7c530e377cce1732271c385b2ea0df3/core/uwb/uwb/api/aidlRelease/current/androidx/core/uwb/backend/IUwbClient.aidl),
+[official OEM backend implementation](https://android.googlesource.com/platform/packages/modules/Uwb/+/refs/heads/main/androidx_backend/).
+The source archive and exact Maven artifacts are retained under
+`build/android-uwb-aosp/research`.
+
+**Still open:** real OEM/system provider compatibility and older SDK behavior,
+raw fusion/nonzero measurement limits, effective notification/interval effects,
+provider-internal final-close result, physical peer accuracy and additional
+SDK/Binder/cleanup/permission-fault cases. The strict UWB effective-interval and
+HID unplug/recovery failures remain open. All other hardware inventory gates,
+including the16 missing privileged/vendor integrations, physical USB/serial/
+NFC/secure elements/IR/MIDI/audio/sensors, successful sensor-direct channels,
+Camera2 multi-resolution/physical fold/lens/HDR/high-speed paths, HCE routing/RF,
+document query/open/mutation/write/cloud/removable faults and older/OEM/
+cross-cutting lifecycles remain in scope. The full hardware goal is unfinished;
+this is a transport checkpoint, not completion of that goal.

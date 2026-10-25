@@ -1,0 +1,14 @@
+// Separate-UID, signature-protected UWB transport fixture. No radio implementation.
+import "lib/host.flex";
+fn uf_run(args){return h_check(h_wait(h_spawn(args,"",0)),0,0);}
+fn main(argc,argv){
+    h_environment(argc,argv);let out=0;let collie=0;let sdk="/opt/android-sdk";let protocol=0;let i=1;
+    while i<argc{let key=load64(argv+i*8);i=i+1;h_assert(i<argc,"Missing fixture builder value");let value=load64(argv+i*8);if h_equal(key,"--out"){out=h_absolute(value);}else if h_equal(key,"--collie-out"){collie=h_real(value);}else if h_equal(key,"--sdk"){sdk=h_real(value);}else if h_equal(key,"--protocol"){protocol=h_real(value);}else{h_die(h_cat("Unknown fixture builder argument: ",key));}i=i+1;}
+    h_assert(out&&collie&&protocol,"Provide --out, --collie-out and the filtered pinned --protocol jar");h_mkdir(out);out=h_real(out);let classes=h_join(out,"classes");let dex=h_join(out,"dex");h_mkdir(classes);h_mkdir(dex);let source=h_real("apps/collie/tests/android-uwb-provider");let jar=h_join(sdk,"platforms/android-36/android.jar");let tools=h_join(sdk,"build-tools/36.1.0");let key=h_join(collie,"development.keystore");h_assert(h_exists(key),"Missing owned Collie development certificate");
+    let args=h_args(h_executable("javac"),"-source","8","-target","8","-classpath");h_add(args,h_cat3(jar,":",protocol));h_add(args,"-d");h_add(args,classes);h_add(args,h_join(source,"UwbProtocolFixture.java"));h_add(args,h_join(source,"UwbProtocolControl.java"));uf_run(args);
+    args=h_args(h_executable("javac"),"-source","8","-target","8","-classpath");h_add(args,jar);h_add(args,"-d");h_add(args,classes);h_add(args,h_join(source,"ReleaseUwbProbe.java"));uf_run(args);
+    let classjar=h_join(out,"fixture.jar");uf_run(h_args(h_executable("jar"),"cf",classjar,"-C",classes,"."));args=h_args(h_join(tools,"d8"),"--min-api","31","--lib",jar,"--output");h_add(args,dex);h_add(args,classjar);h_add(args,protocol);uf_run(args);
+    let unsigned=h_join(out,"unsigned.apk");args=h_args(h_join(tools,"aapt2"),"link","-I",jar,"--manifest",h_join(source,"AndroidManifest.xml"));h_add(args,"--version-code");h_add(args,"1");h_add(args,"--version-name");h_add(args,"0.1");h_add(args,"-o");h_add(args,unsigned);uf_run(args);
+    uf_run(h_args(h_executable("zip"),"-q","-j",unsigned,h_join(dex,"classes.dex"),0));let aligned=h_join(out,"aligned.apk");uf_run(h_args(h_join(tools,"zipalign"),"-f","4",unsigned,aligned,0));
+    let apk=h_join(out,"provider.apk");args=h_args(h_join(tools,"apksigner"),"sign","--ks",key,"--ks-key-alias","development");h_add(args,"--ks-pass");h_add(args,"pass:android");h_add(args,"--key-pass");h_add(args,"pass:android");h_add(args,"--out");h_add(args,apk);h_add(args,aligned);uf_run(args);uf_run(h_args(h_join(tools,"apksigner"),"verify",apk,0,0,0));h_print(1,h_cat(apk,"\n"));return 0;
+}

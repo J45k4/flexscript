@@ -302,6 +302,7 @@ fn uwb_info(){return db_rpc(db_request("uwb_info"));}
 fn uwb_backend_info(backend){let r=db_request("uwb_info");db_add(r,db_int(backend));return db_rpc(r);}
 fn uwb_backend_watch(backend){let r=db_request("uwb_watch");db_add(r,db_int(backend));return db_rpc(r);}
 fn uwb_prepare(role,timeout_ms){let r=db_request("uwb_prepare");db_add(r,db_int(role));db_add(r,db_int(timeout_ms));return db_rpc(r);}
+fn uwb_backend_prepare(backend,role,timeout_ms){let r=db_request("uwb_prepare");db_add(r,db_int(role));db_add(r,db_int(timeout_ms));db_add(r,db_int(backend));return db_rpc(r);}
 fn uwb_start(session,peers,options){let r=db_request("uwb_start");db_add(r,db_text(session));db_add(r,peers);db_add(r,options);return db_rpc(r);}
 fn uwb_request(session,request){let r=db_request("uwb_request");db_add(r,db_text(session));db_add(r,db_text(request));return db_rpc(r);}
 fn uwb_watch(){return db_rpc(db_request("uwb_watch"));}
@@ -310,6 +311,7 @@ fn uwb_stop(handle){let r=db_request("uwb_stop");db_add(r,db_text(handle));retur
 fn uwb_add(handle,peer){let r=db_request("uwb_add");db_add(r,db_text(handle));db_add(r,peer);return db_rpc(r);}
 fn uwb_remove(handle,uuid){let r=db_request("uwb_remove");db_add(r,db_text(handle));db_add(r,db_text(uuid));return db_rpc(r);}
 fn uwb_interval(handle,skip){let r=db_request("uwb_interval");db_add(r,db_text(handle));db_add(r,db_int(skip));return db_rpc(r);}
+fn uwb_notifications(handle,mode,near_cm,far_cm){let r=db_request("uwb_notifications");db_add(r,db_text(handle));db_add(r,db_int(mode));db_add(r,db_int(near_cm));db_add(r,db_int(far_cm));return db_rpc(r);}
 
 // Android document trees: grants persist; tree handles and document tokens do not.
 fn document_pick(ticket,writable){let r=db_request("document_pick");db_add(r,db_text(ticket));db_add(r,db_int(writable));return db_rpc(r);}

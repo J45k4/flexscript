@@ -276,13 +276,14 @@ fn hw_operations(){
     hw_operation(rows,"uwb_info","uwb",0,1);
     hw_operation(rows,"uwb_watch","uwb",0,1);
     hw_operation(rows,"uwb_range","uwb",3,3);
-    hw_operation(rows,"uwb_prepare","uwb",2,2);
+    hw_operation(rows,"uwb_prepare","uwb",2,3);
     hw_operation(rows,"uwb_start","hardware_handle",3,3);
     hw_operation(rows,"uwb_request","hardware_handle",2,2);
     hw_operation(rows,"uwb_stop","hardware_handle",1,1);
     hw_operation(rows,"uwb_add","hardware_handle",2,2);
     hw_operation(rows,"uwb_remove","hardware_handle",2,2);
     hw_operation(rows,"uwb_interval","hardware_handle",2,2);
+    hw_operation(rows,"uwb_notifications","hardware_handle",4,4);
     hw_operation(rows,"document_pick","documents",2,2);
     hw_operation(rows,"document_trees","documents",2,2);
     hw_operation(rows,"document_forget","documents",1,1);

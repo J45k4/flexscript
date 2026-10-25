@@ -53,7 +53,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
-    <queries><package android:name="com.google.android.gms" /></queries>
+    <queries><package android:name="com.google.android.gms" /><package android:name="androidx.core.uwb.backend" /></queries>
     <permission android:name="org.flexscript.collie.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature" />
     <uses-permission android:name="org.flexscript.collie.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
     <application android:label="Collie" android:theme="@style/CollieTheme" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:allowBackup="false" android:debuggable="false" android:usesCleartextTraffic="true" android:extractNativeLibs="false">

@@ -3,7 +3,8 @@
 import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
 from collie_android_test_artifact import verify_installed_apk
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--live',action='store_true',help='Require a real enabled provider and exercise SDK observer/session Tasks, without claiming RF');p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');a=p.parse_args();assert a.serial.startswith('emulator-')
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--aosp',action='store_true',help='Use the separate-UID pinned OEM protocol fixture, with no RF claim');p.add_argument('--live',action='store_true',help='Require a real enabled provider and exercise SDK observer/session Tasks, without claiming RF');p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');a=p.parse_args();assert a.serial.startswith('emulator-')
+assert not (a.aosp and a.live),'The OEM protocol fixture is not a live RF provider'
 sha=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk');pkg='org.flexscript.collie';prefix='uwb-gms-'+uuid.uuid4().hex[:8];names=[];sessions=[];checks=[]
 def adb(*args,data=None,check=True):
  r=subprocess.run([a.adb,'-s',a.serial,*map(str,args)],input=data,capture_output=True,timeout=45)
@@ -46,7 +47,7 @@ def model_responses(source):
 adb('shell','am','start','-n',pkg+'/.MainActivity');adb('shell','run-as',pkg,'mkdir','-p','files/test');wait(lambda:bool(adb('exec-out','run-as',pkg,'cat','shared_prefs/MainActivity.xml',check=False)))
 prefs=ET.fromstring(adb('exec-out','run-as',pkg,'cat','shared_prefs/MainActivity.xml'));original=next(n.text for n in prefs if n.get('name')=='session');before=read('files/workspaces/'+original+'/session.json');grants=runtime_grants();permission_state=adb('shell','dumpsys','package',pkg).decode();flags={key:((re.search(re.escape(key)+r': granted=\w+, flags=\[([^]]*)\]',permission_state) or [None,''])[1]) for key in grants};live_verified=False
 try:
- sid=prefix+'-allow';token=uuid.uuid4().hex;source='fn main(){let v=uwb_backend_info(2);if !v{return 1;}return 0;}'
+ sid=prefix+'-allow';token=uuid.uuid4().hex;source='fn main(){let v=uwb_backend_info('+str(3 if a.aosp else 2)+');if !v{return 1;}return 0;}'
  responses=[dict(type='response.completed',response=dict(status='completed',output=[dict(type='custom_tool_call',id='ctc_'+token,call_id='call_'+token,name='flexscript',input=source)])),dict(type='response.completed',response=dict(status='completed',output=[dict(type='message',role='assistant',content=[dict(type='output_text',text='UWB provider inspected')])]))]
  name=start(sid,prompt='Inspect UWB provider metadata',initial_permissions={'uwb':'ask'},responses=responses)
  def pending():
@@ -54,11 +55,11 @@ try:
   if state and state.get('phase')=='permission' and (state.get('pending_execution') or {}).get('signal',{}).get('key')=='uwb':return state
   if (r:=read('files/test/'+name+'.result.json')):raise AssertionError(dict(expected='lazy UWB approval',result=r))
  wait(pending);button('Allow requested access');observation(result(name));assert read('files/workspaces/'+sid+'/session.json')['permissions']['uwb'] is True
- passed('actual first-use UWB approval resumes the explicit Play services metadata query without Android runtime consent')
- report=result(start(prefix,hardware_tests=True,hardware_uwb_gms_tests=True,initial_permissions={'uwb':True}))['hardware'];assert report['ok'] and report['ranging_io_verified'] is False and report['constructed_task_fixtures']
+ passed('actual first-use UWB approval resumes the selected provider metadata query without Android runtime consent')
+ report=result(start(prefix,hardware_tests=True,**({'hardware_uwb_aosp_tests':True} if a.aosp else {'hardware_uwb_gms_tests':True}),initial_permissions={'uwb':True}))['hardware'];assert report['ok'] and report['ranging_io_verified'] is False and report['constructed_protocol_fixture' if a.aosp else 'constructed_task_fixtures']
  for text in report['checks']:passed(text)
  assert runtime_grants()==grants
- passed('actual read-only provider queries and constructed Task fixtures leave all sampled Android runtime grants unchanged')
+ passed('provider metadata and labeled SDK/protocol fixtures leave all sampled Android runtime grants unchanged')
  if a.live:
   assert report['actual_provider']['available'] is True,'The real Google provider must report available for --live'
   for permission in grants:
@@ -107,4 +108,4 @@ finally:
  for name in names:adb('shell','run-as',pkg,'rm','-f','files/test/'+name+'.json','files/test/'+name+'.result.json')
  adb('shell','rm','-f','/data/local/tmp/'+prefix+'.xml')
 passed('owned test workspaces removed and original conversation/messages/permissions restored');assert verify_installed_apk(a.adb,a.serial,a.out/'collie.apk')==sha
-(a.out/('uwb-gms-'+a.serial+'-report.json')).write_text(json.dumps(dict(count=len(checks),checks=checks,serial=a.serial,apk_sha256=sha,sdk_session_tasks_verified=live_verified,ranging_io_verified=False,physical_devices_verified=False,sdk=report),indent=2)+'\n');print(len(checks),'legacy UWB checks passed; RF and physical devices remain unverified')
+(a.out/(('uwb-aosp-' if a.aosp else 'uwb-gms-')+a.serial+'-report.json')).write_text(json.dumps(dict(count=len(checks),checks=checks,serial=a.serial,apk_sha256=sha,sdk_session_tasks_verified=live_verified,ranging_io_verified=False,physical_devices_verified=False,sdk=report),indent=2)+'\n');print(len(checks),'legacy UWB checks passed; RF and physical devices remain unverified')

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Public Play services UWB backend for Android 12 and later",
+  "purpose": "Public Play services UWB and pinned stable OEM-service protocol for Android 12 and later",
   "artifacts": [
     {
       "id": "androidx.activity:activity:1.0.0",
@@ -489,6 +489,24 @@
       "licenses": [
         {
           "name": "The Apache License, Version 2.0",
+          "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ]
+    },
+    {
+      "id": "androidx.core.uwb:uwb:1.0.0",
+      "url": "https://dl.google.com/dl/android/maven2/androidx/core/uwb/uwb/1.0.0/uwb-1.0.0.aar",
+      "file": "uwb-1.0.0.aar",
+      "type": "aar",
+      "bytes": 165644,
+      "sha256": "74e8d6b66b0fbaa7c0e23ea0caa89edae1a2f4570c9db0c7bb1c6569b6e4601e",
+      "class_prefixes": [
+        "androidx/core/uwb/backend/"
+      ],
+      "purpose": "Stable OEM Binder protocol classes only; higher-level SDK implementation is excluded",
+      "licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
           "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ]
