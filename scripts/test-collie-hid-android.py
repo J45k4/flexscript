@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Real Android HID device SDK and VM I/O against a controlled localhost host."""
-import argparse,json,re,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,fcntl,json,os,re,subprocess,time,uuid,xml.etree.ElementTree as ET
 from pathlib import Path
 from collie_android_test_artifact import verify_installed_apk
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--netsim-port',type=int,required=True);p.add_argument('--peer-python',type=Path,default=Path('build/bluetooth-fixture-env/bin/python'));p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');p.add_argument('--scenario',choices=['reports','controls'],default='reports');a=p.parse_args();assert a.serial.startswith('emulator-') and 1<=a.netsim_port<=65535
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--serial',required=True);p.add_argument('--netsim-port',type=int,required=True);p.add_argument('--peer-python',type=Path,default=Path('build/bluetooth-fixture-env/bin/python'));p.add_argument('--adb',default='/opt/android-sdk/platform-tools/adb');p.add_argument('--scenario',choices=['reports','controls'],default='reports');a=p.parse_args();assert re.fullmatch(r'emulator-[0-9]+',a.serial) and 1<=a.netsim_port<=65535
+# An OS-held lock, not a stale PID file, prevents competing SDK/UI cleanup.
+lock=os.fdopen(os.open('/tmp/collie-hid-'+str(os.getuid())+'-'+a.serial+'.lock',os.O_CREAT|os.O_RDWR|os.O_CLOEXEC|os.O_NOFOLLOW,0o600),'a')
+try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+except BlockingIOError:p.error('Another HID test owns this emulator; wait for its terminal result before starting another scenario')
 unplug_observed=False;controls_verified=False
 tested_apk=verify_installed_apk(a.adb,a.serial,a.out/'collie.apk');pkg='org.flexscript.collie';sid='hid-hw-'+uuid.uuid4().hex[:8];names=[];checks=[];child=None;paired=False;peer={};log=None
 proof_file=a.out/'hid-host.json';proof_file.unlink(missing_ok=True);command_file=a.out/'hid-host-command.json';command_file.unlink(missing_ok=True)
@@ -112,7 +116,16 @@ def forget():
  o=vm('fn main(){let d=bt_device("'+address+'");if !d{return 1;}let bond=device_field(device_info(db_word(d)),"bond_state");if db_word(bond)==10{db_io(0,1,"already_unpaired",16);}return device_close(db_word(d))-1;}')
  if o['stdout']=='already_unpaired':return
  adb('shell','cmd','statusbar','collapse');adb('shell','am','start','-a','android.settings.BLUETOOTH_SETTINGS')
- gear=wait(lambda:[n for n in tree().iter('node') if n.get('content-desc')==peer['name']+'. Configure device detail.'],20)[0];tap(gear);root=tree();texts=' '.join(n.get('text','') for n in root.iter('node'));assert peer['name'] in texts and address in texts,texts
+ def gear():
+  root=tree();parents={child:parent for parent in root.iter() for child in parent}
+  for row in root.iter('node'):
+   if row.get('text')!=peer['name']:continue
+   while row in parents:
+    row=parents[row];buttons=[n for n in row.iter('node') if n.get('content-desc') in [peer['name']+'. Configure device detail.','Settings']]
+    if len(buttons)==1:return buttons
+    if len(buttons)>1:break
+  return None
+ tap(wait(gear,20)[0]);root=tree();texts=' '.join(n.get('text','') for n in root.iter('node'));assert peer['name'] in texts and address in texts.upper(),texts
  tap(next(n for n in root.iter('node') if n.get('text')=='Forget'));root=tree();tap(next(n for n in root.iter('node') if n.get('text')=='Forget device'))
 
 adb('shell','run-as',pkg,'mkdir','-p','files/test');prefs=ET.fromstring(adb('exec-out','run-as',pkg,'cat','shared_prefs/MainActivity.xml'));original=next(n.text for n in prefs if n.get('name')=='session');before=read('files/workspaces/'+original+'/session.json')
@@ -121,7 +134,11 @@ try:
  adb('shell','am','force-stop',pkg)
  for permission in reversed(permissions[1:]):adb('shell','pm','revoke',pkg,permission,check=False)
  adb('shell','pm','grant',pkg,permissions[0])
- vm('''fn main(){let c=cap();if db_kind(c)!=5 || db_word(device_field(c,"support_known")) || db_kind(device_field(c,"supported"))!=0 || db_word(device_field(c,"available")){return 1;}if hid_open("C","D","P",0,db_blob("",0),db_list(),db_list(),1000){return 2;}if !worker_equal(db_word(db_at(device_error(),0)),"size_limit"){return 3;}if db_word(device_field(cap(),"registration_busy")){return 4;}let h=open_hid();if !h || !registered(db_word(h)){return 5;}state_set("hid",h);if open_hid(){return 6;}if !worker_equal(db_word(db_at(device_error(),0)),"busy"){return 7;}if !device_close(db_word(h)) || !idle(0){return 8;}let d=bt_device("02:00:00:00:00:FA");state_set("unpaired",d);h=open_hid();if !h || !registered(db_word(h)){return 9;}if hid_connect(db_word(h),db_word(d)){return 10;}if !worker_equal(db_word(db_at(device_error(),0)),"not_paired"){return 11;}if !device_close(db_word(h)) || !idle(0){return 12;}return device_close(db_word(d))-1;}''',True)
+ # Keep capability decoding and each registration generation in bounded VM
+ # batches; the guest CPU budget is unchanged on slower Android runtimes.
+ vm('fn main(){let c=cap();if db_kind(c)!=5 || db_word(device_field(c,"support_known")) || db_kind(device_field(c,"supported"))!=0 || db_word(device_field(c,"available")){return 1;}if hid_open("C","D","P",0,db_blob("",0),db_list(),db_list(),1000){return 2;}if !worker_equal(db_word(db_at(device_error(),0)),"size_limit"){return 3;}return 0;}',True)
+ vm('fn main(){if db_word(device_field(cap(),"registration_busy")){return 4;}let h=open_hid();if !h || !registered(db_word(h)){return 5;}state_set("hid",h);if open_hid(){return 6;}if !worker_equal(db_word(db_at(device_error(),0)),"busy"){return 7;}return !device_close(db_word(h)) || !idle(0);}')
+ vm('fn main(){let d=bt_device("02:00:00:00:00:FA");state_set("unpaired",d);let h=open_hid();if !h || !registered(db_word(h)){return 9;}if hid_connect(db_word(h),db_word(d)){return 10;}if !worker_equal(db_word(db_at(device_error(),0)),"not_paired"){return 11;}if !device_close(db_word(h)) || !idle(0){return 12;}return device_close(db_word(d))-1;}')
  passed('permission-free capability metadata stays unknown until an actual HID profile is observed; invalid descriptors do not reserve registration')
  passed('actual SDK registration/unregistration succeeds, concurrent registration is rejected, confirmed teardown permits reopening and unpaired HID connect fails before I/O')
  log=(a.out/'hid-host.log').open('w');child=subprocess.Popen([str(a.peer_python),'scripts/fixtures/collie-hid-host.py','--transport','android-netsim:127.0.0.1:'+str(a.netsim_port)+',name=collie-test-'+uuid.uuid4().hex,'--out',str(proof_file),'--scenario',a.scenario,'--command',str(command_file)],stdout=log,stderr=subprocess.STDOUT)

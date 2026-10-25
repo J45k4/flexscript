@@ -1384,6 +1384,51 @@ QoS, no-report-ID descriptors, OS keyboard/mouse integration, older SDK/OEM and
 physical-host behavior remain open. These results close only the ordinary
 API36 unanswered/overlapping control and stale-generation test gaps.
 
+### Android15 control verification and fixture ownership
+
+The same installed APK also passes all **13 control/lifecycle groups** on
+API35, fingerprint
+`google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys`.
+The independent host observes actual NOT_READY01, **2559ms** unanswered-request
+closure, **51ms** overlap closure, no report-data reply for either failed
+transaction, and its own fresh `safe` response. Three connections/six channel
+closures, encryption, stale-token/deadline isolation, Activity lifecycle and
+complete original conversation/permission/pairing cleanup pass. The pre-existing
+UWB workspace is preserved. Evidence is
+`build/android-hid-controls/final35/hid-controls-android-report.json`.
+
+The first older-SDK attempt exhausted the VM execution deadline during the
+combined preflight, before host traffic. The same assertions now run in three
+bounded VM batches; production CPU/fuel/timeout limits are unchanged. Android15
+Settings uses a generic `Settings` button within the named peer's row, whereas
+the Android16 fixture used a peer-specific content description. Cleanup now
+walks only that named row to its unique matching button and still verifies the
+peer name/address before forgetting. An intermediate leaf-XML truth-value bug
+in this helper was corrected before the successful complete run.
+
+A second test was started before the first cleanup finished. Those
+interfered attempts were stopped, retained separately, excluded from final
+verification and recovered to the independently saved baseline. The runner now
+holds a per-user/per-emulator nonblocking OS file lock through restoration.
+A second process exits2 before artifact/ADB access; closing the holder releases
+the lock without trusting a stale PID/file. Both an independently held lock and
+the actual live control runner positively verified rejection. Serial syntax
+and no-follow file opening bound the host lock path. No app dependency, grant,
+Android manifest change, new Python file or runtime Java change is introduced.
+
+The initial deadline log, interfered runs, leaf-helper failure and recovery
+records remain under `build/android-hid-controls`; none is counted as a clean
+pass. The complete clean API35 run exited0 and verified restoration before
+the separate strict scenario was started. That clean strict run passed17
+groups and restored its fixtures, but exited1 with `ok=false` and the public
+unplug callback still missing. Its report is in
+`build/android-hid-controls/strict35/hid-android-report.json`; Android's actual
+APK path identifies `BluetoothGoogle@342010060` under `com.android.btservices`.
+The native-library ordering diagnosis above remains specific to the examined
+API36 module and is not inferred for this API35 build.
+Android9..14/OEM/physical behavior,
+targeted permission/radio/service faults and the other HID gates remain open.
+
 Primary contracts: [HID device API](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.html),
 [callbacks](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice.Callback),
 [SDP settings](https://developer.android.com/reference/android/bluetooth/BluetoothHidDeviceAppSdpSettings),
