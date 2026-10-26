@@ -24,6 +24,19 @@ keys, widgets, properties and structure, then lowers the AST to ordinary
 Flexscript functions. Expressions continue through the normal Flexscript compiler.
 No Java or JavaScript is generated for individual screens.
 
+Native applications that treat static view properties as immutable can select
+`extend "ui/syntax.flex" with "desktop";`. This profile packs constant attributes
+into name/value tables and emits update functions only for reachable components
+and views referenced by ordinary Flexscript functions. Ordinary generation keeps
+its existing mutable-property behavior.
+
+`desktop:my_desktop_guard` additionally declares that the pure, zero-argument
+boolean function `my_desktop_guard()` is true for this build. The frontend selects
+matching view branches before following component uses. It still validates the
+structure and property types of excluded branches. The shared UI library has no
+application-specific guard names. Use `desktop-source:my_desktop_guard` when an
+embedder also needs the validated transformed modules exported as source.
+
 Calling `app_view()` builds a keyed tree. Retain the previous root and
 `ui_index`; `ui_compiled_diff(old,new,old_index,new_index)` returns an array of
 operations. `ui_compiled_diff(0,new,0,new_index)` creates a complete snapshot.

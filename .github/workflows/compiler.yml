@@ -184,6 +184,12 @@ jobs:
       - name: Test the default native IR pipeline and direct reference path
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-pipeline.py
 
+      - name: Test native writable and shared literal pools
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-literals.py
+
+      - name: Test compact desktop UI specialization
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-ui-desktop-profile.py
+
       - name: Test buffered native word I/O and failure recovery
         run: python3 tests/word-io/check.py build/stage2
 
