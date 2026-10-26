@@ -2,10 +2,11 @@
 """Exercise progress and model feedback across fresh native VM processes."""
 import argparse, json, shutil, subprocess, tempfile
 from pathlib import Path
+from collie_native_test import command as native_command
 
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--out',type=Path,required=True)
-a=p.parse_args();out=a.out.resolve();checks=[]
+p.add_argument('--desktop',action='store_true',help='Run the native Linux desktop engine');a=p.parse_args();out=a.out.resolve();checks=[]
 qemu=shutil.which('qemu-aarch64-static') or shutil.which('qemu-aarch64')
 def passed(text):checks.append(text);print('PASS',text,flush=True)
 def message(text):return {'message':text,'items':[{'role':'assistant','content':text}]}
@@ -14,7 +15,7 @@ def program(source,key):
 with tempfile.TemporaryDirectory(prefix='signals-',dir=out) as directory:
  root=Path(directory);(root/'files').mkdir();config={'workspace_file':str(root/'agent.flexdb'),'model':'gpt-6.1-sol','agent_id':0}
  def call(op,request):
-  r=subprocess.run([qemu,str(out/'native-test'),str(op),str(root)],input=json.dumps(request).encode(),capture_output=True,timeout=45)
+  r=subprocess.run(native_command(out,op,root,a.desktop,qemu),input=json.dumps(request).encode(),capture_output=True,timeout=45)
   assert r.returncode==0,(r.returncode,r.stdout,r.stderr)
   return json.loads(r.stdout)
  def step(action,state=None,**extra):
@@ -78,9 +79,16 @@ with tempfile.TemporaryDirectory(prefix='signals-',dir=out) as directory:
  t=step('reply',t['state'],reply=message('Worker complete'));assert t['command']['kind']=='done'
  config['agent_id']=0
  passed('worker restart restores its pending feedback branch, request cursor and original program')
- for source,needle in [('fn main(){syscall(10001,-1,0,0,0,0,0);return 0;}','matching request'),('fn main(){db_begin();progress("inside transaction");let e=db_error();db_io(0,1,e,db_len(e));db_rollback();return 0;}','transaction')]:
+ for source,needle in [('fn main(){syscall(10001,-1,0,0,0,0,0);return 0;}','matching request'),('fn main(){syscall(10001,-4,0,0,0,0,0);return 0;}','matching request'),('fn main(){db_begin();progress("inside transaction");let e=db_error();db_io(0,1,e,db_len(e));db_rollback();return 0;}','transaction'),('fn main(){db_begin();imagen("Circle","circle.png");let e=db_error();db_io(0,1,e,db_len(e));db_rollback();return 0;}','transaction')]:
   o=call(3,dict(config=config,history=[],call_id='invalid',source=source));assert needle in o['stderr']+o['stdout'],o
- passed('raw unprepared yields and open database transactions cannot publish incomplete progress')
+ passed('raw unprepared yields and open database transactions cannot publish incomplete progress or image requests')
+ source='fn main(){let image=imagen("Circle","circle.png");if image{return 1;}let e=db_error();db_io(0,1,e,db_len(e));return 0;}'
+ t=begin(source,'image-restart');t=step('observation',t['state'],observation=vm(t));assert t['command']['kind']=='imagegen',t
+ t=step('resume',json.loads(json.dumps(t['state'])));assert t['command']['kind']=='imagegen' and t['command']['signal']['path']=='circle.png',t
+ config['permissions']=dict(grants,files_write=False)
+ t=step('next',t['state']);assert t['command']['kind']=='vm';o=vm(t);assert o['exit_code']==0 and 'Permission denied' in o['stdout'],o
+ config.pop('permissions')
+ passed('image requests survive restart as suspended commands and recheck file-write permission before provider dispatch')
  source='fn main(){let i=0;while i<33{if !progress("tick"){let e=db_error();db_io(0,1,e,db_len(e));return i-32;}i=i+1;}return 1;}'
  request=dict(config=config,history=[],call_id='budget',source=source,resume=0)
  for i in range(32):

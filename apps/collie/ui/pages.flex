@@ -55,13 +55,13 @@ view workers_screen(){
                 if !cu_terminal(j_value(j_at(selected,2))){use cu_action("worker-stop","Stop worker","cancel_worker",cu_n("worker"));}
             }
         }
-        scroll("workers-scroll",weight:1){
+        scroll("workers-scroll",weight:1,selection_scope:1){
             column("workers-content",padding:18,gap:12){
                 if h_len(cu_s("workers_error")){text("workers-problem",text:cu_s("workers_error"),color:"#f1aaa6",size:14);}
                 if selected{
                     if h_len(j_value(j_at(selected,4))){text("worker-error",text:j_value(j_at(selected,4)),color:"#f1aaa6",size:14);}
                     use cu_timeline(cu_worker_cards(),0,1000,cu_worker_live(),cu_k("worker-",cu_n("worker")));
-                    if h_len(cj_text(cu_worker_live(),"text")){text("worker-stream-reply",text:cj_text(cu_worker_live(),"text"),runs:cu_text_runs(cj_text(cu_worker_live(),"text")),size:15,color:"#edf2ed");}
+                    if h_len(cj_text(cu_worker_live(),"text")){text("worker-stream-reply",text:cj_text(cu_worker_live(),"text"),runs:cu_text_runs(cj_text(cu_worker_live(),"text")),selectable:1,size:15,color:"#edf2ed");}
                 }else{
                     if !j_count(cu_a("workers")){
                         text("workers-welcome",text:"A little help from the pack",color:"#c5e3ae",size:20);
@@ -78,36 +78,51 @@ view preview_screen(){
     column("preview-page",height:-1,background:"#10151a",padding:18,gap:12){
         row("preview-header",gap:10){text("preview-title",text:path,size:18,color:"#edf2ed",weight:1);button("preview-close",text:"Close",description:"Close preview",action:"back",min_height:48,color:"#c5e3ae",size:14);}
         if image{
-            text("preview-size",text:m_cat(m_cat(m_int(cj_int(file,"width")),m_cat(" × ",m_int(cj_int(file,"height"))))," · Pinch to zoom"),size:12,color:"#8e9d9f");
+            text("preview-size",text:m_cat(m_cat(m_int(cj_int(file,"width")),m_cat(" × ",m_int(cj_int(file,"height")))),cu_preview_hint()),size:12,color:"#8e9d9f");
             image("preview-image",source:cu_key("preview:",cj_text(file,"image_id")),description:cu_key("Full image: ",path),zoom:1,weight:1);
         }else{
             text("preview-range",text:m_cat(m_cat("Bytes ",m_int(cj_int(file,"offset"))),m_cat("–",m_int(cj_int(file,"offset")+cj_int(file,"bytes")))),size:12,color:"#8e9d9f");
-            scroll("preview-scroll",weight:1){text("preview-text",text:cj_text(file,"text"),font:"monospace",selectable:1,size:14,color:"#edf2ed",padding_y:16,line_height:4);}
+            scroll("preview-scroll",weight:1,selection_scope:1){text("preview-text",text:cj_text(file,"text"),font:"monospace",selectable:1,size:14,color:"#edf2ed",padding_y:16,line_height:4);}
         }
     }
 }
 view model_screen(){
-    column("model-overlay",height:-1,background:"#99000000"){
+    column("model-overlay",height:-1,background:cu_overlay_bg()){
         column("model-spacer",weight:1,action:"back");
         column("model-panel",padding:20,gap:14,background:"#191f25",radius:24){
             text("model-title",text:"Choose a model",size:22,font:"medium",color:"#edf2ed");
+            if cu_desktop(){
+                input("model-input",autocapitalize:"none",text:"Search models…",description:"Search models",value:cu_s("model_query"),action:"model_query",single_line:1,ime:"send",color:"#edf2ed",hint_color:"#a4b2b5",size:16,padding:12,background:"#232c33",radius:12,focus_border_width:2,focus_border_color:"#add98f");
+                column("model-options",gap:8){
+                    if cu_model_matches(0){button("model-option-0",text:cu_model_option_label(0),description:"Choose GPT-6.1 Sol",action:"choose_model",action_id:0,min_height:66,padding:12,size:14,color:"#edf2ed",background:cu_model_option_bg(0),radius:10);}
+                    if cu_model_matches(1){button("model-option-1",text:cu_model_option_label(1),description:"Choose GPT-6 Astra",action:"choose_model",action_id:1,min_height:66,padding:12,size:14,color:"#edf2ed",background:cu_model_option_bg(1),radius:10);}
+                    if !cu_model_matches(0) && !cu_model_matches(1){text("model-empty",text:"No matching models",size:14,color:"#a4b2b5",padding:12);}
+                }
+                text("model-desktop-detail",text:"Select a model, or press Enter to choose a match.",size:12,color:"#a4b2b5");
+                button("model-cancel",text:"Cancel",action:"back",min_height:38,align:"center",size:13,color:"#edf2ed",background:"#232c33",radius:9);
+            }else{
             input("model-input",autocapitalize:"none",text:"Model",description:"Model",value:cu_s("model_input"),action:"model_input",single_line:1,color:"#edf2ed",hint_color:"#8e9d9f",size:16,padding:12,background:"#232c33",radius:12);
             if h_len(cu_s("model_error")){text("model-error",text:cu_s("model_error"),color:"#f1aaa6",size:13);}
             text("model-network-label",text:"Model connection",size:14,color:"#8e9d9f");
             text("model-network-detail",text:"Choose the internet connection Collie uses. Programs select their own networks separately.",size:12,color:"#8e9d9f");
             row("model-network-choices",gap:6){
                 button("model-network-default",text:"Auto",action:"model_network",action_id:0,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("default"),radius:10,align:"center");
+                if !h_equal(cu_s("platform"),"linux"){
                 button("model-network-wifi",text:"Wi-Fi",action:"model_network",action_id:1,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("wifi"),radius:10,align:"center");
                 button("model-network-cellular",text:"Cellular",action:"model_network",action_id:2,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("cellular"),radius:10,align:"center");
                 button("model-network-ethernet",text:"Ethernet",action:"model_network",action_id:3,weight:1,min_height:48,color:"#c5e3ae",background:cu_model_network_bg("ethernet"),radius:10,align:"center");
+                }
             }
             use cu_action("model-save","Save","save_model",0);
             use cu_action("model-cancel","Cancel","back",0);
+            }
+
         }
+        if cu_desktop(){column("model_screen-desktop-bottom",weight:1);}
     }
 }
 view menu_screen(){
-    column("menu-overlay",height:-1,background:"#99000000"){
+    column("menu-overlay",height:-1,background:cu_overlay_bg()){
         column("menu-spacer",weight:1,action:"back");
         column("menu-panel",padding:20,gap:10,background:"#191f25",radius:24){
             text("menu-title",text:"Your workspace",size:22,font:"medium",color:"#edf2ed");
@@ -121,18 +136,22 @@ view menu_screen(){
             if cu_n("authenticated"){use cu_action("menu-login-button","Update ChatGPT login","import_auth",0);}
             else{use cu_action("menu-login-button","Connect ChatGPT","import_auth",0);}
         }
+        if cu_desktop(){column("menu_screen-desktop-bottom",weight:1);}
     }
 }
 view attachment_menu(){
-    column("attachment-overlay",height:-1,background:"#99000000"){
+    column("attachment-overlay",height:-1,background:cu_overlay_bg()){
         column("attachment-spacer",weight:1,action:"back");
         column("attachment-panel",padding:20,gap:12,background:"#191f25",radius:24){
             text("attachment-title",text:"Add attachment",size:22,font:"medium",color:"#edf2ed");
             text("attachment-subtitle",text:"Choose a photo, take one, or attach a file.",size:13,color:"#8e9d9f");
-            use cu_action("attachment-gallery","Gallery","gallery",0);
+            use cu_action("attachment-gallery",cu_image_picker_title(),"gallery",0);
             use cu_action("attachment-camera","Camera","camera",0);
             use cu_action("attachment-files","Files","files",0);
             use cu_action("attachment-cancel","Cancel","back",0);
         }
+        if cu_desktop(){column("attachment_menu-desktop-bottom",weight:1);}
     }
 }
+
+fn cu_image_picker_title(){if cu_desktop(){return "Images";}return "Gallery";}

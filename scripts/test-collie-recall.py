@@ -2,7 +2,8 @@
 """Cross-chat recall through the real ARM64 VM and archive storage broker."""
 import argparse,json,shutil,subprocess,tempfile
 from pathlib import Path
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);a=p.parse_args();out=a.out.resolve();checks=[]
+from collie_native_test import command as native_command
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--desktop',action='store_true',help='Run the native Linux desktop engine');a=p.parse_args();out=a.out.resolve();checks=[]
 qemu=shutil.which('qemu-aarch64-static') or shutil.which('qemu-aarch64')
 def passed(text):checks.append(text);print('PASS',text,flush=True)
 DUMP=r'''
@@ -16,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix='recall-',dir=out) as directory:
  def save(id,archive,**extra):
   d=workspaces/id;d.mkdir(exist_ok=True);(d/'session.json').write_text(json.dumps(dict(archive=archive,messages=[],**extra),ensure_ascii=False));return d
  def native(op,request):
-  r=subprocess.run([qemu,str(out/'native-test'),str(op),str(current)],input=json.dumps(request).encode(),capture_output=True,timeout=45)
+  r=subprocess.run(native_command(out,op,current,a.desktop,qemu),input=json.dumps(request).encode(),capture_output=True,timeout=45)
   assert r.returncode==0,(r.returncode,r.stdout,r.stderr);return json.loads(r.stdout)
  def run(expr,policy=None,error=None):
   cfg=dict(config)

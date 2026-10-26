@@ -10,6 +10,7 @@ global h_timeout=30000;
 global h_output_limit=33554432;
 global h_child_memory=0;
 global h_inherit_fd=-1;
+global h_inherit_fd2=-1;
 global h_ffi_bridge=0;
 fn h_len(s) {
     let n=0;
@@ -480,8 +481,16 @@ fn h_restore_sigpipe() {
     return 0;
 }
 fn h_close_inherited() {
-    // Match subprocess close_fds semantics. One explicitly passed descriptor
-    // is supported for the VM's inherited-host-descriptor isolation test.
+    if h_inherit_fd2>=3 {
+        let first=h_inherit_fd;let second=h_inherit_fd2;if first<3{first=second;}
+        if first>second{let saved=first;first=second;second=saved;}
+        h_assert(syscall(72,first,2,0,0,0,0)==0 && syscall(72,second,2,0,0,0,0)==0,"passed descriptor is invalid");
+        if first>3{h_assert(syscall(436,3,first-1,0,0,0,0)==0,"close_range failed");}
+        if second>first+1{h_assert(syscall(436,first+1,second-1,0,0,0,0)==0,"close_range failed");}
+        h_assert(syscall(436,second+1,0xffffffff,0,0,0,0)==0,"close_range failed");return 0;
+    }
+    // Match subprocess close_fds semantics. The native desktop broker can
+    // pass its private platform channel and owned workspace directory.
     let last=0xffffffff;
     if h_inherit_fd>=3 {
         h_assert(syscall(72,h_inherit_fd,2,0,0,0,0)==0,"passed descriptor is invalid");

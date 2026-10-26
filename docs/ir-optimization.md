@@ -120,3 +120,15 @@ duplicated multiplication compiles to the same size as explicit result reuse.
 the native pipelines, including binary/NUL strings and mutation, globals,
 startup arguments, signed/unsigned FFI, recursive calls and output preservation
 on compilation failure.
+
+Native IR output places literal data after function bodies and relocates references
+without inline skip branches. The default `--native-literals writable` preserves
+separate storage for each source literal, including mutable binary/NUL strings.
+`--native-literals shared` explicitly interns identical complete byte strings;
+use it only when the program treats literals as immutable. It is limited to the
+native Linux IR pipeline. It does not change interpreter, JIT, portable IR,
+other CPU targets, or direct-emitter literal behavior.
+
+`FLEX_COMPILER=build/flex python3 scripts/test-native-literals.py` verifies
+mutation/identity, full binary contents and hash collisions, branch replay,
+deterministic output, reachability and option validation.

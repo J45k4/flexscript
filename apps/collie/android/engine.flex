@@ -159,6 +159,7 @@ fn collie_android_db_frame(payload,n){
         if !required {let denied=db_list();db_add(denied,db_text("Unknown VM capability operation."));db_add(denied,db_null());return db_encode(denied);}
         if !h_equal(required,"progress"){let gate=ca_access(required,db_word(db_at(request,0)));if gate{return gate;}}
         let operation=db_word(db_at(request,0));let table=db_at(request,1);
+        if h_equal(operation,"agent_imagegen"){let gate=ca_access("files_write",operation);if gate{return gate;}}
         if h_starts(operation,"memory_"){
             cw_problem=0;let result=cm_rpc(request);let reply=db_list();
             if result{db_add(reply,db_null());db_add(reply,result);}else{db_add(reply,db_text(cw_problem));db_add(reply,db_null());}

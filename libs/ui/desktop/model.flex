@@ -2,8 +2,8 @@
 // JSON descriptors live in a compacted private arena, never in caller storage.
 // Private 256-byte record: key0, kind8, descriptor16, parent24, first32,
 // last40, next48, previous56; box64..88, desired96..104, content112..120;
-// scroll/pan128..136, caret144, anchor152, texture160, wrap168, follow184,
-// identity192, texture size208..216, zoom224, editor pan232..240.
+// scroll/pan128..136, caret144, anchor152, texture160, wrap168, table background176, follow184,
+// identity192, follow paused200, texture size208..216, zoom224, editor pan232..240.
 import "../runtime.flex";
 import "../../gui/draw.flex";
 import "../../../scripts/lib/json.flex";
@@ -12,9 +12,16 @@ global ud_nodes=0;
 global ud_index=0;
 global ud_mount=0;
 global ud_focus=0;
+global ud_focus_scope=0;
 global ud_pressed=0;
+global ud_press_x=0;
+global ud_press_y=0;
+global ud_dragged=0;
+global ud_scroll_hover=0;global ud_scroll_drag=0;global ud_scroll_grab=0;
+global ud_selection_pending=0;global ud_selection_nearest=0;global ud_selection_distance=0;global ud_selection_blocked=0;
 global ud_fonts=0;
 global ud_font_count=0;
+global ud_scale=1000;
 global ud_pool=0;
 global ud_pool_used=0;
 global ud_pool_capacity=0;
@@ -24,6 +31,13 @@ global ud_pointer_x=0;
 global ud_pointer_y=0;
 global ud_dirty=1;
 global ud_blink=0;
+global ud_caret_epoch=0;
+// One owned selection layout: pointer drags never retain scratch in the model arena.
+global ud_edit_node=0;global ud_edit_width=0;global ud_edit_blocks=0;global ud_edit_used=0;global ud_edit_capacity=0;
+global ud_origin=0;global ud_edit_length=0;
+global ud_edit_data=0;global ud_edit_content=0;global ud_edit_records=0;global ud_edit_count=0;
+global ud_edit_cells=0;global ud_edit_cell_count=0;
+global ud_edit_end_x=0;global ud_edit_end_y=0;global ud_edit_builds=0;global ud_edit_measurements=0;
 global ud_sans=0;
 global ud_mono=0;
 fn ud_get(o,key){if !o || j_kind(o)!=4{return 0;}return j_get(o,key);}
@@ -37,7 +51,8 @@ fn ud_same_value(a,b){let sa=a && j_kind(a)==2;let sb=b && j_kind(b)==2;if sa!=s
 fn ud_kind(kind){let names=j_parse("[\"column\",\"row\",\"stack\",\"scroll\",\"hscroll\",\"text\",\"button\",\"input\",\"check\",\"image\",\"progress\"]");let i=0;while i<j_count(names){if h_equal(kind,j_value(j_at(names,i))){return i+1;}i=i+1;}h_die("Unsupported desktop UI widget");return 0;}
 fn ud_find(key){let slot=ui_hash(key);let i=0;while i<8192{let n=load64(ud_index+slot*8);if !n{return 0;}if n!=1 && h_equal(load64(n),key){return n;}slot=(slot+1)&8191;i=i+1;}return 0;}
 fn ud_need(key){let n=ud_find(key);h_assert(n,h_cat("Missing desktop UI key: ",key));return n;}
-fn ud_invalidate(node){gui_texture_close(load64(node+160));store64(node+160,0);store64(node+168,-1);return 0;}
+fn ud_scroll_cancel(){if ud_scroll_drag{store64(ud_scroll_drag+200,load64(ud_scroll_drag+136)<ud_max(0,load64(ud_scroll_drag+120)-load64(ud_scroll_drag+88)));gui__call("SDL_CaptureMouse",0,0,0,0,0,0);ud_dirty=1;}ud_scroll_drag=0;ud_scroll_grab=0;return 0;}
+fn ud_invalidate(node){if node==ud_edit_node{ud_edit_release();}gui_texture_close(load64(node+160));gui_texture_close(load64(node+176));store64(node+176,0);store64(node+160,0);store64(node+168,-1);return 0;}
 fn ud_detach(node){let parent=load64(node+24);let before=load64(node+56);let after=load64(node+48);if before{store64(before+48,after);}else if parent{store64(parent+32,after);}if after{store64(after+56,before);}else if parent{store64(parent+40,before);}store64(node+24,0);store64(node+48,0);store64(node+56,0);return 0;}
 fn ud_position(node,parent,after){
     h_assert(node!=parent && (!after || load64(after+24)==parent),"Invalid desktop UI position");
@@ -48,7 +63,8 @@ fn ud_position(node,parent,after){
 }
 fn ud_remove(node){
     while load64(node+32){ud_remove(load64(node+32));}ud_detach(node);ud_invalidate(node);
-    if ud_focus==node{ud_focus=0;gui_text_input(0);}if ud_pressed==node{ud_pressed=0;}
+    if ud_focus==node{ud_focus=0;gui_text_input(0);}if ud_focus_scope==node{ud_focus_scope=0;}if ud_pressed==node{ud_pressed=0;}if ud_selection_pending==node{ud_selection_pending=0;}
+    if ud_scroll_drag==node{ud_scroll_cancel();}if ud_scroll_hover==node{ud_scroll_hover=0;}
     let slot=ui_hash(load64(node));while load64(ud_index+slot*8)!=node{slot=(slot+1)&8191;}store64(ud_index+slot*8,1);store64(node,0);return 0;
 }
 fn ud_alloc_node(key,kind){let i=0;while i<2048 && load64(ud_nodes+i*256){i=i+1;}h_assert(i<2048,"Desktop UI node limit is 2048");let node=h_zero(ud_nodes+i*256,256);store64(node,key);store64(node+8,kind);ud_serial=ud_serial+1;store64(node+192,ud_serial);let slot=ui_hash(key);while load64(ud_index+slot*8)>1{slot=(slot+1)&8191;}store64(ud_index+slot*8,node);store64(node+168,-1);return node;}
@@ -78,10 +94,11 @@ fn ud_compact(){
 }
 fn ui_desktop_apply(packet){
     h_assert(ud_window && j_n(packet,"version")==1,"Unsupported desktop UI batch");
+    let changes=j_need(packet,"ops");h_assert(j_kind(changes)==3,"Desktop UI operations must be an array");if !j_count(changes){return 1;}
     let saved=h_blocks;let used=h_used;let capacity=h_capacity;h_blocks=ud_pool;h_used=ud_pool_used;h_capacity=ud_pool_capacity;
     // Clone before retaining any values, so callers may free their JSON arena.
     packet=j_parse(j_dump(packet));let ops=j_need(packet,"ops");let i=0;
-    while i<2048{let n=ud_nodes+i*256;if load64(n) && (load64(n+8)==4 || load64(n+8)==5){store64(n+184,ud_n(n,"follow",0) && load64(n+136)>=load64(n+120)-load64(n+88)-100);}i=i+1;}i=0;
+    while i<2048{let n=ud_nodes+i*256;if load64(n) && (load64(n+8)==4 || load64(n+8)==5){store64(n+184,n!=ud_scroll_drag && !load64(n+200) && ud_n(n,"follow",0) && load64(n+136)>=load64(n+120)-load64(n+88)-100);}i=i+1;}i=0;
     while i<j_count(ops){let op=j_at(ops,i);let kind=j_s(op,"op");let key=j_s(op,"key");
         if h_equal(kind,"insert"){let parent=ud_mount;if !h_equal(j_s(op,"parent"),"mount"){parent=ud_need(j_s(op,"parent"));}let after=0;if h_len(j_s(op,"after")){after=ud_need(j_s(op,"after"));}ud_position(ud_tree(j_need(op,"node")),parent,after);}
         else{let node=ud_need(key);let desc=load64(node+16);
@@ -98,5 +115,7 @@ fn ui_desktop_apply(packet){
         }i=i+1;
     }
     if ud_focus && !ud_enabled(ud_focus){ud_set_focus(0);}
+    if ud_scroll_drag && !ud_enabled(ud_scroll_drag){ud_scroll_cancel();}
+    if ud_focus && load64(ud_focus+8)!=8 && ud_n(ud_focus,"selectable",0){let content=ud_content(ud_focus);let n=h_len(content);let field=144;while field<=152{let offset=load64(ud_focus+field);if offset>n{offset=n;}while offset>0 && (load8(content+offset)&192)==128{offset=offset-1;}store64(ud_focus+field,offset);field=field+8;}}
     ud_compact();ud_pool=h_blocks;ud_pool_used=h_used;ud_pool_capacity=h_capacity;h_blocks=saved;h_used=used;h_capacity=capacity;ud_dirty=1;return 1;
 }

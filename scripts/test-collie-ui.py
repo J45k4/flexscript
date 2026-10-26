@@ -159,6 +159,171 @@ with tempfile.TemporaryDirectory(prefix='collie-ui-',dir=root/'build') as d:
  step(data={'cards':thoughts+[{'kind':'user','text':'Next question'}, {'kind':'source','text':source}]});assert 'card-thinking-7-toggle' in widgets.nodes and 'card-8-source-toggle' not in widgets.nodes
  event('card-thinking-7-toggle');assert 'card-8-source-toggle' in widgets.nodes and 'card-1-body' not in widgets.nodes
  passed('thinking groups span tool cycles, stream the latest API summary, keep replies separate and start each turn collapsed')
+ step('clear',data={'platform':'linux','viewport_width':1280,'viewport_height':860,'busy':True,'live':{},'stream':'','cards':[{'kind':'user','text':'How does it work?'}]})
+ assert widgets.text('card-thinking-0-title')=='Thinking'
+ assert widgets.text('card-thinking-0-preview')=='Waiting for the model…'
+ event('card-thinking-0-toggle')
+ assert widgets.text('card-thinking-0-waiting')=='The model has not sent a public summary yet.'
+ step(data={'live':{'summaries':[{'text':'Checking the game controls.'}]}})
+ assert widgets.text('card-thinking-0-preview')=='Checking the game controls.' and 'card-thinking-0-waiting' not in widgets.nodes
+ assert widgets.text('card-thinking-0-live-summary-0')=='Checking the game controls.'
+ step('clear',data={'busy':True,'live':{},'stream':'','cards':[{'kind':'user','text':'Next request'}]})
+ step(data={'stream':'A direct reply','live':{'text':'A direct reply'}})
+ assert widgets.text('card-thinking-0-preview')=='Writing reply…'
+ step(data={'busy':False,'cards':[{'kind':'user','text':'Next request'},{'kind':'assistant','text':'A direct reply'}]})
+ assert 'card-thinking-0-title' not in widgets.nodes and not any(c['kind']=='thinking' for c in state['cards'])
+ passed('Thinking appears before the first summary, replaces waiting with actual summaries, and removes empty activity after completion')
+ step('clear',data={'platform':'linux','viewport_width':1280,'viewport_height':860})
+ for mode in (True,False,'ask'):
+  step(data={'page':'permissions','policy':dict(state['policy'],workers=mode)})
+  prior_policy=copy.deepcopy(state['policy'])
+  assert event('desktop-workers')=={'kind':'hide_keyboard'}
+  assert state['page']=='workers' and state['policy']==prior_policy
+  event('workers-back');event('desktop-settings');event('settings-nav-access')
+  assert widgets.text('settings-nav-access')=='Permissions' and widgets.text('settings-access-title')=='Permissions'
+  for choice,value in [('allow',True),('deny',False),('ask','ask')]:
+   assert event(choice+'-workers')=={'kind':'permission','key':'workers','allowed':value}
+  event('desktop-settings');assert state['page']=='settings'
+  step('back')
+ step(data={'page':'chat'})
+ passed('Workers navigation from workspace access is separate from the worker grant and never changes permission policy')
+ saved_draft='Keep my settings draft';step(data={'draft':saved_draft});event('desktop-settings');event('settings-nav-model')
+ assert state['page']=='settings' and 'settings-title' in widgets.nodes and 'desktop-permissions' not in widgets.nodes and 'menu-panel' not in widgets.nodes
+ event('settings-model-change');assert state['page']=='model' and state['model_return']=='settings'
+ step('back');assert state['page']=='settings' and state['draft']==saved_draft
+ event('settings-model-change');assert event('model-option-1')['model']=='gpt-6-astra' and state['page']=='settings'
+ step(data={'model':'gpt-6-astra'});assert widgets.text('settings-model-current')=='GPT-6 Astra'
+ step(data={'authenticated':True,'account':dict(name='Alex Example',email='alex@example.test',plan='Plus',account_id='synthetic-account')})
+ assert event('settings-nav-account')=={'kind':'refresh_account'} and 'settings-account-title' in widgets.nodes
+ assert widgets.text('settings-account-name')=='Alex Example' and widgets.text('settings-account-email')=='alex@example.test'
+ assert int(widgets.nodes['settings-account-email']['props']['selectable'])==1 and widgets.text('settings-account-plan')=='Plan · Plus'
+ assert event('settings-account-login')==dict(kind='start_account_login',method='browser') and state['page']=='settings'
+ assert event('settings-account-device')==dict(kind='start_account_login',method='device')
+ assert event('settings-account-import')['kind']=='import_auth'
+ step(data={'account_login':dict(running=True,status='waiting',method='device',url='https://auth.openai.com/codex/device',code='TEST-CODE',message='Sign in')})
+ assert widgets.text('settings-signin-code')=='TEST-CODE' and 'settings-account-login' not in widgets.nodes
+ assert event('settings-signin-open')==dict(kind='open_account_login')
+ assert event('settings-signin-copy')==dict(kind='copy',text='https://auth.openai.com/codex/device')
+ assert event('settings-signin-cancel')==dict(kind='cancel_account_login')
+ assert 'account_login' not in call(dict(action='navigation',state=state))
+ step(data={'account_login':{}})
+ nav=call(dict(action='navigation',state=state));assert nav['settings_section']=='account' and 'account' not in nav
+ step(data={'account':dict(account_id='synthetic-account')});assert 'settings-account-email' not in widgets.nodes and 'settings-account-id' in widgets.nodes
+ step(data={'authenticated':False,'account':{}});assert 'settings-account-name' not in widgets.nodes and 'settings-account-id' not in widgets.nodes
+ saved_accounts=[dict(id='a'*32,name='Alex Example',email='alex@example.test',active=True,available=True),
+                 dict(id='b'*32,name='Blair Example',email='blair@example.test',active=False,available=True)]
+ step(data={'authenticated':True,'accounts':saved_accounts,'account_busy':False})
+ assert event('settings-account-use-'+'b'*32)==dict(kind='select_account',id='b'*32)
+ assert state['page']=='settings' and 'settings-saved-'+'a'*32+'-selected' in widgets.nodes
+ step(data={'account_busy':True});assert event('settings-account-use-'+'b'*32)==dict(kind='none')
+ assert 'settings-account-busy' in widgets.nodes
+ nav=call(dict(action='navigation',state=state));assert 'accounts' not in nav and 'account' not in nav
+ step(data={'accounts':[],'account_busy':False})
+ event('settings-back');assert state['page']=='chat' and state['draft']==saved_draft
+ step(data={'draft':''})
+ passed('dedicated desktop settings navigate model, access and account sections, retain model-picker context and keep drafts and login cancellation in place')
+ markdown='## Project\nCreated [**tetris.html**](tetris.html), [guide](https://example.com/guide_(desktop)) with *controls*, ~~old~~ and `score`.\n\n- First item'
+ step(data={'cards':[{'kind':'user','text':'Make a game'},{'kind':'assistant','text':markdown}]})
+ runs=json.loads(widgets.nodes['card-1-body']['props']['runs'])
+ visible=''.join(run['text'] for run in runs)
+ assert visible=='Project\nCreated tetris.html, guide with controls, old and score.\n\n•  First item',visible
+ assert any(run.get('href')=='tetris.html' and run['style']&1 for run in runs)
+ assert any(run.get('href')=='https://example.com/guide_(desktop)' for run in runs)
+ assert any(run['text']=='controls' and run['style']&16 for run in runs)
+ assert any(run['text']=='old' and run['style']&32 for run in runs)
+ assert event('card-1-body','tetris.html','link')=={'kind':'open_link','href':'tetris.html'}
+ invalid=call({'state':state,'action':'event','event':{'key':'card-1-body','action':'','action_id':0,'type':'link','value':'https://other.example'}})
+ assert 'error' in invalid
+ step(data={'cards':[{'kind':'assistant','text':'[blocked](javascript:alert(1)) [local](file:///etc/passwd)'}]})
+ assert not any(run.get('href') for run in json.loads(widgets.nodes['card-0-body']['props']['runs']))
+ passed('desktop Markdown formats headings, emphasis, lists and workspace/web links and validates clicked links against the rendered message')
+ table='A table follows.\n\n| No. | President | Years |\n| ---: | :--- | :---: |\n'+''.join(f'| {i} | Person {i} | Term {i} |\n' for i in range(1,48))+'\nAfter the table.'
+ step(data={'cards':[{'kind':'assistant','text':table}]})
+ runs=json.loads(widgets.nodes['card-0-body']['props']['runs']);cells={tuple(run['cell'][k] for k in ('table','row','column')) for run in runs if 'cell' in run}
+ assert len(cells)==48*3 and max(run['cell']['row'] for run in runs if 'cell' in run)==47
+ assert ''.join(run['text'] for run in runs).startswith('A table follows.\n\nNo.\tPresident\tYears\n1\tPerson 1\tTerm 1\n')
+ assert [next(run['cell']['align'] for run in runs if run.get('cell',{}).get('column')==i) for i in range(3)]==['end','start','center']
+ for malformed in ('| A | B |\n| --- |\n| one | two |','```text\n| A | B |\n| --- | --- |\n| one | two |\n```'):
+  step(data={'cards':[{'kind':'assistant','text':malformed}]})
+  assert not any('cell' in run for run in json.loads(widgets.nodes['card-0-body']['props']['runs']))
+ step(data={'cards':[{'kind':'assistant','text':'| A | B |\n| --- | --- |\n| [file](tetris.html) | `a\\|b` |'}]})
+ assert event('card-0-body','tetris.html','link')=={'kind':'open_link','href':'tetris.html'}
+ passed('desktop pipe tables retain all 47 rows, alignment and selectable copy order while respecting code fences and invalid delimiters')
+ generated=dict(type='image',path='assets/circle.png',image_id='a'*64,width=64,height=64,bytes=128,file_bytes=256,mime='image/jpeg',provider='codex')
+ step(data={'cards':[dict(kind='image',text='Generated image: assets/circle.png',observation=generated)]})
+ assert 'card-0-generated-image' in widgets.nodes and widgets.text('card-0-generated-title')=='Image · assets/circle.png'
+ event('card-0-generated');assert state['page']=='preview' and state['preview']['path']=='assets/circle.png'
+ step('back');assert state['page']=='chat'
+ passed('generated images render as selectable preview tiles and open the persisted image snapshot')
+ step(data={'model':'gpt-6.1-sol'});event('desktop-model')
+ assert 'model-option-0' in widgets.nodes and 'model-option-1' in widgets.nodes and widgets.nodes['model-input']['props']['value']==''
+ event('model-input','gpt 6 astra',type='change');assert 'model-option-1' in widgets.nodes and 'model-option-0' not in widgets.nodes
+ assert event('model-option-1')=={'kind':'save_model','model':'gpt-6-astra','keyboard':'hide'}
+ step(data={'model':'gpt-6-astra'});event('desktop-model');event('model-input','does not exist',type='change')
+ assert 'model-empty' in widgets.nodes and event('model-input','does not exist',type='submit')=={'kind':'none'}
+ event('model-input','sol',type='change');assert event('model-input','sol',type='submit')=={'kind':'save_model','model':'gpt-6.1-sol','keyboard':'hide'}
+ step(data={'model':'gpt-6.1-sol'})
+ passed('desktop model picker filters Sol and Astra by display name or ID and selects a match with click or Enter')
+ projects=[dict(id='alpha',name='Alpha',path='/home/demo/Alpha'),dict(id='beta',name='Beta',path='/home/demo/Beta')]
+ step(data={'projects':projects,'project_id':'alpha','project_name':'Alpha','sessions':[
+   dict(id='alpha-chat',title='Alpha chat',preview='Shared folder',project_id='alpha'),
+   dict(id='beta-chat',title='Beta chat',preview='Another folder',project_id='beta'),
+   dict(id='personal-chat',title='Personal chat',preview='Private files')],'query':'','session_offset':0})
+ assert 'desktop-session-alpha-chat' in widgets.nodes
+ assert 'desktop-session-beta-chat' in widgets.nodes and 'desktop-session-personal-chat' in widgets.nodes
+ assert widgets.nodes['desktop-sessions']['children'].index('sidebar-group-alpha')<widgets.nodes['desktop-sessions']['children'].index('desktop-session-alpha-chat')
+ event('desktop-collapse');event('chat-project');assert state['page']=='projects' and widgets.text('project-alpha-path')=='/home/demo/Alpha'
+ assert widgets.nodes['project-alpha']['props']['background']=='#28382d'
+ assert event('projects-add')==dict(kind='choose_project_folder')
+ assert event('project-beta')==dict(kind='select_project',id='beta')
+ step(data={'project_id':'beta','project_name':'Beta'})
+ event('desktop-toggle')
+ assert 'desktop-session-beta-chat' in widgets.nodes and 'desktop-session-alpha-chat' in widgets.nodes
+ event('desktop-collapse');event('chat-project');assert event('project-personal')==dict(kind='select_project',id='')
+ step(data={'project_id':'','project_name':'Personal chats'})
+ event('desktop-toggle')
+ assert 'desktop-session-personal-chat' in widgets.nodes and 'desktop-session-beta-chat' in widgets.nodes
+ passed('desktop project picker exposes host folders and routes folder/project choices while retaining grouped conversations')
+ event('desktop-search','Alpha',type='change')
+ assert event('desktop-new-project')==dict(kind='choose_project_folder') and state['query']==''
+ assert event('sidebar-projects-add')==dict(kind='choose_project_folder')
+ assert event('sidebar-new-beta')==dict(kind='new_session',project_id='beta',keyboard='hide')
+ event('sidebar-fold-alpha');assert 'desktop-session-alpha-chat' not in widgets.nodes and state['sidebar_closed']['alpha']
+ event('sidebar-mode-timeline');assert state['sidebar_mode']=='timeline'
+ assert 'sidebar-group-alpha' not in widgets.nodes and widgets.nodes['desktop-session-alpha-chat']['parent']=='desktop-sessions'
+ assert widgets.text('desktop-session-alpha-chat-project')=='Alpha'
+ assert widgets.text('desktop-session-personal-chat-project')=='Personal chats'
+ assert [k for k in widgets.nodes['desktop-sessions']['children'] if k.startswith('desktop-session-') and k!='desktop-session-pager']==['desktop-session-alpha-chat','desktop-session-beta-chat','desktop-session-personal-chat']
+ event('desktop-search','Beta',type='change');assert 'desktop-session-beta-chat' in widgets.nodes and 'desktop-session-alpha-chat' not in widgets.nodes
+ event('sidebar-mode-projects');assert 'sidebar-group-beta' in widgets.nodes and 'sidebar-group-alpha' not in widgets.nodes
+ event('desktop-search','Alpha',type='change');assert 'desktop-session-alpha-chat' in widgets.nodes,'Search must expose matches in collapsed groups'
+ event('desktop-search','',type='change');assert 'desktop-session-alpha-chat' not in widgets.nodes
+ event('sidebar-fold-alpha');assert 'desktop-session-alpha-chat' in widgets.nodes
+ nav=call(dict(action='navigation',state=state));assert nav['sidebar_mode']=='projects' and nav['sidebar_closed']['alpha'] is False
+ passed('sidebar modes group projects or show the activity timeline, search all projects and expose top/group creation actions')
+ step(data={'sessions':[dict(id=id,title=id,preview='Saved reply') for id in ('first','second','third')],
+            'session_id':'first','query':'','session_offset':0,'draft':'Original draft'})
+ command=event('desktop-session-second')
+ assert command==dict(kind='open_session',id='second',request_id=1,keyboard='hide')
+ assert state['session_id']=='first' and state['pending_session_id']=='second' and state['draft']=='Original draft'
+ assert widgets.nodes['desktop-session-second']['props']['background']=='#28382d'
+ assert widgets.nodes['desktop-session-first']['props']['background']=='#151c21'
+ assert widgets.text('chat-title')=='second' and 'desktop-session-loading-label' in widgets.nodes and 'composer-draft' not in widgets.nodes
+ assert event('desktop-session-third')['request_id']==2
+ snapshot=copy.deepcopy(state)
+ step('clear',session_request=1)
+ step(data={'session_id':'second','pending_session_id':'','cards':[dict(kind='assistant',text='Stale reply')]},session_request=1)
+ assert state==snapshot and widgets.nodes['desktop-session-third']['props']['background']=='#28382d'
+ step('clear',session_request=2)
+ step('restore',data={'draft':'Third draft'},session_request=2)
+ step(data={'session_id':'third','pending_session_id':'','cards':[dict(kind='assistant',text='Latest reply')]},session_request=2)
+ assert state['draft']=='Third draft' and widgets.text('card-0-body')=='Latest reply' and 'composer-draft' in widgets.nodes
+ assert event('desktop-session-first')['request_id']==3
+ step('notice',text='Synthetic load failure',session_request=3)
+ assert not state['pending_session_id'] and state['session_id']=='third' and widgets.nodes['desktop-session-third']['props']['background']=='#28382d'
+ event('notice-close')
+ passed('desktop chat selection updates immediately, hides the old transcript, rejects stale loads and recovers from load errors')
+ step('clear',data={'platform':''})
  history=[{'kind':'assistant','text':f'Historical message {i}'} for i in range(180)]
  step(data={'cards':history,'attachments':[],'card_offset':0});assert 'card-179' in widgets.nodes and 'card-0' not in widgets.nodes
  for _ in range(4):event('chat-older')
