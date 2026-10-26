@@ -1,0 +1,1077 @@
+{
+  "platform": "Linux-7.2.8-9-omarchy-x86_64-with-glibc2.44",
+  "cpu": 3,
+  "cpu_model": "Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz",
+  "compiler_sha256": "94fafb1a9c9e2a8a9472bb1297192c8e76ae64186fd1d4981dca80df322bf5c5",
+  "driver_sha256": "6e9c160937c235533e8efd3caee6fa2bd60896c3cba8d702d837139c381861cc",
+  "gdk_pixbuf_version": "2.44.8",
+  "samples": 5,
+  "rounds": 5,
+  "order": "alternating backend order each paired sample; equal warmups; one pinned CPU; same process",
+  "fixture_scope": "one repository image plus deterministic procedural fixtures; no claim about all photographs or codec implementations",
+  "codec_backends": {
+    "png": "libpng16",
+    "jpeg": "libturbojpeg",
+    "webp": "libwebp / libwebpdemux for first animated frame"
+  },
+  "aggregate_scope": "only successful previews with matched JPEG quality; differing success/quality and rejected cases remain in rows but are excluded",
+  "preview_geomean_speedup": 1.857522594247516,
+  "preview_wins": 8,
+  "preview_cases": 8,
+  "rows": [
+    {
+      "name": "procedural texture PNG",
+      "width": 3072,
+      "height": 2048,
+      "output_width": 1536,
+      "output_height": 1024,
+      "input_bytes": 7631416,
+      "input_sha256": "0c730c22ecf9a61cefac2c122586ad0ac1b2c6f89769dba8ebc0e20b312be7c2",
+      "accelerated": true,
+      "reference_preview_ok": true,
+      "reference_preview_bytes": 342436,
+      "reference_quality": 85,
+      "native_preview_ok": true,
+      "native_preview_bytes": 342286,
+      "native_quality": 85,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 78740184,
+          "resize_ns": 33342435,
+          "preview_ns": 123761490
+        },
+        {
+          "native": true,
+          "decode_ns": 105093655,
+          "resize_ns": 11844022,
+          "preview_ns": 122441991
+        },
+        {
+          "native": true,
+          "decode_ns": 117777104,
+          "resize_ns": 18725979,
+          "preview_ns": 170095650
+        },
+        {
+          "native": false,
+          "decode_ns": 99094275,
+          "resize_ns": 48807822,
+          "preview_ns": 162844881
+        },
+        {
+          "native": false,
+          "decode_ns": 77585884,
+          "resize_ns": 33009876,
+          "preview_ns": 123370090
+        },
+        {
+          "native": true,
+          "decode_ns": 100993213,
+          "resize_ns": 11737479,
+          "preview_ns": 124092192
+        },
+        {
+          "native": true,
+          "decode_ns": 107107316,
+          "resize_ns": 11781848,
+          "preview_ns": 123036596
+        },
+        {
+          "native": false,
+          "decode_ns": 76869487,
+          "resize_ns": 33172469,
+          "preview_ns": 123678315
+        },
+        {
+          "native": false,
+          "decode_ns": 76696110,
+          "resize_ns": 33018911,
+          "preview_ns": 123231346
+        },
+        {
+          "native": true,
+          "decode_ns": 104179203,
+          "resize_ns": 11194210,
+          "preview_ns": 116224613
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 105.093655,
+          "gdk_pixbuf": 77.585884
+        },
+        "resize": {
+          "flexscript": 11.781848,
+          "gdk_pixbuf": 33.172469
+        },
+        "preview": {
+          "flexscript": 123.036596,
+          "gdk_pixbuf": 123.678315
+        }
+      },
+      "speedup": {
+        "decode": 0.7382546929212805,
+        "resize": 2.8155573726634393,
+        "preview": 1.0052156758303032
+      },
+      "resize_quality": {
+        "composite_rmse": 0.3496839276887832,
+        "max_error": 1
+      },
+      "comparable_preview": true,
+      "preview_quality": {
+        "rmse": 1.404025732376377,
+        "psnr_db": 45.18330226011595,
+        "max_error": 13
+      }
+    },
+    {
+      "name": "procedural texture JPG",
+      "width": 3072,
+      "height": 2048,
+      "output_width": 1536,
+      "output_height": 1024,
+      "input_bytes": 1375110,
+      "input_sha256": "1629810af3842c176062e94b936f17778006a4eaa5a77019c149a6b76bdd6af3",
+      "accelerated": true,
+      "reference_preview_ok": true,
+      "reference_preview_bytes": 343637,
+      "reference_quality": 85,
+      "native_preview_ok": true,
+      "native_preview_bytes": 343452,
+      "native_quality": 85,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 42342818,
+          "resize_ns": 32869242,
+          "preview_ns": 89685459
+        },
+        {
+          "native": true,
+          "decode_ns": 18206005,
+          "resize_ns": 10798752,
+          "preview_ns": 33606463
+        },
+        {
+          "native": true,
+          "decode_ns": 18239929,
+          "resize_ns": 10927252,
+          "preview_ns": 33364350
+        },
+        {
+          "native": false,
+          "decode_ns": 41870017,
+          "resize_ns": 33022527,
+          "preview_ns": 89335269
+        },
+        {
+          "native": false,
+          "decode_ns": 42254130,
+          "resize_ns": 39429801,
+          "preview_ns": 89819924
+        },
+        {
+          "native": true,
+          "decode_ns": 29150600,
+          "resize_ns": 12086248,
+          "preview_ns": 41095026
+        },
+        {
+          "native": true,
+          "decode_ns": 22353582,
+          "resize_ns": 10753146,
+          "preview_ns": 40787693
+        },
+        {
+          "native": false,
+          "decode_ns": 51185479,
+          "resize_ns": 41215053,
+          "preview_ns": 90706480
+        },
+        {
+          "native": false,
+          "decode_ns": 42190273,
+          "resize_ns": 32942589,
+          "preview_ns": 91097680
+        },
+        {
+          "native": true,
+          "decode_ns": 21662997,
+          "resize_ns": 11157074,
+          "preview_ns": 33472803
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 21.662997,
+          "gdk_pixbuf": 42.25413
+        },
+        "resize": {
+          "flexscript": 10.927252,
+          "gdk_pixbuf": 33.022527
+        },
+        "preview": {
+          "flexscript": 33.606463,
+          "gdk_pixbuf": 89.819924
+        }
+      },
+      "speedup": {
+        "decode": 1.950520973621517,
+        "resize": 3.0220339935420175,
+        "preview": 2.6726979271814475
+      },
+      "resize_quality": {
+        "composite_rmse": 0.3975575689164477,
+        "max_error": 3
+      },
+      "comparable_preview": true,
+      "preview_quality": {
+        "rmse": 1.4258767477768908,
+        "psnr_db": 45.04916387078532,
+        "max_error": 13
+      }
+    },
+    {
+      "name": "procedural texture WEBP",
+      "width": 3072,
+      "height": 2048,
+      "output_width": 1536,
+      "output_height": 1024,
+      "input_bytes": 1147716,
+      "input_sha256": "d84d4f2d15c06e860ef160d32a7dfc8abdf412eee471917c1a3a7d68fdaf870e",
+      "accelerated": true,
+      "reference_preview_ok": true,
+      "reference_preview_bytes": 339627,
+      "reference_quality": 85,
+      "native_preview_ok": true,
+      "native_preview_bytes": 339462,
+      "native_quality": 85,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 163410798,
+          "resize_ns": 33855060,
+          "preview_ns": 212207150
+        },
+        {
+          "native": true,
+          "decode_ns": 75874633,
+          "resize_ns": 11393985,
+          "preview_ns": 92117341
+        },
+        {
+          "native": true,
+          "decode_ns": 74948923,
+          "resize_ns": 11179457,
+          "preview_ns": 92701111
+        },
+        {
+          "native": false,
+          "decode_ns": 164194545,
+          "resize_ns": 33486557,
+          "preview_ns": 213692465
+        },
+        {
+          "native": false,
+          "decode_ns": 168244184,
+          "resize_ns": 33382129,
+          "preview_ns": 216909738
+        },
+        {
+          "native": true,
+          "decode_ns": 91137460,
+          "resize_ns": 15437679,
+          "preview_ns": 110721302
+        },
+        {
+          "native": true,
+          "decode_ns": 90757254,
+          "resize_ns": 13971399,
+          "preview_ns": 113801027
+        },
+        {
+          "native": false,
+          "decode_ns": 198576303,
+          "resize_ns": 40937839,
+          "preview_ns": 254966740
+        },
+        {
+          "native": false,
+          "decode_ns": 196180012,
+          "resize_ns": 40252801,
+          "preview_ns": 246631615
+        },
+        {
+          "native": true,
+          "decode_ns": 75254560,
+          "resize_ns": 11430543,
+          "preview_ns": 89170434
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 75.874633,
+          "gdk_pixbuf": 168.244184
+        },
+        "resize": {
+          "flexscript": 11.430543,
+          "gdk_pixbuf": 33.85506
+        },
+        "preview": {
+          "flexscript": 92.701111,
+          "gdk_pixbuf": 216.909738
+        }
+      },
+      "speedup": {
+        "decode": 2.2173970053996834,
+        "resize": 2.9618068013041903,
+        "preview": 2.339882830530478
+      },
+      "resize_quality": {
+        "composite_rmse": 0.35195411252019554,
+        "max_error": 1
+      },
+      "comparable_preview": true,
+      "preview_quality": {
+        "rmse": 1.394286252015978,
+        "psnr_db": 45.243764705768335,
+        "max_error": 13
+      }
+    },
+    {
+      "name": "procedural desktop RGBA PNG",
+      "width": 2048,
+      "height": 1280,
+      "output_width": 1536,
+      "output_height": 960,
+      "input_bytes": 63849,
+      "input_sha256": "78e7569d2f1c6972f4afc3960e6457f4cd209daf98ea9175493d8ec7d40a71c6",
+      "accelerated": true,
+      "reference_preview_ok": true,
+      "reference_preview_bytes": 131362,
+      "reference_quality": 85,
+      "native_preview_ok": true,
+      "native_preview_bytes": 131445,
+      "native_quality": 85,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 10045179,
+          "resize_ns": 28328543,
+          "preview_ns": 54448039
+        },
+        {
+          "native": true,
+          "decode_ns": 18636085,
+          "resize_ns": 11826044,
+          "preview_ns": 33626214
+        },
+        {
+          "native": true,
+          "decode_ns": 18820150,
+          "resize_ns": 11950686,
+          "preview_ns": 33879791
+        },
+        {
+          "native": false,
+          "decode_ns": 9942000,
+          "resize_ns": 28244665,
+          "preview_ns": 53773147
+        },
+        {
+          "native": false,
+          "decode_ns": 10324546,
+          "resize_ns": 27992789,
+          "preview_ns": 54864793
+        },
+        {
+          "native": true,
+          "decode_ns": 19034404,
+          "resize_ns": 12273896,
+          "preview_ns": 34372390
+        },
+        {
+          "native": true,
+          "decode_ns": 18976051,
+          "resize_ns": 12216492,
+          "preview_ns": 33946707
+        },
+        {
+          "native": false,
+          "decode_ns": 10837843,
+          "resize_ns": 28532402,
+          "preview_ns": 55388287
+        },
+        {
+          "native": false,
+          "decode_ns": 10400515,
+          "resize_ns": 28564320,
+          "preview_ns": 55066422
+        },
+        {
+          "native": true,
+          "decode_ns": 18895887,
+          "resize_ns": 12185900,
+          "preview_ns": 34178181
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 18.895887,
+          "gdk_pixbuf": 10.324546
+        },
+        "resize": {
+          "flexscript": 12.1859,
+          "gdk_pixbuf": 28.328543
+        },
+        "preview": {
+          "flexscript": 33.946707,
+          "gdk_pixbuf": 54.864793
+        }
+      },
+      "speedup": {
+        "decode": 0.5463911802605509,
+        "resize": 2.324698462977704,
+        "preview": 1.61620368656082
+      },
+      "resize_quality": {
+        "composite_rmse": 0.5863077533889756,
+        "max_error": 13
+      },
+      "comparable_preview": true,
+      "preview_quality": {
+        "rmse": 1.737884792752112,
+        "psnr_db": 43.33038394928472,
+        "max_error": 29
+      }
+    },
+    {
+      "name": "portrait JPEG / EXIF 6",
+      "width": 2048,
+      "height": 3072,
+      "output_width": 1024,
+      "output_height": 1536,
+      "input_bytes": 1376326,
+      "input_sha256": "85251f5ab1d753db1de206fd3a276ee1239cee93e1d3369dffadd80881976a28",
+      "accelerated": true,
+      "reference_preview_ok": true,
+      "reference_preview_bytes": 342962,
+      "reference_quality": 85,
+      "native_preview_ok": true,
+      "native_preview_bytes": 342771,
+      "native_quality": 85,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 45244574,
+          "resize_ns": 37855378,
+          "preview_ns": 142627151
+        },
+        {
+          "native": true,
+          "decode_ns": 22790248,
+          "resize_ns": 11630550,
+          "preview_ns": 70706418
+        },
+        {
+          "native": true,
+          "decode_ns": 18555857,
+          "resize_ns": 11058681,
+          "preview_ns": 72842185
+        },
+        {
+          "native": false,
+          "decode_ns": 45169213,
+          "resize_ns": 33837010,
+          "preview_ns": 120246659
+        },
+        {
+          "native": false,
+          "decode_ns": 50154115,
+          "resize_ns": 41473598,
+          "preview_ns": 151368929
+        },
+        {
+          "native": true,
+          "decode_ns": 28814682,
+          "resize_ns": 12317230,
+          "preview_ns": 78028126
+        },
+        {
+          "native": true,
+          "decode_ns": 22540153,
+          "resize_ns": 12018479,
+          "preview_ns": 88756277
+        },
+        {
+          "native": false,
+          "decode_ns": 43662390,
+          "resize_ns": 32850159,
+          "preview_ns": 117545786
+        },
+        {
+          "native": false,
+          "decode_ns": 45690276,
+          "resize_ns": 34444134,
+          "preview_ns": 134399203
+        },
+        {
+          "native": true,
+          "decode_ns": 23421353,
+          "resize_ns": 12413580,
+          "preview_ns": 79215651
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 22.790248,
+          "gdk_pixbuf": 45.244574
+        },
+        "resize": {
+          "flexscript": 12.018479,
+          "gdk_pixbuf": 34.444134
+        },
+        "preview": {
+          "flexscript": 78.028126,
+          "gdk_pixbuf": 134.399203
+        }
+      },
+      "speedup": {
+        "decode": 1.9852602744823138,
+        "resize": 2.8659312047722514,
+        "preview": 1.7224456089077418
+      },
+      "resize_quality": {
+        "composite_rmse": 0.39794412621358116,
+        "max_error": 3
+      },
+      "comparable_preview": true,
+      "preview_quality": {
+        "rmse": 1.4386840956053208,
+        "psnr_db": 44.97149475700642,
+        "max_error": 14
+      }
+    },
+    {
+      "name": "small transparent PNG",
+      "width": 1024,
+      "height": 768,
+      "output_width": 1024,
+      "output_height": 768,
+      "input_bytes": 6767,
+      "input_sha256": "dff3865d2b3138b296850b7f8480b82add7e751eeebb37b1d35dd1a11f8f5c72",
+      "accelerated": true,
+      "reference_preview_ok": true,
+      "reference_preview_bytes": 63218,
+      "reference_quality": 85,
+      "native_preview_ok": true,
+      "native_preview_bytes": 62960,
+      "native_quality": 85,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 4237654,
+          "resize_ns": 612361,
+          "preview_ns": 14165209
+        },
+        {
+          "native": true,
+          "decode_ns": 5746592,
+          "resize_ns": 876742,
+          "preview_ns": 7288593
+        },
+        {
+          "native": true,
+          "decode_ns": 5408224,
+          "resize_ns": 878104,
+          "preview_ns": 6959510
+        },
+        {
+          "native": false,
+          "decode_ns": 3809068,
+          "resize_ns": 592884,
+          "preview_ns": 13420963
+        },
+        {
+          "native": false,
+          "decode_ns": 4273097,
+          "resize_ns": 491723,
+          "preview_ns": 14574519
+        },
+        {
+          "native": true,
+          "decode_ns": 6121483,
+          "resize_ns": 1273550,
+          "preview_ns": 8690821
+        },
+        {
+          "native": true,
+          "decode_ns": 5818986,
+          "resize_ns": 1226542,
+          "preview_ns": 7391213
+        },
+        {
+          "native": false,
+          "decode_ns": 4705580,
+          "resize_ns": 370409,
+          "preview_ns": 14735498
+        },
+        {
+          "native": false,
+          "decode_ns": 3256204,
+          "resize_ns": 379158,
+          "preview_ns": 12762581
+        },
+        {
+          "native": true,
+          "decode_ns": 5652701,
+          "resize_ns": 854730,
+          "preview_ns": 6928467
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 5.746592,
+          "gdk_pixbuf": 4.237654
+        },
+        "resize": {
+          "flexscript": 0.878104,
+          "gdk_pixbuf": 0.491723
+        },
+        "preview": {
+          "flexscript": 7.288593,
+          "gdk_pixbuf": 14.165209
+        }
+      },
+      "speedup": {
+        "decode": 0.7374203701950652,
+        "resize": 0.5599826444248062,
+        "preview": 1.943476470698803
+      },
+      "resize_quality": {
+        "composite_rmse": 0.0,
+        "max_error": 0
+      },
+      "comparable_preview": true,
+      "preview_quality": {
+        "rmse": 0.6632970849233687,
+        "psnr_db": 51.696641835619076,
+        "max_error": 39
+      }
+    },
+    {
+      "name": "small JPEG",
+      "width": 640,
+      "height": 480,
+      "output_width": 640,
+      "output_height": 480,
+      "input_bytes": 69459,
+      "input_sha256": "f7a4fddc7750522d1665aa692c21ef1b0d630c045b5397c08ca5583826cf3ded",
+      "accelerated": true,
+      "reference_preview_ok": true,
+      "reference_preview_bytes": 61380,
+      "reference_quality": 85,
+      "native_preview_ok": true,
+      "native_preview_bytes": 61423,
+      "native_quality": 85,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 4353241,
+          "resize_ns": 420800,
+          "preview_ns": 10483988
+        },
+        {
+          "native": true,
+          "decode_ns": 1212703,
+          "resize_ns": 328611,
+          "preview_ns": 1996235
+        },
+        {
+          "native": true,
+          "decode_ns": 1199677,
+          "resize_ns": 377891,
+          "preview_ns": 2919409
+        },
+        {
+          "native": false,
+          "decode_ns": 4167142,
+          "resize_ns": 272911,
+          "preview_ns": 9493295
+        },
+        {
+          "native": false,
+          "decode_ns": 4568272,
+          "resize_ns": 316185,
+          "preview_ns": 8771160
+        },
+        {
+          "native": true,
+          "decode_ns": 1566000,
+          "resize_ns": 453375,
+          "preview_ns": 2728647
+        },
+        {
+          "native": true,
+          "decode_ns": 1206563,
+          "resize_ns": 331554,
+          "preview_ns": 2236648
+        },
+        {
+          "native": false,
+          "decode_ns": 4740865,
+          "resize_ns": 268973,
+          "preview_ns": 9098330
+        },
+        {
+          "native": false,
+          "decode_ns": 3995785,
+          "resize_ns": 366079,
+          "preview_ns": 8769728
+        },
+        {
+          "native": true,
+          "decode_ns": 1244453,
+          "resize_ns": 449003,
+          "preview_ns": 2931534
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 1.212703,
+          "gdk_pixbuf": 4.353241
+        },
+        "resize": {
+          "flexscript": 0.377891,
+          "gdk_pixbuf": 0.316185
+        },
+        "preview": {
+          "flexscript": 2.728647,
+          "gdk_pixbuf": 9.09833
+        }
+      },
+      "speedup": {
+        "decode": 3.5897008583305223,
+        "resize": 0.8367095273504794,
+        "preview": 3.3343741422030773
+      },
+      "resize_quality": {
+        "composite_rmse": 0.3087623704224478,
+        "max_error": 3
+      },
+      "comparable_preview": true,
+      "preview_quality": {
+        "rmse": 0.5308168168545111,
+        "psnr_db": 53.63191014203443,
+        "max_error": 9
+      }
+    },
+    {
+      "name": "Collie logo PNG",
+      "width": 1254,
+      "height": 1254,
+      "output_width": 1254,
+      "output_height": 1254,
+      "input_bytes": 2188434,
+      "input_sha256": "120aac901f23ecf167651d82487936429d0fa80807d7f51a2e72bb7121e05603",
+      "accelerated": true,
+      "reference_preview_ok": true,
+      "reference_preview_bytes": 249845,
+      "reference_quality": 85,
+      "native_preview_ok": true,
+      "native_preview_bytes": 247627,
+      "native_quality": 85,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 18291753,
+          "resize_ns": 1003617,
+          "preview_ns": 45955156
+        },
+        {
+          "native": true,
+          "decode_ns": 28311555,
+          "resize_ns": 528371,
+          "preview_ns": 30316272
+        },
+        {
+          "native": true,
+          "decode_ns": 23892317,
+          "resize_ns": 448742,
+          "preview_ns": 27892140
+        },
+        {
+          "native": false,
+          "decode_ns": 15587708,
+          "resize_ns": 952878,
+          "preview_ns": 35598319
+        },
+        {
+          "native": false,
+          "decode_ns": 15574197,
+          "resize_ns": 836934,
+          "preview_ns": 34958106
+        },
+        {
+          "native": true,
+          "decode_ns": 23849737,
+          "resize_ns": 439752,
+          "preview_ns": 27971356
+        },
+        {
+          "native": true,
+          "decode_ns": 23908900,
+          "resize_ns": 439614,
+          "preview_ns": 28042523
+        },
+        {
+          "native": false,
+          "decode_ns": 15589909,
+          "resize_ns": 883867,
+          "preview_ns": 34749117
+        },
+        {
+          "native": false,
+          "decode_ns": 15161266,
+          "resize_ns": 905251,
+          "preview_ns": 34723657
+        },
+        {
+          "native": true,
+          "decode_ns": 23637862,
+          "resize_ns": 456496,
+          "preview_ns": 27514163
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 23.892317,
+          "gdk_pixbuf": 15.587708
+        },
+        "resize": {
+          "flexscript": 0.448742,
+          "gdk_pixbuf": 0.905251
+        },
+        "preview": {
+          "flexscript": 27.971356,
+          "gdk_pixbuf": 34.958106
+        }
+      },
+      "speedup": {
+        "decode": 0.6524150838949608,
+        "resize": 2.017308386556195,
+        "preview": 1.2497823130205057
+      },
+      "resize_quality": {
+        "composite_rmse": 0.0,
+        "max_error": 0
+      },
+      "comparable_preview": true,
+      "preview_quality": {
+        "rmse": 1.8268950958139398,
+        "psnr_db": 42.89653140949004,
+        "max_error": 144
+      }
+    },
+    {
+      "name": "incompressible PNG / budget boundary",
+      "width": 2048,
+      "height": 1536,
+      "output_width": 1536,
+      "output_height": 1152,
+      "input_bytes": 9451131,
+      "input_sha256": "3b2875d4386105c79d1e744e77ccb3f40aabf0a92aa3ecb7c278f0bb418fd758",
+      "accelerated": true,
+      "reference_preview_ok": false,
+      "native_preview_ok": true,
+      "native_preview_bytes": 481493,
+      "native_quality": 50,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 38463065,
+          "resize_ns": 36928558,
+          "preview_ns": 158852257
+        },
+        {
+          "native": true,
+          "decode_ns": 34580083,
+          "resize_ns": 10097382,
+          "preview_ns": 64083127
+        },
+        {
+          "native": true,
+          "decode_ns": 34315009,
+          "resize_ns": 10476353,
+          "preview_ns": 64015935
+        },
+        {
+          "native": false,
+          "decode_ns": 43115641,
+          "resize_ns": 51081157,
+          "preview_ns": 159096322
+        },
+        {
+          "native": false,
+          "decode_ns": 38820316,
+          "resize_ns": 36925449,
+          "preview_ns": 157723474
+        },
+        {
+          "native": true,
+          "decode_ns": 34368736,
+          "resize_ns": 10252899,
+          "preview_ns": 63800480
+        },
+        {
+          "native": true,
+          "decode_ns": 34580961,
+          "resize_ns": 10237427,
+          "preview_ns": 63837618
+        },
+        {
+          "native": false,
+          "decode_ns": 38190564,
+          "resize_ns": 36960609,
+          "preview_ns": 157658866
+        },
+        {
+          "native": false,
+          "decode_ns": 38025884,
+          "resize_ns": 36711647,
+          "preview_ns": 157349481
+        },
+        {
+          "native": true,
+          "decode_ns": 34193801,
+          "resize_ns": 10141453,
+          "preview_ns": 63379660
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 34.368736,
+          "gdk_pixbuf": 38.463065
+        },
+        "resize": {
+          "flexscript": 10.237427,
+          "gdk_pixbuf": 36.928558
+        },
+        "preview": {
+          "flexscript": 63.837618,
+          "gdk_pixbuf": 157.723474
+        }
+      },
+      "speedup": {
+        "decode": 1.1191294611474802,
+        "resize": 3.6072108743730236,
+        "preview": 2.470697982496778
+      },
+      "resize_quality": {
+        "composite_rmse": 3.8986803344094243,
+        "max_error": 21
+      },
+      "comparable_preview": false
+    },
+    {
+      "name": "incompressible PNG / budget rejection",
+      "width": 1536,
+      "height": 1536,
+      "output_width": 1536,
+      "output_height": 1536,
+      "input_bytes": 7089440,
+      "input_sha256": "6d245c9ddd7ea1c49058194ea948d2becfbbd40a09b077040bb3d4876e790ac9",
+      "accelerated": true,
+      "reference_preview_ok": false,
+      "native_preview_ok": false,
+      "measurements": [
+        {
+          "native": false,
+          "decode_ns": 30085387,
+          "resize_ns": 2350181,
+          "preview_ns": 150507009
+        },
+        {
+          "native": true,
+          "decode_ns": 28284462,
+          "resize_ns": 1375556,
+          "preview_ns": 59382872
+        },
+        {
+          "native": true,
+          "decode_ns": 28049617,
+          "resize_ns": 1411752,
+          "preview_ns": 57889420
+        },
+        {
+          "native": false,
+          "decode_ns": 30889118,
+          "resize_ns": 2361512,
+          "preview_ns": 152394948
+        },
+        {
+          "native": false,
+          "decode_ns": 31455558,
+          "resize_ns": 2317185,
+          "preview_ns": 153113166
+        },
+        {
+          "native": true,
+          "decode_ns": 28134821,
+          "resize_ns": 1422298,
+          "preview_ns": 58983842
+        },
+        {
+          "native": true,
+          "decode_ns": 28411151,
+          "resize_ns": 1407508,
+          "preview_ns": 58768353
+        },
+        {
+          "native": false,
+          "decode_ns": 30445728,
+          "resize_ns": 2298263,
+          "preview_ns": 152927622
+        },
+        {
+          "native": false,
+          "decode_ns": 30580167,
+          "resize_ns": 2287241,
+          "preview_ns": 151525581
+        },
+        {
+          "native": true,
+          "decode_ns": 28229571,
+          "resize_ns": 1409183,
+          "preview_ns": 58738370
+        }
+      ],
+      "medians_ms": {
+        "decode": {
+          "flexscript": 28.229571,
+          "gdk_pixbuf": 30.580167
+        },
+        "resize": {
+          "flexscript": 1.409183,
+          "gdk_pixbuf": 2.317185
+        },
+        "preview": {
+          "flexscript": 58.768353,
+          "gdk_pixbuf": 152.394948
+        }
+      },
+      "speedup": {
+        "decode": 1.083267152731439,
+        "resize": 1.6443464049736618,
+        "preview": 2.593146484809605
+      },
+      "resize_quality": {
+        "composite_rmse": 0.0,
+        "max_error": 0
+      },
+      "comparable_preview": false
+    }
+  ]
+}

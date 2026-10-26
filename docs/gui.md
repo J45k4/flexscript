@@ -9,6 +9,15 @@ compiler or require a Rust runtime, browser, C compiler or linker to build apps.
 SDL2 2.26 or newer is a runtime dependency (`libSDL2-2.0.so.0`).
 
 The initial target is Linux x86-64, matching the native compiler and FFI.
+
+The optional `libs/gui/draw.flex` image API uses the
+[image library](../libs/image/README.md). `gui_image_load(window,path,dimensions)`
+returns an SDL texture and writes width/height to the caller's 16-byte output.
+It accepts regular PNG/JPEG/WebP files up to 64 MiB, at most 8192 pixels per side
+and 24 megapixels for texture upload. Release textures with `gui_texture_close`.
+Call `gui_image_decoder_close()` after the final image load to release the shared
+codec context; existing textures retain their own SDL copy. The retained UI
+adapter does this automatically on close. SVG needs rasterization before loading.
 SDL supplies X11/Xwayland and Wayland platform integration. The backend is
 selected by SDL, or explicitly with `SDL_VIDEODRIVER=x11` or `wayland`.
 X11/Xwayland and an actual OpenGL GPU have been exercised locally. Native

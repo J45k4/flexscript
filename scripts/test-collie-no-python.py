@@ -13,7 +13,10 @@ with tempfile.TemporaryDirectory(prefix='no-python-',dir=out) as directory:
  builder=work/'build-collie';r=subprocess.run([str(compiler),str(ROOT/'apps/collie/desktop/build.flex'),'-o',str(builder)],env=env,cwd=ROOT,capture_output=True,timeout=30);assert r.returncode==0,r.stderr.decode()
  package=work/'package';r=subprocess.run([str(builder),'--compiler',str(compiler),'--out',str(package)],env=env,cwd=ROOT,capture_output=True,timeout=90);assert r.returncode==0,r.stderr.decode()
  assert (package/'collie').read_bytes()[:4]==b'\x7fELF'
- assert (package/'resources/collie/desktop/icons/settings.svg').exists()
+ assert (package/'resources/collie/desktop/icons/settings.png').exists()
+ for name in ('collie','service-native'):
+  binary=(package/name).read_bytes()
+  assert b'libgdk_pixbuf' not in binary and b'gdk_pixbuf_' not in binary,name
  print('PASS Flexscript build driver compiles and packages the app with Python absent from PATH',flush=True)
  def done(item):return dict(type='response.completed',response=dict(status='completed',output=[item],usage=dict(input_tokens=20,output_tokens=10,total_tokens=30)))
  fixture=work/'fixture.json';fixture.write_text(json.dumps([done(dict(type='custom_tool_call',id='ctc_native',call_id='call_native',name='flexscript',input='fn main(){return 0;}',status='completed')),done(dict(type='message',role='assistant',content=[dict(type='output_text',text='Entirely native')]))]))

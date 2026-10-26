@@ -1,14 +1,18 @@
+// Collie's image policy uses the reusable native image pipeline. Codec libraries
+// are isolated in libs/image; no GDK Pixbuf, GObject or GLib image calls here.
 import "system.flex";
-global si_pixbuf=0;
-global si_object=0;
-fn si_call(name,a,b,c,d,e,f){return ffi_call(ffi_symbol(si_pixbuf,name),a,b,c,d,e,f);}
-fn si_unref(object){if object{ffi_call(ffi_symbol(si_object,"g_object_unref"),object,0,0,0,0,0);}return 0;}
-fn si_size(loader,width,height,state,unused1,unused2){if width<1 || height<1 || width>40000000/height{store64(state,1);si_call("gdk_pixbuf_loader_set_size",loader,1,1,0,0,0);}return 0;}
-fn si_decode(bytes,n){
-    if !si_pixbuf{si_pixbuf=ffi_open("libgdk_pixbuf-2.0.so.0");si_object=ffi_open("libgobject-2.0.so.0");}if !si_pixbuf || !si_object{return sh_fail("GdkPixbuf is required to decode images");}
-    let png=n>=8 && load8(bytes)==137 && h_bytes(bytes+1,"PNG\r\n",5) && load8(bytes+6)==26 && load8(bytes+7)==10;let jpeg=n>=3 && load8(bytes)==255 && load8(bytes+1)==216 && load8(bytes+2)==255;let webp=n>=12 && h_bytes(bytes,"RIFF",4) && h_bytes(bytes+8,"WEBP",4);if !png && !jpeg && !webp{return sh_fail("Use a PNG, JPEG or WebP image");}
-    let loader=si_call("gdk_pixbuf_loader_new",0,0,0,0,0,0);let state=h_zero(h_take(8),8);ffi_call(ffi_symbol(si_object,"g_signal_connect_data"),loader,"size-prepared",native_callback(si_size),state,0,0);let error=h_zero(h_take(8),8);let ok=si_call("gdk_pixbuf_loader_write",loader,bytes,n,error,0,0);let closed=si_call("gdk_pixbuf_loader_close",loader,error,0,0,0,0);let pixbuf=0;if ok && closed && !load64(state){let source=si_call("gdk_pixbuf_loader_get_pixbuf",loader,0,0,0,0,0);if source{pixbuf=si_call("gdk_pixbuf_apply_embedded_orientation",source,0,0,0,0,0);}}si_unref(loader);if load64(error){let glib=ffi_open("libglib-2.0.so.0");ffi_call(ffi_symbol(glib,"g_error_free"),load64(error),0,0,0,0,0);}if !pixbuf{return sh_fail("Invalid image or image exceeds 40 megapixels");}return pixbuf;
-}
-fn si_image(root,bytes,n,limit){if n<1 || n>limit{return sh_fail("Image exceeds its input size limit");}let pixbuf=si_decode(bytes,n);if !pixbuf{return 0;}let w=si_call("gdk_pixbuf_get_width",pixbuf,0,0,0,0,0);let h=si_call("gdk_pixbuf_get_height",pixbuf,0,0,0,0,0);if w>1536 || h>1536{let nw=1536;let nh=h*1536/w;if h>w{nh=1536;nw=w*1536/h;}if nw<1{nw=1;}if nh<1{nh=1;}let scaled=si_call("gdk_pixbuf_scale_simple",pixbuf,nw,nh,2,0,0);si_unref(pixbuf);pixbuf=scaled;w=nw;h=nh;}
-    let dir=h_join(root,"images");h_mkdir(dir);let temp=h_join(dir,h_cat(".snapshot-",sh_id()));if !sh_atomic(temp,"",0){si_unref(pixbuf);return 0;}let keys=h_args("quality",0,0,0,0,0)+8;let values=h_args("85",0,0,0,0,0)+8;let attempt=0;let snapshot=0;let size=0;while attempt<3{if attempt==1{store64(values,"70");}if attempt==2{store64(values,"50");}let error=h_zero(h_take(8),8);if !si_call("gdk_pixbuf_savev",pixbuf,temp,"jpeg",keys,values,error){si_unref(pixbuf);syscall(87,temp,0,0,0,0,0);return sh_fail("Could not create image preview");}let st=sh_stat(temp,0);size=load64(st+48);if size<=524288{snapshot=sh_read(temp,524288);attempt=3;}else{attempt=attempt+1;}}si_unref(pixbuf);syscall(87,temp,0,0,0,0,0);if !snapshot{return sh_fail("Normalized image exceeds snapshot limit");}let key=h_sha_bytes(snapshot,size);if !sh_atomic(h_join(dir,h_cat(key,".jpg")),snapshot,size){return 0;}let out=j_object();sh_s(out,"type","image");sh_s(out,"image_id",key);sh_n(out,"width",w);sh_n(out,"height",h);sh_n(out,"bytes",size);sh_s(out,"mime","image/jpeg");return out;
+import "../../../../libs/image.flex";
+global si_native_context=0;
+fn si_context(){if !si_native_context{si_native_context=image_context();}if !si_native_context{return sh_fail("Cannot initialize image processing");}return si_native_context;}
+fn si_shutdown(){image_context_free(si_native_context);si_native_context=0;return 0;}
+fn si_image(root,bytes,n,limit){
+    if n<1 || n>limit{return sh_fail("Image exceeds its input size limit");}
+    let c=si_context();if !c{return 0;}let snapshot=image_preview(c,bytes,n,1536,524288);
+    if !snapshot{return sh_fail(image_error(c));}
+    let size=image_blob_size(snapshot);let key=h_sha_bytes(image_blob_data(snapshot),size);
+    let dir=h_join(root,"images");h_mkdir(dir);let path=h_join(dir,h_cat(key,".jpg"));
+    if !sh_atomic(path,image_blob_data(snapshot),size){image_blob_free(snapshot);return 0;}
+    let out=j_object();sh_s(out,"type","image");sh_s(out,"image_id",key);
+    sh_n(out,"width",image_blob_width(snapshot));sh_n(out,"height",image_blob_height(snapshot));
+    sh_n(out,"bytes",size);sh_s(out,"mime","image/jpeg");image_blob_free(snapshot);return out;
 }

@@ -31,6 +31,6 @@ fn ui_desktop_focus_scope(key){
 fn ui_desktop_close(){
     if !ud_window{return 0;}ud_scroll_cancel();ud_scroll_hover=0;let i=0;while i<2048{let n=ud_nodes+i*256;if load64(n){ud_invalidate(n);}i=i+1;}i=0;while i<ud_font_count{gui_font_close(load64(ud_fonts+i*40+24));i=i+1;}
     let block=ud_pool;while block{let next=load64(block);syscall(11,block,load64(block+8),0,0,0,0);block=next;}
-    gui_close(ud_window);syscall(11,ud_origin,16,0,0,0,0);ud_origin=0;syscall(11,ud_nodes,2048*256,0,0,0,0);syscall(11,ud_index,8192*8,0,0,0,0);syscall(11,ud_mount,256,0,0,0,0);syscall(11,ud_fonts,128*40,0,0,0,0);
+    gui_image_decoder_close();gui_close(ud_window);syscall(11,ud_origin,16,0,0,0,0);ud_origin=0;syscall(11,ud_nodes,2048*256,0,0,0,0);syscall(11,ud_index,8192*8,0,0,0,0);syscall(11,ud_mount,256,0,0,0,0);syscall(11,ud_fonts,128*40,0,0,0,0);
     ud_window=0;ud_nodes=0;ud_index=0;ud_mount=0;ud_fonts=0;ud_pool=0;ud_images=0;ud_focus=0;ud_focus_scope=0;ud_selection_pending=0;return 0;
 }

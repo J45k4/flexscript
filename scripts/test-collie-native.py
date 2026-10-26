@@ -80,7 +80,10 @@ with tempfile.TemporaryDirectory(prefix='native-controller-',dir=out) as tmp:
   photo=work/'photo.png';Image.new('RGB',(1800,900),'#abc123').save(photo);h.send('gallery',path=str(photo));h.wait(lambda:len(h.view['attachments'])==1)
   image=h.view['attachments'][0];assert image['width']==1536 and image['height']==768 and image['bytes']<=524288,image
   assert (root/'images'/(image['image_id']+'.jpg')).exists()
-  passed('native GdkPixbuf replaces Pillow for bounded image snapshots; UTF-8 file attachments work')
+  maps=Path(f'/proc/{h.proc.pid}/maps').read_text()
+  assert 'libgdk_pixbuf' not in maps and 'libgobject' not in maps,maps
+  assert 'libturbojpeg' in maps and 'libpng16' in maps
+  passed('Flexscript image snapshots preserve bounds without loading GDK/GObject; UTF-8 file attachments work')
   h.send('remove_attachment',index=0);h.wait(lambda:not h.view['attachments'])
   project=work/'host-project';project.mkdir();h.send('choose_project_folder',path=str(project));h.wait(lambda:h.view.get('project_path')==str(project));project_id=h.view['project_id'];assert project_id and h.view['project_name']=='host-project'
   h.send('navigation',data=dict(draft='Project draft',page='settings',settings_section='access'));h.send('save_model',model='gpt-6-astra');h.wait(lambda:h.view.get('model')=='gpt-6-astra')
