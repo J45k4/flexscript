@@ -6340,3 +6340,58 @@ Primary SDK contracts:
 [Android16 insecure listener security](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/android16-release/framework/java/android/bluetooth/BluetoothAdapter.java),
 [Android16 native acceptance signaling](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/android16-release/framework/java/android/bluetooth/BluetoothSocket.java),
 [Android16 listener/accepted-child ownership](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/android16-release/framework/java/android/bluetooth/BluetoothServerSocket.java).
+
+### RFCOMM byte deadlines independent of callback dispatch
+
+A real accepted RFCOMM socket exposed a deadline defect: with the shared
+hardware callback Handler occupied, `device_read(handle,1,100)` returned its
+timeout only after **4004 ms**. The debug oracle holds that actual Handler with
+a bounded latch, runs the actual VM against an idle connected SDK socket, and
+checks both elapsed time and resource closure. The failed baseline remains
+failed under `build/android-bluetooth-deadlines/regression36/`; its parent still
+restored the original app/radio/bond state.
+
+`HardwareBluetooth.Deadline` now schedules byte-I/O socket closure on two
+dedicated daemon timer threads, matching the bounded hardware-I/O pool. Cancelled
+tasks leave the queue, idle threads expire, and a monotonic check rejects data
+returned after the requested deadline even if timer dispatch was late. The
+guest API and its typed timeout error are unchanged. This is Android transport
+code; no new Python runtime, tool or source file is introduced.
+
+The same frozen debug APK passed the real incoming-RFCOMM fixture on API35 and
+API36 with `--finish deadline`: the 100 ms read returned in **247 ms** and
+**272 ms**, respectively, including VM execution overhead. Both are below the
+oracle's 700 ms tolerance while its callback Handler is still held. Each VM
+receives the actual timeout, the SDK socket is disconnected, its receiver is
+unregistered, and the handle is unusable. The independent remote RFCOMM-close
+callback arrives while the native TCP probe remains live. These are two
+six-group cases, each also verifying 32791 binary bytes in both directions over
+an authenticated/encrypted virtual peer after listener closure/re-registration.
+They do not establish physical RF behavior or hard real-time guarantees.
+
+Repeat the incoming command above with `--finish deadline` and the current
+debug APK installed and copied into a fresh output directory. The private
+`HardwareBluetoothDeadlineChecks` class is compiled into debug builds only.
+Reports and independent original-state audits are under
+`build/android-bluetooth-deadlines/fixed35/`, `fixed36/`, and `audit35.json` /
+`audit36.json`. Complete original sessions/preferences/workspace sets, all 31 Ask
+policies, every Android `granted=` flag, the radio/scan mode and bonds are
+preserved; only the owned test workspaces/peer/processes are removed.
+
+Frozen debug: 8468343 bytes, SHA256
+`23147e3f190bb15b69e73074a0355eb62d6194bbacc783e73b449426852d6e06`.
+Nondebug, development-signed release: 7952081 bytes, SHA256
+`e2cba53559f9b9d9a776c05008e6a2652530473ba09d2f6b62a1c6e7f377599b`.
+All 350 production Collie Java class files match between the two builds;
+resource-ID classes are excluded. All 11 generated/native artifacts and the
+native-test binary are byte-identical to the document-stream payload already
+verified by 27 native, 9 shared-core and 4 full-reference groups. Those existing
+results retain that exact payload scope; they are not counted as fresh runs.
+APK library bytes, compiled manifests, v2/v3 signatures, ZIP/ELF 16 KiB alignment,
+and the absence of fixture/check class definitions from release DEX are checked.
+
+**Still required:** outgoing-connect/discovery deadlines currently share the
+callback Handler; independence for those paths is not established here. Blocked
+write/backpressure, cancellation, permission revocation, radio/ACL loss during
+I/O, SDK close failures, older/OEM/physical radios and every other full-inventory
+gate above remain open. The full hardware objective remains unfinished.

@@ -73,13 +73,24 @@ final class HardwareBluetooth {
         synchronized Object page(int offset,int limit)throws Exception{check();JSONArray rows=new JSONArray();List<JSONObject> values=new ArrayList<>(peers.values());for(int i=offset;i<Math.min(values.size(),offset+limit);i++)rows.put(values.get(i));return VmHardware.object("devices",rows,"total",peers.size(),"omitted",omitted,"next",offset+rows.length()<peers.size()?offset+rows.length():-1);}
         public void close()throws IOException{finish("closed");synchronized(this){if(closed)return;super.close();peers.clear();}}
     }
+    // A sensor/SDK callback may occupy the shared Handler. Byte-I/O deadlines
+    // must still close sockets, including when both bounded VM I/O jobs block.
+    private static final ScheduledThreadPoolExecutor BYTE_TIMERS=byteTimers();
+    private static ScheduledThreadPoolExecutor byteTimers(){
+        ScheduledThreadPoolExecutor pool=new ScheduledThreadPoolExecutor(2,task->{Thread thread=new Thread(task,"collie-bluetooth-byte-deadline");thread.setDaemon(true);return thread;});
+        pool.setRemoveOnCancelPolicy(true);pool.setKeepAliveTime(30,TimeUnit.SECONDS);pool.allowCoreThreadTimeOut(true);return pool;
+    }
     /** Only an actual blocking operation is cancelled; timeouts close byte streams. */
     private static final class Deadline implements AutoCloseable {
-        final AtomicInteger state=new AtomicInteger();final Runnable stop;
-        Deadline(VmHardware.Handle handle,int timeout){stop=()->{if(state.compareAndSet(0,1))try{handle.close();}catch(Exception ignored){}};HardwareSensors.events().postDelayed(stop,timeout);}
-        void completed()throws Exception{if(!state.compareAndSet(0,2)&&state.get()==1)throw new VmHardware.Failure("timeout","Bluetooth byte I/O timed out; the socket was closed to prevent late consumption.");}
+        final AtomicInteger state=new AtomicInteger();final Runnable stop;final long until;final ScheduledFuture<?> timer;
+        Deadline(VmHardware.Handle handle,int timeout){until=SystemClock.elapsedRealtime()+timeout;stop=()->{if(state.compareAndSet(0,1))try{handle.close();}catch(Exception ignored){}};timer=BYTE_TIMERS.schedule(stop,timeout,TimeUnit.MILLISECONDS);}
+        void completed()throws Exception{
+            // Reject late data even if the deadline executor itself was delayed.
+            if(SystemClock.elapsedRealtime()>=until)stop.run();
+            if(!state.compareAndSet(0,2)&&state.get()==1)throw new VmHardware.Failure("timeout","Bluetooth byte I/O timed out; the socket was closed to prevent late consumption.");
+        }
         boolean expired(){return state.get()==1;}
-        public void close(){state.compareAndSet(0,2);HardwareSensors.events().removeCallbacks(stop);}
+        public void close(){state.compareAndSet(0,2);timer.cancel(false);}
     }
     static final class Stream extends VmHardware.Handle {
         final VmHardware.Context context;final BluetoothSocket socket;final BroadcastReceiver receiver;boolean registered;volatile String state;volatile Future<?> connecting;
