@@ -73,8 +73,9 @@ final class HardwareDocuments {
     static int forget(VmHardware.Context c,String id)throws Exception{
         JSONObject removed;JSONArray remaining=new JSONArray();List<Tree> closing=new ArrayList<>();
         synchronized(LOCK){JSONArray rows=records(c.host);removed=find(rows,scope(c.root),"id",id);if(removed==null)throw new VmHardware.Failure("stale_grant","Unknown document-tree grant for this workspace.");for(int i=0;i<rows.length();i++)if(rows.getJSONObject(i)!=removed)remaining.put(rows.getJSONObject(i));save(c.host,remaining);for(Tree t:TREES)if(t.root.equals(c.root)&&t.grantId.equals(id))closing.add(t);}
-        for(Tree t:closing)t.close();
-        synchronized(LOCK){if(removed.has("uri"))releaseUnused(c.host,records(c.host),Uri.parse(removed.getString("uri")));}return 1;
+        IOException failure=null;for(Tree t:closing)try{t.close();}catch(Exception error){failure=streamCloseFailure(failure,error,"io_error","Document tree cleanup failed while forgetting its selection.");}
+        try{synchronized(LOCK){if(removed.has("uri"))releaseUnused(c.host,records(c.host),Uri.parse(removed.getString("uri")));}}catch(Exception error){failure=streamCloseFailure(failure,error,"io_error","Document grant cleanup failed while forgetting its selection.");}
+        if(failure!=null)throw failure;return 1;
     }
     static final class Tree extends VmHardware.Handle {
         final VmHardware.Context context;final String grantId;final Uri uri;final int mode;
@@ -87,8 +88,14 @@ final class HardwareDocuments {
         synchronized String issue(String id)throws Exception{check();if(id==null||id.length()>4096)throw new VmHardware.Failure("invalid_response","The provider returned an invalid document ID.");for(Map.Entry<String,String> n:nodes.entrySet())if(n.getValue().equals(id))return n.getKey();if(nodes.size()>=1024)throw new VmHardware.Failure("resource_limit","At most1024 known document tokens per open tree. Close and reopen to start a fresh traversal.");String token="document-"+UUID.randomUUID();nodes.put(token,id);return token;}
         void writable()throws Exception{if((mode&WRITE)==0)throw new VmHardware.Failure("read_only","This folder selection is read-only; use a new writable picker ticket.");}
         synchronized Object info()throws Exception{check();return VmHardware.object("kind",kind,"grant",grantId,"root","root","writable",(mode&WRITE)!=0,"known_documents",nodes.size());}
-        void invalidate()throws Exception{List<VmHardware.Handle> closing;synchronized(this){closing=new ArrayList<>(streams);nodes.clear();nodes.put("root",DocumentsContract.getTreeDocumentId(uri));}for(VmHardware.Handle f:closing)f.close();}
-        public void close()throws IOException{CancellationSignal cancelling;List<VmHardware.Handle> closing;synchronized(this){if(closed)return;super.close();cancelling=active;nodes.clear();closing=new ArrayList<>(streams);}if(cancelling!=null)cancelling.cancel();for(VmHardware.Handle f:closing)try{f.close();}catch(IOException ignored){}synchronized(LOCK){TREES.remove(this);}}
+        void invalidate()throws Exception{List<VmHardware.Handle> closing;synchronized(this){closing=new ArrayList<>(streams);nodes.clear();nodes.put("root",DocumentsContract.getTreeDocumentId(uri));}IOException failure=null;for(VmHardware.Handle file:closing)try{file.close();}catch(Exception error){failure=streamCloseFailure(failure,error,"io_error","Document stream cleanup failed after mutation; completion is uncertain.");}if(failure!=null)throw failure;}
+        public void close()throws IOException{
+            CancellationSignal cancelling;List<VmHardware.Handle> closing;synchronized(this){if(closed)return;super.close();cancelling=active;nodes.clear();closing=new ArrayList<>(streams);}
+            IOException failure=null;
+            if(cancelling!=null)try{cancelling.cancel();}catch(Exception e){failure=streamCloseFailure(failure,e,"io_error","Document operation cancellation failed during close.");}
+            for(VmHardware.Handle file:closing)try{file.close();}catch(Exception e){failure=streamCloseFailure(failure,e,"io_error","Document child cleanup failed.");}
+            synchronized(LOCK){TREES.remove(this);}if(failure!=null)throw failure;
+        }
     }
     static Object nullable(Cursor cursor,int column)throws Exception{return cursor.isNull(column)?JSONObject.NULL:column==3||column==4||column==5?cursor.getLong(column):bounded(cursor.getString(column),column==2?256:1024);}
     static String bounded(String value,int max)throws Exception{if(value==null||value.length()>max)throw new VmHardware.Failure("size_limit","Document metadata exceeds its bounded SDK field size.");return value;}
@@ -105,15 +112,30 @@ final class HardwareDocuments {
         try{if(Os.poll(new StructPollfd[]{p},timeout)==0)throw new VmHardware.Failure("timeout","Document stream I/O timed out.");stream.check();if((p.revents&(OsConstants.POLLERR|OsConstants.POLLNVAL))!=0)throw streamFailure(stream,new IOException("Document stream disconnected."));}
         catch(ErrnoException error){throw streamErrno(stream,error);}
     }
+    static IOException streamCloseFailure(IOException previous,Exception error,String code,String detail){
+        if(previous!=null){previous.addSuppressed(error);return previous;}
+        if(error instanceof VmHardware.Failure)return (IOException)error;
+        VmHardware.Failure failure=new VmHardware.Failure(code,detail+" "+MainActivity.safe(error));failure.initCause(error);return failure;
+    }
     static final class DocumentFile extends VmHardware.Handle {
         final Tree tree;final ParcelFileDescriptor descriptor;final String mode;final ContentProviderClient client;volatile long position;
         DocumentFile(VmHardware.Context c,Tree tree,ParcelFileDescriptor fd,String mode,ContentProviderClient client)throws Exception{super(c,"documents","document_file");this.tree=tree;descriptor=fd;this.mode=mode;this.client=client;try{Os.fcntlInt(fd.getFileDescriptor(),OsConstants.F_SETFL,Os.fcntlInt(fd.getFileDescriptor(),OsConstants.F_GETFL,0)|OsConstants.O_NONBLOCK);synchronized(tree){tree.check();tree.streams.add(this);}}catch(Exception error){fd.close();throw error;}}
         void access(VmHardware.Context c)throws Exception{super.access(c);tree.access(c);}
         void ready(int events,int timeout)throws Exception{streamReady(this,descriptor,events,timeout);}
         Object read(int limit,int timeout)throws Exception{if(!mode.contains("r"))throw new VmHardware.Failure("write_only","This stream is not readable.");try{ready(OsConstants.POLLIN,timeout);byte[] bytes=new byte[limit];int n=Os.read(descriptor.getFileDescriptor(),bytes,0,limit);if(n==0){descriptor.checkError();return JSONObject.NULL;}position+=n;return VmHardware.bytes(Arrays.copyOf(bytes,n));}catch(VmHardware.Failure error){throw error;}catch(IOException error){throw streamFailure(this,error);}catch(ErrnoException error){throw streamErrno(this,error);}}
-        Object write(byte[] bytes)throws Exception{if(mode.equals("r"))throw new VmHardware.Failure("read_only","This stream is not writable.");try{ready(OsConstants.POLLOUT,8000);int n=Os.write(descriptor.getFileDescriptor(),bytes,0,bytes.length);position+=n;return n;}catch(ErrnoException error){throw streamErrno(this,error);}}
+        Object write(byte[] bytes)throws Exception{
+            if(mode.equals("r"))throw new VmHardware.Failure("read_only","This stream is not writable.");check();
+            try{if(descriptor.canDetectErrors())descriptor.checkError();if(bytes.length==0)return 0;ready(OsConstants.POLLOUT,8000);int n=Os.write(descriptor.getFileDescriptor(),bytes,0,bytes.length);position+=n;return n;}
+            catch(VmHardware.Failure error){throw error;}catch(IOException error){throw streamFailure(this,error);}catch(ErrnoException error){throw streamErrno(this,error);}
+        }
         Object info()throws Exception{check();return VmHardware.object("kind",kind,"grant",tree.grantId,"mode",mode,"bytes_transferred",position,"stat_size",descriptor.getStatSize(),"reliable_errors",descriptor.canDetectErrors());}
-        public void close()throws IOException{synchronized(this){if(closed)return;super.close();}synchronized(tree){tree.streams.remove(this);}try{descriptor.close();}finally{client.close();}}
+        public void close()throws IOException{
+            synchronized(this){if(closed)return;super.close();}synchronized(tree){tree.streams.remove(this);}IOException failure=null;
+            try{if(!mode.equals("r")&&descriptor.canDetectErrors())descriptor.checkError();}catch(Exception e){failure=streamCloseFailure(failure,e,"disconnected","Document receiver reported failure while closing; accepted bytes may not have been processed.");}
+            try{descriptor.close();}catch(Exception e){failure=streamCloseFailure(failure,e,"io_error","Document descriptor cleanup failed; completion is uncertain.");}
+            try{client.close();}catch(Exception e){failure=streamCloseFailure(failure,e,"io_error","Document provider-client cleanup failed.");}
+            if(failure!=null)throw failure;
+        }
     }
     static final class TypedFile extends VmHardware.Handle {
         final Tree tree;final android.content.res.AssetFileDescriptor asset;final InputStream input;final String mime;final ContentProviderClient client;long position;

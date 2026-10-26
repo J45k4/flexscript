@@ -38,7 +38,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Keystore | scoped aliases, hardware-backed key generation/sign/verify/encrypt/decrypt/delete | implemented | actual Android EC/RSA/HMAC/AES operations, independent JCA checks, required backing, full-size frames and isolation passed; physical secure-processor attestation pending |
 | Screen capture | explicit MediaProjection consent, frames/recording/session lifecycle | one-use consent/tickets, foreground projection service, bounded RGBA planes and silent/microphone MP4 SDK bindings implemented; further session/lifecycle gates below | 38 real headless Android checks passed for chooser approval/denial, exact pixels/MP4 bytes, hidden Activity frames and screen-lock Stop; selected-app/older-device/physical and additional lifecycle gates pending |
 | Accessibility | explicitly enabled service, exposed UI tree/actions/gestures/events | Android-owned service enablement, scoped SDK node/window/event/action bindings and bounded gesture transport implemented; further lifecycle/SDK gates below | 27 actual headless Android checks passed for real Settings consent, tree/text/action/touch effects, resource ownership and delayed callback cleanup; physical/older-device and remaining gates pending |
-| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | the 2026-10-26 checkpoint passes29 system-folder checks,41 provider baseline checks and19 actual Binder-death scenarios per Android15/16 SDK. Queries/opens and all six lost-reply mutations preserve the client, retire owned resources and avoid replay. Write-side/offline/cleanup faults, older/OEM providers and physical removable/cloud gates remain open; exact APK scopes are below |
+| Storage | app-private filesystem, user-granted documents/folders/media/removable storage | private files/attachments and persisted SAF tree, document, byte-stream and typed-stream SDK bindings implemented | the writable-stream checkpoint passes420 provider assertions across12 write/cleanup cases and19 actual Binder-death scenarios per Android15/16 SDK. Partial writes, receiver errors, every-child cleanup and persisted-grant release are checked. Additional SDK/cleanup/write races, offline, older/OEM and physical removable/cloud gates remain required; exact APK scopes are below |
 | Privileged/vendor tier | identify unsupported raw radio/monitor mode/gadget/internal buses/clocks/charging/routing operations; implement documented privileged integration only where genuinely available | read-only SDK privilege facts and16 explicit missing-adapter descriptions implemented in the Flexscript inventory; no vendor bridge configured | 12 real Android metadata/VM/restart checks passed against independent OS package dumps; actual privileged hardware/vendor integration remains unverified |
 
 Cross-cutting requirements:
@@ -6113,3 +6113,119 @@ behavior. Every other full inventory and strict gate above remains required,
 including16 privileged/vendor integrations, physical radios, strict HID/UWB,
 ISO IN, sensor-direct success, Camera2 physical/HDR/high-speed and HCE routing/RF.
 This document checkpoint does not complete the full hardware objective.
+
+## Writable document streams and cleanup (2026-10-26)
+
+A real reliable-pipe receiver failure exposed another document-adapter bug:
+`device_close` returned success after the provider had called `closeWithError`.
+The baseline receipts in `build/android-document-writes/old36/` show both zero
+accepted bytes and4096 accepted bytes with only17 actually consumed. An empty
+write against a full4096-byte pipe also waited8194ms and returned `timeout`.
+`old36b` separately reproduces suppressed child errors through tree close.
+The corrected cancellation baseline passed; cancellation is regression coverage,
+not a newly claimed production fix.
+
+Writable close now checks currently available reliable-peer errors, then attempts
+both descriptor and unstable-client cleanup regardless of earlier failures.
+It preserves the first structured error and suppresses later cleanup errors.
+Tree close and post-mutation invalidation attempt every child. Forgetting a
+selection still attempts every tree close and unused persisted-grant release
+after a stream failure. The latter two paths were found during code review and
+have real-provider regression cases; no pre-fix runtime reproduction is claimed
+for them. Zero-length writes return0 without polling for pipe capacity; genuine
+nonempty backpressure still times out without replay or invented accounting.
+
+A write count reports bytes accepted by the SDK, not bytes processed or durably
+stored by the receiver. Close checks an already available peer error, not future
+provider completion. A failed mutation/forget cleanup reply does not roll back
+its earlier effect. These rules are in the preloaded full Flexscript reference.
+No guest API, public tool, permission, Python source/runtime or dependency was
+added. Production Java changes are confined to the Android document adapter;
+MainActivity changes only add private debug test dispatch.
+
+The separate, identically signed provider owns actual SDK reliable pipes with
+an independently checked4096-byte kernel capacity. The native Flexscript driver
+runs12 write/cleanup scenarios: before/after receiver errors during write,
+file close and tree close; exact partial-write/resume with backpressure;
+live Documents revocation while blocked; mutation and forget cleanup with an
+independent sibling descriptor; and two explicitly constructed SDK cleanup
+faults. The constructed faults throw only after a real descriptor close; they
+are not promoted to real provider/physical failures. All other receiver errors
+come from actual `closeWithError` calls in the separate provider process.
+
+The VM generates a unique32791-byte epoch/LCG payload. Independent SDK draining
+checks every byte and accepted/received count: a32768-byte request accepts4096,
+a full-pipe empty request returns0 immediately, a nonempty request reaches the8s
+deadline, and explicit resumed writes deliver every remaining byte exactly once.
+The failure-after-prefix cases independently verify4096 accepted versus17
+consumed. Another SDK pipe observes the same controlled receiver failure without
+reading the production descriptor's cached error status. Actual descriptor
+validity, released provider clients and unchanged client/provider PIDs are
+checked, including sibling resources and final persisted-grant release.
+
+After forget, a new actual Android folder selection supplies the current grant
+for the subsequent read-death and19 Binder-death gates. The host driver uses
+unique tool IDs and the actual drawer row instead of a same-title background
+breadcrumb; both real UI hierarchies are retained. Replay audits use persistent
+mutation counters, independent of the provider's rolling64-event display log.
+Owned system pickers are cancelled before parent recovery if a worker fails.
+Test-only read-only status observations may reacquire a dead control Binder
+within1s; their retry count is reported. Mutating fixture controls are never
+replayed. An earlier SDK35 attempt ended with an unlocalized
+`DeadObjectException`; it is retained as failed evidence, not a passing gate.
+
+Final artifacts under `build/android-document-writes/`:
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `frozen4-debug/collie.apk` |8468343|`4ac2ca626a6481423ceea877dd5338361235eb3a762bf4b6805a871f93391a05`|
+| `frozen2-release/collie.apk` |7952081|`b359c98daf9a28f8718cf80e7d60a8d84203cd5b6e3bd207656f29dde80898b4`|
+| Separate test-only `provider/provider.apk` |25003|`0852ae132657b90ece4fb0c2e47b3067e4916d7248c7c45faf7d9bb1f415911c`|
+
+Release remains nondebug and development-signed. `parity-final.json` records350
+identical production Java class files, generated/native sources, objects and
+libraries, actual APK library bytes, compiled manifest flags, signatures and
+16KiB ZIP alignment. Actual release DEX definitions omit the Collie fixture/check
+classes; the provider is in neither Collie APK. The exact native-test binary and
+production native payload match the `frozen2-debug` payload that passes27 native,
+9 shared-core and4 complete-reference groups in the corresponding `*-frozen2.log`
+files. `source-hashes-final.json` freezes source and compiler inputs. Earlier
+Binder/CDC/ISO checkpoints retain their distinct APK scopes above.
+
+`verified-sdk35/document-provider-android-report.json` and the corresponding
+`verified-sdk36` report each pass420 assertions, including12 write/cleanup
+cases and19 actual Binder-death cases, with the exact final debug APK above.
+Both matrices retain actual picker consent, same-client/different-provider PID
+proof, independent SDK effects/bytes, durable no-replay audits and parent cleanup.
+
+Both final SDKs separately pass29 real system-folder SAF groups. Independent
+`audit35.json` and `audit36-final.json` match full original session JSON,
+selected preferences, complete workspace sets and every package `granted=`
+flag. All31 original policies remain Ask. Each hash-verified owned provider is
+uninstalled only after its graph is archived empty, removing the test-only
+CONTROL install grant. UI dumps are archived/hash-checked before exact-path
+removal. Both owned headless emulators synchronize and exit successfully.
+No phone deployment or master merge is performed.
+
+Reproduce with a current debug APK built using the documented Android build
+procedure, then compile `scripts/build-collie-document-provider.flex` and run the resulting
+executable with `--collie-out` pointing at that APK's directory to build the
+identically signed separate provider. Compile `scripts/test-collie-document-provider-android.flex` using
+`build/flex-hardware`, run its `--self-test`, then its full `--out`, `--serial`
+and `--fixture-apk` matrix on an owned unlocked emulator. `--out` must contain
+the exact installed `collie.apk`. Run the existing system-folder driver against
+the same artifact. Failed attempts remain under the evidence directory and are
+not promoted to final passing reports.
+
+**Still required:** additional SDK/descriptor/client cleanup faults and write
+races, typed/alias/directory behavior, offline and physical cloud/removable
+providers, older/OEM coverage, and every full inventory and strict gate above.
+The16 missing privileged/vendor integrations, physical radios, strict HID/UWB,
+ISO IN/non-CDC/accessory/HS/SS/streaming, sensor-direct success, Camera2 physical/
+HDR/high-speed, HCE routing/RF/applets and cross-cutting capability/permission/
+resource/bootstrap/lifecycle gates remain open. This checkpoint does not complete
+the full hardware objective.
+
+Primary SDK references:
+[AOSP Android16 reliable descriptor status/close behavior](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/core/java/android/os/ParcelFileDescriptor.java),
+[AOSP unstable provider client lifetime](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/core/java/android/content/ContentProviderClient.java).
