@@ -17,6 +17,11 @@ existing OpenSSL FFI. Linux isolation uses Bubblewrap and prlimit. Android
 now has a [native app](android/README.md) that embeds the same compiler, checked
 VM, provider protocol and FlexDB behind Android lifecycle, UI and HTTPS adapters.
 
+The [Linux desktop app](desktop/README.md) combines a conversation sidebar and
+responsive desktop layout with the shared views, conversation core and checked engine. It includes session
+history, attachments, permission prompts, workers, progress/feedback and recall.
+Its README lists build commands and the current Linux hardware adapters.
+
 ## Build and run
 
 From `apps/collie`, launch directly from source:

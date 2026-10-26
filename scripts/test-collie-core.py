@@ -5,7 +5,8 @@ Each call uses a fresh QEMU ARM64 process and the production Flexscript core.
 """
 import argparse,json,shutil,subprocess,tempfile
 from pathlib import Path
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,default=Path('build/android-collie-core'));p.add_argument('--core-driver',type=Path);a=p.parse_args();out=a.out.resolve();qemu=shutil.which('qemu-aarch64-static') or shutil.which('qemu-aarch64');checks=[]
+from collie_native_test import command as native_command
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,default=Path('build/android-collie-core'));p.add_argument('--core-driver',type=Path);p.add_argument('--desktop',action='store_true',help='Run the native Linux desktop engine');a=p.parse_args();out=a.out.resolve();qemu=shutil.which('qemu-aarch64-static') or shutil.which('qemu-aarch64');checks=[]
 def passed(s):checks.append(s);print('PASS',s,flush=True)
 def completed(output):return {'type':'response.completed','response':{'status':'completed','output':output,'usage':{'input_tokens':100,'output_tokens':20,'total_tokens':120}}}
 def message(text):return {'type':'message','role':'assistant','content':[{'type':'output_text','text':text}]}
@@ -13,7 +14,7 @@ def tool(source,id):return {'type':'custom_tool_call','id':'ctc_'+id,'call_id':'
 with tempfile.TemporaryDirectory(prefix='core-',dir=out) as d:
  root=Path(d);(root/'files').mkdir();config={'workspace_file':str(root/'agent.flexdb'),'model':'gpt-6.1-sol','agent_id':0}
  def call(op,request):
-  command=[qemu,str(out/'native-test'),str(op),str(root)]
+  command=native_command(out,op,root,a.desktop,qemu)
   if a.core_driver and op in [8,9]:command=[str(a.core_driver.resolve()),str(op),str(root)]
   r=subprocess.run(command,input=json.dumps(request).encode(),capture_output=True,timeout=40)
   assert r.returncode==0,(r.returncode,r.stdout,r.stderr);result=json.loads(r.stdout);return result

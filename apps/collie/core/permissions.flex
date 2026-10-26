@@ -49,7 +49,7 @@ fn cp_permissions(saved){
     cp_permission(rows,"db_read","Read database","Read tables, columns and saved rows in this conversation's FlexDB.");
     cp_permission(rows,"db_write","Write database","Create tables, change schemas, and add, update or delete saved rows.");
     cp_permission(rows,"history","Read past messages","Search and read saved conversations, previous programs and results. Conversations with this permission off are excluded from recall.");
-    cp_permission(rows,"workers","Manage workers","Start helper agents and ask the model for feedback inside a running program. Workers share this workspace and inherit its permissions.");
+    cp_permission(rows,"workers","Model tools and workers","Start helper agents, ask the model for feedback, and generate images inside a running program. Workers share this workspace and inherit its permissions.");
     cp_hardware_permissions(rows);
     let policy=j_object();let i=0;while i<j_count(rows){let key=j_s(j_at(rows,i),"key");j_set(policy,key,cp_value(cp_mode(saved,key)));i=i+1;}
     let out=j_object();j_set(out,"policy",policy);j_set(out,"entries",rows);return out;

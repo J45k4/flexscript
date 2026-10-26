@@ -58,7 +58,7 @@ def flatten(entries, transformed=None):
     return '\n'.join(declarations), '\n'.join(functions)
 
 
-def generate(out, compiler):
+def generate(out, compiler, ui_exports=None):
     # Run the shared view compiler on a small, normally imported UI program.
     # Exported modules are already validated by the same ordinary compiler;
     # flattening only adapts their host ABI, as for all other engine modules.
@@ -96,6 +96,8 @@ def generate(out, compiler):
     for line in diagnostics:
         if line: print(line)
     assert ROOT/'apps/collie/ui/app.flex' in transformed, 'UI compiler did not export the screen'
+    if ui_exports is not None:
+        ui_exports.update(transformed)
     declarations, functions = flatten([
         ROOT / 'compiler/main.flex',
         ROOT / 'apps/collie/adapters/linux.flex',
@@ -131,6 +133,7 @@ def generate(out, compiler):
     globals_ += re.findall(r'\bglobal\s+([A-Za-z_]\w*)\s*=\s*([^;]+);', extra_globals)
     reset = 'fn ca_reset_globals(){\n' + '\n'.join(f'{n}={v};' for n,v in globals_) + '\n}\n'
     guest = (HERE / 'guest-files.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/workers.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/memory.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/hardware.flex').read_text()
+    guest += '\n' + (ROOT/'apps/collie/guest/imagegen.flex').read_text()
     guest += '\n' + (ROOT/'apps/collie/guest/usb-serial.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/nfc.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/uwb.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/camera.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/accessibility.flex').read_text() + '\n' + (ROOT/'apps/collie/guest/ble.flex').read_text()
     guest += '\n' + (ROOT/'apps/collie/guest/hardware-access.flex').read_text()
     embedded = 'fn ca_guest_extra(){return '+json.dumps(guest, ensure_ascii=False)+';}\n'

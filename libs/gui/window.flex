@@ -168,6 +168,9 @@ fn gui_delay(ms) {
     if ms<0 || ms>0xffffffff {return gui__fail("Invalid delay");}if !gui_init() {return 0;}
     gui__call("SDL_Delay",ms,0,0,0,0,0);return 1;
 }
+// Wait for input without consuming it. gui_poll still owns event normalization.
+// Unlike gui_delay, this wakes as soon as an event reaches the SDL queue.
+fn gui_wait(ms){if ms<0 || ms>2147483647{return gui__fail("Invalid event wait timeout");}if !gui_init(){return 0;}return gui__int("SDL_WaitEventTimeout",0,ms,0,0,0,0)>0;}
 // Caller owns one 128-byte event buffer; polling does not allocate.
 fn gui_event() {return gui__zero(alloc(128),128);}
 fn gui_event_kind(event) {return load64(event);}
@@ -240,7 +243,7 @@ fn gui_poll(event) {
                 }else if kind==1027 {
                     let x=gui__i32(gui__raw+16);let y=gui__i32(gui__raw+20);
                     if gui__u32(gui__raw+24)==1 {x=-x;y=-y;}
-                    store64(event,GUI_WHEEL);store64(event+40,x);store64(event+48,y);return 1;
+                    store64(event,GUI_WHEEL);store64(event+40,x);store64(event+48,y);store64(event+72,gui__call("SDL_GetModState",0,0,0,0,0,0));return 1;
                 }
             }
         }

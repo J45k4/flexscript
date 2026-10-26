@@ -17,6 +17,8 @@ final class UiRichText {
             int style=run.optInt("style"), flags=Spanned.SPAN_EXCLUSIVE_EXCLUSIVE;
             if (start==end) continue;
             if ((style&1)!=0) out.setSpan(new StyleSpan(Typeface.BOLD),start,end,flags);
+            if ((style&16)!=0) out.setSpan(new StyleSpan(Typeface.ITALIC),start,end,flags);
+            if ((style&32)!=0) out.setSpan(new StrikethroughSpan(),start,end,flags);
             if ((style&2)!=0) out.setSpan(new TypefaceSpan("monospace"),start,end,flags);
             if ((style&4)!=0) out.setSpan(new RelativeSizeSpan(1.12f),start,end,flags);
             if ((style&8)!=0) out.setSpan(new RelativeSizeSpan(.88f),start,end,flags);

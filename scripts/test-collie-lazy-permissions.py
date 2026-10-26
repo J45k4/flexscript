@@ -2,14 +2,15 @@
 """Test lazy capability grants and real VM checkpoints across native processes."""
 import argparse,json,shutil,subprocess,tempfile
 from pathlib import Path
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);a=p.parse_args();out=a.out.resolve()
+from collie_native_test import command as native_command
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--desktop',action='store_true',help='Run the native Linux desktop engine');a=p.parse_args();out=a.out.resolve()
 qemu=shutil.which('qemu-aarch64-static') or shutil.which('qemu-aarch64');checks=[]
 keys=['internet','files_read','files_write','db_read','db_write','history','workers']
 def passed(name):checks.append(name);print('PASS',name,flush=True)
 with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as directory:
  root=Path(directory);(root/'files').mkdir();config={'workspace_file':str(root/'agent.flexdb'),'model':'gpt-6.1-sol','agent_id':0,'permissions':dict.fromkeys(keys,'ask')}
  def call(op,request):
-  r=subprocess.run([qemu,str(out/'native-test'),str(op),str(root)],input=json.dumps(request).encode(),capture_output=True,timeout=40)
+  r=subprocess.run(native_command(out,op,root,a.desktop,qemu),input=json.dumps(request).encode(),capture_output=True,timeout=40)
   assert r.returncode==0,(r.returncode,r.stdout,r.stderr);result=json.loads(r.stdout);assert 'error' not in result,result;return result
  def step(action,state=None,**extra):return call(8,dict(config=config,action=action,state=state or {},fixture=True,**extra))
  def begin(source,key):
@@ -57,7 +58,8 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
    assert o['state']=='permission' and o['signal']['key']=='bluetooth',o
    t=step('observation',t['state'],observation=o);config['permissions']['bluetooth']=approved;t=step('next',t['state']);o=vm(t)
    assert o['state']=='continue' and o['exit_code']==0,o
-   assert ('requires the Android host' in o['stdout']) if approved else o['stdout']=='Permission denied: bluetooth',o
+  unavailable='Desktop platform service is unavailable.' if a.desktop else 'requires the Android host'
+  assert (unavailable in o['stdout']) if approved else o['stdout']=='Permission denied: bluetooth',o
  passed('direct GATT client/server and HID calls checkpoint only Bluetooth and reach the real non-Android host boundary after approval even with Location denied')
 
  for operation,key in [('nfc_info()','nfc'),('se_open(1000)','secure_element'),('input_devices(0,16)','input'),('biometric_info(255)','biometrics'),('uwb_info()','uwb'),('document_trees(0,16)','documents'),('camera_list(0,16)','camera')]:
@@ -65,7 +67,7 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
   t=begin('fn main(){'+operation+';let e=db_error();db_io(0,1,e,db_len(e));return 0;}','approve-'+key);o=vm(t)
   assert o['state']=='permission' and o['signal']['key']==key,o
   t=step('observation',t['state'],observation=o);config['permissions'][key]=True;t=step('next',t['state']);o=vm(t)
-  assert o['state']=='continue' and o['exit_code']==0 and 'requires the Android host' in o['stdout'],o
+  assert o['state']=='continue' and o['exit_code']==0 and ('Desktop platform service is unavailable.' if a.desktop else 'requires the Android host') in o['stdout'],o
  passed('NFC, secure-element, input, biometric, UWB, document-folder and Camera approvals resume the actual interrupted call and reach the non-Android host boundary without requesting unrelated grants')
 
  # Audio video is a distinct fixed-schema operation with two shared grants.
@@ -85,7 +87,7 @@ with tempfile.TemporaryDirectory(prefix='lazy-permissions-',dir=out) as director
    assert o['state']=='permission' and o['signal']['key']=='nfc',o
    t=step('observation',t['state'],observation=o);config['permissions']['nfc']=approved;t=step('next',t['state']);o=vm(t)
    assert o['state']=='continue' and o['exit_code']==0,o
-   assert ('requires the Android host' in o['stdout']) if approved else o['stdout']=='Permission denied: nfc',o
+   assert (('Desktop platform service is unavailable.' if a.desktop else 'requires the Android host') in o['stdout']) if approved else o['stdout']=='Permission denied: nfc',o
  passed('HCE inventory and ISO-DEP/NFC-F registration checkpoint only NFC and resume approval/denial without another model tool')
 
  config['permissions']=dict.fromkeys(keys,'ask')

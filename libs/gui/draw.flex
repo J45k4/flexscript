@@ -14,6 +14,9 @@ fn gui__font_open(family,size,style,codepoint){
     if load8(family)!=47{
         if !gui__fc{gui__fc=ffi_open("libfontconfig.so.1");}if !gui__fc{return gui__fail("Fontconfig runtime is required");}
         pattern=ffi_call(ffi_symbol(gui__fc,"FcNameParse"),family,0,0,0,0,0);
+        // Select the real bold face before considering synthetic font styling.
+        if style&1{ffi_call_i32(ffi_symbol(gui__fc,"FcPatternAddInteger"),pattern,"weight",200,0,0,0);}
+        if style&2{ffi_call_i32(ffi_symbol(gui__fc,"FcPatternAddInteger"),pattern,"slant",100,0,0,0);}
         if codepoint{let charset=ffi_call(ffi_symbol(gui__fc,"FcCharSetCreate"),0,0,0,0,0,0);ffi_call_i32(ffi_symbol(gui__fc,"FcCharSetAddChar"),charset,codepoint,0,0,0,0);ffi_call_i32(ffi_symbol(gui__fc,"FcPatternAddCharSet"),pattern,"charset",charset,0,0,0);ffi_call(ffi_symbol(gui__fc,"FcCharSetDestroy"),charset,0,0,0,0,0);}
         ffi_call_i32(ffi_symbol(gui__fc,"FcConfigSubstitute"),0,pattern,0,0,0,0);
         ffi_call(ffi_symbol(gui__fc,"FcDefaultSubstitute"),pattern,0,0,0,0,0);
@@ -51,17 +54,28 @@ fn gui_clipboard_copy(text){return gui__int("SDL_SetClipboardText",text,0,0,0,0,
 fn gui_clipboard_read(){let raw=gui__call("SDL_GetClipboardText",0,0,0,0,0,0);if !raw{return 0;}let n=gui__length(raw);if n>1048576{gui__call("SDL_free",raw,0,0,0,0,0);return gui__fail("Clipboard text exceeds 1 MiB");}let copy=alloc(n+1);let i=0;while i<=n{store8(copy+i,load8(raw+i));i=i+1;}gui__call("SDL_free",raw,0,0,0,0,0);return copy;}
 fn gui_clipboard_release(text){if text{syscall(11,text,gui__length(text)+1,0,0,0,0);}return 0;}
 fn gui_texture_draw(window,texture,x,y,w,h){let p=gui__canvas(window);if !p || !texture{return 0;}gui__put32(gui__scratch,x);gui__put32(gui__scratch+4,y);gui__put32(gui__scratch+8,w);gui__put32(gui__scratch+12,h);return gui__int("SDL_RenderCopy",load64(p+8),texture,0,gui__scratch,0,0)==0;}
-fn gui_texture_layer(window,w,h){let p=gui__canvas(window);if !p || w<1 || h<1 || w>8192 || h>16384{return gui__fail("Invalid text layer size");}let texture=gui__call("SDL_CreateTexture",load64(p+8),0x16762004,2,w,h,0);if !texture{return gui__sdl_error();}gui__int("SDL_SetTextureBlendMode",texture,1,0,0,0,0);return texture;}
+fn gui_texture_layer(window,w,h){
+    let p=gui__canvas(window);if !p || w<1 || h<1 || w>8192 || h>16384{return gui__fail("Invalid text layer size");}
+    let texture=gui__call("SDL_CreateTexture",load64(p+8),0x16762004,2,w,h,0);if !texture{return gui__sdl_error();}
+    gui__int("SDL_SetTextureBlendMode",texture,1,0,0,0,0);
+    gui__int("SDL_SetTextureScaleMode",texture,1,0,0,0,0);return texture;
+}
 fn gui_texture_target(window,texture){let p=gui__canvas(window);if !p{return 0;}return gui__int("SDL_SetRenderTarget",load64(p+8),texture,0,0,0,0)==0;}
 fn gui_texture_clear(window){let p=gui__canvas(window);if !p{return 0;}gui__int("SDL_SetRenderDrawColor",load64(p+8),0,0,0,0,0);return gui__int("SDL_RenderClear",load64(p+8),0,0,0,0,0)==0;}
-fn gui_text_draw(window,font,text,rgb,x,y){
+fn gui_text_draw(window,font,text,rgb,x,y){return gui__text_draw(window,font,text,rgb,x,y,0);}
+// Glyph runs occupy separate rectangles in a text-only transparent layer.
+// Copy straight alpha so glyph coverage is applied exactly once at composition.
+fn gui_text_layer_draw(window,font,text,rgb,x,y){return gui__text_draw(window,font,text,rgb,x,y,1);}
+fn gui__text_draw(window,font,text,rgb,x,y,text_layer){
     if !load8(text){return 1;}let p=gui__canvas(window);if !p{return 0;}
     // SDL_Color is a four-byte by-value structure (R,G,B,A).
     let color=0xff000000|((rgb&255)<<16)|(rgb&0xff00)|((rgb>>16)&255);
     let surface=ffi_call(gui__font_symbol("TTF_RenderUTF8_Blended"),font,text,color,0,0,0);if !surface{return gui__sdl_error();}
     let w=gui__i32(surface+16);let h=gui__i32(surface+20);
     let texture=gui__call("SDL_CreateTextureFromSurface",load64(p+8),surface,0,0,0,0);gui__call("SDL_FreeSurface",surface,0,0,0,0,0);
-    if !texture{return gui__sdl_error();}let ok=gui_texture_draw(window,texture,x,y,w,h);gui_texture_close(texture);return ok;
+    if !texture{return gui__sdl_error();}
+    if text_layer{gui__int("SDL_SetTextureBlendMode",texture,0,0,0,0,0);}
+    let ok=gui_texture_draw(window,texture,x,y,w,h);gui_texture_close(texture);return ok;
 }
 // Loads PNG/JPEG/etc with the system decoder, then owns an SDL texture copy.
 // dimensions points to two words. No network fetching or virtual path policy.

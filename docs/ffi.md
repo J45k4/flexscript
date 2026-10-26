@@ -36,7 +36,7 @@ as byte buffers and passed by pointer using their C ABI layout.
 
 This initial FFI supports up to six integer/pointer arguments. Floating-point
 arguments/results, structures passed or returned by value, variadic functions,
-callbacks, and automatic header binding generation are not supported. OpenSSL
+general callbacks, and automatic header binding generation are not supported. OpenSSL
 macros are handled by calling their underlying exported functions, such as
 `SSL_ctrl` and `SSL_CTX_ctrl`.
 
@@ -49,6 +49,19 @@ Programs using `ffi_open` or `ffi_symbol` require the glibc dynamic loader at
 `/lib64/ld-linux-x86-64.so.2` and `libc.so.6`. Programs without those operations
 retain the standalone ELF format. Calling a function pointer alone does not add
 a loader dependency.
+
+The direct native x86-64 pipeline also supports `native_callback(function)` for
+a named function taking exactly six words and returning one word. Compile with
+`--native-pipeline direct`. It returns a System V AMD64 trampoline suitable for
+passing to C; the target must have all six parameters, including unused ones.
+The callback and its globals belong to the originating executable and must not
+outlive it. Call synchronously on the originating thread; this does not provide
+thread safety, foreign-thread attachment or exception unwinding. Restricted VM,
+portable IR and other architecture targets reject this intrinsic. The native
+IR pipeline currently rejects it too; use the direct pipeline explicitly.
+`scripts/test-native-callback.py` verifies repeated C-to-Flexscript calls with
+six arguments and signed results. Collie's desktop broker uses this adapter to
+reuse the shared checked engine.
 
 `lib/ffi.flex` provides `ffi_close(handle)` for `dlclose`. A symbol pointer must
 not outlive its library handle.

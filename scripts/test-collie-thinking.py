@@ -2,7 +2,8 @@
 """Provider summary streaming and shared history checks using the real engine."""
 import argparse,json,shutil,subprocess,tempfile
 from pathlib import Path
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);a=p.parse_args();out=a.out.resolve();checks=[]
+from collie_native_test import command as native_command
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--out',type=Path,required=True);p.add_argument('--desktop',action='store_true',help='Run the native Linux desktop engine');a=p.parse_args();out=a.out.resolve();checks=[]
 qemu=shutil.which('qemu-aarch64-static') or shutil.which('qemu-aarch64')
 def passed(text):checks.append(text);print('PASS',text,flush=True)
 def message(text):return {'type':'message','role':'assistant','content':[{'type':'output_text','text':text}]}
@@ -11,7 +12,7 @@ def completed(items):return {'type':'response.completed','response':{'status':'c
 with tempfile.TemporaryDirectory(prefix='thinking-',dir=out) as directory:
  root=Path(directory);(root/'files').mkdir();config={'workspace_file':str(root/'agent.flexdb'),'model':'gpt-6.1-sol','agent_id':0}
  def call(op,request):
-  r=subprocess.run([qemu,str(out/'native-test'),str(op),str(root)],input=json.dumps(request).encode(),capture_output=True,timeout=40);assert r.returncode==0,(r.stdout,r.stderr);return json.loads(r.stdout)
+  r=subprocess.run(native_command(out,op,root,a.desktop,qemu),input=json.dumps(request).encode(),capture_output=True,timeout=40);assert r.returncode==0,(r.stdout,r.stderr);return json.loads(r.stdout)
  def packet(stream,event):return call(8,dict(config=config,action='stream',stream=stream,event_json=json.dumps(event)))
  body=call(1,dict(config=config,messages=[{'role':'user','content':'Calculate'}]));assert body['reasoning']=={'summary':'auto'} and 'reasoning.encrypted_content' in body['include'],body
  passed('model requests opt into API reasoning summaries while preserving encrypted continuation')

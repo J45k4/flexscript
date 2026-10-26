@@ -87,6 +87,7 @@ All GUI calls must run on the application's main thread.
 | `gui_focused(window)` | Keyboard focus state. |
 | `gui_text_input(enabled)` | Start or stop SDL's UTF-8 text input. |
 | `gui_ticks()`, `gui_delay(ms)` | Milliseconds since SDL initialization, and a delay. |
+| `gui_wait(ms)` | Wait up to `ms` for an event without consuming it; returns 1 when an event is queued, or 0 on timeout/error. Call on the GUI thread, then use `gui_poll`. |
 
 Flags can combine `GUI_RESIZABLE`, `GUI_HIDDEN` and `GUI_HIGH_DPI`; 0 creates a
 normal visible window. Sizes must be 1–16384. Up to 32 windows can coexist.
@@ -114,7 +115,7 @@ the application still owns the window until it calls `gui_close`.
 | `GUI_TEXT` | `gui_event_text`: NUL-terminated UTF-8, valid until the next poll. |
 | `GUI_MOUSE_MOVE` | `gui_event_x/y`: absolute position; `gui_event_dx/dy`: signed relative movement. |
 | `GUI_MOUSE_DOWN`, `GUI_MOUSE_UP` | `gui_event_button`: 1 left, 2 middle, 3 right; `gui_event_x/y`. |
-| `GUI_WHEEL` | `gui_event_dx/dy`: signed integer horizontal/vertical steps, with flipped direction normalized. |
+| `GUI_WHEEL` | `gui_event_dx/dy`: signed integer horizontal/vertical steps, with flipped direction normalized. `gui_event_modifiers` reports the current modifier keys. |
 
 Physical key constants include `GUI_KEY_ESCAPE`, `GUI_KEY_LEFT`,
 `GUI_KEY_RIGHT`, `GUI_KEY_UP_ARROW` and `GUI_KEY_DOWN_ARROW`; other keys use

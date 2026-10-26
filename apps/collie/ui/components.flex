@@ -78,6 +78,7 @@ view cu_result(key,card){
 view cu_card(key,card){
     let kind=cj_text(card,"kind");let body=cj_text(card,"text");
     column(key,gap:8){
+        if h_equal(kind,"image"){use cu_view_tile(cu_key(key,"-generated"),cu_observation(card));}
         if h_equal(kind,"source"){
             use cu_fold(cu_key(key,"-source"),"Show program",body,1);
         }else{
@@ -103,7 +104,7 @@ view cu_card(key,card){
                                 text(cu_key(key,"-body"),text:body,size:14,color:"#e9c5c2",selectable:1);
                             }
                         }else{
-                            if !h_starts(body,"App-private workspace ready."){text(cu_key(key,"-info"),text:body,size:12,color:"#8e9d9f",align:"center");}
+                            if !h_equal(kind,"image") && !h_starts(body,"App-private workspace ready."){text(cu_key(key,"-info"),text:body,size:12,color:"#8e9d9f",align:"center");}
                         }
                     }
                 }
