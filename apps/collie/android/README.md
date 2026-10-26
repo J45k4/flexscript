@@ -70,7 +70,9 @@ Tooling migration checklist:
 
 - [x] Android build, shared source assembly, dependency preparation and APK checks in Flexscript.
 - [x] Core/scheduler/provider and thinking-summary checks use `scripts/lib/collie-test.flex` with fresh ARM64 processes; core checks also support the native shared-core host.
-- [ ] Move remaining worker, signal, recall, permission and emulator scenario drivers onto shared Flexscript test helpers while preserving their assertions and cleanup.
+- [x] Worker, signal, recall and lazy-permission host runners use shared Flexscript VM transport.
+- [x] NFC/OMAPI, Aware, hardware-access and live-revocation runners share native Android consent, APK verification and parent-controlled cleanup.
+- [ ] Move the remaining emulator scenario drivers onto those shared Flexscript helpers while preserving their assertions and cleanup.
 - [ ] Consolidate the external Bumble peer bindings into the smallest necessary host boundary.
 
 Keep new first-party tooling in Flexscript. Python is not an APK dependency;
@@ -195,7 +197,7 @@ only enumerates sibling session IDs and reads their archives without following
 symlinks. No Android Java agent policy is added. Verification:
 
 ```sh
-python3 scripts/test-collie-recall.py --out build/android-agent-signals
+build/tools/test-collie-recall --out build/android-agent-signals
 python3 scripts/test-collie-recall-android.py --out build/android-agent-signals \
   --serial emulator-5580
 ```
@@ -493,7 +495,7 @@ summarization is separate from these execution checkpoints.
 Verification:
 
 ```sh
-python3 scripts/test-collie-workers.py --out build/android-collie-workers
+build/tools/test-collie-workers --out build/android-collie-workers
 python3 scripts/test-collie-workers-android.py \
   --out build/android-collie-workers --serial emulator-5580
 ```
@@ -693,7 +695,7 @@ Verification uses synthetic model replies and fresh native processes, plus a
 headless Android emulator for visible progress, restart, worker and Stop checks:
 
 ```sh
-python3 scripts/test-collie-signals.py --out build/android-agent-signals
+build/tools/test-collie-signals --out build/android-agent-signals
 python3 scripts/test-collie-signals-android.py --out build/android-agent-signals \
   --serial emulator-5580
 ```
@@ -701,7 +703,7 @@ python3 scripts/test-collie-signals-android.py --out build/android-agent-signals
 ## Lazy-permission verification
 
 ```sh
-python3 scripts/test-collie-lazy-permissions.py --out build/android-collie
+build/tools/test-collie-lazy-permissions --out build/android-collie
 python3 scripts/test-collie-lazy-permissions-android.py --out build/android-collie \
   --serial emulator-5580
 ```

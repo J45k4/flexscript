@@ -57,6 +57,15 @@ fn main(argc,argv) {
     h_add(names,"test-collie-android-packaging");
     h_add(names,"test-collie-core");
     h_add(names,"test-collie-thinking");
+    h_add(names,"test-collie-workers");
+    h_add(names,"test-collie-signals");
+    h_add(names,"test-collie-lazy-permissions");
+    h_add(names,"test-collie-recall");
+    h_add(names,"test-cdp-http");
+    h_add(names,"test-collie-nfc-android");
+    h_add(names,"test-collie-aware-android");
+    h_add(names,"test-collie-revocation-android");
+    h_add(names,"test-collie-hardware-access-android");
     h_add(names,"test-collie");
     h_add(names,"test-harness");
     h_add(names,"install");

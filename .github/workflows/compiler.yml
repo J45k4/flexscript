@@ -148,6 +148,7 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror -O2 -c apps/collie/tests/android/serial-gadget-loopback.c -o build/test-collie-serial-fixture.o
           build/stage2 apps/collie/tests/guest-copy.flex -o build/test-collie-guest-copy
           build/test-collie-guest-copy
+          build/tools/test-collie-nfc-android --self-test
           build/stage2 run --interpret --fuel=50000000 apps/collie/tests/guest-copy.flex
           build/stage2 scripts/test-host-zip.flex -o build/test-host-zip
           build/test-host-zip
@@ -156,14 +157,18 @@ jobs:
           build/stage2 scripts/build-collie-android.flex -o build/build-collie-android
           build/build-collie-android --compiler build/stage2 --native-only --out build/android-worker-tests
           python3 scripts/test-collie-android.py --out build/android-worker-tests
-          python3 scripts/test-collie-workers.py --out build/android-worker-tests
-          python3 scripts/test-collie-signals.py --out build/android-worker-tests
+          build/stage2 scripts/test-collie-workers.flex -o build/test-collie-workers
+          build/test-collie-workers --out build/android-worker-tests
+          build/stage2 scripts/test-collie-signals.flex -o build/test-collie-signals
+          build/test-collie-signals --out build/android-worker-tests
           build/stage2 scripts/test-collie-hardware-reference.flex -o build/test-collie-hardware-reference
           build/test-collie-hardware-reference --out build/android-worker-tests
           build/stage2 scripts/test-collie-card-handler.flex -o build/test-collie-card-handler
           build/test-collie-card-handler --out build/android-worker-tests
-          python3 scripts/test-collie-lazy-permissions.py --out build/android-worker-tests
-          python3 scripts/test-collie-recall.py --out build/android-worker-tests
+          build/stage2 scripts/test-collie-lazy-permissions.flex -o build/test-collie-lazy-permissions
+          build/test-collie-lazy-permissions --out build/android-worker-tests
+          build/stage2 scripts/test-collie-recall.flex -o build/test-collie-recall
+          build/test-collie-recall --out build/android-worker-tests
           build/stage2 scripts/test-collie-thinking.flex -o build/test-collie-thinking
           build/test-collie-thinking --out build/android-worker-tests
           build/stage2 scripts/test-collie-core.flex -o build/test-collie-core
@@ -181,7 +186,7 @@ jobs:
 
       - name: Test installed libraries and Monolith native and browser apps
         run: |
-          python3 scripts/test-cdp-http.py --compiler build/stage2
+          build/tools/test-cdp-http --compiler build/stage2
           build/tools/test-libraries build/stage2 --report build/library-tests.json
           build/tools/build-monolith --compiler build/stage2
           build/test-monolith-syntax build/stage2 --report build/monolith-syntax-tests.json
