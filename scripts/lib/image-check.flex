@@ -1,0 +1,5 @@
+// Independent system decoder for owned image fixtures; no window/GUI context.
+import "host.flex";
+fn ic_jpeg(path){
+    let data=h_read(path);let bytes=h_file_size;h_assert(bytes>=4&&load8(data)==255&&load8(data+1)==216,"Expected an actual JPEG stream");let lib=ffi_open("libgdk_pixbuf-2.0.so.0");let objects=ffi_open("libgobject-2.0.so.0");h_assert(lib&&objects,"Image checks require the system GdkPixbuf decoder");let image=ffi_call(ffi_symbol(lib,"gdk_pixbuf_new_from_file"),path,0,0,0,0,0);h_assert(image,"Independent JPEG decoder rejected the complete image");let width=ffi_call_i32(ffi_symbol(lib,"gdk_pixbuf_get_width"),image,0,0,0,0,0);let height=ffi_call_i32(ffi_symbol(lib,"gdk_pixbuf_get_height"),image,0,0,0,0,0);let pixels=ffi_call(ffi_symbol(lib,"gdk_pixbuf_get_pixels"),image,0,0,0,0,0);h_assert(width>0&&height>0&&pixels,"JPEG did not decode to actual pixels");let result=h_take(16);store64(result,width);store64(result+8,height);ffi_call(ffi_symbol(objects,"g_object_unref"),image,0,0,0,0,0);return result;
+}

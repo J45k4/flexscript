@@ -9,9 +9,25 @@ Current build and tooling (2026-10-26): compile
 `scripts/build-collie-android.flex` and run the resulting executable. Source
 assembly, pinned SDK dependency preparation, ZIP/APK handling and the separate
 UI-probe builder now use Flexscript. Native ZIP/dependency/APK/core/thinking
-checks replace the corresponding Python drivers; remaining test migrations are
-tracked in [README.md](README.md). Historical Python build commands below
-describe the original evidence, and should not be used for new builds.
+checks replace the corresponding Python drivers. All Android scenario drivers,
+portable UI/web-asset checks and desktop render checks now use Flexscript too;
+compile them through `scripts/build-tools.flex` and run `build/tools/NAME`.
+The six external Bumble fixtures retain their independent Bluetooth protocol
+oracles; the legacy desktop PTY suite is tracked in [README.md](README.md).
+Historical Python commands below describe the original evidence and should
+not be used for new builds or test invocations.
+
+The migrated drivers were checked against the same frozen API36 debug APK:
+camera/manual controls, HCE, cellular, Wi-Fi, VPN, hardware, lazy permissions,
+biometrics, input, screen capture, accessibility, documents, UWB provider,
+BLE/GATT/RFCOMM/advertising/lifecycle, two-emulator P2P, and Collie UI/runtime
+scenarios. These are emulator results, not physical-device or RF proof. The
+strict UWB effective-interval gate still reports 201 ms before and after
+reconfiguration; HID lifecycle host reconnect and public unplug remain failing
+gates. The original Python HID lifecycle driver reproduced the same peer
+authentication failure. Failed suites retain failure status and verify full
+cleanup. P2P DNS-SD plus actual TCP/UDP passed in this API36 migration run;
+earlier failing checkpoint records below retain their original artifact scope.
 
 The native builder produced debug/release APKs of 8,484,727 / 7,952,081 bytes.
 All 104 / 102 uncompressed entry payloads match the previous builder, including

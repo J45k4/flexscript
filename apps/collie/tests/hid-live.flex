@@ -1,0 +1,49 @@
+// Original HID VM report, request-token and lifecycle assertions.
+global hid_fixture_timeout=10000;
+
+fn eq(map,key,text){let v=device_field(map,key);return db_kind(v)==2 && worker_equal(db_word(v),text);}
+fn fail(n){let e=db_error();db_io(0,2,e,db_len(e));return n;}
+fn equal_blob(a,b){if db_kind(a)!=3 || db_kind(b)!=3 || db_bytes(a)!=db_bytes(b){return 0;}let i=0;while i<db_bytes(a){if load8(db_word(a)+i)!=load8(db_word(b)+i){return 0;}i=i+1;}return 1;}
+fn cap(){let rows=hardware_capabilities();let i=0;while i<db_count(rows){let row=db_at(rows,i);if eq(row,"id","bluetooth_hid_device"){return row;}i=i+1;}return db_null();}
+fn open_hid(){let d=alloc(32);store8(d+0,6);store8(d+1,0);store8(d+2,255);store8(d+3,9);store8(d+4,1);store8(d+5,161);store8(d+6,1);store8(d+7,133);store8(d+8,1);store8(d+9,21);store8(d+10,0);store8(d+11,38);store8(d+12,255);store8(d+13,0);store8(d+14,117);store8(d+15,8);store8(d+16,150);store8(d+17,254);store8(d+18,1);store8(d+19,9);store8(d+20,1);store8(d+21,129);store8(d+22,2);store8(d+23,9);store8(d+24,2);store8(d+25,145);store8(d+26,2);store8(d+27,9);store8(d+28,3);store8(d+29,177);store8(d+30,2);store8(d+31,192); return hid_open("Collie fixture","Vendor report test","Collie",0,db_blob(d,32),db_list(),db_list(),hid_fixture_timeout);}
+fn registered(h){let i=0;while i<15{let e=device_wait(h,1000);if db_kind(e)==5{if eq(e,"event","registered"){return 1;}if eq(e,"event","error"){let m=device_field(e,"message");db_io(0,2,db_word(m),db_bytes(m));return 0;}}i=i+1;}return 0;}
+fn handle(h,e){
+ if eq(e,"event","error"){let m=device_field(e,"message");db_io(0,2,db_word(m),db_bytes(m));return 0;}
+ if eq(e,"event","connected"){state_set("connected",db_int(1));}
+ if eq(e,"event","disconnected"){state_set("disconnected",db_int(1));}
+ if eq(e,"event","virtual_cable_unplug"){state_set("unplug",db_int(1));}
+ if eq(e,"event","protocol"){if db_word(device_field(e,"protocol"))==0{state_set("boot",db_int(1));}else{state_set("report",db_int(1));}}
+ if eq(e,"event","output_report"){let b=device_field(e,"value");if db_word(device_field(e,"report_id"))!=1 || db_bytes(b)!=510{return 0;}state_set("output",b);state_set("interrupt",db_int(1));return hid_send(h,db_word(device_field(e,"peer")),1,b);}
+ if eq(e,"event","request"){
+  let token=db_word(device_field(e,"token"));if db_word(device_field(hid_requests(h,0,8),"total"))!=1{return 0;}
+  if db_word(device_field(e,"report_id"))!=1{return hid_error(h,token,2);}
+  if eq(e,"kind","get_report"){
+   let b=state_get("initial");if db_word(device_field(e,"report_type"))==2{b=state_get("output");}
+   if !db_word(state_get("invalid_checked")){if hid_error(h,token,5){return 0;}if !worker_equal(db_word(db_at(device_error(),0)),"invalid_argument"){return 0;}if hid_reply(h,token,db_blob(alloc(511),511)){return 0;}if !worker_equal(db_word(db_at(device_error(),0)),"size_limit"){return 0;}state_set("invalid_checked",db_int(1));}
+   if !hid_reply(h,token,b){return 0;}if !db_word(state_get("replay_checked")){if hid_reply(h,token,b){return 0;}if !worker_equal(db_word(db_at(device_error(),0)),"stale_request"){return 0;}state_set("replay_checked",db_int(1));}return 1;
+  }
+  if !eq(e,"kind","set_report"){return 0;}let b=device_field(e,"value");if db_bytes(b)!=510{return hid_error(h,token,4);}state_set("output",b);return hid_error(h,token,0);
+ }return 1;
+}
+fn idle(h){let w=bt_watch();if !w{return 0;}let i=0;while i<20{if !db_word(device_field(cap(),"registration_busy")){return device_close(db_word(w));}device_wait(db_word(w),250);i=i+1;}device_close(db_word(w));return 0;}
+
+fn hid_live_capture(){let h=db_word(state_get("hid"));let i=0;while i<12{let e=device_wait(h,250);if eq(e,"event","request"){let token=device_field(e,"token");if db_word(device_field(hid_requests(h,0,8),"total"))!=1{return 1;}if hid_error(h,db_word(token),0){return 2;}if !worker_equal(db_word(db_at(device_error(),0)),"wrong_request"){return 3;}if hid_disconnect(h,db_word(state_get("peer"))){return 4;}if !worker_equal(db_word(db_at(device_error(),0)),"busy"){return 5;}state_set("expired_token",token);return 0;}if eq(e,"event","error"){return 6;}i=i+1;}return 7;}
+fn hid_live_retired(fixture_code){let h=db_word(state_get("hid"));let i=0;let found=0;while i<20 && !found{let e=device_wait(h,250);if eq(e,"event","error"){if !eq(e,"code",fixture_code){return 1;}found=1;}i=i+1;}if !found{return 2;}let info=device_info(h);if !eq(info,"state","error") || db_word(device_field(info,"pending_requests")) || db_word(device_field(info,"peers")){return 3;}if hid_reply(h,db_word(state_get("expired_token")),db_blob("late",4)){return 4;}if !worker_equal(db_word(db_at(device_error(),0)),"not_ready"){return 5;}if !device_close(h) || !idle(0){return 6;}return 0;}
+fn hid_live_control_open(){let h=open_hid();if !h || !registered(db_word(h)){return 1;}state_set("hid",h);let token=state_get("expired_token");if db_kind(token)==2{if hid_reply(db_word(h),db_word(token),db_blob("old",3)){return 2;}if !worker_equal(db_word(db_at(device_error(),0)),"stale_request"){return 3;}}let p=hid_connect(db_word(h),db_word(state_get("device")));if !p{return 4;}state_set("peer",p);return 0;}
+fn hid_live_fresh_request(){let h=db_word(state_get("hid"));let found=0;let i=0;while i<20 && !found{let e=device_wait(h,250);if eq(e,"event","request"){if !hid_reply(h,db_word(device_field(e,"token")),db_blob("safe",4)){return 1;}found=1;}if eq(e,"event","error"){return 2;}i=i+1;}if !found{return 3;}i=0;while i<14{let e=device_wait(h,250);if eq(e,"event","error"){return 4;}i=i+1;}return !eq(device_info(h),"state","registered");}
+fn hid_live_control_close(){let h=db_word(state_get("hid"));return !device_close(h) || !idle(0);}
+fn hid_live_radio(fixture_value){let r=bt_info();if !r{return 1;}if db_word(device_field(r,"state"))==fixture_value{db_io(0,1,"yes",3);}return 0;}
+fn hid_live_address(fixture_address){state_set("lifecycle_address",db_text(fixture_address));return 0;}
+fn hid_live_unbonded(fixture_address){let d=bt_device(fixture_address);if !d{return 1;}let bond=device_field(device_info(db_word(d)),"bond_state");if db_word(bond)==10{db_io(0,1,"already_unpaired",16);}return device_close(db_word(d))-1;}
+fn hid_live_capabilities(){let c=cap();if db_kind(c)!=5 || db_word(device_field(c,"support_known")) || db_kind(device_field(c,"supported"))!=0 || db_word(device_field(c,"available")){return 1;}if hid_open("C","D","P",0,db_blob("",0),db_list(),db_list(),1000){return 2;}if !worker_equal(db_word(db_at(device_error(),0)),"size_limit"){return 3;}return 0;}
+fn hid_live_registration(){if db_word(device_field(cap(),"registration_busy")){return 4;}let h=open_hid();if !h || !registered(db_word(h)){return 5;}state_set("hid",h);if open_hid(){return 6;}if !worker_equal(db_word(db_at(device_error(),0)),"busy"){return 7;}return !device_close(db_word(h)) || !idle(0);}
+fn hid_live_unpaired(){let d=bt_device("02:00:00:00:00:FA");state_set("unpaired",d);let h=open_hid();if !h || !registered(db_word(h)){return 9;}if hid_connect(db_word(h),db_word(d)){return 10;}if !worker_equal(db_word(db_at(device_error(),0)),"not_paired"){return 11;}if !device_close(db_word(h)) || !idle(0){return 12;}return device_close(db_word(d))-1;}
+fn hid_live_bond(fixture_address){let d=bt_device(fixture_address);if !d{return 1;}state_set("device",d);return db_word(bt_bond(db_word(d)))-1;}
+fn hid_live_bonded(){let d=db_word(state_get("device"));let i=0;while i<20{if db_word(device_field(device_info(d),"bond_state"))==12{return 0;}device_wait(d,500);i=i+1;}return 1;}
+fn hid_live_reports_open(){let h=open_hid();if !h || !registered(db_word(h)){return 1;}state_set("hid",h);let b=alloc(510);let i=0;while i<510{store8(b+i,i%256);i=i+1;}state_set("initial",db_blob(b,510));state_set("output",db_blob(b,510));let peer=hid_connect(db_word(h),db_word(state_get("device")));if !peer{return 2;}state_set("peer",peer);state_set("disconnected",db_int(0));return 0;}
+fn hid_live_disconnect(){let h=db_word(state_get("hid"));if !hid_disconnect(h,db_word(state_get("peer"))){return 1;}let i=0;while i<15 && !db_word(state_get("disconnected")){let e=device_wait(h,1000);if db_kind(e)==5 && !handle(h,e){return 2;}i=i+1;}return !db_word(state_get("disconnected"));}
+fn hid_live_reconnect(){let h=db_word(state_get("hid"));let old=db_word(state_get("peer"));if hid_send(h,old,1,db_blob("x",1)){return 1;}if !worker_equal(db_word(db_at(device_error(),0)),"stale_peer"){return 2;}let next=hid_connect(h,db_word(state_get("device")));if !next || worker_equal(old,db_word(next)){return 3;}state_set("peer",next);return 0;}
+fn hid_live_reports_finish(){let h=db_word(state_get("hid"));let i=0;while i<10 && (!db_word(state_get("unplug")) || db_word(device_field(hid_peers(h,0,8),"total"))){let e=device_wait(h,1000);if db_kind(e)==5 && !handle(h,e){return 1;}i=i+1;}if db_word(state_get("unplug")){db_io(0,1,"observed",8);}else{db_io(0,1,"missing",7);}if !db_word(state_get("boot")){return 21;}if !db_word(state_get("report")){return 22;}if !db_word(state_get("invalid_checked")){return 23;}if !db_word(state_get("replay_checked")){return 24;}if !db_word(state_get("interrupt")){return 25;}if db_word(device_field(hid_requests(h,0,8),"total")){return 3;}if !device_close(h) || !idle(0){return 4;}return 0;}
+fn hid_live_foreground(){let h=open_hid();if !h || !registered(db_word(h)){return 1;}state_set("foreground",h);return 0;}
+fn hid_live_background_closed(){if device_info(db_word(state_get("foreground"))){return 1;}let e=device_error();if !worker_equal(db_word(db_at(e,0)),"disconnected") && !worker_equal(db_word(db_at(e,0)),"stale_handle"){return 2;}if !idle(0){return 3;}let h=open_hid();if !h || !registered(db_word(h)){return 4;}if !device_close(db_word(h)) || !idle(0){return 5;}return 0;}
+fn hid_live_loop(){let h=db_word(state_get("hid"));state_set("batches",db_int(db_word(state_get("batches"))+1));let i=0;while i<8{let e=device_wait(h,1000);if db_kind(e)==5 && !handle(h,e){return 1;}i=i+1;}return 0;}
