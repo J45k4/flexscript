@@ -35,7 +35,7 @@ jobs:
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           fi
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libgdk-pixbuf-2.0-0 libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 qemu-user lld
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang unzip xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libgdk-pixbuf-2.0-0 libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 qemu-user lld
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -149,7 +149,12 @@ jobs:
           build/stage2 apps/collie/tests/guest-copy.flex -o build/test-collie-guest-copy
           build/test-collie-guest-copy
           build/stage2 run --interpret --fuel=50000000 apps/collie/tests/guest-copy.flex
-          python3 scripts/build-collie-android.py --compiler build/stage2 --native-only --out build/android-worker-tests
+          build/stage2 scripts/test-host-zip.flex -o build/test-host-zip
+          build/test-host-zip
+          build/stage2 scripts/test-collie-android-dependencies.flex -o build/test-collie-android-dependencies
+          build/test-collie-android-dependencies
+          build/stage2 scripts/build-collie-android.flex -o build/build-collie-android
+          build/build-collie-android --compiler build/stage2 --native-only --out build/android-worker-tests
           python3 scripts/test-collie-android.py --out build/android-worker-tests
           python3 scripts/test-collie-workers.py --out build/android-worker-tests
           python3 scripts/test-collie-signals.py --out build/android-worker-tests
@@ -159,10 +164,12 @@ jobs:
           build/test-collie-card-handler --out build/android-worker-tests
           python3 scripts/test-collie-lazy-permissions.py --out build/android-worker-tests
           python3 scripts/test-collie-recall.py --out build/android-worker-tests
-          python3 scripts/test-collie-thinking.py --out build/android-worker-tests
-          python3 scripts/test-collie-core.py --out build/android-worker-tests
+          build/stage2 scripts/test-collie-thinking.flex -o build/test-collie-thinking
+          build/test-collie-thinking --out build/android-worker-tests
+          build/stage2 scripts/test-collie-core.flex -o build/test-collie-core
+          build/test-collie-core --out build/android-worker-tests
           build/stage2 apps/collie/tests/shared-core.flex -o build/test-collie-shared-core
-          python3 scripts/test-collie-core.py --out build/android-worker-tests --core-driver build/test-collie-shared-core
+          build/test-collie-core --out build/android-worker-tests --core-driver build/test-collie-shared-core
 
       - name: Install the WebAssembly test host
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2

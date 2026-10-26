@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test the actual shared Android compiler/VM/provider/DB under QEMU and ADB.
 
-Build first with scripts/build-collie-android.py. Optional --serial tests the
+Build first with build/tools/build-collie-android. Optional --serial tests the
 ARM64 APK in an explicitly selected (headless) emulator/device. --auth imports
 an existing ChatGPT auth.json directly into private app storage for a live turn;
 credentials are never included in this script's reports or guest filesystem.

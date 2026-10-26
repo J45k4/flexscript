@@ -73,7 +73,7 @@ def disable():
  if 'Stop' in texts:label('Stop')
  elif 'Turn off' in texts:label('Turn off')
  wait(lambda:not own_enabled(),10);back_to_app()
-probe=a.out/'ui-probe/probe.apk';assert probe.is_file(),'Build scripts/build-collie-ui-probe.py first';probe_was_installed=bool(adb('shell','pm','path','org.flexscript.collie.uiprobe',check=False).strip());adb('install','-r',probe);probe_sha=verify_installed_apk(a.adb,a.serial,probe,package='org.flexscript.collie.uiprobe')
+probe=a.out/'ui-probe/probe.apk';assert probe.is_file(),'Build build/tools/build-collie-ui-probe first';probe_was_installed=bool(adb('shell','pm','path','org.flexscript.collie.uiprobe',check=False).strip());adb('install','-r',probe);probe_sha=verify_installed_apk(a.adb,a.serial,probe,package='org.flexscript.collie.uiprobe')
 adb('shell','run-as',pkg,'mkdir','-p','files/test');prefs=ET.fromstring(adb('exec-out','run-as',pkg,'cat','shared_prefs/MainActivity.xml'));original=next(n.text for n in prefs if n.get('name')=='session');before=read('files/workspaces/'+original+'/session.json');initial=dict(accessibility=True,db_read=True,db_write=True)
 assert not own_enabled(),'The owned fixture requires Collie accessibility initially disabled; preserve an existing user enablement.'
 (a.out/(prefix+'-recovery.json')).write_text(json.dumps(dict(prefix=prefix,original=original,initially_enabled=False)))

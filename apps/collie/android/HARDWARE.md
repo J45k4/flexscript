@@ -5,6 +5,29 @@ with ordinary Flexscript functions, first-use Collie/Android permissions and
 minimal platform transport code. This file is a completion checklist, not a
 claim that all listed features already work.
 
+Current build and tooling (2026-10-26): compile
+`scripts/build-collie-android.flex` and run the resulting executable. Source
+assembly, pinned SDK dependency preparation, ZIP/APK handling and the separate
+UI-probe builder now use Flexscript. Native ZIP/dependency/APK/core/thinking
+checks replace the corresponding Python drivers; remaining test migrations are
+tracked in [README.md](README.md). Historical Python build commands below
+describe the original evidence, and should not be used for new builds.
+
+The native builder produced debug/release APKs of 8,484,727 / 7,952,081 bytes.
+All 104 / 102 uncompressed entry payloads match the previous builder, including
+DEX, libraries, resources, assets and notices; enclosing ZIP/signature bytes
+have different hashes. APK checks verify actual DEX class definitions and all
+31 debug fixture classes (including their nested classes), compiled service
+metadata and release isolation. Native-only compilation also passes with
+nonexistent SDK/NDK/JDK paths. Core checks pass in both ARM64 QEMU and the native
+shared-core host (9 groups each), summary streaming checks pass (6 groups), and
+existing card/reference checks pass (11 / 4 groups) through the shared transport.
+Android 16 headless installation, actual VM output, compiler diagnostics, a
+complete tool-call loop and the rendered chat screen were verified with the
+new APK. The original conversation, workspace set, all 31 Ask policies and all
+Android grant flags were restored. This packaging check adds no physical
+hardware or other Android-version evidence to the adapter results below.
+
 A feature requires actual calls to Android, typed results/errors, bounded I/O,
 resource cleanup, permission denial/revocation handling and appropriate tests.
 A platform-unavailable result is valid only for a real hardware/OS restriction;

@@ -10,7 +10,7 @@ external compiler executable, Python runtime, Gradle dependency or NDK sysroot.
 
 ## Build and install
 
-Requirements: a current native Flexscript compiler, Clang/LLD, JDK 17, Android
+Requirements: a current native Flexscript compiler, Clang/LLD, JDK 17+, Android
 SDK platform 36 and Build Tools 36.1.0. The compiler must include ARM64 indirect
 integer calls from this change; rebuild it from `compiler/main.flex` first.
 Full APK builds also use the public Android NDK headers and `libandroid` link
@@ -24,11 +24,60 @@ From the repository root:
 
 ```sh
 build/stage2 compiler/main.flex -o build/flex-collie-android
-python3 scripts/build-collie-android.py --compiler build/flex-collie-android \
+mkdir -p build/tools
+build/flex-collie-android scripts/build-collie-android.flex -o build/tools/build-collie-android
+build/tools/build-collie-android --compiler build/flex-collie-android \
   --java-home /path/to/jdk-17 --sdk /opt/android-sdk --out build/android-collie
 adb -s DEVICE_SERIAL install --no-incremental -r build/android-collie/collie.apk
 adb -s DEVICE_SERIAL shell am start -n org.flexscript.collie/.MainActivity
 ```
+
+The builder, shared source assembler, pinned SDK dependency preparation and
+ZIP/JAR/APK handling are Flexscript. Host compression uses system zlib and pin
+verification uses OpenSSL 3; `curl` is used only for missing pinned libraries.
+The Python build/dependency/packaging drivers have been replaced, with no Python
+launcher or generated Python program in the build path.
+
+`--offline` requires every dependency to be present and size/hash-correct in
+`build/android-dependency-cache` (or `--cache DIR`). `--prepare-dependencies`
+validates/extracts the SDK graph without compiling an APK. `--generate-only`
+exports `engine-generated.flex` and `ui-generated.flex` for other native hosts;
+the shared source ABI stays the same. `--native-only` builds the freestanding
+ARM64 engine/UI and QEMU test binaries without an Android SDK, NDK, JDK or
+dependency download. Output directories must be separate from source trees and
+Git worktree roots. The tools also accept `--root DIR` outside the checkout.
+
+Native checks can be compiled with the same compiler:
+
+```sh
+build/flex-collie-android scripts/test-host-zip.flex -o build/test-host-zip
+build/test-host-zip
+build/flex-collie-android scripts/test-collie-android-dependencies.flex -o build/test-android-dependencies
+build/test-android-dependencies --cache build/android-dependency-cache
+build/flex-collie-android scripts/test-collie-android-packaging.flex -o build/test-android-packaging
+build/test-android-packaging --debug build/android-debug/collie.apk --release build/android-release/collie.apk
+```
+
+The dependency test's default synthetic-fixture mode is offline and needs no
+SDK cache. `--cache` additionally verifies the complete pinned upstream graph.
+The APK checker reads actual DEX class definitions (including nested fixture
+classes), compiled service/consent metadata, the pinned dependency manifest and
+debug/release isolation. The separate UI probe also builds with
+`scripts/build-collie-ui-probe.flex`. Older Python device-test runners are being
+migrated separately; external Bluetooth simulation uses host-side Bumble.
+
+Tooling migration checklist:
+
+- [x] Android build, shared source assembly, dependency preparation and APK checks in Flexscript.
+- [x] Core/scheduler/provider and thinking-summary checks use `scripts/lib/collie-test.flex` with fresh ARM64 processes; core checks also support the native shared-core host.
+- [ ] Move remaining worker, signal, recall, permission and emulator scenario drivers onto shared Flexscript test helpers while preserving their assertions and cleanup.
+- [ ] Consolidate the external Bumble peer bindings into the smallest necessary host boundary.
+
+Keep new first-party tooling in Flexscript. Python is not an APK dependency;
+remaining Python files are host tests or external peer integrations. Replacing a
+driver means porting its behavior and checks, rather than adding a launcher in
+another language. The runtime boundary remains Android SDK/JNI calls in Java/C,
+with portable policy, protocols and agent behavior in Flexscript.
 
 The application is named **Collie**, package `org.flexscript.collie`, ABI
 `arm64-v8a`, minimum Android 8/API 26, target API 36. This initial build uses a
@@ -277,7 +326,7 @@ intent hooks.
 ```sh
 /opt/android-sdk/emulator/emulator -avd Pixel_9_API_36 -read-only \
   -no-window -no-snapshot -no-boot-anim -no-audio -gpu swiftshader -port 5580
-python3 scripts/build-collie-android.py --compiler build/flex-collie-android \
+build/tools/build-collie-android --compiler build/flex-collie-android \
   --java-home /path/to/jdk-17 --out build/android-collie --debug
 python3 scripts/test-collie-android.py --out build/android-collie \
   --serial emulator-5580
@@ -491,7 +540,8 @@ standalone Linux test host imports the exact same source modules directly:
 
 ```sh
 build/flex-collie-workers apps/collie/tests/shared-core.flex -o build/test-collie-shared-core
-python3 scripts/test-collie-core.py --out build/android-collie-core \
+build/flex-collie-workers scripts/test-collie-core.flex -o build/test-collie-core
+build/test-collie-core --out build/android-collie-core \
   --core-driver build/test-collie-shared-core
 ```
 
@@ -591,7 +641,8 @@ path with a delay between events; it does not fabricate summary text in the UI.
 The native and headless Android checks use synthetic provider replies:
 
 ```sh
-python3 scripts/test-collie-thinking.py --out build/android-agent-signals
+build/flex-collie-signals scripts/test-collie-thinking.flex -o build/test-collie-thinking
+build/test-collie-thinking --out build/android-agent-signals
 python3 scripts/test-collie-ui.py --compiler build/flex-collie-signals \
   --out build/android-agent-signals
 python3 scripts/test-collie-thinking-android.py --out build/android-agent-signals \
