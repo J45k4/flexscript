@@ -18,7 +18,7 @@ it does not count as an implementation of an otherwise available adapter.
 | Cellular diagnostics | subscriptions, signal/service/cell data with platform permissions | implemented; read-only diagnostics, separate cellular + location gates | 19 headless Android scenarios passed, including real runtime prompts, NR cell data, refresh, roaming callbacks and both grants; physical SIM/multi-SIM/radio checks pending |
 | USB | descriptors, open/permission, interface claim/release, control/bulk/interrupt/isochronous, accessory mode, disconnect handling | SDK device/accessory bindings plus bounded asynchronous native USBFS ISO batches and portable Flexscript packet decoding implemented |28 groups on each Android15/16 SDK verify actual lazy/system consent, virtual-kernel ISO OUT transfers/cancellation and owned cleanup;15 native fault fixtures and portable codec checks pass. Constructed kernel CDC bulk/interrupt/detach checks also pass on SDK35/36 (checkpoint below). ISO IN, physical device I/O/detach, accessory fixtures and older/OEM gates remain open |
 | USB serial | CDC ACM, FTDI, CP210x and CH34x setup/read/write through USB primitives | implemented in Flexscript; common variants supported, older/unsupported variants return errors | native, interpreter and JIT protocol fixtures passed; actual SDK35/36 VM CDC line-coding readback,32768-byte loopback, break-on/off interrupt frames and detach passed; physical UART and non-CDC chip fixtures remain pending |
-| Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent | 16 baseline SDK/VM/consent checks passed on the current server APK; secure and insecure outgoing RFCOMM 32 KiB exchanges passed against a controlled Netsim peer; incoming payload, explicit bond/discoverability and physical-device checks pending |
+| Bluetooth Classic | adapter/discovery/bonding, RFCOMM connect/listen/read/write, disconnect handling | SDK adapter implemented with Android-owned enable/discoverable/pairing consent |24 incoming SDK/VM groups across secure/insecure listener paths on Android15/16 verify32791 binary bytes each way after parent close, actual peer authentication/encryption and owned cleanup. Earlier baseline/outgoing proofs retain their own artifact scopes. Explicit bond/discoverability, radio/ACL-loss and physical/older-device gates remain open |
 | BLE | scan, connect/services/read/write/subscribe, advertise, GATT server | raw scan, legacy and extended/periodic transmission, GATT client/server SDK bindings implemented; remaining lifecycle/SDK gates below | client/server byte I/O verified against controlled Netsim peers; current artifact audit and remaining BLE/physical gates are detailed below |
 | Bluetooth HID | register descriptors, paired-host connect, reports, foreground lifecycle | public Classic HID device SDK bindings implemented; remaining verification gates below | encrypted510-byte control/interrupt report exchange, registration ownership and reconnect verified against a controlled host; public unplug callback gate remains failing on this emulator |
 | NFC | reader mode, NDEF, technology transceive, ISO-DEP/APDU, tag loss | SDK reader/technology/NDEF bindings implemented; portable NDEF codec in Flexscript | actual emulator adapter absence, NDEF compatibility, bounds and first-use consent verified; RF discovery/read/write/loss and physical fixtures pending |
@@ -6229,3 +6229,114 @@ the full hardware objective.
 Primary SDK references:
 [AOSP Android16 reliable descriptor status/close behavior](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/core/java/android/os/ParcelFileDescriptor.java),
 [AOSP unstable provider client lifetime](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/core/java/android/content/ContentProviderClient.java).
+
+## Incoming Classic RFCOMM and accepted stream lifetime (2026-10-26)
+
+The existing public Android listener binding now has actual incoming byte-I/O
+and accepted-child lifetime evidence. New test orchestration, the independent
+loopback byte oracle and the restricted VM program are all Flexscript. No new
+production Java, public operation, Python source/dependency or APK payload is
+introduced. The peer is the already installed `bumble-rfcomm-bridge` CLI from
+`bumble[android]==0.0.236`, connected only to the owned local Netsim controller.
+The host TCP endpoint is fixed to127.0.0.1; it is not a substitute Bluetooth socket.
+
+Each final case verifies:
+
+- Real Collie/Nearby/radio first-use consent, preserving both Location grant
+  flags; a100ms actual SDK accept timeout leaves its listener handle usable.
+- A later real RFCOMM connection is accepted through the compiled VM. Its
+  Android-reported peer address matches the independent virtual controller log.
+- Explicit listener close releases its UUID for registration/close again while
+  the already accepted child remains connected. Subsequent payload transfer,
+  rather than a cached connected flag alone, proves the child's usable lifetime.
+- A unique epoch/LCG payload of32791 bytes travels each way after parent close.
+  The VM and independent native process compare every received byte. The reply
+  uses another seed, so a raw echo cannot pass. Probe PID and epoch identify the
+  live owned exchange; source, actual requests and receipts are archived.
+- Explicit child close invalidates its VM handle and reaches the actual peer
+  RFCOMM-close callback before the native TCP endpoint is allowed to close.
+- Exact original session JSON, preferences, workspace set and every Android
+  `granted=` flag are restored. The original radio state and complete bond set
+  are checked; independent audits also match scan mode. Each emulator starts
+  without bonds, and only the uniquely named new peer is forgotten after both
+  its name and actual address match in Android's device-details UI.
+
+`secure` records which Android listener API was selected. Peer authentication
+and encryption requests and observations are separate fields. Both final modes
+use an explicitly authenticated/encrypted virtual peer. Insecure listener mode
+does not imply an unencrypted modern link: Android's Bluetooth2.1+ API contract
+requires encryption. The weaker-link attempts remain failed evidence and do not
+prove an unprotected or legacy-link path. Unobserved security fields are null,
+not fabricated false. Full physical/RF and older-device behavior remain open.
+
+The driver overlaps actual SDK accept with the remote channel handshake; Android
+signals native acceptance only while `accept()` is active. Its recovery parent
+checks exact PID/start-time ownership before considering virtual processes
+terminal or stopping a still-live owned peer. A timeout is never treated as
+proof that a process died. Android15's generic Settings control is accepted only
+when unique; both peer name and address are still checked before Forget. A
+recovery-only `--recover` command can restore an interrupted attempt without
+replaying the test or promoting that attempt to a passing result.
+
+Final evidence under `build/android-rfcomm-incoming/`:
+
+| Platform | Secure listener | Insecure listener | Evidence scope |
+| --- | --- | --- | --- |
+| Android16 / SDK36 | `final36-secure` | `final36-insecure` |6 groups per case,32791 bytes each direction |
+| Android15 / SDK35 | `verified35-secure` | `verified35-insecure` |6 groups per case,32791 bytes each direction |
+
+Each directory contains `bluetooth-incoming-android-report.json`, actual VM
+requests/results, the independent bridge log and native probe receipt, complete
+baseline, original-state and exact-process cleanup audits. `audit35.json` and
+`audit36.json` independently match full original data, all31 Ask policies, every
+Android grant flag, radio state and scan mode. Both owned headless emulators
+synchronize and exit successfully. Earlier failed attempts remain distinct.
+The SDK36 host source is archived before the SDK35-only cleanup selector/recovery
+changes; `source-hashes-sdk36.json` and `source-hashes-sdk35.json` pin their exact
+host executables/sources, common VM source/native oracle and compiler/bridge.
+
+All four cases use the same8468343-byte debug APK:
+`4ac2ca626a6481423ceea877dd5338361235eb3a762bf4b6805a871f93391a05`.
+It is exactly the preceding document-stream artifact, with unchanged production
+Java/generated/native inputs. Its7952081-byte nondebug/development-signed release
+counterpart remains
+`b359c98daf9a28f8718cf80e7d60a8d84203cd5b6e3bd207656f29dde80898b4`;
+production parity/signature/alignment/DEX evidence retains its stated scope in
+`build/android-document-writes/parity-final.json`. No new APK was packaged here.
+
+CI compiles both new native tools and runs their self-tests. The byte-oracle
+self-test transfers32791 segmented TCP bytes each way and rejects corruption;
+its receipt deliberately says `bluetooth_proven=false`. Only the full Android
+matrix establishes RFCOMM I/O. The UI/address self-test covers redacted/invalid
+addresses, disabled/ambiguous controls and the SDK35 unique-settings fallback.
+From the repository root, with an identically installed current debug APK copied
+into each fresh `--out` directory and the existing compatible peer CLI:
+
+```sh
+build/flex-hardware scripts/fixtures/collie-rfcomm-probe.flex -o build/rfcomm-probe
+build/rfcomm-probe --self-test
+build/flex-hardware scripts/test-collie-bluetooth-incoming-android.flex -o build/rfcomm-incoming
+build/rfcomm-incoming --self-test
+# Read the currently owned emulator's grpc.port from $XDG_RUNTIME_DIR/netsim.ini.
+# Run once per listener mode0/1 in separate fresh directories.
+build/rfcomm-incoming --out build/incoming-case --serial emulator-5586 --bridge /path/to/existing/bumble-rfcomm-bridge --probe build/rfcomm-probe --netsim-port PORT --secure MODE --peer-authenticate 1 --peer-encrypt 1
+```
+
+Pass `--peer-authenticate 1 --peer-encrypt 1` as separate argument/value pairs.
+Adding `--recover` to the same invocation performs only scoped restoration from
+its saved baseline. This fixture never pairs or contacts physical radios.
+
+**Still required:** explicit `bt_bond` and discoverability confirmation, incoming
+cancellation/revocation and radio/ACL loss during pending/active I/O, broader
+listener concurrency/restart/SDK/cleanup faults, older/legacy/OEM and physical
+radios. Every other full inventory and strict gate above remains required,
+including16 missing privileged/vendor integrations, strict HID/UWB, USB ISO IN/
+non-CDC/accessory/HS/SS/streaming, sensor-direct reporting, Camera2 physical/HDR/
+high-speed, HCE routing/RF/applets and cross-cutting resource/permission/capability/
+bootstrap/lifecycle gates. This is progress toward the full hardware objective,
+not its completion, a master merge or a phone deployment.
+
+Primary SDK contracts:
+[Android16 insecure listener security](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/android16-release/framework/java/android/bluetooth/BluetoothAdapter.java),
+[Android16 native acceptance signaling](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/android16-release/framework/java/android/bluetooth/BluetoothSocket.java),
+[Android16 listener/accepted-child ownership](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/android16-release/framework/java/android/bluetooth/BluetoothServerSocket.java).
