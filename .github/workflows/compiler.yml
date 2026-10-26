@@ -190,6 +190,9 @@ jobs:
       - name: Test compact desktop UI specialization
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-ui-desktop-profile.py
 
+      - name: Test native HTTP client framing, TLS, streaming and cancellation
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-http-client.py
+
       - name: Test buffered native word I/O and failure recovery
         run: python3 tests/word-io/check.py build/stage2
 

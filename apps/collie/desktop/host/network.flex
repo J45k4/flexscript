@@ -1,22 +1,54 @@
 import "system.flex";
-global cn_library=0;
-global cn_multi=0;
+import "../../../../libs/http.flex";
 global cn_slots=0;
-fn cn_symbol(name){return ffi_symbol(cn_library,name);}
-fn cn_set(handle,option,value){return ffi_call_i32(cn_symbol("curl_easy_setopt"),handle,option,value,0,0,0)==0;}
-// Slot: easy, owned buffer, length, limit, completed, curl code, headers, read offset.
-fn cn_write(data,size,count,slot,unused1,unused2){let n=size*count;let used=load64(slot+16);if n<0{return 0;}if n>load64(slot+24)-used{if load64(slot+80){let remaining=load64(slot+24)-used;h_copy(load64(slot+8)+used,data,remaining);store64(slot+16,used+remaining);store8(load64(slot+8)+used+remaining,0);store64(slot+88,1);}return 0;}h_copy(load64(slot+8)+used,data,n);store64(slot+16,used+n);store8(load64(slot+8)+used+n,0);return n;}
-fn cn_init(){if cn_library{return 1;}cn_library=ffi_open("libcurl.so.4");if !cn_library{return sh_fail("libcurl is required for HTTPS");}if ffi_call_i32(cn_symbol("curl_global_init"),3,0,0,0,0,0){return sh_fail("Cannot initialize HTTPS");}cn_multi=ffi_call(cn_symbol("curl_multi_init"),0,0,0,0,0,0);cn_slots=h_zero(alloc(16*128),16*128);return cn_multi!=0;}
-fn cn_url(url){if !h_starts(url,"https://") || h_len(url)>16384{return 0;}let at=8;while load8(url+at) && load8(url+at)!=47 && load8(url+at)!=63 && load8(url+at)!=35{let c=load8(url+at);if c==64 || c<=32 || c>=127{return 0;}at=at+1;}return at>8;}
-fn cn_start(url,headers,body,limit,timeout,redirects){if !cn_url(url){return sh_fail("A credential-free HTTPS URL is required");}if !cn_init(){return 0;}let i=0;while i<16 && load64(cn_slots+i*128){i=i+1;}if i==16{return sh_fail("Too many active HTTPS requests");}let slot=h_zero(cn_slots+i*128,128);let handle=ffi_call(cn_symbol("curl_easy_init"),0,0,0,0,0,0);if !handle{return sh_fail("Cannot create HTTPS request");}store64(slot,handle);store64(slot+8,alloc(limit+1));store64(slot+24,limit);cn_set(handle,10002,url);cn_set(handle,10018,"collie/0.1");cn_set(handle,10102,"identity");cn_set(handle,99,1);cn_set(handle,155,timeout);cn_set(handle,156,30000);let ca=h_getenv("SSL_CERT_FILE");if !ca{ca=h_getenv("CURL_CA_BUNDLE");}if ca{cn_set(handle,10065,ca);}cn_set(handle,64,1);cn_set(handle,81,2);
-    // CURLPROTO_HTTPS only, including every redirect. Authenticated calls never follow redirects.
-    cn_set(handle,181,2);cn_set(handle,182,2);cn_set(handle,52,redirects!=0);cn_set(handle,68,redirects);cn_set(handle,20011,native_callback(cn_write));cn_set(handle,10001,slot);
-    let list=0;if headers && j_kind(headers)==4{let fields=j_value(headers);i=0;while i<h_count(fields){let pair=h_at(fields,i);let value=load64(pair+8);if j_kind(value)==2{let line=h_cat3(load64(pair),": ",j_value(value));list=ffi_call(cn_symbol("curl_slist_append"),list,line,0,0,0,0);}i=i+1;}}store64(slot+48,list);if list{cn_set(handle,10023,list);}
-    if body{let n=h_len(body);let owned=alloc(n+1);h_copy(owned,body,n+1);store64(slot+64,owned);store64(slot+72,n+1);cn_set(handle,47,1);cn_set(handle,10015,owned);cn_set(handle,60,n);}
-    if ffi_call_i32(cn_symbol("curl_multi_add_handle"),cn_multi,handle,0,0,0,0){cn_close(slot);return sh_fail("Cannot start HTTPS request");}return slot;
+// Collie stream slots retain their read cursor across service arena compaction.
+// 0 HTTP request, 8 body pointer, 16 available bytes, 24 limit, 32 done,
+// 40 transport failure, 56 consumed offset, 80 allow truncation, 88 truncated.
+fn cn_init(){if cn_slots{return 1;}cn_slots=alloc(16*128);if cn_slots<0{cn_slots=0;return sh_fail("Cannot allocate HTTP requests");}return 1;}
+fn cn_url(url){return h_starts(url,"https://") && h_len(url)<=16384;}
+fn cn_headers(headers){
+    let out=h_buffer();let agent=0;
+    if headers && j_kind(headers)==4{let fields=j_value(headers);let i=0;while i<h_count(fields){
+        let pair=h_at(fields,i);let name=load64(pair);let value=load64(pair+8);
+        if j_kind(value)==2{
+            let at=0;while load8(name+at){if !hc_token(load8(name+at)){return sh_fail("Invalid HTTPS header name");}at=at+1;}
+            if !at{return sh_fail("Invalid HTTPS header name");}
+            let text=j_value(value);at=0;while load8(text+at){let c=load8(text+at);if (c<32 && c!=9) || c==127{return sh_fail("Invalid HTTPS header value");}at=at+1;}
+            if hc_equal(name,"user-agent"){agent=1;}
+            if hc_equal(name,"accept-encoding"){
+                if !hc_equal(h_trim(text),"identity"){return sh_fail("HTTPS supports identity content encoding");}
+            }else{h_text(out,name);h_text(out,": ");h_text(out,text);h_text(out,"\r\n");}
+        }i=i+1;
+    }}if !agent{h_text(out,"User-Agent: collie/0.1\r\n");}return h_data(out);
 }
-fn cn_pump(){if !cn_multi{return 0;}let running=h_take(8);ffi_call_i32(cn_symbol("curl_multi_perform"),cn_multi,running,0,0,0,0);let remaining=h_take(8);let message=ffi_call(cn_symbol("curl_multi_info_read"),cn_multi,remaining,0,0,0,0);while message{if (load64(message)&0xffffffff)==1{let easy=load64(message+8);let i=0;while i<16{let slot=cn_slots+i*128;if load64(slot)==easy{store64(slot+32,1);store64(slot+40,load64(message+16)&0xffffffff);}i=i+1;}}message=ffi_call(cn_symbol("curl_multi_info_read"),cn_multi,remaining,0,0,0,0);}return 0;}
-fn cn_status(slot){let out=h_zero(h_take(8),8);ffi_call_i32(cn_symbol("curl_easy_getinfo"),load64(slot),0x200002,out,0,0,0);return load64(out);}
-fn cn_error(slot){if load64(slot+40){return "HTTPS connection failed, timed out or exceeded its response limit";}let status=cn_status(slot);if status==401{return "Codex login rejected; update your account login";}if status==429{return "Codex usage limit reached";}if status<200 || status>=300{return h_cat("HTTPS endpoint returned HTTP ",h_int(status));}return 0;}
-fn cn_close(slot){if !slot || !load64(slot){return 0;}ffi_call_i32(cn_symbol("curl_multi_remove_handle"),cn_multi,load64(slot),0,0,0,0);ffi_call(cn_symbol("curl_easy_cleanup"),load64(slot),0,0,0,0,0);if load64(slot+48){ffi_call(cn_symbol("curl_slist_free_all"),load64(slot+48),0,0,0,0,0);}syscall(11,load64(slot+8),load64(slot+24)+1,0,0,0,0);if load64(slot+64){syscall(11,load64(slot+64),load64(slot+72),0,0,0,0);}h_zero(slot,128);return 0;}
-fn cn_shutdown(){if !cn_multi{return 0;}let i=0;while i<16{cn_close(cn_slots+i*128);i=i+1;}ffi_call_i32(cn_symbol("curl_multi_cleanup"),cn_multi,0,0,0,0,0);syscall(11,cn_slots,16*128,0,0,0,0);cn_multi=0;return 0;}
+fn cn_start(url,headers,body,limit,timeout,redirects){
+    if !cn_url(url){return sh_fail("A credential-free HTTPS URL is required");}if !cn_init(){return 0;}
+    let i=0;while i<16 && load64(cn_slots+i*128){i=i+1;}if i==16{return sh_fail("Too many active HTTPS requests");}
+    let fields=cn_headers(headers);if !fields{return 0;}
+    let options=http_client_options();if !options{return sh_fail("Cannot allocate HTTP options");}
+    store64(options,timeout);store64(options+8,limit);store64(options+16,redirects);store64(options+24,1);
+    let ca=h_getenv("SSL_CERT_FILE");if !ca{ca=h_getenv("CURL_CA_BUNDLE");}if ca{store64(options+32,ca);}
+    let method="GET";let size=0;if body{method="POST";size=h_len(body);}
+    let request=http_client_start(method,url,fields,body,size,options);http_client_options_free(options);
+    if !request{return sh_fail(http_client_message);}
+    let slot=h_zero(cn_slots+i*128,128);store64(slot,request);store64(slot+8,http_client_data(request));store64(slot+24,limit);return slot;
+}
+fn cn_pump(){
+    if !cn_slots{return 0;}let i=0;while i<16{let slot=cn_slots+i*128;let request=load64(slot);
+        if request && !load64(slot+32){
+            http_client_allow_truncation(request,load64(slot+80));let result=http_client_step(request);
+            store64(slot+16,http_client_size(request));store64(slot+88,http_client_truncated(request));
+            if result{store64(slot+32,1);store64(slot+40,result<0);}
+        }i=i+1;
+    }return 0;
+}
+fn cn_status(slot){return http_client_status(load64(slot));}
+fn cn_effective_url(slot){return http_client_url(load64(slot));}
+fn cn_error(slot){
+    let error=http_client_error(load64(slot));if error{return error;}
+    let status=cn_status(slot);if status==401{return "Codex login rejected; update your account login";}
+    if status==429{return "Codex usage limit reached";}
+    if status<200 || status>=300{return h_cat("HTTPS endpoint returned HTTP ",h_int(status));}return 0;
+}
+fn cn_close(slot){if !slot || !load64(slot){return 0;}http_client_free(load64(slot));h_zero(slot,128);return 0;}
+fn cn_shutdown(){if !cn_slots{return 0;}let i=0;while i<16{cn_close(cn_slots+i*128);i=i+1;}syscall(11,cn_slots,16*128,0,0,0,0);cn_slots=0;return 0;}

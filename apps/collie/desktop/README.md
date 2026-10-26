@@ -25,7 +25,7 @@ and application bootstrap change. Android sources are not modified by building.
 
 The desktop application and its build driver are Flexscript. Python and Pillow
 are not needed to build or run Collie. Runtime dependencies are SDL2 2.26+,
-SDL2_ttf, GDK Pixbuf, libcurl, OpenSSL 3 libcrypto, and system sans/monospace
+SDL2_ttf, GDK Pixbuf, OpenSSL 3 libssl/libcrypto, and system sans/monospace
 fonts. A C compiler builds the existing small native broker.
 Install `zenity` or `kdialog` for file selection. `ffmpeg` enables one-shot Linux
 V4L2 camera attachments; camera access remains subject to actual OS/device
@@ -206,7 +206,9 @@ its current executable. Close and reopen Collie to load a rebuilt desktop UI.
 
 The native Flexscript UI owns presentation; a separate compiled Flexscript
 service owns OS lifecycle, TLS, file choosers and platform adapters. HTTPS uses
-libcurl multi with certificate verification and bounded responses. GDK Pixbuf
+the native [Flexscript HTTP library](../../../libs/http/README.md) with verified
+OpenSSL TLS, incremental streaming, bounded responses, deadlines and cancellation.
+There is no curl executable or libcurl dependency. GDK Pixbuf
 normalizes image snapshots directly, without Pillow. Shared Flexscript owns
 application policy. The
 UI and engine have separate memory, so networking and VM work do not block the
