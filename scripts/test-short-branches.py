@@ -52,28 +52,34 @@ def main():
             assert actual == distance, (distance, actual)
             checks += 1
 
+        def filler(size):
+            # Five-byte unsigned and seven-byte signed MOV immediates give
+            # exact code distances without depending on literal-data layout.
+            for signed in range(5):
+                rest = size - signed * 7
+                if rest >= 0 and rest % 5 == 0:
+                    return "1;" * (rest // 5) + "0xffffffffffffffff;" * signed
+            raise AssertionError(f"unrepresentable filler size {size}")
+
         for mode in (None, "all"):
-            # The outer branch only fits after the inner string jump shrinks:
-            # these also exercise relaxation through more than one iteration.
-            for n in (0, 1, 116, 117, 118, 119, 200, 1000):
-                payload = "x" * n
-                body_size = n + (10 if n + 1 <= 127 else 13)
+            for body_size in (0, 5, 7, 120, 125, 126, 127, 128, 129, 200, 1000):
+                payload = filler(body_size)
                 for condition in (0, 1):
-                    code = compile_run(f'fn main(){{if {condition} {{"{payload}";}}return 42;}}', mode=mode)
+                    code = compile_run(f'fn main(){{if {condition} {{{payload}}}return 42;}}', mode=mode)
                     branch(code, 12, True, body_size)
-                code = compile_run(f'fn main(){{if 1 {{1;}}else{{"{payload}";}}return 42;}}', mode=mode)
+                code = compile_run(f'fn main(){{if 1 {{1;}}else{{{payload}}}return 42;}}', mode=mode)
                 branch(code, 19, False, body_size)
-            # Literal data has its own jump; 127/128 bytes must choose exactly
-            # the right encoding without interpreting those bytes as code.
-            for n in (125, 126, 127, 128, 256):
-                code = compile_run('fn main(){"' + "x" * n + '";return 42;}', mode=mode)
-                branch(code, 4, False, n + 1)
-            for n in (98, 99, 100, 101):
-                code = compile_run('fn main(){while 1 {"' + "x" * n + '";return 42;}}', mode=mode)
+            # The outer branch fits only after the inner branch shrinks,
+            # exercising relaxation through more than one iteration.
+            for size in (116, 117, 118, 119, 127, 128):
+                code = compile_run('fn main(){if 1 {if 1 {' + filler(size) + '}}return 42;}', mode=mode)
+                branch(code, 12, True, size + (10 if size <= 127 else 14))
+            for size in (108, 109, 110, 111):
+                code = compile_run('fn main(){while 1 {' + filler(size) + 'return 42;}}', mode=mode)
                 # Back edge is followed only by the seven-byte implicit return.
-                short = n <= 99
+                short = size <= 109
                 at = len(code) - 7 - (2 if short else 5)
-                branch(code, at, False, -(n + (29 if short else 32)))
+                branch(code, at, False, -(size + (19 if short else 22)))
             for n in (0, 20, 100, 200, 1000):
                 compile_run('global value=0;fn step(){value=value+1;return value;}fn main(){let n=0;while n<6 {"' + "x" * n + '";n=n+1;if n==2 {step();}else{value=value+n;}if n==5 || n==6 {value=value+1;}}return value+20;}', expected=42, mode=mode)
             compile_run('global count=0;fn bump(){count=count+1;return 1;}fn main(){if (0 && bump()) || (1 && bump()) {if count!=1{return 9;}}if 1 || bump() {return count+41;}return 8;}', mode=mode)

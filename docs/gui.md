@@ -9,6 +9,15 @@ compiler or require a Rust runtime, browser, C compiler or linker to build apps.
 SDL2 2.26 or newer is a runtime dependency (`libSDL2-2.0.so.0`).
 
 The initial target is Linux x86-64, matching the native compiler and FFI.
+
+The optional `libs/gui/draw.flex` image API uses the
+[image library](../libs/image/README.md). `gui_image_load(window,path,dimensions)`
+returns an SDL texture and writes width/height to the caller's 16-byte output.
+It accepts regular PNG/JPEG/WebP files up to 64 MiB, at most 8192 pixels per side
+and 24 megapixels for texture upload. Release textures with `gui_texture_close`.
+Call `gui_image_decoder_close()` after the final image load to release the shared
+codec context; existing textures retain their own SDL copy. The retained UI
+adapter does this automatically on close. SVG needs rasterization before loading.
 SDL supplies X11/Xwayland and Wayland platform integration. The backend is
 selected by SDL, or explicitly with `SDL_VIDEODRIVER=x11` or `wayland`.
 X11/Xwayland and an actual OpenGL GPU have been exercised locally. Native
@@ -87,6 +96,7 @@ All GUI calls must run on the application's main thread.
 | `gui_focused(window)` | Keyboard focus state. |
 | `gui_text_input(enabled)` | Start or stop SDL's UTF-8 text input. |
 | `gui_ticks()`, `gui_delay(ms)` | Milliseconds since SDL initialization, and a delay. |
+| `gui_wait(ms)` | Wait up to `ms` for an event without consuming it; returns 1 when an event is queued, or 0 on timeout/error. Call on the GUI thread, then use `gui_poll`. |
 
 Flags can combine `GUI_RESIZABLE`, `GUI_HIDDEN` and `GUI_HIGH_DPI`; 0 creates a
 normal visible window. Sizes must be 1–16384. Up to 32 windows can coexist.
@@ -114,7 +124,7 @@ the application still owns the window until it calls `gui_close`.
 | `GUI_TEXT` | `gui_event_text`: NUL-terminated UTF-8, valid until the next poll. |
 | `GUI_MOUSE_MOVE` | `gui_event_x/y`: absolute position; `gui_event_dx/dy`: signed relative movement. |
 | `GUI_MOUSE_DOWN`, `GUI_MOUSE_UP` | `gui_event_button`: 1 left, 2 middle, 3 right; `gui_event_x/y`. |
-| `GUI_WHEEL` | `gui_event_dx/dy`: signed integer horizontal/vertical steps, with flipped direction normalized. |
+| `GUI_WHEEL` | `gui_event_dx/dy`: signed integer horizontal/vertical steps, with flipped direction normalized. `gui_event_modifiers` reports the current modifier keys. |
 
 Physical key constants include `GUI_KEY_ESCAPE`, `GUI_KEY_LEFT`,
 `GUI_KEY_RIGHT`, `GUI_KEY_UP_ARROW` and `GUI_KEY_DOWN_ARROW`; other keys use

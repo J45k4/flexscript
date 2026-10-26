@@ -28,8 +28,14 @@ jobs:
 
       - name: Install verification dependencies
         run: |
+          # The Azure mirror can stream large font packages too slowly to fit
+          # this job's deadline. Keep the same signed Ubuntu repositories and
+          # packages, using the main archive on runners with mirrorlist sources.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libgdk-pixbuf-2.0-0 libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 qemu-user lld
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang unzip xvfb xauth libx11-dev libpng-dev libturbojpeg libwebp7 libwebpdemux2 qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 python3-pil qemu-user lld
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -92,15 +98,78 @@ jobs:
 
       - name: Verify Android worker broker and VM continuation checkpoints under ARM64 QEMU
         run: |
-          python3 scripts/build-collie-android.py --compiler build/stage2 --native-only --out build/android-worker-tests
+          build/stage2 apps/collie/tests/hardware-core.flex -o build/test-collie-hardware-core
+          build/test-collie-hardware-core
+          build/stage2 scripts/fixtures/collie-rfcomm-probe.flex -o build/test-collie-rfcomm-probe
+          build/test-collie-rfcomm-probe --self-test
+          build/stage2 scripts/test-collie-bluetooth-incoming-android.flex -o build/test-collie-bluetooth-incoming
+          build/test-collie-bluetooth-incoming --self-test
+          build/stage2 apps/collie/tests/nfc.flex -o build/test-collie-nfc
+          build/test-collie-nfc
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/nfc.flex
+          build/stage2 apps/collie/tests/sensor-direct.flex -o build/test-collie-sensor-direct
+          build/test-collie-sensor-direct
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/sensor-direct.flex
+          build/stage2 run --jit --fuel=10000000 apps/collie/tests/sensor-direct.flex
+          build/stage2 apps/collie/tests/usb-iso.flex -o build/test-collie-usb-iso
+          build/test-collie-usb-iso
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/usb-iso.flex
+          build/stage2 run --jit --fuel=10000000 apps/collie/tests/usb-iso.flex
+          clang -std=c11 -Wall -Wextra -Werror -O2 -pthread apps/collie/tests/android/usb-iso-native-test.c -o build/test-collie-usb-iso-native
+          build/test-collie-usb-iso-native
+          build/stage2 scripts/test-collie-usb-iso-android.flex -o build/test-collie-usb-iso-android-driver
+          build/stage2 apps/collie/tests/uwb.flex -o build/test-collie-uwb
+          build/test-collie-uwb
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/uwb.flex
+          build/stage2 apps/collie/tests/camera.flex -o build/test-collie-camera-records
+          build/test-collie-camera-records
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/camera.flex
+          build/stage2 apps/collie/tests/haptics.flex -o build/test-collie-haptic-records
+          build/test-collie-haptic-records
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/haptics.flex
+          build/stage2 scripts/test-collie-haptics-android.flex -o build/test-collie-haptics-android-driver
+          build/stage2 scripts/build-collie-document-provider.flex -o build/build-collie-document-provider
+          build/stage2 scripts/test-collie-document-provider-android.flex -o build/test-collie-document-provider-android-driver
+          build/test-collie-document-provider-android-driver --self-test
+          build/stage2 scripts/test-collie-sensors-android.flex -o build/test-collie-sensors-android-driver
+          build/test-collie-sensors-android-driver --self-test
+          build/stage2 scripts/check-collie-hid-platform.flex -o build/check-collie-hid-platform
+          build/stage2 apps/collie/tests/hid-lifecycle.flex -o build/check-collie-hid-lifecycle
+          python3 -m py_compile scripts/test-collie-hid-android.py scripts/fixtures/collie-hid-host.py
+          build/stage2 apps/collie/tests/usb-serial.flex -o build/test-collie-usb-serial
+          build/test-collie-usb-serial
+          build/stage2 run --interpret apps/collie/tests/usb-serial.flex
+          build/stage2 run --jit apps/collie/tests/usb-serial.flex
+          build/stage2 scripts/build-collie-serial-fixture.flex -o build/build-collie-serial-fixture
+          build/stage2 scripts/test-collie-usb-serial-android.flex -o build/test-collie-usb-serial-android-driver
+          build/test-collie-usb-serial-android-driver --self-test
+          build/stage2 apps/collie/tests/usb-serial-live.flex -o build/test-collie-usb-serial-live-template
+          build/test-collie-usb-serial-live-template
+          clang -std=c11 -Wall -Wextra -Werror -O2 -c apps/collie/tests/android/serial-gadget-loopback.c -o build/test-collie-serial-fixture.o
+          build/stage2 apps/collie/tests/guest-copy.flex -o build/test-collie-guest-copy
+          build/test-collie-guest-copy
+          build/stage2 run --interpret --fuel=50000000 apps/collie/tests/guest-copy.flex
+          build/stage2 scripts/test-host-zip.flex -o build/test-host-zip
+          build/test-host-zip
+          build/stage2 scripts/test-collie-android-dependencies.flex -o build/test-collie-android-dependencies
+          build/test-collie-android-dependencies
+          build/stage2 scripts/build-collie-android.flex -o build/build-collie-android
+          build/build-collie-android --compiler build/stage2 --native-only --out build/android-worker-tests
           python3 scripts/test-collie-android.py --out build/android-worker-tests
           python3 scripts/test-collie-workers.py --out build/android-worker-tests
           python3 scripts/test-collie-signals.py --out build/android-worker-tests
+          build/stage2 scripts/test-collie-hardware-reference.flex -o build/test-collie-hardware-reference
+          build/test-collie-hardware-reference --out build/android-worker-tests
+          build/stage2 scripts/test-collie-card-handler.flex -o build/test-collie-card-handler
+          build/test-collie-card-handler --out build/android-worker-tests
+          python3 scripts/test-collie-lazy-permissions.py --out build/android-worker-tests
           python3 scripts/test-collie-recall.py --out build/android-worker-tests
-          python3 scripts/test-collie-thinking.py --out build/android-worker-tests
-          python3 scripts/test-collie-core.py --out build/android-worker-tests
+          build/stage2 scripts/test-collie-thinking.flex -o build/test-collie-thinking
+          build/test-collie-thinking --out build/android-worker-tests
+          build/stage2 scripts/test-collie-core.flex -o build/test-collie-core
+          build/test-collie-core --out build/android-worker-tests
           build/stage2 apps/collie/tests/shared-core.flex -o build/test-collie-shared-core
-          python3 scripts/test-collie-core.py --out build/android-worker-tests --core-driver build/test-collie-shared-core
+          build/test-collie-core --out build/android-worker-tests --core-driver build/test-collie-shared-core
 
       - name: Install the WebAssembly test host
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -112,6 +181,7 @@ jobs:
 
       - name: Test installed libraries and Monolith native and browser apps
         run: |
+          python3 scripts/test-cdp-http.py --compiler build/stage2
           build/tools/test-libraries build/stage2 --report build/library-tests.json
           build/tools/build-monolith --compiler build/stage2
           build/test-monolith-syntax build/stage2 --report build/monolith-syntax-tests.json
@@ -133,6 +203,11 @@ jobs:
 
       - name: Test native Zstd format and mixed-backend FlexDB files
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-zstd.py
+
+      - name: Test image codecs, EXIF orientation, alpha filtering and scalar/SIMD parity
+        run: |
+          FLEX_COMPILER=build/stage2 python3 scripts/test-image.py
+          FLEX_COMPILER=build/stage2 python3 scripts/test-image.py --pipeline direct
 
       - name: Test native word expression optimizations against an independent oracle
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-constants.py
@@ -160,6 +235,32 @@ jobs:
 
       - name: Test the default native IR pipeline and direct reference path
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-pipeline.py
+
+      - name: Test native writable and shared literal pools
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-literals.py
+
+      - name: Test preserved offline GPU code-object support
+        run: |
+          build/stage2 scripts/test-gpu-codeobject.flex -o build/test-gpu-codeobject
+          build/test-gpu-codeobject build/stage2
+
+      - name: Test native Collie desktop and shared Android core integration
+        run: |
+          build/stage2 apps/collie/desktop/build.flex -o build/build-collie-desktop
+          build/build-collie-desktop --compiler build/stage2
+          build/test-collie-core --desktop --out build/collie-desktop
+          build/test-collie-thinking --desktop --out build/collie-desktop
+          python3 scripts/test-collie-native.py --out build/collie-desktop --compiler build/stage2
+          python3 scripts/test-collie-native-platform.py --out build/collie-desktop --compiler build/stage2
+          python3 scripts/test-collie-desktop-layout.py --out build/collie-desktop
+          python3 scripts/test-collie-imagegen.py --out build/collie-desktop
+          python3 scripts/test-collie-no-python.py --out build/collie-desktop --compiler build/stage2
+
+      - name: Test compact desktop UI specialization
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-ui-desktop-profile.py
+
+      - name: Test native HTTP client framing, TLS, streaming and cancellation
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-http-client.py
 
       - name: Test buffered native word I/O and failure recovery
         run: python3 tests/word-io/check.py build/stage2

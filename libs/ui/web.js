@@ -70,6 +70,7 @@ class FlexscriptUi {
     el.disabled = props.enabled === 'false';
     if (kind === 'input') {
       el.placeholder = node.text;
+      el.autocapitalize = ['sentences', 'words', 'characters'].includes(props.autocapitalize) ? props.autocapitalize : 'none';
       el.rows = Number(props.min_lines ?? 1);
       el.style.resize = 'none';
       if (prior.value !== props.value && el.value !== (props.value ?? '')) el.value = props.value ?? '';
@@ -88,6 +89,8 @@ class FlexscriptUi {
             if (href) { span.href = href; span.rel = 'noreferrer'; }
             if (run.style & 1) span.style.fontWeight = 'bold';
             if (run.style & 2) span.style.fontFamily = 'monospace';
+            if (run.style & 16) span.style.fontStyle = 'italic';
+            if (run.style & 32) span.style.textDecoration = 'line-through';
             if (run.style & 4) span.style.fontSize = '1.12em';
             if (run.style & 8) span.style.fontSize = '.88em';
             if (run.color) span.style.color = run.color;

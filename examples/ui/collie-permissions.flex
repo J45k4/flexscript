@@ -11,7 +11,7 @@ fn app_action(action,id){
     let request=j_object();j_set(request,"policy",cu_policy);j_set(request,"event",event);let reply=cu_permissions(request);let command=j_get(reply,"command");
     let code=200;cu_policy=saved;
     if j_get(reply,"error") || !command{code=422;}
-    else if m_eq(j_s(command,"kind"),"permission"){store64(j_get(saved,j_s(command,"key"))+8,j_value(j_need(command,"allowed")));}
+    else if m_eq(j_s(command,"kind"),"permission"){let target=j_get(saved,j_s(command,"key"));let value=j_need(command,"allowed");store64(target,j_kind(value));store64(target+8,j_value(value));}
     h_reset(mark);return code;
 }
 fn main(argc,argv){return mono_run(argc,argv,"Collie · portable permissions",8092,"");}

@@ -102,6 +102,14 @@ final class PlatformTask implements AutoCloseable {
                     action = "observation";
                     break;
                 }
+                case "platform_permission":
+                    host.hardwareConsent.await(this,command.getJSONObject("signal"));
+                    action = "platform_completed";
+                    break;
+                case "permission":
+                    host.permissionPrompts.await(this,command.getJSONObject("signal"));
+                    action = "next";
+                    break;
                 case "wait":
                     if (id == 0)
                         host.waitingFor(command.getLong("waiting_for"));

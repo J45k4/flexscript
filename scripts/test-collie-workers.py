@@ -6,15 +6,16 @@ that heap/local/frame state came from disk, not an accidentally live native VM.
 """
 import argparse,json,shutil,subprocess,tempfile
 from pathlib import Path
+from collie_native_test import command as native_command
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--out',type=Path,default=Path('build/android-collie-workers'))
 p.add_argument('--qemu',default=shutil.which('qemu-aarch64-static') or shutil.which('qemu-aarch64'))
-a=p.parse_args();out=a.out.resolve();checks=[]
+p.add_argument('--desktop',action='store_true',help='Run the native Linux desktop engine');a=p.parse_args();out=a.out.resolve();checks=[]
 def passed(name):checks.append(name);print('PASS',name,flush=True)
 with tempfile.TemporaryDirectory(prefix='workers-',dir=out) as directory:
  root=Path(directory);(root/'files').mkdir();config={'workspace_file':str(root/'agent.flexdb'),'agent_id':0}
  def native(op,request):
-  r=subprocess.run([a.qemu,str(out/'native-test'),str(op),str(root)],input=json.dumps(request).encode(),capture_output=True,timeout=40)
+  r=subprocess.run(native_command(out,op,root,a.desktop,a.qemu),input=json.dumps(request).encode(),capture_output=True,timeout=40)
   assert r.returncode==0,(r.returncode,r.stdout,r.stderr)
   return json.loads(r.stdout)
  def execute(source,key='test',resume=False,owner=0,permissions=None):

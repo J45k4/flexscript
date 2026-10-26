@@ -94,6 +94,7 @@ final class CollieUi {
     }
     void toBottom(boolean force) { page.bottom("chat-scroll",force); }
     void back() { flush(); call("back",new JSONObject()); }
+    void healthRationale() { onMain(() -> { flush();call("health_rationale",new JSONObject()); }); }
     void notice(String text) { onMain(() -> { flush(); call("notice",object("text",text)); }); }
     void preview(JSONObject file) { onMain(() -> { flush(); call("preview",object("file",file)); }); }
     void restore(JSONObject navigation) { onMain(() -> { flush(); call("restore",object("data",navigation)); }); }

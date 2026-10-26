@@ -19,6 +19,7 @@ def completed(output):return {'type':'response.completed','response':{'status':'
 def message(text):return {'type':'message','role':'assistant','content':[{'type':'output_text','text':text}]}
 def tool(source,key):return {'type':'custom_tool_call','id':'ctc_'+key,'call_id':'call_'+key,'name':'flexscript','input':source}
 def start(name,case):
+ case.setdefault('initial_permissions',dict.fromkeys(['internet','files_read','files_write','db_read','db_write','history','workers'],True))
  write('files/test/'+name+'.json',case);adb('shell','am','start','-n',pkg+'/.MainActivity','--es','test_case',name)
  for _ in range(120):
   raw=adb('exec-out','run-as',pkg,'cat','files/test/'+name+'.result.json',check=False)

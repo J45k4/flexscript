@@ -182,6 +182,8 @@ fn suite(compiler) {
     tv_trap("fn main(){return syscall(10001,1,0,0,0,0,0);}","capability denied",0);
     tv_trap("fn main(){return syscall(10001,-1,0,0,0,0,0);}","capability denied",0);
     tv_trap("fn main(){return syscall(10001,-2,0,0,0,0,0);}","capability denied",0);
+    tv_trap("fn main(){return syscall(10001,-3,0,0,0,0,0);}","capability denied",0);
+    tv_trap("fn main(){return syscall(10001,-4,0,0,0,0,0);}","capability denied",0);
     let environment=h_env;
     h_setenv("PATH","/no/executables");
     let cases=j_parse(h_read("tests/cases.json"));

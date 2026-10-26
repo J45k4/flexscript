@@ -24,6 +24,19 @@ keys, widgets, properties and structure, then lowers the AST to ordinary
 Flexscript functions. Expressions continue through the normal Flexscript compiler.
 No Java or JavaScript is generated for individual screens.
 
+Native applications that treat static view properties as immutable can select
+`extend "ui/syntax.flex" with "desktop";`. This profile packs constant attributes
+into name/value tables and emits update functions only for reachable components
+and views referenced by ordinary Flexscript functions. Ordinary generation keeps
+its existing mutable-property behavior.
+
+`desktop:my_desktop_guard` additionally declares that the pure, zero-argument
+boolean function `my_desktop_guard()` is true for this build. The frontend selects
+matching view branches before following component uses. It still validates the
+structure and property types of excluded branches. The shared UI library has no
+application-specific guard names. Use `desktop-source:my_desktop_guard` when an
+embedder also needs the validated transformed modules exported as source.
+
 Calling `app_view()` builds a keyed tree. Retain the previous root and
 `ui_index`; `ui_compiled_diff(old,new,old_index,new_index)` returns an array of
 operations. `ui_compiled_diff(0,new,0,new_index)` creates a complete snapshot.
@@ -72,6 +85,11 @@ Common properties:
   provide `imageSource` through the renderer platform adapter.
   The portable browser host permits images from its own origin, data URLs and
   blob URLs; it does not fetch arbitrary remote image sources.
+- `autocapitalize` belongs to `input`: `"none"` (the default), `"sentences"`,
+  `"words"`, or `"characters"`. Android and DOM adapters pass this hint to the
+  platform editor; they do not rewrite the value in Flexscript. Search and
+  identifiers should use `"none"`; chat can request `"sentences"`. Desktop
+  committed text remains unchanged.
 
 Unknown widgets and properties fail compilation. Portable views use explicit
 style properties; HTML tags and CSS classes remain in the Monolith HTML frontend.
@@ -122,6 +140,21 @@ is JSON rich text: text fragments, style bits, optional colors and HTTP(S) links
 Timestamps use platform-local formatting. `follow:1` on a scrolling viewport
 follows content only while already near its tail. `ime:"send"` emits a `submit`
 event from the editor. Property updates preserve unchanged native composing text.
+
+On desktop, vertical wheel input scrolls the vertical ancestor even when the
+pointer is over a horizontal code viewport. Horizontal wheel input or
+Shift+wheel pans horizontal content. A standalone horizontal viewport also
+accepts ordinary wheel input. Nested panes pass input to an ancestor when they
+reach the relevant edge; offsets are clamped per event so direction reversals
+respond before the next frame.
+Vertical scrollbars expand within 16 logical pixels of the viewport edge.
+Desktop scroll views can set `scrollbar_width` (3–9 logical pixels, default 3)
+and `scrollbar_track:1` for a persistent track while the content overflows.
+Their thumbs support captured pointer dragging; track clicks page the content.
+Dragging preserves text focus/selection and is canceled on release, focus loss,
+modal changes, or removal/disablement of the viewport.
+Manual scrolling away from the bottom pauses tail following through background
+updates; scrolling or dragging back to the bottom resumes following new content.
 
 ## Browser host and examples
 
@@ -206,6 +239,9 @@ The browser and desktop counters import `counter-view.flex`, including the same
 view and counter actions. Both desktop examples accept an optional frame count
 for bounded smoke checks. The permissions example keeps grants in memory and
 Back closes its window; it is not a complete desktop Collie agent host.
+The complete [Collie desktop host](../apps/collie/desktop/README.md) wires the
+shared chat, conversations, permissions and worker views to the checked engine,
+native event loop, persistence and Linux platform services.
 
 An embedding application owns its event loop and platform effects:
 
@@ -217,11 +253,24 @@ An embedding application owns its event loop and platform effects:
   event from `gui_poll`; the application handles quit/close itself.
 - `ui_desktop_needs_draw()` handles invalidation and the editor's blinking caret;
   `ui_desktop_draw()` reflows/paints, and `ui_desktop_present()` presents.
+  `ui_desktop_repaint()` paints cached geometry for visual-only changes such as
+  a container background. Use `draw()` after content, layout or window changes.
 - `ui_desktop_image(source,path)` binds virtual sources such as `preview:ID` or
   `resource:TYPE/NAME` to host-approved local files. Plain paths and `file://` work
   directly. Remote image URLs are not fetched by the renderer.
 - `ui_desktop_focus(key)`, `ui_desktop_bounds(key,out)`,
   `ui_desktop_identity(key)` and `ui_desktop_value(key)` expose retained controls.
+- `ui_desktop_focus_scope(key)` restricts focus and Tab navigation to a modal
+  subtree. Pass an empty key to restore navigation across the window. Removing
+  the subtree clears the scope. A row child with `height:-1` stretches to the
+  row's full height, allowing a sidebar and content pane to fill a window.
+- Desktop focus styling accepts `focus_border_color`, `focus_border_width`,
+  and `focus_background`. Set `focus_within:1` on a container to apply these
+  styles when a descendant has focus, such as an editor inside a composer row.
+  Focus styling does not change layout dimensions. Clicking or editing an input
+  restarts its caret blink with the caret visible immediately.
+- Empty operation batches preserve the existing model and draw invalidation;
+  they do not rebuild retained descriptors or request another frame.
   Returned text pointers remain valid only until the next model mutation.
 - `ui_desktop_close()` releases textures, font handles and the private model.
   The caller retains ownership of other GUI windows and application allocations.
@@ -230,19 +279,53 @@ Stable keys preserve editor drafts/caret/selection and scroll offsets through
 moves and reconnect snapshots. Explicit `value` changes replace the draft.
 Editing supports committed UTF-8 text input, selection, arrows, Home/End,
 Backspace/Delete, Tab, clipboard shortcuts, and `ime:"send"` submit events.
+Set `selection_scope:1` on a desktop document container to let a press in its
+blank space begin a drag into nearby selectable text. The press stays pending
+until the drag threshold is crossed; an ordinary blank click clears focus.
+Blank-space fallback skips controls, images, disabled regions, hidden/clipped
+text, and scrollbars. Release, focus loss, and node removal
+cancel a pending drag.
+
+Pointer selection reuses one retained text layout and lazily cached UTF-8 caret
+positions; warm drag events do not rebuild layout or measure fonts. Text/style,
+wrap width, display density and node removal invalidate the cache. Repeated
+motions within the same character do not request another redraw.
 Following the transcript never moves keyboard focus. Model arenas compact after
 each batch; removed nodes release native textures. One renderer with up to
 2,048 retained nodes is currently supported per process, with up to 128 cached
-font size/style/fallback combinations.
+font size/style/fallback combinations. Fonts and cached text layers follow the
+window's framebuffer density (up to 4x); layouts and caret positions stay in
+window units. Moving between display densities invalidates font bitmaps while
+preserving drafts and selection. Text-only layers retain straight glyph alpha,
+so antialiased edges blend against the final background once.
 
-The initial desktop backend does not yet expose an OS accessibility tree,
-preedit composition display, or rich-link activation. It consumes completed SDL
-text input. Text layers are bounded to 8,192 by 16,384 pixels; very long text still
+Desktop applications can use `rt_markdown_tables(text)` from
+`libs/ui/markdown-tables.flex` for pipe tables. It emits cell metadata on the
+usual rich text runs, with a tab/newline copy order. The desktop renderer keeps
+a whole message in one selectable widget, aligns columns, wraps cell content,
+and draws table backgrounds separately from antialiased glyphs. This avoids
+allocating one native widget per cell. The extension supports up to 16 columns
+and 256 rows per table; plain `rt_markdown` retains its existing inline output.
+
+The initial desktop backend does not yet expose an OS accessibility tree or
+preedit composition display. It consumes completed SDL text input. Markdown
+text selection uses rendered UTF-8 content, so copying a
+selection excludes formatting delimiters. Desktop link runs are underlined and
+emit a `type:"link"` event with the destination in `value` on click; dragging
+selects text instead. The application validates the destination against its
+rendered runs and owns browser/file opening. Text layers are bounded to 8,192
+by 16,384 pixels; very long text still
 needs tiled rendering/virtualization. The host supplies authentication, storage,
 networking, file dialogs and agent execution for a full application.
 
 `scripts/test-ui-desktop.py` applies the actual generic and Collie compiler
 batches, verifies decoded text/image pixels, and saves native screenshots under
-`build/ui-desktop-*.png`. The SDL dummy driver supports headless pixel tests;
+`build/ui-desktop-*.png`. Its text raster regression compares cached glyphs with
+direct font rendering on dark/light backgrounds and at reduced opacity, using
+simulated 1x and 2x framebuffers, and checks density-aware caret hit testing.
+The selection regression also compares cached hit testing with independent font
+measurements, checks cache invalidation/cleanup, and reports processing times in
+`build/ui-selection-performance.json`. These timings exclude physical display
+latency. The SDL dummy driver supports headless pixel tests;
 `--x11` additionally requires mapped windows and real XTest keyboard/pointer input
 on an isolated display. CI uses Xvfb so tests never touch the user's desktop.

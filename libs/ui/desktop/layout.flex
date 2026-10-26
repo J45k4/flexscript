@@ -7,7 +7,7 @@ fn ud_measure(node,available){
     let kind=load64(node+8);let px=ud_padding(node,0);let py=ud_padding(node,1);let explicit=ud_n(node,"width",-2);let width=available;if explicit>=0{width=explicit;}width=ud_max(1,width-2*px);let w=0;let h=0;
     if kind==6 || kind==7 || kind==8{
         let wrap=width;if kind==8 && ud_n(node,"single_line",0){wrap=8192;}ud_text_texture(node,wrap);w=load64(node+208);h=load64(node+216);
-        if kind==8{let font=ud_font(node,0,ud_n(node,"size",14));h=ud_max(h,gui_font_height(font)*ud_n(node,"min_lines",1));let max=ud_n(node,"max_lines",5);if max>0{h=ud_min(h,gui_font_height(font)*max);}w=ud_min(w,width);}
+        if kind==8{let font=ud_font(node,0,ud_n(node,"size",14));h=ud_max(h,ud_font_height(font)*ud_n(node,"min_lines",1));let max=ud_n(node,"max_lines",5);if max>0{h=ud_min(h,ud_font_height(font)*max);}w=ud_min(w,width);}
     }else if kind==9{w=44;h=26;}
     else if kind==11{w=width;h=8;}
     else if kind==10{
@@ -15,8 +15,14 @@ fn ud_measure(node,available){
         w=ud_min(width,64);h=w;if load64(node+160){w=ud_min(width,load64(node+208));h=load64(node+216)*w/ud_max(1,load64(node+208));}
     }else{
         let gap=ud_n(node,"gap",0);let count=0;let child=load64(node+32);
-        while child{let child_width=width;if kind==5{child_width=8192;}ud_measure(child,child_width);
+        while child{let child_width=width;if kind==5{child_width=8192;}
+            // Weighted row children get their real width after fixed siblings.
+            // Measuring them here rasterizes text at a temporary width, then
+            // throws those textures away when the row is measured again.
+            let deferred=kind==2 && ud_n(child,"weight",0)>0;
+            if !deferred{ud_measure(child,child_width);}
             if !ud_hidden(child){let cw=load64(child+96);let ch=load64(child+104);
+                if deferred{cw=0;ch=0;}
                 if kind==2{w=w+cw;h=ud_max(h,ch);}else if kind==1{h=h+ch;w=ud_max(w,cw);}else{w=ud_max(w,cw);h=ud_max(h,ch);}count=count+1;
             }child=load64(child+48);
         }
@@ -37,7 +43,7 @@ fn ud_layout(node,x,y,w,h){
     let kind=load64(node+8);if kind>=6{return 0;}let px=ud_padding(node,0);let py=ud_padding(node,1);x=x+px;y=y+py;w=ud_max(0,w-2*px);h=ud_max(0,h-2*py);
     if kind==4 || kind==5{
         let child=load64(node+32);let cw=w;let ch=h;if child{cw=ud_max(w,load64(child+96));ch=ud_max(h,load64(child+104));if kind==4{cw=w;}else{ch=h;}}
-        store64(node+112,cw+2*px);store64(node+120,ch+2*py);let sx=ud_min(load64(node+128),ud_max(0,cw-w));let sy=ud_min(load64(node+136),ud_max(0,ch-h));if load64(node+184) && kind==4{sy=ud_max(0,ch-h);store64(node+184,0);}store64(node+128,sx);store64(node+136,sy);
+        store64(node+112,cw+2*px);store64(node+120,ch+2*py);let sx=ud_min(load64(node+128),ud_max(0,cw-w));let sy=ud_min(load64(node+136),ud_max(0,ch-h));if load64(node+184) && kind==4{sy=ud_max(0,ch-h);store64(node+184,0);}if kind==4 && ch<=h{store64(node+200,0);}store64(node+128,sx);store64(node+136,sy);
         if child{ud_layout(child,x-sx,y-sy,cw,ch);}return 0;
     }
     let gap=ud_n(node,"gap",0);let count=0;let total=0;let weights=0;let child=load64(node+32);
@@ -55,6 +61,9 @@ fn ud_layout(node,x,y,w,h){
             }
             // Reflow weighted text and nested rows using the assigned width.
             if (kind==2 && ud_n(child,"weight",0)>0) || cw!=load64(child+96){ud_measure(child,cw);if kind==2{ch=load64(child+104);cy=y+ud_max(0,(h-ch)/2);}}
+            // A row's fill-height child stretches on the cross axis too.
+            // Sidebars and main panes can then share the full window height.
+            if kind==2 && ud_n(child,"height",-2)== -1{ch=h;cy=y;}
             ud_layout(child,cx,cy,cw,ch);
         }child=load64(child+48);
     }return 0;

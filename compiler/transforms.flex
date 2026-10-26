@@ -78,7 +78,9 @@ fn tx_snapshot(phase,config,request_module) {
 fn tx_vm_reset() {
     vm_mode=1;vm_restricted=1;vm_heap_limit=268435456;vm_heap_used=16;
     vm_sp=0;vm_depth=0;vm_local_base=0;vm_local_top=0;vm_finished=0;vm_error=0;vm_steps=0;
-    vm_fuel=50000000;vm_timeout=5000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
+    // Full portable applications export several screens and permission rows.
+    // Keep a fixed fuel/deadline bound while allowing their validated source export.
+    vm_fuel=100000000;vm_timeout=5000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
     vm_jit_enabled=1;vm_jit_explicit=0;vm_jit_threshold=1;
     if !vm_initialize() {fail("cannot initialize transformation VM");}return 0;
 }
@@ -104,7 +106,13 @@ fn tx_child(fd,path,config,request_module,phase) {
         let input=vm_allocate(size);if input<0 {fail("transformation context exceeds guest memory");}
         net_copy(vm_address(input,size),snapshot,size);vm_push(input);vm_push(1);
         vm_deadline=vm_now()+vm_timeout;vm_execute(entry);
-        if vm_error || vm_depth {fail("transformation execution failed (trap, capability, budget or early exit)");}
+        if vm_error || vm_depth {
+            if vm_error==1{fail("transformation execution failed: instruction budget exhausted");}
+            if vm_error==3{fail("transformation execution failed: guest memory access out of bounds");}
+            if vm_error==7{fail("transformation execution failed: output limit exceeded");}
+            if vm_error==8{fail("transformation execution failed: execution deadline exceeded");}
+            fail("transformation execution failed (trap, capability, budget or early exit)");
+        }
         result=vm_address(vm_acc,32);if !result {fail("transformation returned an invalid result pointer");}
         let bytes=load64(result+8);if bytes<32 || bytes>16787488 {fail("transformation returned an invalid result size");}
         result=vm_address(vm_acc,bytes);if !result {fail("transformation result exceeds guest memory");}

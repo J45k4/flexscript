@@ -16,6 +16,11 @@ fn ui_compiled_node(kind,key,text,template,flags) {
     let node=ui_node(kind,key,text);store64(node+104,template);store64(node+112,flags&5);
     if flags&1 {ui_item_add(ui_compiled_bindings,node);}if flags&2 {ui_compiled_mark(node);}return node;
 }
+// Immutable compile-time properties, encoded as name/value NUL pairs. Keep
+// insertion order identical to individual ui_attribute calls for patch indexes.
+fn ui_compiled_attributes(node,properties) {
+    while load8(properties) {let name=properties;properties=properties+m_len(properties)+1;let value=properties;properties=properties+m_len(properties)+1;ui_attribute(node,name,value);}return node;
+}
 fn ui_compiled_snapshot(root) {store64(root+120,ui_compiled_bindings);store64(root+128,ui_compiled_roots);return root;}
 fn ui_compiled_same(node,index) {
     let other=ui_find(index,load64(node+8));return other && load64(other+104)==load64(node+104);

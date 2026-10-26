@@ -1,0 +1,18 @@
+import "../lib/json.flex";
+import "../guest/runtime.flex";
+import "../guest/nfc.flex";
+fn nibble(c){if c>=48 && c<=57{return c-48;}if c>=97 && c<=102{return c-87;}return -1;}
+fn bytes(hex){let n=h_len(hex)/2;let p=alloc(n);let i=0;while i<n{let a=nibble(load8(hex+i*2));let b=nibble(load8(hex+i*2+1));h_assert(a>=0 && b>=0,"fixture hex");store8(p+i,a*16+b);i=i+1;}return db_blob(p,n);}
+fn equal(a,b){if db_kind(a)!=3 || db_kind(b)!=3 || db_bytes(a)!=db_bytes(b){return 0;}let i=0;while i<db_bytes(a){if load8(db_word(a)+i)!=load8(db_word(b)+i){return 0;}i=i+1;}return 1;}
+fn rejects(hex){h_assert(!ndef_parse(bytes(hex)),"malformed NDEF rejected");h_assert(db_last_error_details && db_word(db_at(db_last_error_details,0)),"actionable NDEF error");return 0;}
+fn main(){
+    let empty=db_blob("",0);let records=db_list();db_add(records,ndef_record(1,db_blob("T",1),empty,bytes("02656e68656c6c6f")));let encoded=ndef_encode(records);h_assert(equal(encoded,bytes("d101085402656e68656c6c6f")),"NFC Forum text record wire vector");let parsed=ndef_parse(encoded);h_assert(db_count(parsed)==1 && db_word(db_at(db_at(parsed,0),0))==1 && equal(db_at(db_at(parsed,0),3),bytes("02656e68656c6c6f")),"text record decoded");
+    records=db_list();db_add(records,ndef_record(0,empty,empty,empty));db_add(records,ndef_record(5,empty,empty,bytes("00ff81")));h_assert(equal(ndef_encode(records),bytes("90000055000300ff81")),"message flags and binary unknown record");
+    let payload=alloc(32763);let i=0;while i<32763{store8(payload+i,i%256);i=i+1;}records=db_list();db_add(records,ndef_record(2,db_blob("application/octet-stream",24),bytes("00ff"),db_blob(payload,300)));encoded=ndef_encode(records);h_assert(db_bytes(encoded)==333 && load8(db_word(encoded))==0xca && load8(db_word(encoded)+4)==1 && load8(db_word(encoded)+5)==44 && load8(db_word(encoded)+6)==2,"long payload big-endian length and ID flag");parsed=ndef_parse(encoded);h_assert(equal(db_at(db_at(parsed,0),2),bytes("00ff")) && equal(db_at(db_at(parsed,0),3),db_blob(payload,300)),"long binary payload and ID survive parsing");h_assert(equal(ndef_encode(parsed),encoded),"canonical round trip");
+    parsed=ndef_parse(bytes("b201034d6162635600026465"));h_assert(db_count(parsed)==1 && equal(db_at(db_at(parsed,0),3),db_blob("abcde",5)),"chunk continuation reassembles payload");h_assert(equal(ndef_encode(parsed),bytes("d201054d6162636465")),"chunked record normalizes to canonical message");
+    parsed=ndef_parse(bytes("ba0103024d00ff6162635600026465"));h_assert(equal(db_at(db_at(parsed,0),2),bytes("00ff")) && equal(db_at(db_at(parsed,0),3),db_blob("abcde",5)),"first chunk retains its binary ID");
+    rejects("");rejects("d10108540265");rejects("d101085402656e68656c6c6f00");rejects("51010054");rejects("91010054");rejects("f1010054");rejects("d60000");rejects("d0000101");rejects("d5010054");rejects("c101ffffffff54");rejects("d90100");rejects("b201014d615e000162");
+    h_assert(!ndef_record(0,empty,empty,db_blob("x",1)),"empty TNF validation");h_assert(!ndef_record(5,db_blob("x",1),empty,empty),"unknown TNF validation");h_assert(!ndef_encode(db_list()),"empty message validation");
+    records=db_list();db_add(records,ndef_record(5,empty,empty,db_blob(payload,32762)));encoded=ndef_encode(records);h_assert(db_bytes(encoded)==32768 && equal(db_at(db_at(ndef_parse(encoded),0),3),db_blob(payload,32762)),"complete32KiB boundary message");records=db_list();db_add(records,ndef_record(5,empty,empty,db_blob(payload,32763)));h_assert(!ndef_encode(records),"oversized total message rejected before allocation");
+    h_print(1,"PASS portable NDEF: independent wire vectors, binary IDs, short/long lengths, chunks, malformed messages and full32KiB bounds\n");return 0;
+}

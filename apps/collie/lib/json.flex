@@ -49,8 +49,8 @@ fn c_json_value() {
             while c_json_digit(load8(j_source+j_offset)) {j_offset=j_offset+1;}
         }
         if raw {
-            // Kind 6 is opaque numeric metadata. It never enters model input
-            // or transcripts; the harness only emits its own integer values.
+            // Kind 6 retains exact numeric text without floating conversion;
+            // the shared writer validates the token before emitting it.
             result=j_node(6,h_slice(j_source+start,j_offset-start));
         }else {
             let number=h_number(h_slice(j_source+digits,count));

@@ -1,6 +1,7 @@
 import "components.flex";
 fn cu_activity(card){let k=cj_text(card,"kind");return h_equal(k,"thinking") || h_equal(k,"source") || h_equal(k,"result") || h_equal(k,"worker_result") || h_equal(k,"progress") || h_equal(k,"feedback");}
-fn cu_live_activity(live){return j_count(cu_array(live,"summaries")) || h_len(cj_text(live,"source")) || h_len(cj_text(live,"feedback"));}
+fn cu_live_activity(live){return cj_int(live,"active") || j_count(cu_array(live,"summaries")) || h_len(cj_text(live,"source")) || h_len(cj_text(live,"feedback"));}
+fn cu_chat_live(){let live=cu_copy(cj_get(cu_state,"live"));if cu_n("busy"){j_set(live,"active",j_int(1));j_set(live,"status",j_string(cu_s("status")));}return live;}
 fn cu_panel(entries,prefix,turn,latest){let p=j_object();j_set(p,"kind",j_string("panel"));j_set(p,"key",j_string(cu_k(m_cat(prefix,"thinking-"),turn)));j_set(p,"latest",j_string(latest));j_set(p,"items",j_array());j_push(entries,p);return p;}
 fn cu_timeline_items(cards,start,limit,live,prefix){
     let entries=j_array();let turn=0;let latest="";let panel=0;let i=0;
@@ -21,7 +22,7 @@ fn cu_timeline_items(cards,start,limit,live,prefix){
 }
 fn cu_thinking_description(key){if cu_expanded(cu_key(key,"-toggle")){return "Collapse thinking";}return "Expand thinking";}
 fn cu_thinking_chevron(key){if cu_expanded(cu_key(key,"-toggle")){return "⌄";}return "›";}
-fn cu_thinking_preview(panel){let text=cj_text(panel,"latest");if h_len(text){return cu_clip(h_trim(text),240);}if cu_live_activity(cj_get(panel,"live")){return "Working…";}return "Flexscript activity";}
+fn cu_thinking_preview(panel){let text=cj_text(panel,"latest");if h_len(text){return cu_clip(h_trim(text),240);}let live=cj_get(panel,"live");if cj_int(live,"active"){if h_len(cj_text(live,"status")){return cj_text(live,"status");}if h_len(cj_text(live,"text")){return "Writing reply…";}return "Waiting for the model…";}if cu_live_activity(live){return "Working…";}return "Flexscript activity";}
 view cu_activity_card(key,card){
     column(cu_key(key,"-activity"),gap:8){
     if h_equal(cj_text(card,"kind"),"thinking"){
@@ -37,6 +38,9 @@ view cu_thinking_panel(panel){
             text(cu_key(key,"-preview"),text:preview,runs:cu_text_runs(preview),size:13,color:"#8e9d9f",max_lines:2,line_height:3);
         }
         if cu_expanded(cu_key(key,"-toggle")){
+            if cj_int(live,"active") && !j_count(cu_array(live,"summaries")) && !h_len(cj_text(live,"source")) && !h_len(cj_text(live,"feedback")) && !h_len(cj_text(panel,"latest")){
+                text(cu_key(key,"-waiting"),text:"The model has not sent a public summary yet.",selectable:1,size:13,color:"#a4b2b5");
+            }
             each row in cu_items(cu_array(panel,"items")){use cu_activity_card(cj_text(row,"key"),j_need(row,"card"));}
             each index in cu_indices(cu_array(live,"summaries"),0,128){
                 let text=cj_text(j_at(cu_array(live,"summaries"),index),"text");

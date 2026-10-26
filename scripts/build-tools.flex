@@ -50,6 +50,13 @@ fn main(argc,argv) {
     h_add(names,"test-todo");
     h_add(names,"test-http");
     h_add(names,"build-collie");
+    h_add(names,"build-collie-android");
+    h_add(names,"build-collie-ui-probe");
+    h_add(names,"test-host-zip");
+    h_add(names,"test-collie-android-dependencies");
+    h_add(names,"test-collie-android-packaging");
+    h_add(names,"test-collie-core");
+    h_add(names,"test-collie-thinking");
     h_add(names,"test-collie");
     h_add(names,"test-harness");
     h_add(names,"install");

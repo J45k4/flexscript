@@ -10,19 +10,74 @@ external compiler executable, Python runtime, Gradle dependency or NDK sysroot.
 
 ## Build and install
 
-Requirements: a current native Flexscript compiler, Clang/LLD, JDK 17, Android
+Requirements: a current native Flexscript compiler, Clang/LLD, JDK 17+, Android
 SDK platform 36 and Build Tools 36.1.0. The compiler must include ARM64 indirect
 integer calls from this change; rebuild it from `compiler/main.flex` first.
+Full APK builds also use the public Android NDK headers and `libandroid` link
+interface for a small HardwareBuffer CPU-read bridge. Install SDK package
+`ndk;27.3.13750724`, set `ANDROID_NDK_HOME`, or pass `--ndk /path/to/ndk`.
+The existing compiler/VM and `--native-only` QEMU builds remain freestanding
+and require no NDK. The APK uses Android's system `libandroid.so`; it does not
+bundle the NDK or an extra runtime.
 
 From the repository root:
 
 ```sh
 build/stage2 compiler/main.flex -o build/flex-collie-android
-python3 scripts/build-collie-android.py --compiler build/flex-collie-android \
+mkdir -p build/tools
+build/flex-collie-android scripts/build-collie-android.flex -o build/tools/build-collie-android
+build/tools/build-collie-android --compiler build/flex-collie-android \
   --java-home /path/to/jdk-17 --sdk /opt/android-sdk --out build/android-collie
 adb -s DEVICE_SERIAL install --no-incremental -r build/android-collie/collie.apk
 adb -s DEVICE_SERIAL shell am start -n org.flexscript.collie/.MainActivity
 ```
+
+The builder, shared source assembler, pinned SDK dependency preparation and
+ZIP/JAR/APK handling are Flexscript. Host compression uses system zlib and pin
+verification uses OpenSSL 3; `curl` is used only for missing pinned libraries.
+The Python build/dependency/packaging drivers have been replaced, with no Python
+launcher or generated Python program in the build path.
+
+`--offline` requires every dependency to be present and size/hash-correct in
+`build/android-dependency-cache` (or `--cache DIR`). `--prepare-dependencies`
+validates/extracts the SDK graph without compiling an APK. `--generate-only`
+exports `engine-generated.flex` and `ui-generated.flex` for other native hosts;
+the shared source ABI stays the same. `--native-only` builds the freestanding
+ARM64 engine/UI and QEMU test binaries without an Android SDK, NDK, JDK or
+dependency download. Output directories must be separate from source trees and
+Git worktree roots. The tools also accept `--root DIR` outside the checkout.
+
+Native checks can be compiled with the same compiler:
+
+```sh
+build/flex-collie-android scripts/test-host-zip.flex -o build/test-host-zip
+build/test-host-zip
+build/flex-collie-android scripts/test-collie-android-dependencies.flex -o build/test-android-dependencies
+build/test-android-dependencies --cache build/android-dependency-cache
+build/flex-collie-android scripts/test-collie-android-packaging.flex -o build/test-android-packaging
+build/test-android-packaging --debug build/android-debug/collie.apk --release build/android-release/collie.apk
+```
+
+The dependency test's default synthetic-fixture mode is offline and needs no
+SDK cache. `--cache` additionally verifies the complete pinned upstream graph.
+The APK checker reads actual DEX class definitions (including nested fixture
+classes), compiled service/consent metadata, the pinned dependency manifest and
+debug/release isolation. The separate UI probe also builds with
+`scripts/build-collie-ui-probe.flex`. Older Python device-test runners are being
+migrated separately; external Bluetooth simulation uses host-side Bumble.
+
+Tooling migration checklist:
+
+- [x] Android build, shared source assembly, dependency preparation and APK checks in Flexscript.
+- [x] Core/scheduler/provider and thinking-summary checks use `scripts/lib/collie-test.flex` with fresh ARM64 processes; core checks also support the native shared-core host.
+- [ ] Move remaining worker, signal, recall, permission and emulator scenario drivers onto shared Flexscript test helpers while preserving their assertions and cleanup.
+- [ ] Consolidate the external Bumble peer bindings into the smallest necessary host boundary.
+
+Keep new first-party tooling in Flexscript. Python is not an APK dependency;
+remaining Python files are host tests or external peer integrations. Replacing a
+driver means porting its behavior and checks, rather than adding a launcher in
+another language. The runtime boundary remains Android SDK/JNI calls in Java/C,
+with portable policy, protocols and agent behavior in Flexscript.
 
 The application is named **Collie**, package `org.flexscript.collie`, ABI
 `arm64-v8a`, minimum Android 8/API 26, target API 36. This initial build uses a
@@ -49,17 +104,37 @@ workspace; **Conversations** reopens one. Context shows tokens, with
 shared Codex checkpoint protocol and desktop limits (272,000 raw; 258,400 usable;
 244,800 automatic compaction threshold for the default model).
 
-Open **Menu → Permissions** to control the agent's access for the current
-conversation. Seven independent switches grant internet access, workspace file
-reads, workspace file writes, database reads, database writes, and archived
-message access, and workers/model feedback. Settings save immediately and survive restart/resume. New and
-older conversations default to the existing enabled capabilities; changing one
-conversation does not affect another. The model receives the current grants in
-each request, and the native VM broker enforces them on every capability call.
-Denied operations return 0 with `db_error()` set to `Permission denied: NAME`.
-Computation/stdout/progress still work when all seven are off. The internet switch controls
-guest HTTPS requests; it does not disable Collie's model connection. Revoking
-access does not remove data already present in model context or chat history.
+Open **Menu → Permissions** to choose **Ask / Allow / Deny** independently for
+internet, workspace file reads/writes, database reads/writes, archived messages,
+workers/model feedback, and each exposed hardware family. Cellular diagnostics
+and Location have independent gates; Android asks separately for phone-state or
+precise-location permission on first use. New conversations start at **Ask**; existing explicit
+boolean grants are preserved. Partial or malformed stored policies fail closed.
+
+The first actual capability call pauses before doing its work and displays an
+access request. **Allow** or **Deny** saves the decision for this conversation and
+its workers, then resumes the original VM call. Denial returns 0 with `db_error()`
+set to `Permission denied: NAME`. **Stop this task** cancels without changing the
+grant. Settings and pending checkpoints survive restart; completed instructions
+and side effects are never replayed. Permission requests share the existing
+32-signal budget with progress and feedback. Commit or roll back a database
+transaction before invoking a capability that might need approval; an open
+transaction returns an actionable error rather than suspending unsafely.
+
+Computation/stdout/progress need no approval. The internet policy controls guest
+HTTPS requests; Collie's model connection remains available. Revoking access
+does not remove data already present in model context or chat history. Requests
+from workers use the same conversation grants; approving one prevents duplicate
+prompts for that capability in other queued workers.
+
+Policy normalization, broker gates, checkpoint transitions, prompt content and
+all permission UI live in Flexscript. Android only queues requests, delivers UI
+events and persists decisions. Android runtime and per-device USB permissions
+are requested at first use, after Collie approval, without holding the VM lock.
+Hardware features are optional in the manifest. The current adapter inventory,
+API limits and emulator/device verification status are tracked in
+[HARDWARE.md](HARDWARE.md); permission entries do not imply that every proposed
+adapter is implemented.
 
 ## Storage and execution
 
@@ -136,8 +211,10 @@ The preloaded Android filesystem API is:
 Use `db_error()` for failures. Paths are relative to the session's `files/`
 root, whether or not they begin with `/`. Parent traversal, symlinks, devices and
 other app/host files are denied. Credentials and raw database/session files
-are outside that capability. This version has no shared-storage folder picker,
-USB capability or Android UI API for programs.
+are outside that capability. Persisted shared-storage tree access and a guest
+Android UI API remain pending. USB primitives, Flexscript serial drivers,
+cellular diagnostics, Wi-Fi scans/leases/suggestions/hotspots, DNS-SD, raw VPN
+transport and other hardware functions are documented in [HARDWARE.md](HARDWARE.md).
 
 Programs have bounded internet access using the preloaded `http_get(url)`:
 
@@ -249,7 +326,7 @@ intent hooks.
 ```sh
 /opt/android-sdk/emulator/emulator -avd Pixel_9_API_36 -read-only \
   -no-window -no-snapshot -no-boot-anim -no-audio -gpu swiftshader -port 5580
-python3 scripts/build-collie-android.py --compiler build/flex-collie-android \
+build/tools/build-collie-android --compiler build/flex-collie-android \
   --java-home /path/to/jdk-17 --out build/android-collie --debug
 python3 scripts/test-collie-android.py --out build/android-collie \
   --serial emulator-5580
@@ -463,7 +540,8 @@ standalone Linux test host imports the exact same source modules directly:
 
 ```sh
 build/flex-collie-workers apps/collie/tests/shared-core.flex -o build/test-collie-shared-core
-python3 scripts/test-collie-core.py --out build/android-collie-core \
+build/flex-collie-workers scripts/test-collie-core.flex -o build/test-collie-core
+build/test-collie-core --out build/android-collie-core \
   --core-driver build/test-collie-shared-core
 ```
 
@@ -563,7 +641,8 @@ path with a delay between events; it does not fabricate summary text in the UI.
 The native and headless Android checks use synthetic provider replies:
 
 ```sh
-python3 scripts/test-collie-thinking.py --out build/android-agent-signals
+build/flex-collie-signals scripts/test-collie-thinking.flex -o build/test-collie-thinking
+build/test-collie-thinking --out build/android-agent-signals
 python3 scripts/test-collie-ui.py --compiler build/flex-collie-signals \
   --out build/android-agent-signals
 python3 scripts/test-collie-thinking-android.py --out build/android-agent-signals \
@@ -618,3 +697,18 @@ python3 scripts/test-collie-signals.py --out build/android-agent-signals
 python3 scripts/test-collie-signals-android.py --out build/android-agent-signals \
   --serial emulator-5580
 ```
+
+## Lazy-permission verification
+
+```sh
+python3 scripts/test-collie-lazy-permissions.py --out build/android-collie
+python3 scripts/test-collie-lazy-permissions-android.py --out build/android-collie \
+  --serial emulator-5580
+```
+
+The native suite covers every first-use gate, denial, nested frame restoration,
+restart, cancellation, worker inheritance, saved-policy compatibility and open
+transactions. The emulator suite uses synthetic model responses, taps the actual
+shared permission UI and verifies files and saved conversation state.
+
+The detailed hardware API reference lives in [guest/hardware-api.txt](../guest/hardware-api.txt). The build appends this text to the generated function catalog; it is not Python program logic. Programs read it through `hardware_api_page(offset,limit)` without device grants. The full implementation and verification checklist is [HARDWARE.md](HARDWARE.md).

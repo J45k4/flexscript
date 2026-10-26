@@ -72,6 +72,8 @@ public final class UiRendererChecks {
                 state[0]=initial.getJSONObject("state");live[0].apply(initial);
                 EditText search=(EditText)live[0].widget("conversations-query");search.requestFocus();
                 android.text.method.KeyListener keys=search.getKeyListener();int type=search.getInputType();
+                int capFlags=android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS|android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS;
+                check((type&capFlags)==0,"shared search input unexpectedly capitalizes identifiers");
                 for(int code=android.view.KeyEvent.KEYCODE_A;code<=android.view.KeyEvent.KEYCODE_C;code++) {
                     search.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,code));
                     search.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,code));
@@ -80,6 +82,8 @@ public final class UiRendererChecks {
                 }
                 check(search.getText().toString().equals("abc"),"controlled echo lost keyboard input: "+search.getText());
                 check(state[0].getString("query").equals("abc"),"shared reducer lost editor state");
+                JSONObject chat=((MainActivity)owner).uiCall(new JSONObject().put("state",state[0]).put("action","update").put("data",new JSONObject().put("page","chat")));live[0].apply(chat);
+                EditText composer=(EditText)live[0].widget("composer-draft");check((composer.getInputType()&capFlags)==android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,"shared chat input lost its declared sentence-capitalization hint");
             } finally {mount.removeView(live[0]);}
             return new JSONObject().put("ok",true).put("checks",11);
         } finally { mount.removeView(ui); }

@@ -1,0 +1,1 @@
+The previous Python host is retained only as a test oracle for the established desktop behavior. Production Collie never imports or starts these files. Native controller coverage is in `scripts/test-collie-native.py` and `scripts/test-collie-native-platform.py`.

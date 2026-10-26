@@ -23,6 +23,7 @@ original=next(n.text for n in prefs if n.get('name')=='session')
 before=json.loads(adb('exec-out','run-as',PKG,'cat','files/workspaces/'+original+'/session.json').stdout)
 sid='net-check-'+str(int(time.time()))
 def case(name,request,timeout=120):
+ request.setdefault('initial_permissions',dict.fromkeys(['internet','files_read','files_write','db_read','db_write','history','workers'],True))
  names.append(name);path='files/test/'+name
  request['session']=request.get('session',sid)
  adb('shell','run-as',PKG,'mkdir','-p','files/test')

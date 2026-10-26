@@ -13,6 +13,13 @@ int ui_fixture_text(unsigned window, const char *text) {
     event.text.windowID=window; strcpy(event.text.text,text);
     pending[write_at++ % 128]=event; return 1;
 }
+int ui_fixture_push_key(unsigned window,int code) {
+    void *sdl=dlopen("libSDL2-2.0.so.0",RTLD_NOW);
+    int (*push)(SDL_Event *)=dlsym(sdl,"SDL_PushEvent");
+    SDL_Event event;memset(&event,0,sizeof(event));event.type=SDL_KEYDOWN;
+    event.key.windowID=window;event.key.keysym.scancode=code;
+    int result=push ? push(&event) : -1;dlclose(sdl);return result;
+}
 int ui_fixture_native(SDL_Window *window,int x,int y,int send) {
     void *sdl=dlopen("libSDL2-2.0.so.0",RTLD_NOW), *x11=dlopen("libX11.so.6",RTLD_NOW);
     SDL_bool (*info_fn)(SDL_Window *,SDL_SysWMinfo *)=dlsym(sdl,"SDL_GetWindowWMInfo");

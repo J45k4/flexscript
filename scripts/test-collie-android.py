@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test the actual shared Android compiler/VM/provider/DB under QEMU and ADB.
 
-Build first with scripts/build-collie-android.py. Optional --serial tests the
+Build first with build/tools/build-collie-android. Optional --serial tests the
 ARM64 APK in an explicitly selected (headless) emulator/device. --auth imports
 an existing ChatGPT auth.json directly into private app storage for a live turn;
 credentials are never included in this script's reports or guest filesystem.
@@ -169,6 +169,7 @@ def main():
             device('shell','run-as',pkg,'sh','-c',"'umask 077; cat > "+path+"'",data=data)
         def read(path,check=False):return device('exec-out','run-as',pkg,'cat',path,check=check)
         def case(name,request,timeout=150):
+            request.setdefault('initial_permissions',dict.fromkeys(['internet','files_read','files_write','db_read','db_write','history','workers'],True))
             device('shell','am','force-stop',pkg)
             put('files/test/'+name+'.json',json.dumps(request).encode())
             device('shell','run-as',pkg,'rm','-f','files/test/'+name+'.result.json')
