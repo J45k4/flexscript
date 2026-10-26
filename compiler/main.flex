@@ -28,6 +28,7 @@ import "native-branches.flex";
 import "native-ir.flex";
 import "extensions.flex";
 import "transforms.flex";
+import "gpu-codeobject.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
@@ -1969,11 +1970,12 @@ fn main(argc, argv) {
             print(1, "flexscript "); print(1, compiler_version()); print(1, "\n"); return 0;
         }
         if equal(arg, length(arg), "--help", 6) {
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1,"Offline GPU output: --target hip --emit code-object --gpu-arch gfx... [--rocm-root PATH]\n");
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--native-literals writable|shared] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
-    let target_seen=0;let lowering_mode_seen=0;let keep_unused_seen=0;let native_pipeline_seen=0;
+    let target_seen=0;let lowering_mode_seen=0;let keep_unused_seen=0;let native_pipeline_seen=0;let native_literals_seen=0;
     while first<argc && load8(load64(argv+first*8))==45 {
         let arg=load64(argv+first*8);if first+1>=argc {print(2,"compiler option needs a value\n");return 1;}
         let value=load64(argv+(first+1)*8);
@@ -1998,6 +2000,9 @@ fn main(argc, argv) {
             else if up_text(value,"ir") {frontend_ir_target=1;}
             else {print(2,"unknown compiler target\n");return 1;}
         }else if up_text(arg,"--language") {frontend_select(value);}
+        else if up_text(arg,"--emit") {if gc_emit {fail("choose only one emission format");}if up_text(value,"code-object") {gc_emit=1;}else if up_text(value,"source") {gc_emit=2;}else {fail("expected source or code-object emission");}}
+        else if up_text(arg,"--gpu-arch") {if gc_arch {fail("choose only one GPU architecture");}gc_arch=value;}
+        else if up_text(arg,"--rocm-root") {if gc_rocm {fail("choose only one ROCm root");}gc_rocm=value;}
         else if up_text(arg,"--frontend") {frontend_external(value);}
         else if up_text(arg,"--platform") || up_text(arg,"--esp32-platform") {frontend_platform_add(value);}
         else if up_text(arg,"--lowering-mode") {
@@ -2019,6 +2024,7 @@ fn main(argc, argv) {
         }
         else if up_text(arg,"--ir-opt") {ir_opt_select(value);}
         else if up_text(arg,"--native-pipeline") {if native_pipeline_seen {fail("choose only one native pipeline");}native_pipeline_seen=1;if up_text(value,"ir") {native_pipeline_ir=1;}else if up_text(value,"direct") {native_pipeline_ir=0;}else {fail("expected ir or direct native pipeline");}}
+        else if up_text(arg,"--native-literals") {if native_literals_seen {fail("choose only one native literal mode");}native_literals_seen=1;if up_text(value,"writable") {ni_literal_shared=0;}else if up_text(value,"shared") {ni_literal_shared=1;}else {fail("expected writable or shared native literal mode");}}
         else {print(2,"unknown compiler option\n");return 1;}
         first=first+2;
     }
@@ -2028,6 +2034,7 @@ fn main(argc, argv) {
         print(2, "expected -o <binary>\n"); return 1;
     }
     source_path = load64(argv + first*8);
+    gc_options();
     frontend_auto(source_path);
     if shader_target && frontend_language!=1 {fail("shader targets require SetaScript source");}
     if word_io_buffered && (arm64_target || wasm_target || shader_target || ptx_target || sass_target || hip_target || baremetal_target || esp32_target || rv_target || frontend_ir_target || cpu_cxx_target || !frontend_language) {fail("buffered word I/O requires native FIR compilation");}
@@ -2036,6 +2043,7 @@ fn main(argc, argv) {
     if cpu_cxx_target && frontend_language {fail("CPU kernel backend currently requires Flexscript source");}
     if native_pipeline_seen && (vm_mode || shader_target || baremetal_target || frontend_ir_target || frontend_language) {fail("native pipeline requires native Linux Flexscript source output");}
     if keep_unused_seen && (vm_mode || shader_target || baremetal_target || frontend_ir_target || frontend_language) {fail("native link mode requires native Linux Flexscript source output");}
+    if native_literals_seen && (!native_pipeline_ir || vm_mode || shader_target || baremetal_target || frontend_ir_target || frontend_language) {fail("native literal mode requires the native Linux IR pipeline");}
     frontend_platform_check();
     if frontend_language {vm_mode=1;vm_restricted=1;vm_heap_limit=268435456;}
     let destination = load64(argv + (first+2)*8);
@@ -2069,29 +2077,14 @@ fn main(argc, argv) {
         else if cpu_cxx_target {cpu_cxx_finish();}
         else if frontend_language {ir_native();}
     }
+    if gc_emit==1 {return gc_compile(argc,argv,destination,output,output_size);}
     let stat = input_stat;
     // O_NOFOLLOW prevents writing through output symlinks. No output is opened
     // until the complete source has passed compilation and symbol resolution.
     let fd = syscall(2, destination, 131137, 493, 0, 0, 0);
     if fd < 0 { fail("cannot open output"); }
     if syscall(5, fd, stat, 0, 0, 0, 0) < 0 { fail("cannot stat output"); }
-    let i = 0;
-    while i < module_count {
-        let module = modules + i * 64;
-        if load64(stat) == load64(module + 24) && load64(stat + 8) == load64(module + 32) {
-            select_module(i); token_start = 0;
-            fail("source and output refer to the same file");
-        }
-        i = i + 1;
-    }
-    i=0;while i<frontend_input_count {
-        if load64(stat)==load64(frontend_inputs+i*16) && load64(stat+8)==load64(frontend_inputs+i*16+8) {fail("output refers to a frontend source file");}
-        i=i+1;
-    }
-    i=0;while i<tx_input_count {
-        if load64(stat)==load64(tx_inputs+i*16) && load64(stat+8)==load64(tx_inputs+i*16+8) {fail("output refers to a transformation source file");}
-        i=i+1;
-    }
+    compiler_output_check(stat);
     if syscall(77, fd, 0, 0, 0, 0, 0) < 0 { fail("cannot truncate output"); }
     if !write_all(fd, output, output_size) { fail("cannot write output"); }
     let mode=493;if a64_object || wasm_target || shader_target || ptx_target || sass_target || hip_target || esp32_target || rv_target || frontend_ir_target || cpu_cxx_target {mode=420;}

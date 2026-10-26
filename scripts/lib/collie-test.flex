@@ -6,21 +6,25 @@ global ct_qemu=0;
 global ct_config=0;
 global ct_checks=0;
 global ct_core_driver=0;
+global ct_desktop=0;
 fn ct_init(argc,argv){
     h_environment(argc,argv);let i=1;
     while i<argc{
-        let arg=load64(argv+i*8);h_assert(h_equal(arg,"--out")||h_equal(arg,"--core-driver")||h_equal(arg,"--qemu"),h_cat("Unknown option: ",arg));
-        i=i+1;h_assert(i<argc,"Test option needs a path");let value=h_real(load64(argv+i*8));if h_equal(arg,"--out"){ct_out=value;}else if h_equal(arg,"--qemu"){ct_qemu=value;}else{ct_core_driver=value;}i=i+1;
+        let arg=load64(argv+i*8);if h_equal(arg,"--desktop"){ct_desktop=1;i=i+1;}else{h_assert(h_equal(arg,"--out")||h_equal(arg,"--core-driver")||h_equal(arg,"--qemu"),h_cat("Unknown option: ",arg));
+        i=i+1;h_assert(i<argc,"Test option needs a path");let value=h_real(load64(argv+i*8));if h_equal(arg,"--out"){ct_out=value;}else if h_equal(arg,"--qemu"){ct_qemu=value;}else{ct_core_driver=value;}i=i+1;}
     }
     h_assert(ct_out,"Provide --out with a built Android engine directory");
+    if ct_desktop{h_assert(h_exists(h_join(ct_out,"engine")),"Missing desktop engine binary");}else{
     h_assert(h_exists(h_join(ct_out,"native-test")),"Missing ARM64 native-test binary");
     if !ct_qemu{ct_qemu=h_executable("qemu-aarch64-static");if syscall(21,ct_qemu,1,0,0,0,0)!=0{ct_qemu=h_executable("qemu-aarch64");}}
     h_assert(syscall(21,ct_qemu,1,0,0,0,0)==0,"ARM64 QEMU is required");
+    }
     h_timeout=40000;ct_root=h_temp();h_mkdir(h_join(ct_root,"files"));
     ct_config=j_object();j_set(ct_config,"workspace_file",j_string(h_join(ct_root,"agent.flexdb")));ct_checks=j_array();return 0;
 }
 fn ct_call(mode,request){
     let args=h_args(ct_qemu,h_join(ct_out,"native-test"),h_int(mode),ct_root,0,0);if ct_core_driver&&(mode==8||mode==9){args=h_args(ct_core_driver,h_int(mode),ct_root,0,0,0);}
+    else if ct_desktop{args=h_args(h_join(ct_out,"engine"),h_int(mode),ct_root,h_join(ct_out,"broker.so"),0,0);}
     let child=h_wait(h_spawn(args,j_dump(request),0));
     h_check(child,0,0);let result=c_json(h_out(child));h_assert(result && j_kind(result)==4,"Collie engine returned a non-object response");return result;
 }

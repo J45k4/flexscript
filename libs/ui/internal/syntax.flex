@@ -30,6 +30,16 @@ global sx_current_view=0;
 global sx_guard=0;
 global sx_guard_id=0;
 global sx_scratch=0;
+global sx_desktop=0;
+global sx_view_live=0;
+global sx_lower_live=1;
+global sx_constants=0;
+global sx_view_index=0;
+global sx_root_names=0;
+global sx_root_count=0;
+global sx_all_roots=0;
+global sx_source_export=0;
+global sx_target_test=0;
 fn sx_fail(message) {return ext_error_at(sx_module,sx_start,message);}
 fn sx_span(text,n) {let out=alloc(n+1);if out<0 {sx_fail("Monolith syntax allocation failed");}ext_copy(out,text,n);return out;}
 fn sx_cat(a,b) {let n=ext_len(a);let m=ext_len(b);let out=alloc(n+m+1);ext_copy(out,a,n);ext_copy(out+n,b,m);return out;}
@@ -115,10 +125,53 @@ fn sx_patch_call(buffer,helper,name,old,new) {
 // Expressions retain Flexscript source spans for the ordinary compiler to type/lower.
 fn sx_ast(kind,name,value,site) {let p=alloc(184);store64(p,kind);store64(p+16,sx_module);store64(p+24,site);store64(p+32,name);store64(p+40,value);return p;}
 fn sx_widget(name) {return ext_equal(name,"column") || ext_equal(name,"row") || ext_equal(name,"scroll") || ext_equal(name,"text") || ext_equal(name,"button") || ext_equal(name,"input") || ext_equal(name,"check") || ext_equal(name,"image") || ext_equal(name,"stack") || ext_equal(name,"hscroll") || ext_equal(name,"progress");}
-fn sx_numeric(name) {return ext_equal(name,"padding") || ext_equal(name,"padding_x") || ext_equal(name,"padding_y") || ext_equal(name,"gap") || ext_equal(name,"radius") || ext_equal(name,"border_width") || ext_equal(name,"size") || ext_equal(name,"weight") || ext_equal(name,"width") || ext_equal(name,"height") || ext_equal(name,"min_height") || ext_equal(name,"max_lines") || ext_equal(name,"min_lines") || ext_equal(name,"single_line") || ext_equal(name,"selectable") || ext_equal(name,"timestamp") || ext_equal(name,"zoom") || ext_equal(name,"progress") || ext_equal(name,"alpha") || ext_equal(name,"follow") || ext_equal(name,"line_height");}
-fn sx_property(name) {return sx_numeric(name) || ext_equal(name,"color") || ext_equal(name,"background") || ext_equal(name,"border_color") || ext_equal(name,"font") || ext_equal(name,"align") || ext_equal(name,"description") || ext_equal(name,"value") || ext_equal(name,"source") || ext_equal(name,"enabled") || ext_equal(name,"runs") || ext_equal(name,"hint_color") || ext_equal(name,"ime") || ext_equal(name,"autocapitalize") || ext_equal(name,"position");}
+fn sx_numeric(name) {return ext_equal(name,"padding") || ext_equal(name,"padding_x") || ext_equal(name,"padding_y") || ext_equal(name,"gap") || ext_equal(name,"radius") || ext_equal(name,"border_width") || ext_equal(name,"focus_border_width") || ext_equal(name,"focus_within") || ext_equal(name,"selection_scope") || ext_equal(name,"scrollbar_width") || ext_equal(name,"scrollbar_track") || ext_equal(name,"size") || ext_equal(name,"weight") || ext_equal(name,"width") || ext_equal(name,"height") || ext_equal(name,"min_height") || ext_equal(name,"max_lines") || ext_equal(name,"min_lines") || ext_equal(name,"single_line") || ext_equal(name,"selectable") || ext_equal(name,"timestamp") || ext_equal(name,"zoom") || ext_equal(name,"progress") || ext_equal(name,"alpha") || ext_equal(name,"follow") || ext_equal(name,"line_height");}
+fn sx_property(name) {return sx_numeric(name) || ext_equal(name,"color") || ext_equal(name,"background") || ext_equal(name,"border_color") || ext_equal(name,"focus_border_color") || ext_equal(name,"focus_background") || ext_equal(name,"font") || ext_equal(name,"align") || ext_equal(name,"description") || ext_equal(name,"value") || ext_equal(name,"source") || ext_equal(name,"enabled") || ext_equal(name,"runs") || ext_equal(name,"hint_color") || ext_equal(name,"ime") || ext_equal(name,"autocapitalize") || ext_equal(name,"position");}
 fn sx_action_name() {if sx_portable {return "action";}return "data-action";}
 fn sx_id_helper() {if sx_portable {return "uv_compiled_id(b,key,";}return "ui_compiled_id(b,key,";}
+fn sx_static_attribute(name,value) {
+    if sx_numeric(name) || ext_equal(name,"enabled") {
+        let i=0;let negative=load8(value)==45;if negative {i=1;}let base=10;
+        if load8(value+i)==48 && load8(value+i+1)==120 {base=16;i=i+2;}let start=i;let n=0;
+        while load8(value+i) {let c=load8(value+i);let digit=-1;if c>=48 && c<=57 {digit=c-48;}if base==16 && c>=97 && c<=102 {digit=c-87;}if base==16 && c>=65 && c<=70 {digit=c-55;}if digit<0 || digit>=base || n>2147483647/base {return 0;}n=n*base+digit;if n>2147483647 {return 0;}i=i+1;}
+        if i==start {return 0;}if ext_equal(name,"enabled") {if n {return "true";}return "false";}if negative {n=-n;}return ext_number(n);
+    }
+    let n=ext_len(value);if n<2 || load8(value)!=34 {return 0;}let i=1;
+    while i<n-1 {if load8(value+i)==92 {i=i+1;if load8(value+i)==48 {return 0;}}i=i+1;}return sx_span(value+1,n-2);
+}
+fn sx_flush_attributes(node,properties) {
+    if load64(properties) {sx_put(sx_render,sx_cat("ui_compiled_attributes(",sx_cat(node,",\"")));sx_put_bytes(sx_render,properties+8,load64(properties));sx_put(sx_render,"\");\n");store64(properties,0);}return 0;
+}
+fn sx_prefix(text,prefix) {let n=ext_len(prefix);return ext_len(text)>=n && ext_equal(sx_span(text,n),prefix);}
+fn sx_desktop_prune(ast) {
+    if !ast || !sx_target_test {return 0;}
+    let test=sx_target_test;let negated=sx_cat("!",test);let yes_and=sx_cat(test," && ");let no_or=sx_cat(negated," || ");let yes_or=sx_cat(test," || ");
+    while ast {let kind=load64(ast);if kind==3 {
+        let condition=load64(ast+40);let known=0;let yes=0;
+        if ext_equal(condition,test) || ext_equal(condition,sx_cat("(",sx_cat(test,")"))) {known=1;yes=1;}
+        else if ext_equal(condition,negated) {known=1;}
+        else if sx_prefix(condition,yes_and) {store64(ast+40,condition+ext_len(yes_and));}
+        else if sx_prefix(condition,no_or) {store64(ast+40,condition+ext_len(no_or));}
+        else if sx_prefix(condition,yes_or) {known=1;yes=1;}
+        // Retain !guard() && ...: a following || may still make it true.
+        if known {let branch=load64(ast+56);if yes {branch=load64(ast+48);}store64(ast,7);store64(ast+48,branch);store64(ast+56,0);}
+    }if kind==1 || kind==3 || kind==4 || kind==6 || kind==7 {sx_desktop_prune(load64(ast+48));sx_desktop_prune(load64(ast+56));}ast=load64(ast+8);}return 0;
+}
+fn sx_live_view(name) {if !sx_letter(load8(name)) {return 0;}let slot=sx_key_hash(name)&255;let record=load64(sx_view_index+slot*8);while record {if ext_equal(name,load64(record)) {let at=(record-sx_names)/16*8;if !load64(sx_view_live+at) {store64(sx_view_live+at,1);return 1;}return 0;}slot=(slot+1)&255;record=load64(sx_view_index+slot*8);}return 0;}
+fn sx_note_root(name) {if sx_all_roots || !sx_letter(load8(name)) {return 0;}let slot=sx_key_hash(name);let old=load64(sx_root_names+slot*8);while old {if ext_equal(old,name) {return 0;}slot=(slot+1)&8191;old=load64(sx_root_names+slot*8);}if sx_root_count>=4096 {sx_all_roots=1;return 0;}store64(sx_root_names+slot*8,name);sx_root_count=sx_root_count+1;return 0;}
+fn sx_public_view(name) {if sx_all_roots {return 1;}let slot=sx_key_hash(name);let old=load64(sx_root_names+slot*8);while old {if ext_equal(old,name) {return 1;}slot=(slot+1)&8191;old=load64(sx_root_names+slot*8);}return 0;}
+fn sx_live_uses(ast) {
+    let changed=0;while ast {let kind=load64(ast);if kind==5 {changed=changed|sx_live_view(load64(ast+32));}
+        if kind==1 || kind==3 || kind==4 || kind==6 || kind==7 {changed=changed|sx_live_uses(load64(ast+48));changed=changed|sx_live_uses(load64(ast+56));}ast=load64(ast+8);
+    }return changed;
+}
+fn sx_desktop_views() {
+    let ast=sx_views;while ast {sx_desktop_prune(load64(ast+48));ast=load64(ast+8);}sx_live_view("app_view");
+    // A view called from ordinary Flexscript remains a public update root.
+    // Only component uses in eliminated desktop branches are omitted.
+    let root=0;while root<sx_name_count {if sx_public_view(load64(sx_names+root*16)) {store64(sx_view_live+root*8,1);}root=root+1;}
+    let changed=1;while changed {changed=0;ast=sx_views;while ast {let index=(load64(ast+168)-sx_names)/16;if load64(sx_view_live+index*8) {changed=changed|sx_live_uses(load64(ast+48));}ast=load64(ast+8);}}return 0;
+}
 fn sx_node(parent,structural,conditional,depth) {
     if sx_template_count>=1024 {sx_fail("Monolith template limit is 1024 nodes");}
     let site=sx_start;let kind=sx_ident();if sx_portable && !sx_widget(kind) {sx_fail("unknown portable UI widget");}sx_expect("(");let key=sx_expression(",",")");sx_key(key,conditional);
@@ -194,10 +247,10 @@ fn sx_block(parent,structural,conditional,depth) {
 fn sx_view() {
     let start=sx_start;sx_next();let name=sx_ident();if sx_name_count==128 {sx_fail("Monolith view limit is 128");}
     let i=0;while i<sx_name_count {if ext_equal(name,load64(sx_names+i*16)) {sx_fail("duplicate Monolith view name");}i=i+1;}
-    let record=sx_names+sx_name_count*16;store64(record,name);sx_name_count=sx_name_count+1;sx_current_view=record;sx_view_static=0;sx_repeat=0;
+    let record=sx_names+sx_name_count*16;store64(record,name);let hash=sx_key_hash(name)&255;while load64(sx_view_index+hash*8) {hash=(hash+1)&255;}store64(sx_view_index+hash*8,record);sx_name_count=sx_name_count+1;sx_current_view=record;sx_view_static=0;sx_repeat=0;
     if !sx_is("(") {sx_fail("Monolith view requires a parameter list");}let args=sx_expression("{",0);sx_expect("{");
     sx_roots=0;sx_key_count=0;sx_guard=0;sx_guard_id=0;let clear=0;while clear<8192 {store64(sx_keys+clear*8,0);clear=clear+1;}
-    let ast=sx_ast(6,name,args,start);store64(ast+48,sx_block(0,1,0,0));if sx_roots!=1 {sx_fail("Monolith view requires exactly one root element");}
+    let ast=sx_ast(6,name,args,start);store64(ast+168,record);store64(ast+48,sx_block(0,1,0,0));if sx_roots!=1 {sx_fail("Monolith view requires exactly one root element");}
     store64(record+8,sx_view_static);store64(ast+160,sx_end);sx_expect("}");
     if ext_equal(name,"app_view") {sx_has_app=1;}
     if sx_last_view {store64(sx_last_view+8,ast);}else {sx_views=ast;}sx_last_view=ast;return 0;
@@ -210,7 +263,8 @@ fn sx_lower_block(ast,parent) {
         else if kind==3 {
             sx_put(sx_render,sx_cat(sx_cat("if (",value),"){\n"));sx_lower_block(load64(ast+48),parent);sx_put(sx_render,"}\n");
             if load64(ast+56) {sx_put(sx_render,"else {\n");sx_lower_block(load64(ast+56),parent);sx_put(sx_render,"}\n");}
-        }else if kind==4 {
+        }else if kind==7 {sx_lower_block(load64(ast+48),parent);}
+        else if kind==4 {
             let list=sx_variable("_mono_items_");let index=sx_variable("_mono_index_");
             sx_put(sx_render,sx_cat(sx_cat("let ",list),sx_cat("=",sx_cat(value,";\n"))));
             sx_put(sx_render,sx_cat(sx_cat("let ",index),"=0;\n"));sx_put(sx_render,sx_cat(sx_cat("while ",index),sx_cat("<load64(",sx_cat(list,"){\n"))));
@@ -225,7 +279,7 @@ fn sx_lower_block(ast,parent) {
 }
 fn sx_lower_view(ast) {
     sx_module=load64(ast+16);sx_start=load64(ast+24);let name=load64(ast+32);let args=load64(ast+40);
-    store64(sx_render,0);sx_root=0;
+    store64(sx_render,0);sx_root=0;sx_lower_live=!sx_desktop || load64(sx_view_live+(load64(ast+168)-sx_names)/16*8);
     sx_put(sx_render,sx_cat(sx_cat("fn ",name),sx_cat(args,"{\n")));
     let app=ext_equal(name,"app_view");if app {sx_put(sx_render,"ui_compiled_begin();\n");}
     sx_lower_block(load64(ast+48),0);sx_put(sx_render,"return ");if app {sx_put(sx_render,"ui_compiled_snapshot(");}
@@ -241,9 +295,12 @@ fn sx_lower_node(ast,parent) {
     if parent {sx_put(sx_render,sx_cat(sx_cat(sx_cat("ui_add(",parent),","),sx_cat(node,");\n")));}
     else {sx_roots=sx_roots+1;sx_root=node;}
     let patch=sx_scratch;store64(patch,0);sx_put(patch,sx_cat(sx_cat("fn _mono_patch_",ext_number(template)),"(b,node,old){let key=load64(node+8);\n"));
-    let attr=0;let i=0;let action="0";let action_id="0";
+    let attr=0;let i=0;let action="0";let action_id="0";let packed=sx_constants;store64(packed,0);
     while i<count {
         let prop=props+i*24;let name=load64(prop);let value=load64(prop+8);let type=load64(prop+16);let dynamic=!sx_literal(value);
+        let constant=0;if sx_desktop && sx_portable && type==0 && !dynamic {constant=sx_static_attribute(name,value);}
+        if constant {sx_put(packed,name);sx_put(packed,"\\0");sx_put(packed,constant);sx_put(packed,"\\0");}
+        else {sx_flush_attributes(node,packed);}
         if sx_portable && type==0 && sx_numeric(name) {value=sx_cat("uv_number(",sx_cat(value,")"));}
         if sx_portable && type==0 && ext_equal(name,"enabled") {value=sx_cat("uv_boolean(",sx_cat(value,")"));}
         if type==2 {sx_put(sx_render,sx_cat(sx_cat("ui_class(",node),sx_cat(",",sx_cat(value,");\n"))));if dynamic {sx_patch_call(patch,"ui_compiled_string","class",sx_field("old",72),sx_field("node",72));}}
@@ -253,16 +310,16 @@ fn sx_lower_node(ast,parent) {
             let setter="ui_value(";if type==6 {setter="ui_hidden(";}sx_put(sx_render,sx_cat(sx_cat(setter,node),sx_cat(",",sx_cat(value,");\n"))));
             if dynamic {let op="hidden";if type==5 {op="checked";}let offset=24;if type==6 {offset=136;}sx_patch_call(patch,"ui_compiled_boolean",op,sx_field("old",offset),sx_field("node",offset));}
         }else if type==0 {
-            sx_put(sx_render,sx_cat(sx_cat("ui_attribute(",node),sx_cat(",",sx_cat(sx_quote(name),sx_cat(",",sx_cat(value,");\n"))))));
+            if !constant {sx_put(sx_render,sx_cat(sx_cat("ui_attribute(",node),sx_cat(",",sx_cat(sx_quote(name),sx_cat(",",sx_cat(value,");\n"))))));}
             if dynamic {sx_patch_call(patch,"ui_compiled_attribute",name,sx_attr_load("old",attributes-1-attr),sx_attr_load("node",attributes-1-attr));}attr=attr+1;
         }else if type==1 && dynamic {
             let op="text";if ext_equal(kind,"input") {op="placeholder";}if ext_equal(kind,"check") {op="label";}
             sx_patch_call(patch,"ui_compiled_string",op,sx_field("old",16),sx_field("node",16));
         }i=i+1;
     }
-    if has_action {sx_put(sx_render,sx_cat(sx_cat("ui_action(",node),sx_cat(",",sx_cat(action,sx_cat(",",sx_cat(action_id,");\n"))))));}
+    sx_flush_attributes(node,packed);if has_action {sx_put(sx_render,sx_cat(sx_cat("ui_action(",node),sx_cat(",",sx_cat(action,sx_cat(",",sx_cat(action_id,");\n"))))));}
     sx_put(patch,"return 0;}\n");
-    if flags&1 {store64(sx_templates+(template-1)*8,1);sx_put(sx_patches,sx_span(patch+8,load64(patch)));}
+    if (flags&1) && sx_lower_live {store64(sx_templates+(template-1)*8,1);sx_put(sx_patches,sx_span(patch+8,load64(patch)));}
     sx_lower_block(load64(ast+48),node);return 0;
 }
 fn sx_generate() {
@@ -284,7 +341,7 @@ fn sx_generate() {
     while i<sx_template_count {if load64(sx_templates+i*8) {let id=ext_number(i+1);sx_put(sx_patches,sx_cat(sx_cat("if template==",id),sx_cat(" {return _mono_patch_",sx_cat(id,"(b,node,old);}\n"))));}i=i+1;}
     sx_put(sx_patches,"return 0;}\nfn ui_compiled_diff(old,new,old_index,new_index){let b=m_buffer();m_text(b,\"[\");ui_compiled_structure(b,old,new,old_index,new_index);let bindings=load64(new+120);let i=0;while bindings && i<load64(bindings){let node=load64(bindings+8+i*8);let previous=ui_find(old_index,load64(node+8));if previous && load64(previous+104)==load64(node+104){ui_compiled_checks=ui_compiled_checks+1;_mono_patch_binding(b,node,previous);}i=i+1;}m_text(b,\"]\");return m_data(b); }\nfn mono_compiled_diff(old,new,old_index,new_index){return ui_compiled_diff(old,new,old_index,new_index); }\n");
     if ext_equal(ext_config(),"dump") {ext_print(sx_patches+8);}
-    let module=ext_request_module();if ext_equal(ext_config(),"source"){module=load64(sx_views+16);}
+    let module=ext_request_module();if sx_source_export {module=load64(sx_views+16);}
     ext_edit(module,ext_module_size(module),ext_module_size(module),sx_patches+8,load64(sx_patches));return 0;
 }
 // Optional source export for embedders that combine independently compiled modules.
@@ -314,20 +371,20 @@ fn sx_export() {
 }
 fn sx_transform(context,version,portable) {
     sx_portable=portable;sx_views=0;sx_last_view=0;
-    ext_init(context,version);sx_templates=alloc(1024*8);sx_names=alloc(256*16);sx_uses=alloc(2048*48);sx_patches=sx_buffer();sx_render=sx_buffer();sx_scratch=sx_buffer();sx_keys=alloc(8192*8);sx_template_count=0;sx_name_count=0;sx_use_count=0;sx_serial=0;sx_has_app=0;
+    ext_init(context,version);let config=ext_config();sx_source_export=ext_equal(config,"source") || ext_equal(config,"desktop-source") || sx_prefix(config,"desktop-source:");sx_desktop=portable && (ext_equal(config,"desktop") || ext_equal(config,"desktop-source") || sx_prefix(config,"desktop:") || sx_prefix(config,"desktop-source:"));sx_target_test=0;let guard=0;if sx_prefix(config,"desktop:") {guard=config+ext_len("desktop:");}else if sx_prefix(config,"desktop-source:") {guard=config+ext_len("desktop-source:");}if guard {if !sx_letter(load8(guard)) {ext_error("desktop profile requires a boolean guard function name");}let i=0;while load8(guard+i) {if !sx_word(load8(guard+i)) {ext_error("desktop profile requires a boolean guard function name");}i=i+1;}sx_target_test=sx_cat(guard,"()");}sx_view_live=alloc(128*8);sx_view_index=alloc(256*8);sx_root_names=alloc(8192*8);sx_root_count=0;sx_all_roots=0;sx_templates=alloc(1024*8);sx_names=alloc(256*16);sx_uses=alloc(2048*48);sx_patches=sx_buffer();sx_render=sx_buffer();sx_scratch=sx_buffer();sx_constants=sx_buffer();sx_keys=alloc(8192*8);sx_template_count=0;sx_name_count=0;sx_use_count=0;sx_serial=0;sx_has_app=0;
     sx_module=0;
     while sx_module<ext_module_count() {
-        sx_source=ext_module_text(sx_module);sx_size=ext_module_size(sx_module);sx_at=ext_module_declarations(sx_module);sx_next();let depth=0;
+        sx_source=ext_module_text(sx_module);sx_size=ext_module_size(sx_module);sx_at=ext_module_declarations(sx_module);sx_next();let depth=0;let ordinary=0;
         while ext_len(sx_token) {
             if !depth && sx_is("global") {sx_next();sx_expression(";",0);sx_expect(";");}
-            else if !depth && sx_is("fn") {while ext_len(sx_token) && !sx_is("{") {sx_next();}if sx_is("{") {depth=1;sx_next();}}
-            else if !depth && sx_is("view") {sx_view();}
-            else {if sx_is("{") {depth=depth+1;}else if sx_is("}") {depth=depth-1;}sx_next();}
+            else if !depth && sx_is("fn") {ordinary=1;while ext_len(sx_token) && !sx_is("{") {sx_next();}if sx_is("{") {depth=1;sx_next();}}
+            else if !depth && sx_is("view") {ordinary=0;sx_view();}
+            else {if sx_desktop && depth && ordinary {sx_note_root(sx_token);}if sx_is("{") {depth=depth+1;}else if sx_is("}") {depth=depth-1;}sx_next();}
         }
         sx_module=sx_module+1;
     }
     if !sx_name_count {return ext_finish();}
-    let ast=sx_views;while ast {sx_lower_view(ast);ast=load64(ast+8);}sx_generate();
+    if sx_desktop {sx_desktop_views();}let ast=sx_views;while ast {sx_lower_view(ast);ast=load64(ast+8);}sx_generate();
     // Route both normal invalidation and reconnect snapshots through the
     // generated patch program. Builder-only apps keep their existing differ.
     sx_module=0;
@@ -337,5 +394,5 @@ fn sx_transform(context,version,portable) {
             sx_source=ext_module_text(sx_module);sx_size=ext_module_size(sx_module);sx_at=ext_module_declarations(sx_module);sx_next();
             while ext_len(sx_token) {if sx_is("ui_diff") {ext_edit(sx_module,sx_start,sx_end,"mono_compiled_diff",18);}sx_next();}
         }sx_module=sx_module+1;
-    }if ext_equal(ext_config(),"source"){sx_export();}return ext_finish();
+    }if sx_source_export {sx_export();}return ext_finish();
 }

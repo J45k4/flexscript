@@ -1,6 +1,7 @@
 // Native Linux source pipeline: resolved/optimized word IR -> standalone ELF.
 // Opcode 28 is an internal static-address literal (length:offset). It is never
 // serialized as portable FIR or executed by the VM.
+import "native-literals.flex";
 global native_pipeline_ir=1;
 global native_ir_target=0;
 global ni_code=0;
@@ -75,10 +76,10 @@ fn ni_builtin(kind) {
     return ni_call(name,length(name),count);
 }
 fn ni_literal(arg) {
-    let offset=arg&4294967295;let count=arg>>32;let skip=jump(233);let address=output_size;let i=0;
-    while i<count {emit(load8(vm_heap+offset+i));i=i+1;}patch_jump(skip);emit(72);emit(141);emit(5);emit32(address-output_size-4);return 0;
+    return ni_literal_reference(arg);
 }
 fn ni_emit(start,end,arity) {
+    ni_literal_ref_count=ni_literal_ref_begin;
     ni_depth=0;ni_block=0;native_temp_epoch=0;native_binary_cached=0;ni_acc_begin=output_size;native_spill_slots=arity;
     let frame=native_frame(arity);let pc=start+16;let fixes=0;
     while pc<end {
@@ -121,6 +122,7 @@ fn ni_emit(start,end,arity) {
 }
 fn native_ir_finish() {
     ni_code=output;ni_size=output_size;let count=ni_size/16;
+    ni_literals_prepare();
     ni_entries=alloc(function_count*8);ni_live=alloc(function_count*8);ni_map=alloc((count+1)*8);ni_targets=alloc(count);ni_binary_push=alloc(count);ni_loops=alloc((count+1)*8);ni_stack=alloc(65536*32);ni_fixups=alloc(ni_size);
     if ni_entries<0 || ni_live<0 || ni_map<0 || ni_targets<0 || ni_binary_push<0 || ni_loops<0 || ni_stack<0 || ni_fixups<0 {fail("cannot allocate native source IR lowering");}
     let i=0;while i<function_count {store64(ni_entries+i*8,load64(functions+i*32+16));i=i+1;}
@@ -137,10 +139,10 @@ fn native_ir_finish() {
         if load64(ni_live+i*8) {
             let start=load64(ni_entries+i*8);let end=ni_size;if i+1<function_count {end=load64(ni_entries+(i+1)*8);}
             let arity=load64(f+24);slots=load64(ni_code+start+8);native_reg_begin();ni_analyze(start,end,arity);native_reg_replay=1;native_frame_hint=slots;
-            let beginning=output_size;let before_calls=call_count;native_branch_begin();ni_emit(start,end,arity);let original_end=output_size;let saved=native_branch_relax();
+            let beginning=output_size;ni_literal_ref_begin=ni_literal_ref_count;let before_calls=call_count;native_branch_begin();ni_emit(start,end,arity);let original_end=output_size;let saved=native_branch_relax();
             if saved {output_size=beginning;call_count=before_calls;ni_emit(start,end,arity);if output_size!=original_end-saved {fail("native IR branch replay differs");}}
             native_branch_end();native_register_frame=0;native_reg_replay=0;native_spill_slots=-1;native_spill_mask=-1;lowering_entry(f);
         }i=i+1;
     }
-    native_link_replay=0;resolve();return 0;
+    native_link_replay=0;ni_literals_finish();resolve();return 0;
 }

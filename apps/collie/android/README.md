@@ -84,11 +84,11 @@ Tooling migration checklist:
 - [ ] Port the separate legacy desktop PTY suite (`apps/collie/tests/tui.py`); it remains host-only and is still run in CI.
 
 Keep new first-party tooling in Flexscript. Python is not an APK dependency;
-remaining Collie Python is the legacy PTY suite and six external Bumble peer
-fixtures. Compiler/benchmark Python elsewhere in the repository is separate
-from Collie. Replacing a
-driver means porting its behavior and checks, rather than adding a launcher in
-another language. The runtime boundary remains Android SDK/JNI calls in Java/C,
+Android testing retains only the six external Bumble peer fixtures in Python.
+The desktop work has its own Python integration tests, including the legacy
+PTY suite, and compiler/benchmark Python elsewhere is separate from this
+Android migration. Replacing a driver means porting its behavior and checks,
+rather than adding a launcher in another language. The runtime boundary remains Android SDK/JNI calls in Java/C,
 with portable policy, protocols and agent behavior in Flexscript.
 
 Device runners require an explicitly selected `emulator-N` target and verify

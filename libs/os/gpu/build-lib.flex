@@ -59,9 +59,7 @@ fn gb_locked(compiler,directory,target,greedy) {
         if h_equal(j_s(cached,"digest"),digest) && h_equal(h_trim(h_read(metadata)),actual) {h_setenv("TMPDIR",previous);return output;}
     }
     if h_equal(target,"hip") {
-        let generated=h_join(directory,"resident.hip");h_ok(h_args(compiler,"--target","hip",source,"-o",generated));
-        let bundle=h_join(directory,"resident.bundle");let args=h_args("/opt/rocm/bin/hipcc","--genco","--offload-arch=gfx1201","-O3","-ffp-contract=off",generated);h_add(args,"-o");h_add(args,bundle);h_ok(args);
-        args=h_args("/opt/rocm/llvm/bin/clang-offload-bundler","--unbundle","--type=o","--targets=hipv4-amdgcn-amd-amdhsa--gfx1201",h_cat("--input=",bundle),h_cat("--output=",candidate));h_ok(args);
+        let args=h_args(compiler,"--target","hip","--emit","code-object","--gpu-arch");h_add(args,"gfx1201");h_add(args,source);h_add(args,"-o");h_add(args,candidate);h_ok(args);
     }else {h_ok(h_args(compiler,"--target",gb_target(target),source,"-o",candidate));}
     if !h_equal(target,"ptx") {let object=h_read(candidate);h_assert(h_file_size>=20 && load8(object)==127 && h_bytes(object+1,"ELF",3),"resident worker is not an ELF code object");}
     gb_publish(candidate,output);let value=h_cat(actual,"\n");gb_atomic(metadata,value,h_len(value));

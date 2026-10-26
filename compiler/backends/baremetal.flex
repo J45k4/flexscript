@@ -27,7 +27,7 @@ fn baremetal_builtin(kind) {
 // A six-word System V AMD64 callback into a Flexscript function. The callback
 // pushes C argument registers in source order for Flexscript's stack ABI.
 fn baremetal_callback() {
-    if !baremetal_target {fail("native_callback requires --target baremetal-x86_64");}
+    if vm_mode {fail("native_callback requires native x86-64 code");}
     expect(40);if token!=256 {fail("native_callback expects a function name");}
     let name=source+token_start;let size=token_size;next();expect(41);
     if call_count>=65536 {fail("too many calls");}
@@ -35,7 +35,9 @@ fn baremetal_callback() {
     bm_hex("55 48 89 E5 57 56 52 51 41 50 41 51 E8");
     let site=calls+call_count*32;store64(site,name);store64(site+8,size);
     store64(site+16,output_size);store64(site+24,6);call_count=call_count+1;emit32(0);
-    epilogue();patch_jump(skip);bm_hex("48 8D 05");emit32(address-output_size-4);return 0;
+    // This trampoline has its own frame, independent of the enclosing
+    // function's register allocation and saved-register epilogue.
+    bm_hex("C9 C3");patch_jump(skip);bm_hex("48 8D 05");emit32(address-output_size-4);return 0;
 }
 fn baremetal_initialize() {
     let base=4194304;

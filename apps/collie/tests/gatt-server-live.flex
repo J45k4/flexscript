@@ -53,4 +53,3 @@ fn gatt_server_live_loop(){state_set("batches",db_int(db_word(state_get("batches
  let queued=state_get("send");let peer=state_get("peer");if db_kind(queued)==3 && db_kind(peer)==2{let row=peer_row(s,db_word(peer));if db_kind(row)==5 && eq(row,"pending_operation",""){let id=db_word(state_get("next_notify"));let confirm=db_word(state_get("subscription"))&2;if confirm{confirm=1;}if !ble_server_notify(s,db_word(peer),db_word(state_get("first")),queued,confirm,id){return 6;}state_set("next_notify",db_int(id+1));state_set("send",db_null());}}
  if db_word(state_get("stop")) && db_word(state_get("next_notify"))==db_word(state_get("sent")){return 0;}loops=loops+1;
 }return 0;}
-

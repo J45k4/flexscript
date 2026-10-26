@@ -35,7 +35,7 @@ jobs:
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           fi
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang unzip xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libgdk-pixbuf-2.0-0 libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 qemu-user lld
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang unzip xvfb xauth libx11-dev libpng-dev libturbojpeg libwebp7 libwebpdemux2 qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 python3-pil qemu-user lld
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -212,6 +212,11 @@ jobs:
       - name: Test native Zstd format and mixed-backend FlexDB files
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-zstd.py
 
+      - name: Test image codecs, EXIF orientation, alpha filtering and scalar/SIMD parity
+        run: |
+          FLEX_COMPILER=build/stage2 python3 scripts/test-image.py
+          FLEX_COMPILER=build/stage2 python3 scripts/test-image.py --pipeline direct
+
       - name: Test native word expression optimizations against an independent oracle
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-constants.py
 
@@ -238,6 +243,32 @@ jobs:
 
       - name: Test the default native IR pipeline and direct reference path
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-pipeline.py
+
+      - name: Test native writable and shared literal pools
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-literals.py
+
+      - name: Test preserved offline GPU code-object support
+        run: |
+          build/stage2 scripts/test-gpu-codeobject.flex -o build/test-gpu-codeobject
+          build/test-gpu-codeobject build/stage2
+
+      - name: Test native Collie desktop and shared Android core integration
+        run: |
+          build/stage2 apps/collie/desktop/build.flex -o build/build-collie-desktop
+          build/build-collie-desktop --compiler build/stage2
+          build/test-collie-core --desktop --out build/collie-desktop
+          build/test-collie-thinking --desktop --out build/collie-desktop
+          python3 scripts/test-collie-native.py --out build/collie-desktop --compiler build/stage2
+          python3 scripts/test-collie-native-platform.py --out build/collie-desktop --compiler build/stage2
+          python3 scripts/test-collie-desktop-layout.py --out build/collie-desktop
+          python3 scripts/test-collie-imagegen.py --out build/collie-desktop
+          python3 scripts/test-collie-no-python.py --out build/collie-desktop --compiler build/stage2
+
+      - name: Test compact desktop UI specialization
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-ui-desktop-profile.py
+
+      - name: Test native HTTP client framing, TLS, streaming and cancellation
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-http-client.py
 
       - name: Test buffered native word I/O and failure recovery
         run: python3 tests/word-io/check.py build/stage2

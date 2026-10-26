@@ -12,6 +12,15 @@ fn sg_rpc(request){
         let text=cj_get(sg_answer,"text");if !text || j_kind(text)!=2 || h_len(j_value(text))>32768{return cw_fail("Invalid model feedback.");}
         let value=db_text(j_value(text));sg_answer=0;return value;
     }
+    if h_equal(op,"agent_imagegen"){
+        let prompt=db_at(request,1);let path=db_at(request,2);
+        if db_count(request)!=3 || db_kind(prompt)!=2 || db_bytes(prompt)<1 || db_bytes(prompt)>16384 || db_kind(path)!=2 || db_bytes(path)<5 || db_bytes(path)>1024{return cw_fail("imagen requires a prompt up to 16 KiB and a relative .png path up to 1024 bytes.");}
+        let name=db_word(path);let n=db_bytes(path);if load8(name)==47 || !h_equal(name+n-4,".png"){return cw_fail("imagen output must be a project-relative .png path.");}
+        let i=0;while i<n{let c=load8(name+i);if c<32 || c==92{return cw_fail("Invalid image output path.");}i=i+1;}
+        if cw_db && load64(cw_db+48)==1{return cw_fail("Commit or roll back the database transaction before imagen.");}
+        if sg_signal || sg_count>=32{return cw_fail("Image request exceeds the program signal limit.");}
+        sg_count=sg_count+1;sg_signal=j_object();j_set(sg_signal,"id",j_int(sg_count));j_set(sg_signal,"kind",j_string("imagegen"));j_set(sg_signal,"prompt",j_string(db_word(prompt)));j_set(sg_signal,"path",j_string(name));j_set(sg_signal,"text",j_string(h_cat("Generating image: ",name)));return db_int(sg_count);
+    }
     if !(h_equal(op,"agent_progress") || h_equal(op,"agent_ask")){return cw_fail("Unknown agent signal.");}
     let text=db_at(request,1);let limit=4096;if h_equal(op,"agent_ask"){limit=16384;}
     if db_count(request)!=2 || db_kind(text)!=2 || db_bytes(text)<1 || db_bytes(text)>limit{return cw_fail("Agent signal requires nonempty bounded text (progress: 4 KiB; question: 16 KiB).");}
@@ -22,7 +31,7 @@ fn sg_rpc(request){
     let kind="progress";if h_equal(op,"agent_ask"){kind="feedback";}j_set(sg_signal,"kind",j_string(kind));return db_int(sg_count);
 }
 fn sg_valid_yield(reason){
-    if !sg_signal{return 0;}let kind=cj_text(sg_signal,"kind");return (reason== -1 && h_equal(kind,"progress")) || (reason== -2 && h_equal(kind,"feedback")) || (reason== -3 && (h_equal(kind,"permission") || h_equal(kind,"platform_permission")));
+    if !sg_signal{return 0;}let kind=cj_text(sg_signal,"kind");return (reason== -1 && h_equal(kind,"progress")) || (reason== -2 && h_equal(kind,"feedback")) || (reason== -3 && (h_equal(kind,"permission") || h_equal(kind,"platform_permission"))) || (reason== -4 && h_equal(kind,"imagegen"));
 }
 // Only completed parent items enter the feedback branch. The original tool
 // call remains pending until the suspended program eventually finishes.
