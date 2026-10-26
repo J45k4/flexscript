@@ -25,7 +25,7 @@ fn rp_run(port,seed,report,stop){
     rp_record(report,"exchanged",seed,32791,at);
     // Leave TCP open while the Android driver explicitly closes its SDK socket.
     // The installed bridge reports the actual RFCOMM close callback separately.
-    end=net_now()+30000;while !h_exists(stop)&&net_now()<end{h_sleep(20);}
+    end=net_now()+90000;while !h_exists(stop)&&net_now()<end{h_sleep(20);}
     h_assert(h_exists(stop),"Probe stop was not acknowledged; preserve the existing peer and receipt");
     tcp_close(fd);rp_record(report,"stopped",seed,32791,at);return 0;
 }

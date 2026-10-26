@@ -6464,3 +6464,80 @@ ACL loss, failed SDK closes, broader concurrency/lifecycle behavior, older/OEM/
 physical radios, outgoing-connect/discovery deadline independence and all other
 full-inventory gates remain open, including the 16 privileged/vendor integration
 gaps. This verifies two blocked-read paths; it does not finish the hardware goal.
+
+### Actual incoming RFCOMM peer loss and radio shutdown
+
+`--finish peer-forget` and `--finish radio-off` extend the native incoming
+fixture. Each mode first verifies the existing 32791-byte bidirectional exchange
+over an authenticated/encrypted virtual peer after parent-listener closure and
+UUID re-registration. Then the actual VM enters `device_read(handle,1,8000)`
+against the idle connected SDK socket. These checks add no production hardware
+adapter behavior; the new `HardwareBluetoothLossChecks` Java oracle is debug-only.
+
+The oracle registers an independent actual SDK broadcast receiver and publishes
+a fresh workspace-owned preparation token identifying the mode and socket MAC.
+For peer loss, the host first navigates to the owned peer's Settings detail page
+and verifies both its exact unique name and MAC. Only after a matching atomic
+go message does the VM start its bounded read. A second marker records the actual
+adapter/`BluetoothSocket.read`/native `LocalSocketImpl.readba_native` stack before
+the host can act. This preparation stage keeps Settings navigation outside the
+read deadline; it does not extend the public eight-second read limit.
+
+The real Settings Forget action removes that owned bond. On both API35 and
+API36 the independent receiver observes `ACTION_ACL_DISCONNECTED` for the exact
+peer with transport 1 (BR/EDR), and `BOND_STATE_CHANGED` to `BOND_NONE`. The actual
+SDK confirms the bond is gone and the radio remains on. This is administrative
+ACL loss through the real Android stack, not a synthesized broadcast or physical
+RF-range/loss test.
+
+The other mode disables the actual owned emulator radio after read readiness.
+Both SDKs independently report `STATE_TURNING_OFF` then `STATE_OFF`, and the SDK
+state query confirms OFF. No peer ACL-disconnect broadcast was observed in these
+radio-off cases; that observation is kept separate from the positive ACL events
+in the Forget cases. In all four final cases the actual VM returns typed
+`disconnected`, with normal `continue`/exit0 and no cancellation or timeout.
+Read elapsed times include host/UI control work and are not latency benchmarks.
+
+Every case checks the failed SDK socket is disconnected, its receiver is
+unregistered, and the actual hardware-I/O executor has zero active/queued jobs.
+The independent remote RFCOMM-close callback arrives while the native TCP probe
+is still live. The probe has a bounded 90-second hold to accommodate the real UI
+preparation and still requires an explicit stop acknowledgement and exit0.
+Four six-group cases passed using the same frozen debug APK:
+
+- API36: `build/android-bluetooth-loss/active36-peer-forget` and `sdk36-radio-off`.
+- API35: `build/android-bluetooth-loss/verified35-peer-forget` and `verified35-radio-off`.
+
+The first two API36 Forget attempts remain failed. Both stopped at the gear
+lookup before read arming. Per-process, per-frame UI snapshots from the second
+attempt show the connected peer as an active row without a settings gear. Navigation now accepts an unambiguous exact-name row while retaining
+the full name+MAC detail check before Forget. Parent cleanup restored the
+original state after both failures; neither is promoted into the final matrix.
+
+Cleanup temporarily re-enables a powered-off radio before SDK bond inspection
+and removal, then restores its original stable state. Both final SDK audits
+compare complete original session JSON, preferences/workspace sets, all 31 Ask
+policies, every Android `granted=` flag, original radio/scan mode and bond sets.
+Original final-matrix radio baselines were ON. Owned peers/processes/workspaces
+alone are removed, and both headless emulators stop cleanly. No phone was used.
+
+Frozen debug: 8484727 bytes, SHA256
+`beb41ad516cbe6ab10db204ef1a4563b8d13624738106ec1baaffcfd2faac9bb`.
+Nondebug, development-signed release: 7952081 bytes, SHA256
+`2187b363a84437231d9c49e47d9380ca042197ecda419f77bc42f4ab2cb2bf2e`.
+All 350 production Collie Java class files match across builds (resource-ID
+classes excluded); only MainActivity's private debug dispatch changes from the
+previous checkpoint. Release DEX has the exact prior class-definition name set
+and excludes all 31 debug-source outer/nested class prefixes. All 11 generated/
+native artifacts and the native-test binary retain the exact previously
+verified 27 native/9 shared-core/4 full-reference payload scope. Those are
+retained results, not fresh runs. APK libraries, manifests, v2/v3 signatures and
+ZIP/ELF 16 KiB alignment pass. No Python source/runtime/dependency was added.
+
+**Still required:** physical RF/interference/range and older/OEM Bluetooth,
+pending accept/connect cancellation, blocked writes/backpressure, runtime-grant
+revocation/process death, failed SDK closes, broader concurrency/restart, and
+outgoing-connect/discovery deadline independence. The 16 privileged/vendor
+adapters remain explicitly unimplemented; all other full-inventory requirements
+and physical-device gates above remain open. This is progress toward the full
+hardware objective, not completion or authorization to merge/deploy.
