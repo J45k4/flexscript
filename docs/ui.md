@@ -180,16 +180,18 @@ parser and runtime tree/update machinery through compatibility imports.
 ## Verification
 
 ```sh
-python3 scripts/ui-assets.py --check
-python3 scripts/test-ui.py --compiler build/flexscript
-python3 scripts/test-collie-ui.py --compiler build/flexscript
-xvfb-run -a python3 scripts/test-ui-desktop.py --compiler build/flexscript --x11
+build/flexscript scripts/build-tools.flex -o build/build-tools
+build/build-tools --compiler build/flexscript
+build/tools/ui-assets --check
+build/tools/test-ui --compiler build/flexscript
+build/tools/test-collie-ui --compiler build/flexscript
+xvfb-run -a build/tools/test-ui-desktop --compiler build/flexscript --x11
 # After building Collie's debug APK, also compare actual ARM64 output and widgets:
-python3 scripts/test-ui.py --compiler build/flexscript \
+build/tools/test-ui --compiler build/flexscript \
   --out build/android-collie-ui --serial emulator-5580
-python3 scripts/test-collie-ui.py --compiler build/flexscript \
+build/tools/test-collie-ui --compiler build/flexscript \
   --out build/android-collie-ui
-python3 scripts/test-collie-ui-android.py --out build/android-collie-ui \
+build/tools/test-collie-ui-android --out build/android-collie-ui \
   --serial emulator-5580
 build/flexscript examples/ui/collie-permissions.flex -o build/ui-permissions-web
 build/flexscript tests/ui/browser.flex -o build/test-ui-browser
@@ -203,7 +205,7 @@ minimal screen patches, cross-client actions, and Linux/Android output parity.
 The browser test replays every Collie screen and saves
 `build/ui-permissions-browser.png` and `build/collie-ui-browser.png`. Rebuild the
 embedded browser asset after editing either browser source:
-`python3 scripts/ui-assets.py`.
+`build/tools/ui-assets`.
 
 Android's existing build flattens and adapts engine sources to its bounded host
 ABI. It first compiles a small UI entry using the shared extension's `source`
@@ -318,7 +320,7 @@ by 16,384 pixels; very long text still
 needs tiled rendering/virtualization. The host supplies authentication, storage,
 networking, file dialogs and agent execution for a full application.
 
-`scripts/test-ui-desktop.py` applies the actual generic and Collie compiler
+`scripts/test-ui-desktop.flex` applies the actual generic and Collie compiler
 batches, verifies decoded text/image pixels, and saves native screenshots under
 `build/ui-desktop-*.png`. Its text raster regression compares cached glyphs with
 direct font rendering on dark/light backgrounds and at reduced opacity, using

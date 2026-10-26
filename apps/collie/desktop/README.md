@@ -300,10 +300,10 @@ python3 scripts/test-native-callback.py --compiler build/flex-collie-desktop
 python3 scripts/test-collie-desktop-launch.py --out build/collie-desktop
 python3 scripts/test-collie-desktop-layout.py --out build/collie-desktop
 build/test-collie-core --desktop --out build/collie-desktop
-python3 scripts/test-collie-signals.py --desktop --out build/collie-desktop
-python3 scripts/test-collie-workers.py --desktop --out build/collie-desktop
-python3 scripts/test-collie-lazy-permissions.py --desktop --out build/collie-desktop
-python3 scripts/test-collie-recall.py --desktop --out build/collie-desktop
+build/tools/test-collie-signals --desktop --out build/collie-desktop
+build/tools/test-collie-workers --desktop --out build/collie-desktop
+build/tools/test-collie-lazy-permissions --desktop --out build/collie-desktop
+build/tools/test-collie-recall --desktop --out build/collie-desktop
 build/test-collie-thinking --desktop --out build/collie-desktop
 python3 scripts/test-collie-native.py --out build/collie-desktop --compiler build/flex-collie-desktop
 python3 scripts/test-collie-native-platform.py --out build/collie-desktop --compiler build/flex-collie-desktop

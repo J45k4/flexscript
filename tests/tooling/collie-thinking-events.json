@@ -1,0 +1,160 @@
+[
+  {
+    "_events": [
+      {
+        "type": "response.output_item.added",
+        "item": {
+          "type": "reasoning",
+          "id": "rs_first",
+          "encrypted_content": "private-marker-never-visible",
+          "summary": []
+        }
+      },
+      {
+        "type": "response.reasoning_summary_text.delta",
+        "item_id": "rs_first",
+        "summary_index": 0,
+        "delta": "Checking "
+      },
+      {
+        "type": "response.reasoning_summary_text.delta",
+        "item_id": "rs_first",
+        "summary_index": 0,
+        "delta": "the calculation."
+      },
+      {
+        "type": "response.reasoning_summary_text.done",
+        "item_id": "rs_first",
+        "summary_index": 0,
+        "text": "Checking the calculation."
+      },
+      {
+        "type": "response.output_item.done",
+        "item": {
+          "type": "reasoning",
+          "id": "rs_first",
+          "encrypted_content": "private-marker-never-visible",
+          "summary": [
+            {
+              "type": "summary_text",
+              "text": "Checking the calculation."
+            }
+          ]
+        }
+      },
+      {
+        "type": "response.output_text.delta",
+        "delta": "I will calculate that."
+      },
+      {
+        "type": "response.output_item.added",
+        "item": {
+          "type": "custom_tool_call",
+          "id": "ctc_think",
+          "call_id": "call_think",
+          "name": "flexscript",
+          "input": "",
+          "status": "completed"
+        }
+      },
+      {
+        "type": "response.custom_tool_call_input.delta",
+        "item_id": "ctc_think",
+        "delta": "fn main(){db_i"
+      },
+      {
+        "type": "response.custom_tool_call_input.delta",
+        "item_id": "ctc_think",
+        "delta": "o(0,1,\"42\",2);return 0;}"
+      },
+      {
+        "type": "response.completed",
+        "response": {
+          "status": "completed",
+          "output": [
+            {
+              "type": "reasoning",
+              "id": "rs_first",
+              "encrypted_content": "private-marker-never-visible",
+              "summary": [
+                {
+                  "type": "summary_text",
+                  "text": "Checking the calculation."
+                }
+              ]
+            },
+            {
+              "type": "message",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "I will calculate that."
+                }
+              ]
+            },
+            {
+              "type": "custom_tool_call",
+              "id": "ctc_think",
+              "call_id": "call_think",
+              "name": "flexscript",
+              "input": "fn main(){db_io(0,1,\"42\",2);return 0;}",
+              "status": "completed"
+            }
+          ]
+        }
+      }
+    ],
+    "_event_delay_ms": 1600
+  },
+  {
+    "_events": [
+      {
+        "type": "response.reasoning_summary_text.delta",
+        "item_id": "rs_second",
+        "summary_index": 0,
+        "delta": "Returning the verified result."
+      },
+      {
+        "type": "response.reasoning_summary_text.done",
+        "item_id": "rs_second",
+        "summary_index": 0,
+        "text": "Returning the verified result."
+      },
+      {
+        "type": "response.output_text.delta",
+        "delta": "The answer is 42."
+      },
+      {
+        "type": "response.completed",
+        "response": {
+          "status": "completed",
+          "output": [
+            {
+              "type": "reasoning",
+              "id": "rs_second",
+              "encrypted_content": "private-marker-never-visible",
+              "summary": [
+                {
+                  "type": "summary_text",
+                  "text": "Returning the verified result."
+                }
+              ]
+            },
+            {
+              "type": "message",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "The answer is 42."
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "_event_delay_ms": 1000
+  }
+]

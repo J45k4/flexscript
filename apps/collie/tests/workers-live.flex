@@ -1,0 +1,7 @@
+// Original real-scheduler, nested-await and persistent worker assertions.
+fn collect(ids){let p=alloc(8);store64(p,4242);let a=worker_await(db_word(db_at(ids,0)));let b=worker_await(db_word(db_at(ids,1)));if load64(p)!=4242{return 10;}let x=worker_result(a);let y=worker_result(b);db_io(0,1,db_word(x),db_bytes(x));db_io(0,1," | ",3);db_io(0,1,db_word(y),db_bytes(y));return 0;}fn worker_live_source(){fs_write("coordinator-note.txt",db_text("preview survives await"));view_file("coordinator-note.txt");let ids=db_list();db_add(ids,db_int(worker_start("Reader","Read the shared note")));db_add(ids,db_int(worker_start("Calculator","Calculate 6 times 7")));state_set("team",ids);return collect(ids);}
+fn worker_live_follow(){let ids=state_get("team");if db_count(ids)!=2{return 10;}let rows=worker_messages(db_word(db_at(ids,0)),0,20);if db_count(rows)<4{return 11;}let note=fs_read("worker-note.txt",0,100);db_io(0,1,db_word(note),db_bytes(note));return 0;}
+fn worker_live_waitsource(){let keep=alloc(8);store64(keep,991);let id=worker_start("Waiting worker","Wait for a later continuation");state_set("waiting-worker",db_int(id));db_io(0,1,"once\n",5);worker_await(id);if load64(keep)!=991{return 8;}db_io(0,1,"resumed\n",8);return 0;}
+fn worker_live_stopsource(){let id=worker_start("Stop test","Wait for cancellation");let row=worker_await(id);let s=worker_status(row);db_io(0,1,s,db_len(s));return 0;}
+fn worker_live_reader(){return fs_write("worker-note.txt",db_text("shared workspace"))-1;}
+fn worker_live_calculator(){db_io(0,1,"42",2);return 0;}

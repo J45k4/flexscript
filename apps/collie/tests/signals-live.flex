@@ -1,0 +1,4 @@
+// Original nested-frame, worker and feedback assertions.
+fn nested(){let p=alloc(8);store64(p,77);fs_write("before.txt",db_text("started"));progress("Downloaded files; checking the next step");let answer=agent_ask("Reply with exactly 42");if !answer{return 9;}fs_write("answer.txt",answer);db_io(0,1,db_word(answer),db_bytes(answer));progress("Feedback applied; finishing");return load64(p)-77;}fn signals_live_source(){return nested();}
+fn signals_live_coordinator(){let id=worker_start("Reviewer","Use Flexscript to ask for advice");let row=worker_await(id);let result=worker_result(row);db_io(0,1,db_word(result),db_bytes(result));return 0;}
+fn signals_live_worker_source(){progress("Worker inspected the data");let reply=agent_ask("Reply 42");if !reply{return 1;}db_io(0,1,db_word(reply),db_bytes(reply));return 0;}
