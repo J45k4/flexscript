@@ -6395,3 +6395,72 @@ callback Handler; independence for those paths is not established here. Blocked
 write/backpressure, cancellation, permission revocation, radio/ACL loss during
 I/O, SDK close failures, older/OEM/physical radios and every other full-inventory
 gate above remain open. The full hardware objective remains unfinished.
+
+### Blocked incoming RFCOMM reads: Stop and Collie-policy revocation
+
+The real incoming fixture now accepts `--finish cancel` and `--finish revoke`.
+Both modes first complete the existing authenticated/encrypted virtual-peer
+exchange: 32791 unique binary bytes each way, parent listener closure and UUID
+re-registration while the accepted SDK child remains usable. Then the actual
+VM blocks in `device_read(handle,1,8000)` against the idle connected peer.
+
+The debug-only `HardwareBluetoothIoChecks` oracle records a hardware-I/O thread
+stack containing the adapter read, `BluetoothSocket.read` and the native
+`LocalSocketImpl.readba_native` frame before taking action. It invokes the
+existing production Stop method (`MainActivity.cancel`) or permission-save
+method (`savePermission("bluetooth",false)`) on the Android UI thread. This is a
+programmatic invocation of the same UI action path, not a simulated socket or a
+physical button-tap claim. The read is observed directly; a guessed delay is
+not used to decide that it has started.
+
+Final matrix, using one frozen debug APK:
+
+| Actual action | API35 | API36 |
+| --- | ---: | ---: |
+| Stop | 1 ms | 3 ms |
+| Revoke Collie Bluetooth access | 16 ms | 5 ms |
+
+These elapsed times cover UI-action dispatch/return and the native VM returning
+its actual `Execution cancelled.` error, with empty stdout. The socket is closed,
+its receiver is unregistered, and the cancelled read leaves no active or queued
+job in the actual hardware-I/O executor. Stop also leaves a later Bluetooth
+metadata call usable while the old stream handle is invalid. Revocation persists
+the denied policy in the real session JSON, publishes it to subsequent execution
+and makes a later VM call return typed `permission_denied`. It stops the earlier
+program before that program can continue with its old permission snapshot.
+
+In all four cases the independent peer observes the actual RFCOMM-close callback
+while the native TCP probe remains live. These are four final six-group cases;
+restoration audits are additional checks, not extra groups. The two initial
+API36 checks are retained separately, without the later executor-idle assertion,
+and are not inflated into the final matrix count. No production adapter change
+was needed for these paths; the new Java code is a debug-only oracle, and native
+fixture orchestration remains Flexscript. No Python source/runtime/dependency
+was added.
+
+Receipts, full read stacks, actual VM observations and source/artifact hashes are
+under `build/android-bluetooth-cancel/final35-cancel`, `final35-revoke`,
+`final36-cancel`, and `final36-revoke`. Parent cleanup and independent final
+`audit35.json` / `audit36.json` preserve the complete original sessions,
+preferences/workspace sets, all 31 Ask policies, every Android `granted=` flag,
+radio/scan mode and bonds. Owned peers/processes/workspaces alone are removed.
+The temporarily revoked fixture policy is restored through the real save path.
+
+Frozen debug: 8484727 bytes, SHA256
+`93a9ab80f63774605974cfad16f0d69e881fdc625f7fa0c40cc457262a6c304f`.
+Nondebug, development-signed release: 7952081 bytes, SHA256
+`769d915c8a2738f8719603169fab9dd0f2d64512575ef29e2618125ee193bb10`.
+All 350 production Collie Java class files match between builds (resource-ID
+classes excluded); only MainActivity's private debug dispatch changes from the
+previous deadline checkpoint. Release DEX defines no Collie fixture/check
+classes. All 11 generated/native artifacts and the native-test binary match the
+previously verified payload exactly; the earlier 27 native, 9 shared-core and
+4 full-reference results retain that byte scope and are not fresh test runs.
+APK library bytes, manifests, v2/v3 signatures and ZIP/ELF 16 KiB alignment pass.
+
+**Still required:** Android runtime-permission revocation is distinct from the
+Collie-policy revocation above. Pending accepts/connects, blocked writes, radio/
+ACL loss, failed SDK closes, broader concurrency/lifecycle behavior, older/OEM/
+physical radios, outgoing-connect/discovery deadline independence and all other
+full-inventory gates remain open, including the 16 privileged/vendor integration
+gaps. This verifies two blocked-read paths; it does not finish the hardware goal.
