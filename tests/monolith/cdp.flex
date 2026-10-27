@@ -119,6 +119,13 @@ fn cd_eval(tab,expression) {
     let params=j_object();j_set(params,"expression",j_string(expression));j_set(params,"returnByValue",j_bool(1));j_set(params,"awaitPromise",j_bool(1));
     let result=cd_call(load64(tab),"Runtime.evaluate",params);h_assert(!j_get(result,"exceptionDetails"),j_dump(result));return j_need(j_need(result,"result"),"value");
 }
+// Upload large JSON fixtures through bounded evaluate requests. Keep the frame
+// limit intact, and split only between UTF-8 characters so Chromium receives
+// exactly the same JSON bytes before parsing the complete fixture.
+fn cd_upload_json(tab,name,text){
+    let i=0;h_assert(h_len(name)>0,"Missing fixture variable name");while load8(name+i){let c=load8(name+i);h_assert((c>=65&&c<=90)||(c>=97&&c<=122)||c==95||(i>0&&c>=48&&c<=57),"Unsafe fixture variable name");i=i+1;}
+    cd_eval(tab,"window.__cdFixtureChunks=[];true");let at=0;let size=h_len(text);while at<size{let end=at+65536;if end>size{end=size;}while end<size&&(load8(text+end)&192)==128{end=end-1;}h_assert(end>at,"Invalid fixture UTF-8 chunk boundary");cd_eval(tab,h_cat3("__cdFixtureChunks.push(",j_dump(j_string(h_slice(text+at,end-at))),");true"));at=end;}cd_eval(tab,h_cat3("window.",name,"=JSON.parse(__cdFixtureChunks.join(''));delete window.__cdFixtureChunks;true"));return 0;
+}
 fn cd_wait(tab,expression) {
     let end=net_now()+10000;while 1 {let value=cd_eval(tab,expression);if j_kind(value)==5 && j_value(value) {return 0;}h_assert(net_now()<end,h_cat("browser condition timed out: ",expression));h_sleep(40);}return 0;
 }

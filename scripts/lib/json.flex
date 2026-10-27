@@ -334,6 +334,7 @@ fn j_emit(b,p) {
         j_quote(b,value);
     }else if kind==6 {
         // Validated opaque numeric metadata (fractions/exponents/large ints).
+        h_assert(j_raw_number(value),"invalid raw JSON numeric metadata");
         h_text(b,value);
     }else if kind==5 {
         if value {
@@ -341,9 +342,6 @@ fn j_emit(b,p) {
         }else {
             h_text(b,"false");
         }
-    }else if kind==6 {
-        h_assert(j_raw_number(value),"invalid raw JSON numeric metadata");
-        h_text(b,value);
     }else {
         h_assert(kind==3||kind==4,"unknown JSON node kind");
         let end="]";

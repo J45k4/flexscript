@@ -1,0 +1,3 @@
+// Regenerate/check the portable DOM adapter embedded by the web host.
+import "lib/collie-source.flex";
+fn main(argc,argv){h_environment(argc,argv);let check=0;let i=1;while i<argc{h_assert(h_equal(load64(argv+i*8),"--check"),"Expected --check or no arguments");check=1;i=i+1;}let source=h_cat(h_read("libs/ui/web.js"),h_read("libs/ui/web-transport.js"));let expected=h_cat3("// Generated from web.js by scripts/ui-assets.flex.\nfn mono_client_js(){return ",cs_quote(source),";}\n");let path="libs/ui/web-assets.flex";if check{h_assert(h_equal(h_read(path),expected),"Run build/tools/ui-assets");}else{h_save(path,expected);}return 0;}

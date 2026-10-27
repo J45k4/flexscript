@@ -3,8 +3,8 @@
 The Linux x86-64 / Wayland Collie implementation is delivered on the isolated
 `codex/sdl-migration` worktree. Native Wayland is selected automatically in a
 Wayland session. SDL remains available for explicit compatibility selection,
-X11, and other GUI/OpenGL consumers. This is a local implementation and build;
-no commit, push, merge or remote CI run is implied.
+X11, and other GUI/OpenGL consumers. Implementation commit: `66b9c3e`. The current upstream master was integrated
+and rechecked locally. Remote publication and CI are separate.
 
 The user accepted speed and asked to finish correctness. That decision replaces
 the original numerical performance completion gates. Historical latency misses
@@ -99,3 +99,18 @@ python3 scripts/test-wayland-window-session.py --compiler build/compiler-next --
 
 The final evidence manifest records source, package and report hashes. The host
 cleanup report checks for surviving processes/runtimes from these final tests.
+
+## Master integration verification
+
+Before merging, upstream master `f40e10b` was integrated without source conflicts.
+The combined tree rebuilt successfully using its Flexscript build driver.
+Independent JSON-copy and native callback checks passed, followed by five portable
+UI groups, 20 Collie UI groups and the full SDL desktop fixture using the newer
+Flexscript test drivers. A fresh private compositor run passed real Pinyin in
+full Collie, native rendering, backend-selection overrides and settings/sidebar
+navigation. Evidence: `build/migration/merge-*.log` and
+`build/migration/merge-native-ui/`. These checks supplement the original report;
+its frozen source hashes describe the pre-integration candidate.
+
+The pre-existing dirty master checkout was backed up before merge. Its unrelated
+working edits are excluded from the implementation commits and preserved locally.

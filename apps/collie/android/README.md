@@ -63,21 +63,52 @@ SDK cache. `--cache` additionally verifies the complete pinned upstream graph.
 The APK checker reads actual DEX class definitions (including nested fixture
 classes), compiled service/consent metadata, the pinned dependency manifest and
 debug/release isolation. The separate UI probe also builds with
-`scripts/build-collie-ui-probe.flex`. Older Python device-test runners are being
-migrated separately; external Bluetooth simulation uses host-side Bumble.
+`scripts/build-collie-ui-probe.flex`. Android scenario drivers, portable UI
+checks and desktop rendering checks also run as native Flexscript programs.
+Build the command-line tools once before using the test commands below:
+
+```sh
+build/flex-collie-android scripts/build-tools.flex -o build/build-tools
+build/build-tools --compiler build/flex-collie-android
+```
 
 Tooling migration checklist:
 
 - [x] Android build, shared source assembly, dependency preparation and APK checks in Flexscript.
 - [x] Core/scheduler/provider and thinking-summary checks use `scripts/lib/collie-test.flex` with fresh ARM64 processes; core checks also support the native shared-core host.
-- [ ] Move remaining worker, signal, recall, permission and emulator scenario drivers onto shared Flexscript test helpers while preserving their assertions and cleanup.
-- [ ] Consolidate the external Bumble peer bindings into the smallest necessary host boundary.
+- [x] Worker, signal, recall and lazy-permission host runners use shared Flexscript VM transport.
+- [x] NFC/OMAPI, Aware, hardware-access and live-revocation runners share native Android consent, APK verification and parent-controlled cleanup.
+- [x] All Android scenario drivers use shared Flexscript helpers, with the original guest assertions, independent peer checks and failure cleanup retained.
+- [x] Core Android/QEMU, file/image uploads, shared UI patches, web assets and SDL desktop rendering checks run in Flexscript.
+- [ ] Consolidate the six external Bumble peer fixtures where their distinct protocol oracles allow it.
+- [ ] Port the separate legacy desktop PTY suite (`apps/collie/tests/tui.py`); it remains host-only and is still run in CI.
 
 Keep new first-party tooling in Flexscript. Python is not an APK dependency;
-remaining Python files are host tests or external peer integrations. Replacing a
-driver means porting its behavior and checks, rather than adding a launcher in
-another language. The runtime boundary remains Android SDK/JNI calls in Java/C,
+Android testing retains only the six external Bumble peer fixtures in Python.
+The desktop work has its own Python integration tests, including the legacy
+PTY suite, and compiler/benchmark Python elsewhere is separate from this
+Android migration. Replacing a driver means porting its behavior and checks,
+rather than adding a launcher in another language. The runtime boundary remains Android SDK/JNI calls in Java/C,
 with portable policy, protocols and agent behavior in Flexscript.
+
+Device runners require an explicitly selected `emulator-N` target and verify
+`ro.kernel.qemu=1` plus the installed APK's exact hash. A restoring parent owns
+the original conversation, raw preferences, workspace set and every Android
+grant/flag record. It cleans up after both successful and failed workers;
+strict failures remain failures in the report. Two-device tests give each
+emulator its own restoring guardian. Recovery records and test artifacts stay
+in the named ignored build directory.
+
+Optional `--auth` tests perform real model I/O only when explicitly requested.
+They stream the login directly to app-private credentials, preserve an existing
+login in that same private directory, and restore it during parent cleanup.
+Credentials never enter guest files or test reports. `--live` on the viewer
+test explicitly uses a login already installed in the selected emulator.
+
+The permission-state and UI-probe Java helpers are test-only, separate from the
+Collie APK. The permission probe runs as emulator shell UID 2000 and adjusts
+only the selected-location-accuracy flag needed for exact fixture restoration.
+It is compiled on demand and its temporary DEX is removed after use.
 
 The application is named **Collie**, package `org.flexscript.collie`, ABI
 `arm64-v8a`, minimum Android 8/API 26, target API 36. This initial build uses a
@@ -195,8 +226,8 @@ only enumerates sibling session IDs and reads their archives without following
 symlinks. No Android Java agent policy is added. Verification:
 
 ```sh
-python3 scripts/test-collie-recall.py --out build/android-agent-signals
-python3 scripts/test-collie-recall-android.py --out build/android-agent-signals \
+build/tools/test-collie-recall --out build/android-agent-signals
+build/tools/test-collie-recall-android --out build/android-agent-signals \
   --serial emulator-5580
 ```
 
@@ -328,19 +359,19 @@ intent hooks.
   -no-window -no-snapshot -no-boot-anim -no-audio -gpu swiftshader -port 5580
 build/tools/build-collie-android --compiler build/flex-collie-android \
   --java-home /path/to/jdk-17 --out build/android-collie --debug
-python3 scripts/test-collie-android.py --out build/android-collie \
+build/tools/test-collie-android --out build/android-collie \
   --serial emulator-5580
 # Optional real Codex request; streams credentials directly to private storage:
-python3 scripts/test-collie-android.py --out build/android-collie \
+build/tools/test-collie-android --out build/android-collie \
   --serial emulator-5580 --auth "$HOME/.codex/auth.json"
 # Installed debug app, existing conversation, actual public HTTPS endpoints:
-python3 scripts/test-collie-android-internet.py --out build/android-collie \
+build/tools/test-collie-android-internet --out build/android-collie \
   --serial DEVICE_SERIAL --live
 # Exercise real UI switches, native denials, persistence and read-only access:
-python3 scripts/test-collie-android-permissions.py --out build/android-collie \
+build/tools/test-collie-android-permissions --out build/android-collie \
   --serial DEVICE_SERIAL
 # File/image previews, permission denials, document picker and live model vision:
-python3 scripts/test-collie-android-views.py --out build/android-collie \
+build/tools/test-collie-android-views --out build/android-collie \
   --serial DEVICE_SERIAL --picker --media --live
 ```
 
@@ -493,8 +524,8 @@ summarization is separate from these execution checkpoints.
 Verification:
 
 ```sh
-python3 scripts/test-collie-workers.py --out build/android-collie-workers
-python3 scripts/test-collie-workers-android.py \
+build/tools/test-collie-workers --out build/android-collie-workers
+build/tools/test-collie-workers-android \
   --out build/android-collie-workers --serial emulator-5580
 ```
 
@@ -506,7 +537,7 @@ restart and continuation recovery. It does not require model credentials.
 The optional live-model check uses ChatGPT `auth.json` in a debug emulator:
 
 ```sh
-python3 scripts/test-collie-workers-live.py --out build/android-collie-workers \
+build/tools/test-collie-workers-live --out build/android-collie-workers \
   --serial emulator-5580 --auth "$HOME/.codex/auth.json"
 ```
 
@@ -598,15 +629,15 @@ applies complete application traces, and the permissions example runs the actual
 shared permissions view through Monolith's HTTP/SSE host.
 
 ```sh
-python3 scripts/test-collie-ui.py --compiler build/flex-collie-workers \
+build/tools/test-collie-ui --compiler build/flex-collie-workers \
   --out build/android-collie
-python3 scripts/test-ui.py --compiler build/flex-collie-workers \
+build/tools/test-ui --compiler build/flex-collie-workers \
   --out build/android-collie --serial emulator-5580
-python3 scripts/test-collie-ui-android.py --out build/android-collie \
+build/tools/test-collie-ui-android --out build/android-collie \
   --serial emulator-5580
-python3 scripts/test-collie-workers-android.py --out build/android-collie \
+build/tools/test-collie-workers-android --out build/android-collie \
   --serial emulator-5580
-python3 scripts/test-collie-android-views.py --out build/android-collie \
+build/tools/test-collie-android-views --out build/android-collie \
   --serial emulator-5580 --picker --media
 ```
 
@@ -643,9 +674,9 @@ The native and headless Android checks use synthetic provider replies:
 ```sh
 build/flex-collie-signals scripts/test-collie-thinking.flex -o build/test-collie-thinking
 build/test-collie-thinking --out build/android-agent-signals
-python3 scripts/test-collie-ui.py --compiler build/flex-collie-signals \
+build/tools/test-collie-ui --compiler build/flex-collie-signals \
   --out build/android-agent-signals
-python3 scripts/test-collie-thinking-android.py --out build/android-agent-signals \
+build/tools/test-collie-thinking-android --out build/android-agent-signals \
   --serial emulator-5580
 ```
 
@@ -693,16 +724,16 @@ Verification uses synthetic model replies and fresh native processes, plus a
 headless Android emulator for visible progress, restart, worker and Stop checks:
 
 ```sh
-python3 scripts/test-collie-signals.py --out build/android-agent-signals
-python3 scripts/test-collie-signals-android.py --out build/android-agent-signals \
+build/tools/test-collie-signals --out build/android-agent-signals
+build/tools/test-collie-signals-android --out build/android-agent-signals \
   --serial emulator-5580
 ```
 
 ## Lazy-permission verification
 
 ```sh
-python3 scripts/test-collie-lazy-permissions.py --out build/android-collie
-python3 scripts/test-collie-lazy-permissions-android.py --out build/android-collie \
+build/tools/test-collie-lazy-permissions --out build/android-collie
+build/tools/test-collie-lazy-permissions-android --out build/android-collie \
   --serial emulator-5580
 ```
 

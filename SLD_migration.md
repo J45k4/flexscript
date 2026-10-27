@@ -3,8 +3,8 @@
 Status: Linux x86-64 / Wayland implementation delivered, with native Wayland as
 Collie's default in a Wayland session and explicit SDL compatibility retained.
 See [correctness acceptance](docs/sdl-migration-correctness-2026-10-27.md) for the
-current scope, evidence and platform limits. All changes are local on
-`codex/sdl-migration`; this document does not imply a merge or release.
+current scope, evidence and platform limits. The implementation is committed on
+`codex/sdl-migration`; remote publication is a separate step.
 
 Acceptance update, 2026-10-27: the user stated, "i think speed seems fine lets now
 finish the correctness and then i think this goal is done". Performance is

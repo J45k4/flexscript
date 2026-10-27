@@ -1,7 +1,7 @@
 # SDL migration implementation evidence
 
 Worktree: `build/sdl-migration`, branch `codex/sdl-migration`, based on merged
-master `b7aad8c670fa80e5fa6493b84066c7af8dd384f9`. Implementation is uncommitted.
+master `b7aad8c670fa80e5fa6493b84066c7af8dd384f9`. Implementation commit: `66b9c3e`.
 Current status: the Linux/Wayland implementation and functional acceptance are
 complete for the scope in [the correctness report](sdl-migration-correctness-2026-10-27.md).
 The user accepted speed on 2026-10-27. Earlier milestones and performance misses
@@ -1332,7 +1332,7 @@ Fresh final checks cover real Fcitx Pinyin in full Collie, automatic/explicit
 backend selection, 93 shared desktop UI checks in each pipeline, Markdown tables,
 scrollbars, 80 resource-teardown cycles, lifecycle transitions, cursor/input
 recovery and independent clipboard peers. See the report for exact artifacts,
-reproduction and limits. All work remains isolated and uncommitted.
+reproduction and limits. Implementation is committed on the isolated migration branch; remote publication is separate.
 
 ## Platform coverage and follow-up
 

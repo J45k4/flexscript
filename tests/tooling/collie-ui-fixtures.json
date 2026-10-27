@@ -1,0 +1,139 @@
+{
+  "cards": [
+    {
+      "kind": "user",
+      "text": "Calculate"
+    },
+    {
+      "kind": "source",
+      "text": "fn main(){return 42;}"
+    },
+    {
+      "kind": "result",
+      "text": "",
+      "observation": {
+        "state": "error",
+        "exit_code": 1,
+        "stdout": "42",
+        "stderr": "real VM error",
+        "views": []
+      }
+    },
+    {
+      "kind": "assistant",
+      "text": "**Done**. [Reference](https://example.com/)"
+    }
+  ],
+  "permission_request": {
+    "request_id": 41,
+    "key": "files_read",
+    "title": "Read workspace files",
+    "detail": "Read this conversation workspace.",
+    "operation": "fs_read"
+  },
+  "workers": [
+    [
+      1,
+      [
+        "Reader",
+        "Read files",
+        "running",
+        "",
+        "",
+        1,
+        "key",
+        1
+      ]
+    ],
+    [
+      2,
+      [
+        "Paused",
+        "Wait",
+        "paused",
+        "",
+        "",
+        1,
+        "key2",
+        2
+      ]
+    ]
+  ],
+  "worker_messages": [
+    [
+      1,
+      [
+        1,
+        "user",
+        "Read this",
+        "message",
+        "a",
+        1
+      ]
+    ],
+    [
+      2,
+      [
+        1,
+        "assistant",
+        "fn main(){return 42;}",
+        "source",
+        "b",
+        1
+      ]
+    ],
+    [
+      3,
+      [
+        1,
+        "tool",
+        "42",
+        "result",
+        "c",
+        1
+      ]
+    ]
+  ],
+  "file": {
+    "path": "/photo.jpg",
+    "image_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "image",
+    "width": 720,
+    "height": 480,
+    "file_bytes": 1234
+  },
+  "thoughts": [
+    {
+      "kind": "user",
+      "text": "Remember my keyboard"
+    },
+    {
+      "kind": "thinking",
+      "text": "**Searching earlier conversations**"
+    },
+    {
+      "kind": "assistant",
+      "text": "I will check."
+    },
+    {
+      "kind": "source",
+      "text": "fn main(){return 42;}"
+    },
+    {
+      "kind": "result",
+      "observation": {
+        "state": "continue",
+        "exit_code": 0,
+        "stdout": "Moonlander"
+      }
+    },
+    {
+      "kind": "thinking",
+      "text": "Found the relevant preference."
+    },
+    {
+      "kind": "assistant",
+      "text": "You mentioned Moonlander."
+    }
+  ]
+}
