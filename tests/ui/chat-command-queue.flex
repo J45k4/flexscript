@@ -12,5 +12,7 @@ fn main(argc,argv){
     h_assert(j_n(j_at(queue,6),"id")==302 && j_n(j_at(queue,8),"id")==304,"Snapshots on opposite sides of a file operation were merged");
     let partial=j_object();j_set(partial,"kind",j_string("navigation"));j_set(partial,"data",j_parse("{\"draft\":\"keep me\"}"));queue=scm_view_queue(queue,partial);j_push(queue,partial);queue=cq_add(queue,"navigation",305);
     h_assert(j_count(queue)==11 && j_at(queue,9)==partial,"A partial navigation update was overwritten");
+    let bad=j_parse("{\"kind\":7}");queue=scm_view_queue(queue,bad);j_push(queue,bad);queue=cq_add(queue,"navigation",306);h_assert(j_count(queue)==13 && j_at(queue,11)==bad,"Malformed command was not retained as a barrier");
+    let missing=j_object();queue=scm_view_queue(queue,missing);j_push(queue,missing);queue=cq_add(queue,"navigation",307);h_assert(j_count(queue)==15 && j_at(queue,13)==missing,"Missing command kind crashed or crossed a barrier");
     h_print(1,"PASS chat command queue: 600 view intents remain bounded; latest drafts/focus survive; submit/cancel/file barriers preserve order\n");return 0;
 }

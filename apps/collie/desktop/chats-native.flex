@@ -24,7 +24,7 @@ fn cd_chats_flush(){
 }
 fn cd_chats_before_event(event){
     if !cd_chat_pending{return 0;}let kind=gui_event_kind(event);
-    if kind==GUI_KEY_DOWN || kind==GUI_TEXT || kind==GUI_WHEEL{cd_chats_flush();}
+    if kind==GUI_KEY_DOWN || kind==GUI_TEXT || kind==GUI_WHEEL || kind==GUI_CLIPBOARD || kind==GUI_IME || kind==GUI_FOCUS{cd_chats_flush();}
     else if kind==GUI_MOUSE_DOWN{let node=ud_action_node(ud_at(gui_event_x(event),gui_event_y(event)));if !node || !h_equal(ud_string(load64(node+16),"action"),"workspace_tab"){cd_chats_flush();}}
     return 0;
 }
