@@ -1,0 +1,50 @@
+[
+  [
+    "column(\"app\"){div(\"x\");}",
+    "unknown portable UI widget"
+  ],
+  [
+    "column(\"app\",mystery:1);",
+    "unknown portable UI property"
+  ],
+  [
+    "text(\"app\",size:\"large\");",
+    "integer expression"
+  ],
+  [
+    "text(\"app\",text:42);",
+    "string expression"
+  ],
+  [
+    "column(\"app\",class:\"css\");",
+    "explicit style properties"
+  ],
+  [
+    "scroll(\"app\"){text(\"one\");text(\"two\");}",
+    "one unconditional content view"
+  ],
+  [
+    "button(\"app\"){text(\"x\");}",
+    "leaf widgets cannot have children"
+  ],
+  [
+    "column(\"app\",text:\"ignored\");",
+    "text requires"
+  ],
+  [
+    "text(\"app\",value:\"ignored\");",
+    "value requires"
+  ],
+  [
+    "text(\"app\",source:\"ignored\");",
+    "source requires"
+  ],
+  [
+    "text(\"app\",autocapitalize:\"sentences\");",
+    "autocapitalize requires"
+  ],
+  [
+    "column(\"app\"){each id in ui_items(){text(\"duplicate\");}}",
+    "dynamic stable keys"
+  ]
+]

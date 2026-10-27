@@ -1,0 +1,13 @@
+{
+  "upstream": "https://gitlab.freedesktop.org/wayland/wayland-protocols",
+  "version": "1.49",
+  "sha256": {
+    "stable/xdg-shell/xdg-shell.xml": "7ba7f9c8473deee674cb1f154a18abd0bb0cc072604fc055b0c15e459fc4c7df",
+    "stable/viewporter/viewporter.xml": "dcb12279a03746301fe490aaed4b38a403485a925abfce2ccfceb644e104fe71",
+    "staging/fractional-scale/fractional-scale-v1.xml": "5941de5d28f427ecdadddc8623a6f6af0a30b0ab4726847236ba7a7652b81316",
+    "staging/cursor-shape/cursor-shape-v1.xml": "bb57d91e53a79dadab7c612dab87c233393cee73673feefa7442cfbfdd9aed2f",
+    "stable/tablet/tablet-v2.xml": "ac1128b26c779cf90b9ed71182ba5e34a7262826789adae206d825a4d45908b4",
+    "unstable/text-input/text-input-unstable-v3.xml": "160815cda13c285a30df1971d8f0a5b3aac07071537df59916d2f748b18e4f59",
+    "stable/presentation-time/presentation-time.xml": "dffac93bcb2bb1d8c385e72b8a8c2c0d4d79a336866322f3ba886dce2b27b1e2"
+  }
+}

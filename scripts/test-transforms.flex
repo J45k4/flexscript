@@ -101,7 +101,7 @@ fn suite(compiler) {
     extension=tt_extension("fn main(){return 0;}");tt_bad(tt_source(extension,"fn main(){return 42;}"),"extension must export");
     extension=tt_extension("fn transform_program(ctx,version){syscall(39,0,0,0,0,0,0);return 0;}");tt_bad(tt_source(extension,"fn main(){return 42;}"),"capability, budget or early exit");
     extension=tt_extension("fn transform_program(ctx,version){ffi_open(\"libc.so.6\");return 0;}");tt_bad(tt_source(extension,"fn main(){return 42;}"),"capability, budget or early exit");
-    extension=tt_extension("fn transform_program(ctx,version){while 1 {}return 0;}");tt_bad(tt_source(extension,"fn main(){return 42;}"),"capability, budget or early exit");
+    extension=tt_extension("fn transform_program(ctx,version){while 1 {}return 0;}");tt_bad(tt_source(extension,"fn main(){return 42;}"),"instruction budget exhausted");
     // Output aliases must not truncate the extension or any of its imports.
     extension=tt_extension("fn transform_program(ctx,version){ext_init(ctx,version);return ext_finish();}");
     t_program(tt_source(extension,"fn main(){return 42;}"));let hash=h_sha(extension);

@@ -3,7 +3,8 @@ import "host.flex";
 global j_source=0;
 global j_offset=0;
 global j_depth=0;
-// Node: type (0 null,1 integer,2 string,3 array,4 object,5 boolean), value.
+// Node: type (0 null,1 integer,2 string,3 array,4 object,5 boolean,
+// 6 exact JSON numeric text), value.
 fn j_node(kind,value) {
     let p=h_take(16);
     store64(p,kind);
@@ -26,7 +27,7 @@ fn j_array() {
     return j_node(3,h_vec_sized(16));
 }
 fn j_object() {
-    return j_node(4,h_vec());
+    return j_node(4,h_vec_sized(16));
 }
 fn j_bool(n) {
     return j_node(5,n!=0);
@@ -53,10 +54,15 @@ fn j_set(o,key,value) {
         }
         i=i+1;
     }
+    let n=h_count(fields);let capacity=load64(fields-8);
+    if n==capacity {
+        h_assert(capacity<4096,"JSON object field limit");let next=h_vec_sized(capacity*2);
+        h_copy(next,fields,(n+1)*8);store64(o+8,next);fields=next;
+    }
     let pair=h_take(16);
     store64(pair,key);
     store64(pair+8,value);
-    h_add(fields,pair);
+    h_add_sized(fields,pair);
     return o;
 }
 fn j_get(o,key) {
@@ -308,6 +314,15 @@ fn j_quote(b,s) {
     h_text(b,"\"");
     return 0;
 }
+fn j_raw_digit(c){return c>=48&&c<=57;}
+fn j_raw_number(s){
+    if !s{return 0;}let i=0;if load8(s+i)==45{i=i+1;}
+    let c=load8(s+i);
+    if c==48{i=i+1;}else{if c<49||c>57{return 0;}while j_raw_digit(load8(s+i)){i=i+1;}}
+    if load8(s+i)==46{i=i+1;if !j_raw_digit(load8(s+i)){return 0;}while j_raw_digit(load8(s+i)){i=i+1;}}
+    c=load8(s+i);if c==101||c==69{i=i+1;c=load8(s+i);if c==43||c==45{i=i+1;}if !j_raw_digit(load8(s+i)){return 0;}while j_raw_digit(load8(s+i)){i=i+1;}}
+    return load8(s+i)==0;
+}
 fn j_emit(b,p) {
     let kind=j_kind(p);
     let value=j_value(p);
@@ -317,6 +332,10 @@ fn j_emit(b,p) {
         h_text(b,h_int(value));
     }else if kind==2 {
         j_quote(b,value);
+    }else if kind==6 {
+        // Validated opaque numeric metadata (fractions/exponents/large ints).
+        h_assert(j_raw_number(value),"invalid raw JSON numeric metadata");
+        h_text(b,value);
     }else if kind==5 {
         if value {
             h_text(b,"true");
@@ -324,6 +343,7 @@ fn j_emit(b,p) {
             h_text(b,"false");
         }
     }else {
+        h_assert(kind==3||kind==4,"unknown JSON node kind");
         let end="]";
         h_text(b,"[");
         if kind==4 {
@@ -354,6 +374,18 @@ fn j_dump(p) {
     j_emit(b,p);
     return h_data(b);
 }
+// Deep-copy a valid JSON node into the current host arena. Keys, text, vectors
+// and pairs are owned by the destination; no source storage is retained. The
+// same depth/collection limits as the reader apply. Numeric metadata stays exact.
+fn j_copy_at(p,depth) {
+    h_assert(depth<=64,"JSON nesting limit");let kind=j_kind(p);let value=j_value(p);
+    if kind==0{return j_node(0,0);}if kind==1{return j_int(value);}if kind==5{return j_bool(value);}
+    if kind==2{return j_string(h_slice(value,h_len(value)));}
+    if kind==6{h_assert(j_raw_number(value),"invalid raw JSON numeric metadata");return j_node(6,h_slice(value,h_len(value)));}
+    h_assert(kind==3 || kind==4,"unknown JSON node kind");let count=h_count(value);let limit=65536;if kind==4{limit=4096;}h_assert(count>=0 && count<=limit,"JSON collection limit");let capacity=16;while capacity<count{capacity=capacity*2;}let items=h_vec_sized(capacity);let out=j_node(kind,items);let i=0;
+    while i<count{let item=h_at(value,i);if kind==4{let key=load64(item);h_assert(key,"JSON object key expected");key=h_slice(key,h_len(key));h_assert(!j_get(out,key),"duplicate JSON object key");let pair=h_take(16);store64(pair,key);store64(pair+8,j_copy_at(load64(item+8),depth+1));h_add_sized(items,pair);}else{h_add_sized(items,j_copy_at(item,depth+1));}i=i+1;}return out;
+}
+fn j_copy(p){return j_copy_at(p,1);}
 fn j_save(path,p) {
     return h_save(path,h_cat(j_dump(p),"\n"));
 }

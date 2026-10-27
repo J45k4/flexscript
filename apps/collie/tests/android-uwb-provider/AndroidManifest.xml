@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="androidx.core.uwb.backend">
+    <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="36" />
+    <permission android:name="org.flexscript.collie.uwbfixture.CONTROL" android:protectionLevel="signature" />
+    <instrumentation android:name=".fixture.ReleaseUwbProbe" android:targetPackage="org.flexscript.collie" />
+    <application android:label="Collie UWB protocol fixture" android:debuggable="true" android:allowBackup="false">
+        <service android:name=".fixture.UwbProtocolFixture" android:exported="true" android:permission="org.flexscript.collie.uwbfixture.CONTROL">
+            <intent-filter><action android:name="androidx.core.uwb.backend.service" /></intent-filter>
+        </service>
+        <provider android:name=".fixture.UwbProtocolControl" android:authorities="org.flexscript.collie.uwbfixture" android:exported="true" android:permission="org.flexscript.collie.uwbfixture.CONTROL" />
+    </application>
+</manifest>

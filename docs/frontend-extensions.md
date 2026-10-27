@@ -248,7 +248,7 @@ imports yet.
 Functions appear in declaration order; calls use their zero-based indices.
 `ir_begin` inserts a frame header and zero accumulator initialization; emit a
 return before `ir_end`. Source parameters occupy the first local slots in order.
-All remaining slots start at zero. The SDK allows 4096 functions, 4096 slots per
+All remaining slots start at zero. The SDK allows 16,384 functions, 4096 slots per
 function and 255-byte names. FIR1 through FIR5 permit 1 MiB of instructions;
 FIR6 permits 16 MiB.
 
@@ -486,10 +486,14 @@ budget. Compiler stage2 and stage3 must remain byte-identical.
 
 ## Bounded Seta function graphs
 
-The Seta frontend accepts at most 4,096 functions, including `main`. Its fixed
-call-graph matrix uses 16,777,216 bytes and rejects direct or mutual recursion
-before producing output, including edges between the highest function indices.
-The SDK and FIR validator share this 4,096-function bound.
+The Seta frontend accepts at most 16,384 functions, including `main`. Recursion
+validation walks emitted calls with a function worklist, using linear space
+without a dense call-graph matrix. It rejects direct or mutual recursion before
+producing output, including edges between the highest function indices.
+The SDK and FIR validator share this 16,384-function bound. Platform linking
+reserves room for another 2,048 trusted Flexscript functions, including in the
+VM JIT cache. Function indices remain full words in FIR/VM and unsigned LEB128
+in Wasm; Wasm emits direct calls and has no fixed-capacity function table.
 
 Interpreter and JIT permit 1,024 simultaneous frames, so a nonrecursive chain
 of that depth executes consistently with native and Wasm output.
@@ -499,9 +503,13 @@ can therefore exceed other explicit runtime budgets. Flexscript recursion is
 still supported; entering a 1,025th VM frame traps with a stack-limit error.
 
 The extension suite checks a 1,024-function graph and maximum-depth chain,
-both bundled and external frontend routes, saved IR on all four backends,
-4,097-function rejection without replacing existing output, and high-index
-direct/mutual recursion. The VM suite checks the frame boundary independently.
+both bundled and external frontend routes, saved IR on all four backends, and
+direct/mutual recursion. The function-capacity suite executes 10,000- and
+16,384-function graphs through native, Wasm, interpreter and JIT, checks external
+frontend/FIR equality, rejects 16,385 functions without replacing output, and
+links the maximum 2,048 platform functions at the FIR capacity. The VM suite
+checks the frame boundary independently. The typed shader frontend retains
+its separate 128-function bound; GLSL/WGSL do not consume word FIR.
 
 ## ESP32 native output
 

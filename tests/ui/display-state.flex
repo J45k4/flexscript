@@ -1,0 +1,10 @@
+// Protocol decision/rounding bounds without a compositor or GPU.
+import "../../libs/gui/backends/wayland/client.flex";
+import "../../scripts/lib/json.flex";
+fn main(argc,argv){
+    h_environment(argc,argv);h_assert(ws_pixels(1,180)==2 && ws_pixels(3,180)==5 && ws_pixels(801,150)==1001 && ws_pixels(601,150)==751,"Fractional half-away rounding differs");
+    let c=alloc(512);bytes_fill(c,0,512);store64(c+72,801);store64(c+80,601);let p=ws_context();store64(c+448,p);let first=alloc(48);let second=alloc(48);bytes_fill(first,0,48);bytes_fill(second,0,48);store64(first+16,second);store64(first+24,1);store64(first+32,1);store64(second+24,2);store64(second+32,1);store64(p+56,first);
+    store64(p+64,2);h_assert(ws_refresh(c) && ws_scale(c)==240 && ws_width(c)==1602,"Entered mixed-output fallback did not use the largest scale");store64(second+32,0);h_assert(ws_refresh(c) && ws_scale(c)==120,"Output leave kept a stale scale");store64(p+56,second);store64(p+64,1);h_assert(ws_refresh(c) && ws_scale(c)==240,"Single-output startup kept a low-resolution scale before enter");store64(p+56,first);store64(p+64,2);store64(second+32,1);store64(p+40,1);h_assert(ws_refresh(c) && ws_scale(c)==120,"Preferred integer scale did not override output fallback");
+    store64(p+16,1);store64(p+24,1);store64(p+32,150);h_assert(ws_refresh(c) && ws_scale(c)==150 && ws_width(c)==1001 && ws_height(c)==751,"Preferred fractional scale did not override integer fallback");
+    let metadata=alloc(40);let args=alloc(8);bytes_fill(metadata,0,40);store64(metadata+8,42);bytes_store32(args,0);ws_dispatch(c,metadata,0,0,args);h_assert(load64(c+112) && wl_error,"Invalid fractional scale was silently accepted");store64(c+112,0);store64(p+32,480);store64(c+72,10000);h_assert(!ws_refresh(c) && load64(c+112),"Oversized framebuffer was silently downscaled");ws_close(c);syscall(11,c,512,0,0,0,0);syscall(11,metadata,40,0,0,0,0);syscall(11,args,8,0,0,0,0);h_print(1,"PASS display state: fractional rounding, mixed-output fallback/leave, preference precedence and invalid/oversized rejection\n");return 0;
+}

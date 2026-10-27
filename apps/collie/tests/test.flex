@@ -59,6 +59,9 @@ fn ct_request() {
     let parsed=c_json("{\"float\":1.25e-3,\"int\":42,\"large\":99999999999999999999999999,\"text\":\"1.25\"}");
     t_assert(j_kind(j_need(parsed,"float"))==6 && j_n(parsed,"int")==42 && j_kind(j_need(parsed,"large"))==6,"JSON numeric metadata");
     t_assert(h_equal(j_s(parsed,"text"),"1.25"),"JSON numeric parser preserves strings");
+    t_assert(h_equal(j_dump(parsed),"{\"float\":1.25e-3,\"int\":42,\"large\":99999999999999999999999999,\"text\":\"1.25\"}"),"raw fractional and large numeric metadata serializes exactly without treating numeric text as an array");
+    let valid=h_args("0","-0","1.25e-3","-12.5E+9","9223372036854775808","-0.0");let n=0;while n<h_count(valid){let raw=h_at(valid,n);t_assert(j_raw_number(raw)&&h_equal(j_dump(j_node(6,raw)),raw),"exact JSON number writer");n=n+1;}
+    let invalid=h_args("","-","01","1.",".5","1e+");h_add(invalid,"NaN");h_add(invalid,"Infinity");h_add(invalid,"1,\"injected\":true");h_add(invalid," 1");n=0;while n<h_count(invalid){t_assert(!j_raw_number(h_at(invalid,n)),"raw numeric metadata rejects invalid or compound JSON");n=n+1;}
 }
 fn ct_sse() {
     let source="fn main(){return 42;}";let event=ct_tool_reply(source);let text=h_cat3(": keepalive\r\n\r\ndata: ",j_dump(event),"\r\n\r\n");let reply=ct_stream(text,0);

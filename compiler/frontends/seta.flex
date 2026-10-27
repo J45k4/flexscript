@@ -10,8 +10,7 @@ global s_value=0;
 // Ordinary SetaScript integer/FIR semantics remain unchanged.
 global s_shader_mode=0;
 global s_functions=0;
-// Match the shared IR function bound, including the call-graph row stride.
-global s_function_capacity=4096;
+global s_function_names=0;
 global s_count=0;
 global s_current=0;
 global s_locals=0;
@@ -21,7 +20,6 @@ global s_types=0;
 global s_readonly=0;
 global s_depth=0;
 global s_nesting=0;
-global s_edges=0;
 global s_state_fields=0;
 global s_state_count=0;
 // Imported files keep their own bytes. Each record holds text, size, path,
@@ -97,9 +95,17 @@ fn s_type() {
     let ty=0;if s_is("i32") {ty=1;}else if s_is("bool") {ty=2;}else {s_fail("only i32 and bool are supported by this frontend yet");}
     s_next();return ty;
 }
-fn s_find_function(name,size) {
-    let i=0;while i<s_count {let f=s_functions+i*64;if s_equal(name,size,load64(f),load64(f+8)) {return i;}i=i+1;}return -1;
+// Half-full open-addressed name index keeps large restricted frontends within
+// their existing fuel budget. Records still retain declaration-order indices.
+fn s_function_name_slot(name,size) {
+    let hash=5381;let i=0;while i<size {hash=((hash*33)^load8(name+i))&32767;i=i+1;}
+    while load64(s_function_names+hash*8) {
+        let f=s_functions+(load64(s_function_names+hash*8)-1)*64;
+        if s_equal(name,size,load64(f),load64(f+8)) {return hash;}
+        hash=(hash+1)&32767;
+    }return hash;
 }
+fn s_find_function(name,size) {return load64(s_function_names+s_function_name_slot(name,size)*8)-1;}
 fn s_find_local(name,size) {
     let i=s_local_count-1;while i>=0 {let f=s_locals+i*32;if s_equal(name,size,load64(f),load64(f+8)) {return i;}i=i-1;}return -1;
 }
@@ -142,7 +148,7 @@ fn s_prefix() {
                 if s_token==44 {s_next();}else {more=0;}
             }}
             s_expect(41);if count!=load64(f+24) {s_fail("wrong SetaScript argument count");}
-            store8(s_edges+s_current*s_function_capacity+target,1);ir_emit(8,target);
+            ir_emit(8,target);
             // Trusted platform code returns raw words; keep SetaScript bools 0/1.
             if load64(f+56) && load64(f+32)==2 {ir_emit(13,0);}return load64(f+32);
         }
@@ -319,7 +325,7 @@ fn s_signatures(index) {
         // `extern fn` declares a body supplied by a trusted --platform module.
         let platform=0;if s_is("extern") {platform=1;s_next();}else if s_is("cosmetic") {s_next();}
         if !s_is("fn") {s_fail("only pure function declarations are supported yet");}s_next();s_name();
-        if s_count>=s_function_capacity {s_fail("too many SetaScript functions (maximum 4096)");}
+        if s_count>=ir_function_capacity {s_fail("too many SetaScript functions (maximum 16384)");}
         let name=ir_source+s_start;let size=s_size;if s_find_function(name,size)>=0 {s_fail("duplicate SetaScript function");}
         let f=s_functions+s_count*64;store64(f,name);store64(f+8,size);let args=s_locals;s_next();s_expect(40);
         let count=0;if s_token!=41 {let more=1;while more {
@@ -331,23 +337,36 @@ fn s_signatures(index) {
         if platform {if s_equal(name,size,"main",4) {s_fail("SetaScript main cannot be extern");}s_semicolon();}else {
         s_expect(123);
         let braces=1;while braces {if !s_token {s_fail("unterminated SetaScript function");}if s_token==123 {braces=braces+1;if braces>128 {s_fail("SetaScript block nesting limit exceeded");}}else if s_token==125 {braces=braces-1;}s_next();}
-        }s_count=s_count+1;
+        }store64(s_function_names+s_function_name_slot(name,size)*8,s_count+1);s_count=s_count+1;
     }return 0;
 }
+// Kahn's algorithm over emitted calls uses O(functions) scratch space and
+// O(functions + instructions) time.
+// Repeated calls count as repeated edges and are removed together. A worklist
+// also avoids recursive host calls for long, valid SetaScript chains.
 fn s_no_recursion() {
-    let degrees=alloc(s_count*8);let i=0;while i<s_count {let j=0;while j<s_count {if load8(s_edges+i*s_function_capacity+j) {store64(degrees+j*8,load64(degrees+j*8)+1);}j=j+1;}i=i+1;}
-    let removed=0;let progress=1;while progress {
-        progress=0;i=0;while i<s_count {if load64(degrees+i*8)==0 {
-            store64(degrees+i*8,-1);removed=removed+1;progress=1;let j=0;
-            while j<s_count {if load8(s_edges+i*s_function_capacity+j) {store64(degrees+j*8,load64(degrees+j*8)-1);}j=j+1;}
-        }i=i+1;}
-    }if removed!=s_count {s_fail("SetaScript recursion is not allowed");}return 0;
+    let degrees=alloc(s_count*8);let queue=alloc(s_count*8);
+    if degrees<0 || queue<0 {s_fail("frontend allocation failed");}
+    let i=0;while i<ir_code_size {if load64(ir_code+i)==8 {
+        let target=load64(ir_code+i+8);store64(degrees+target*8,load64(degrees+target*8)+1);
+    }i=i+16;}
+    let used=0;i=0;while i<s_count {if !load64(degrees+i*8) {store64(queue+used*8,i);used=used+1;}i=i+1;}
+    let read=0;while read<used {
+        let function=load64(queue+read*8);read=read+1;
+        let pc=load64(ir_functions+function*64+16);let end=ir_code_size;
+        if function+1<s_count {end=load64(ir_functions+(function+1)*64+16);}
+        while pc<end {if load64(ir_code+pc)==8 {
+            let target=load64(ir_code+pc+8);let degree=load64(degrees+target*8)-1;store64(degrees+target*8,degree);
+            if !degree {store64(queue+used*8,target);used=used+1;}
+        }pc=pc+16;}
+    }
+    if used!=s_count {s_fail("SetaScript recursion is not allowed");}return 0;
 }
 fn seta_begin(text,size,version,path) {
     ir_init(text,size,path,version);s_shader_mode=0;s_pos=0;s_count=0;s_nesting=0;s_state_count=0;
-    s_functions=alloc(s_function_capacity*64);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);s_edges=alloc(s_function_capacity*s_function_capacity);
+    s_functions=alloc(ir_function_capacity*64);s_function_names=alloc(32768*8);s_locals=alloc(4096*32);s_types=alloc(4096*8);s_readonly=alloc(4096*8);
     s_state_fields=alloc(2048*40);s_files=alloc(256*48);s_order=alloc(256*8);s_file_count=0;s_order_count=0;
-    if s_functions<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_edges<0 || s_state_fields<0 || s_files<0 || s_order<0 {s_fail("frontend allocation failed");}
+    if s_functions<0 || s_function_names<0 || s_locals<0 || s_types<0 || s_readonly<0 || s_state_fields<0 || s_files<0 || s_order<0 {s_fail("frontend allocation failed");}
     seta_add_file(text,size,path);return 0;
 }
 // Files are compiled in include order: each import's files precede the importer.

@@ -25,9 +25,13 @@ fn pt_result(item) {
     if !h_equal(c_string(item,"type"),"custom_tool_call_output") {return 0;}let id=c_string(item,"call_id");let output=c_string(item,"output");if !pt_id(id) || !output || h_len(output)>1048576 {return 0;}
     let result=j_object();j_set(result,"type",j_string("custom_tool_call_output"));j_set(result,"call_id",j_string(id));j_set(result,"output",j_string(output));return result;
 }
+fn pt_summary_parts(item){
+    let parts=j_get(item,"summary");let out=j_array();if !parts{return out;}if j_kind(parts)!=3 || j_count(parts)>128{return 0;}let i=0;let bytes=0;
+    while i<j_count(parts){let part=j_at(parts,i);let text=c_string(part,"text");if !h_equal(c_string(part,"type"),"summary_text") || !text{return 0;}bytes=bytes+h_len(text);if bytes>65536{return 0;}let p=j_object();j_set(p,"type",j_string("summary_text"));j_set(p,"text",j_string(text));j_push(out,p);i=i+1;}return out;
+}
 fn pt_reasoning(item) {
     if !h_equal(c_string(item,"type"),"reasoning") {return 0;}let cipher=c_string(item,"encrypted_content");if !cipher || !h_len(cipher) || h_len(cipher)>1048576 {return 0;}
-    let result=j_object();j_set(result,"type",j_string("reasoning"));j_set(result,"encrypted_content",j_string(cipher));j_set(result,"summary",j_array());let id=c_string(item,"id");if id {if !pt_id(id) {return 0;}j_set(result,"id",j_string(id));}return result;
+    let summary=pt_summary_parts(item);if !summary{return 0;}let result=j_object();j_set(result,"type",j_string("reasoning"));j_set(result,"encrypted_content",j_string(cipher));j_set(result,"summary",summary);let id=c_string(item,"id");if id {if !pt_id(id) {return 0;}j_set(result,"id",j_string(id));}return result;
 }
 fn pt_seen(items,id,before) {let i=0;while i<before {let item=j_at(items,i);if h_equal(c_string(item,"type"),"custom_tool_call") && h_equal(c_string(item,"call_id"),id) {return 1;}i=i+1;}return 0;}
 fn pp_reset() {

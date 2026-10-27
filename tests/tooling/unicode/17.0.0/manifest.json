@@ -1,0 +1,80 @@
+{
+  "version": "17.0.0",
+  "sources": [
+    {
+      "file": "auxiliary/GraphemeBreakProperty.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakProperty.txt",
+      "sha256": "d6b51d1d2ae5c33b451b7ed994b48f1f4dc62b2272a5831e7fd418514a6bae89"
+    },
+    {
+      "file": "auxiliary/GraphemeBreakTest.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakTest.txt",
+      "sha256": "e2d134d2c52919bace503ebb6a551c1855fe1a1faec18478c78fff254a1793ec"
+    },
+    {
+      "file": "emoji/emoji-data.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/emoji/emoji-data.txt",
+      "sha256": "2cb2bb9455cda83e8481541ecf5b6dfda66a3bb89efa3fa7c5297eccf607b72b"
+    },
+    {
+      "file": "DerivedCoreProperties.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/DerivedCoreProperties.txt",
+      "sha256": "24c7fed1195c482faaefd5c1e7eb821c5ee1fb6de07ecdbaa64b56a99da22c08"
+    },
+    {
+      "file": "LICENSE.txt",
+      "url": "https://www.unicode.org/license.txt",
+      "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+    },
+    {
+      "file": "extracted/DerivedBidiClass.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/extracted/DerivedBidiClass.txt",
+      "sha256": "4867b4b7f0731ed1bfcd34cc6251211ff1542541fce0734b6fbda139ee80b3a4"
+    },
+    {
+      "file": "BidiBrackets.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/BidiBrackets.txt",
+      "sha256": "dadbaf38a0d0246e5b805bf8725cb81b7c621f93d030595635f5ba2c2f179428"
+    },
+    {
+      "file": "BidiMirroring.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/BidiMirroring.txt",
+      "sha256": "a2f16fb873ab4fcdf3221cb1a8a85a134ddd6ed03603181823ff5206af3741ce"
+    },
+    {
+      "file": "BidiTest.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/BidiTest.txt",
+      "sha256": "888bdfc8090652272d1f859cdb00ae659e2dc6c26740be61ef1d03998a687620"
+    },
+    {
+      "file": "BidiCharacterTest.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/BidiCharacterTest.txt",
+      "sha256": "a3e6e905ab5afbe318a96df5401d0372a04cd73ef139ab5e3cf0ae241c255488"
+    },
+    {
+      "file": "LineBreak.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/LineBreak.txt",
+      "sha256": "e6a18fa91f8f6a6f8e534b1d3f128c21ada45bfe152eb6b1bcc5e15fd8ac92e6"
+    },
+    {
+      "file": "auxiliary/LineBreakTest.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/auxiliary/LineBreakTest.txt",
+      "sha256": "e69884e0dde6a8724873f885d68c52dc14518abf9ae4ca9e2283b8773db3b752"
+    },
+    {
+      "file": "EastAsianWidth.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt",
+      "sha256": "ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33"
+    },
+    {
+      "file": "extracted/DerivedGeneralCategory.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/extracted/DerivedGeneralCategory.txt",
+      "sha256": "d62e5bab70ca74f099343f71224fa051cb1fdd61a1ab45c0488c44cfc0b6102e"
+    },
+    {
+      "file": "extracted/DerivedLineBreak.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/extracted/DerivedLineBreak.txt",
+      "sha256": "dad3ef492d198d6f1dde4922b175f7371a27dfe62fce489f3e04807015a4c682"
+    }
+  ]
+}

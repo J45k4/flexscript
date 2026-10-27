@@ -323,6 +323,13 @@ build/flexscript scripts/monolith-assets.flex -o build/monolith-assets
 build/monolith-assets
 ```
 
+## Portable views
+
+The HTML `view` frontend now shares its AST parser, keyed records, and compiled
+update machinery with [portable views](ui.md). Existing Monolith HTML views
+retain their DOM wire format. Portable views use `extend "ui/syntax.flex"` and
+explicit widget/style properties, with native Android and DOM adapters.
+
 ## Current scope
 
 The listener binds to loopback. There are no accounts, per-client views,

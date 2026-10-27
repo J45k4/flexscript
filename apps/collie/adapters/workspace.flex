@@ -84,8 +84,10 @@ fn cw_dispatch(request) {
     if h_equal(op,"commit") {if flexdb_commit(cw_db) {return db_int(1);}return 0;}
     if h_equal(op,"rollback") {if flexdb_rollback(cw_db) {return db_int(1);}return 0;}
     if h_equal(op,"tables") {let result=db_list();let tables=load64(cw_db+40);let i=0;while i<fd_size(tables) {db_add(result,db_text(load64(fd_at(tables,i)+8)));i=i+1;}return result;}
+    if h_equal(op,"create") && db_kind(db_at(request,1))==2 && h_starts(db_word(db_at(request,1)),"collie_") {return cw_fail("The collie_ table prefix is reserved for runtime state.");}
     if h_equal(op,"create") {let name=cw_arg(request,1,2);if !cw_name(name) {return cw_fail("Invalid table name.");}let schema=cw_schema(db_at(request,2));if !schema || !flexdb_create(cw_db,db_word(name),schema) {return 0;}return db_int(1);}
-    if h_equal(op,"add_column") || h_equal(op,"rename_column") || h_equal(op,"drop_column") {return cw_alter(request,op);}
+    if h_equal(op,"add_column") || h_equal(op,"rename_column") || h_equal(op,"drop_column") {if db_kind(db_at(request,1))==2 && h_starts(db_word(db_at(request,1)),"collie_"){return cw_fail("Runtime-owned collie_ tables are read-only.");}return cw_alter(request,op);}
+    if db_kind(db_at(request,1))==2 && h_starts(db_word(db_at(request,1)),"collie_") && !(h_equal(op,"columns") || h_equal(op,"get") || h_equal(op,"scan")) {return cw_fail("Runtime-owned collie_ tables are read-only. Use the worker/state functions.");}
     let t=cw_table(request);if !t {return 0;}
     if h_equal(op,"columns") {let result=db_list();let columns=load64(t+16);let i=0;while i<fd_size(columns) {let c=fd_at(columns,i);let v=db_list();db_add(v,db_text(load64(c)));db_add(v,db_int(load64(c+8)));db_add(v,db_int(load64(c+16)));db_add(result,v);i=i+1;}return result;}
     if h_equal(op,"insert") {let values=cw_values(db_at(request,2));if !values {return 0;}let id=flexdb_insert(t,values);if !id {return 0;}return db_int(id);}

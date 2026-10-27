@@ -28,8 +28,15 @@ jobs:
 
       - name: Install verification dependencies
         run: |
+          # The Azure mirror can stream large font packages too slowly to fit
+          # this job's deadline. Keep the same signed Ubuntu repositories and
+          # packages, using the main archive on runners with mirrorlist sources.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang xvfb xauth libx11-dev libpng-dev qemu-system-x86 libsdl2-dev libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang unzip xvfb xauth libx11-dev libpng-dev libturbojpeg libwebp7 libwebpdemux2 qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 python3-pil qemu-user lld
+          sudo apt-get install --yes pkg-config fontconfig libfontconfig1-dev libfreetype-dev libharfbuzz-dev libxkbcommon-dev libwayland-dev libwayland-bin fonts-noto-color-emoji fonts-noto-core fonts-noto-cjk
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -90,6 +97,89 @@ jobs:
           build/tools/test-collie --compiler build/stage2 --vm
           python3 apps/collie/tests/tui.py --compiler build/stage2 --vm
 
+      - name: Verify Android worker broker and VM continuation checkpoints under ARM64 QEMU
+        run: |
+          build/stage2 apps/collie/tests/hardware-core.flex -o build/test-collie-hardware-core
+          build/test-collie-hardware-core
+          build/stage2 scripts/fixtures/collie-rfcomm-probe.flex -o build/test-collie-rfcomm-probe
+          build/test-collie-rfcomm-probe --self-test
+          build/stage2 scripts/test-collie-bluetooth-incoming-android.flex -o build/test-collie-bluetooth-incoming
+          build/test-collie-bluetooth-incoming --self-test
+          build/stage2 apps/collie/tests/nfc.flex -o build/test-collie-nfc
+          build/test-collie-nfc
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/nfc.flex
+          build/stage2 apps/collie/tests/sensor-direct.flex -o build/test-collie-sensor-direct
+          build/test-collie-sensor-direct
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/sensor-direct.flex
+          build/stage2 run --jit --fuel=10000000 apps/collie/tests/sensor-direct.flex
+          build/stage2 apps/collie/tests/usb-iso.flex -o build/test-collie-usb-iso
+          build/test-collie-usb-iso
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/usb-iso.flex
+          build/stage2 run --jit --fuel=10000000 apps/collie/tests/usb-iso.flex
+          clang -std=c11 -Wall -Wextra -Werror -O2 -pthread apps/collie/tests/android/usb-iso-native-test.c -o build/test-collie-usb-iso-native
+          build/test-collie-usb-iso-native
+          build/stage2 scripts/test-collie-usb-iso-android.flex -o build/test-collie-usb-iso-android-driver
+          build/stage2 apps/collie/tests/uwb.flex -o build/test-collie-uwb
+          build/test-collie-uwb
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/uwb.flex
+          build/stage2 apps/collie/tests/camera.flex -o build/test-collie-camera-records
+          build/test-collie-camera-records
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/camera.flex
+          build/stage2 apps/collie/tests/haptics.flex -o build/test-collie-haptic-records
+          build/test-collie-haptic-records
+          build/stage2 run --interpret --fuel=10000000 apps/collie/tests/haptics.flex
+          build/stage2 scripts/test-collie-haptics-android.flex -o build/test-collie-haptics-android-driver
+          build/stage2 scripts/build-collie-document-provider.flex -o build/build-collie-document-provider
+          build/stage2 scripts/test-collie-document-provider-android.flex -o build/test-collie-document-provider-android-driver
+          build/test-collie-document-provider-android-driver --self-test
+          build/stage2 scripts/test-collie-sensors-android.flex -o build/test-collie-sensors-android-driver
+          build/test-collie-sensors-android-driver --self-test
+          build/stage2 scripts/check-collie-hid-platform.flex -o build/check-collie-hid-platform
+          build/stage2 apps/collie/tests/hid-lifecycle.flex -o build/check-collie-hid-lifecycle
+          python3 -m py_compile scripts/fixtures/collie-*.py
+          build/tools/test-collie-hid-android --self-test
+          javac --release 8 -d build/android-permission-probe-check apps/collie/tests/android-permission-probe/PermissionState.java
+          build/stage2 apps/collie/tests/usb-serial.flex -o build/test-collie-usb-serial
+          build/test-collie-usb-serial
+          build/stage2 run --interpret apps/collie/tests/usb-serial.flex
+          build/stage2 run --jit apps/collie/tests/usb-serial.flex
+          build/stage2 scripts/build-collie-serial-fixture.flex -o build/build-collie-serial-fixture
+          build/stage2 scripts/test-collie-usb-serial-android.flex -o build/test-collie-usb-serial-android-driver
+          build/test-collie-usb-serial-android-driver --self-test
+          build/stage2 apps/collie/tests/usb-serial-live.flex -o build/test-collie-usb-serial-live-template
+          build/test-collie-usb-serial-live-template
+          clang -std=c11 -Wall -Wextra -Werror -O2 -c apps/collie/tests/android/serial-gadget-loopback.c -o build/test-collie-serial-fixture.o
+          build/stage2 apps/collie/tests/guest-copy.flex -o build/test-collie-guest-copy
+          build/test-collie-guest-copy
+          build/tools/test-collie-nfc-android --self-test
+          build/stage2 run --interpret --fuel=50000000 apps/collie/tests/guest-copy.flex
+          build/stage2 scripts/test-host-zip.flex -o build/test-host-zip
+          build/test-host-zip
+          build/stage2 scripts/test-collie-android-dependencies.flex -o build/test-collie-android-dependencies
+          build/test-collie-android-dependencies
+          build/stage2 scripts/build-collie-android.flex -o build/build-collie-android
+          build/build-collie-android --compiler build/stage2 --native-only --out build/android-worker-tests
+          build/tools/test-collie-android --out build/android-worker-tests
+          build/tools/test-collie-android-test-programs --out build/android-worker-tests
+          build/stage2 scripts/test-collie-workers.flex -o build/test-collie-workers
+          build/test-collie-workers --out build/android-worker-tests
+          build/stage2 scripts/test-collie-signals.flex -o build/test-collie-signals
+          build/test-collie-signals --out build/android-worker-tests
+          build/stage2 scripts/test-collie-hardware-reference.flex -o build/test-collie-hardware-reference
+          build/test-collie-hardware-reference --out build/android-worker-tests
+          build/stage2 scripts/test-collie-card-handler.flex -o build/test-collie-card-handler
+          build/test-collie-card-handler --out build/android-worker-tests
+          build/stage2 scripts/test-collie-lazy-permissions.flex -o build/test-collie-lazy-permissions
+          build/test-collie-lazy-permissions --out build/android-worker-tests
+          build/stage2 scripts/test-collie-recall.flex -o build/test-collie-recall
+          build/test-collie-recall --out build/android-worker-tests
+          build/stage2 scripts/test-collie-thinking.flex -o build/test-collie-thinking
+          build/test-collie-thinking --out build/android-worker-tests
+          build/stage2 scripts/test-collie-core.flex -o build/test-collie-core
+          build/test-collie-core --out build/android-worker-tests
+          build/stage2 apps/collie/tests/shared-core.flex -o build/test-collie-shared-core
+          build/test-collie-core --out build/android-worker-tests --core-driver build/test-collie-shared-core
+
       - name: Install the WebAssembly test host
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -100,6 +190,7 @@ jobs:
 
       - name: Test installed libraries and Monolith native and browser apps
         run: |
+          build/tools/test-cdp-http --compiler build/stage2
           build/tools/test-libraries build/stage2 --report build/library-tests.json
           build/tools/build-monolith --compiler build/stage2
           build/test-monolith-syntax build/stage2 --report build/monolith-syntax-tests.json
@@ -108,8 +199,24 @@ jobs:
           build/test-monolith-browser build/stage2 google-chrome --source
           build/test-monolith-browser build/monolith-todo google-chrome
 
+      - name: Test portable UI AST, ARM64 patches and real DOM adapter
+        run: |
+          build/tools/ui-assets --check
+          build/tools/test-ui --compiler build/stage2 --out build/android-worker-tests
+          build/tools/test-collie-ui --compiler build/stage2 --out build/android-worker-tests
+          xvfb-run -a build/tools/test-ui-desktop --compiler build/stage2 --x11
+          build/stage2 examples/ui/collie-permissions.flex -o build/ui-permissions-web
+          build/stage2 examples/ui/counter.flex -o build/ui-counter
+          build/stage2 tests/ui/browser.flex -o build/test-ui-browser
+          build/test-ui-browser build/ui-permissions-web google-chrome build/ui-counter
+
       - name: Test native Zstd format and mixed-backend FlexDB files
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-zstd.py
+
+      - name: Test image codecs, EXIF orientation, alpha filtering and scalar/SIMD parity
+        run: |
+          FLEX_COMPILER=build/stage2 python3 scripts/test-image.py
+          FLEX_COMPILER=build/stage2 python3 scripts/test-image.py --pipeline direct
 
       - name: Test native word expression optimizations against an independent oracle
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-constants.py
@@ -138,6 +245,104 @@ jobs:
       - name: Test the default native IR pipeline and direct reference path
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-pipeline.py
 
+      - name: Test native callbacks, stack argument adapter, text and keyboard libraries
+        run: |
+          python3 scripts/test-native-callback.py --compiler build/stage2
+          gcc -shared -fPIC -O2 tests/tooling/ffi-words.c -o build/ffi-words-fixture.so
+          build/stage2 tests/tooling/ffi-words.flex -o build/test-ffi-words
+          build/test-ffi-words build/ffi-words-fixture.so
+          build/stage2 --native-pipeline direct tests/tooling/ffi-words.flex -o build/test-ffi-words-direct
+          build/test-ffi-words-direct build/ffi-words-fixture.so
+          python3 scripts/test-native-text.py --compiler build/stage2
+          python3 scripts/test-unicode.py --compiler build/stage2
+          python3 scripts/test-unicode-bidi.py --compiler build/stage2
+          python3 scripts/test-unicode-linebreak.py --compiler build/stage2
+          python3 scripts/test-ui-bidi.py --compiler build/stage2
+          python3 scripts/test-ui-linebreak.py --compiler build/stage2
+          build/stage2 tests/ui/wrap-editor.flex -o build/test-wrap-editor
+          build/test-wrap-editor
+          build/stage2 --native-pipeline direct tests/ui/wrap-editor.flex -o build/test-wrap-editor-direct
+          build/test-wrap-editor-direct
+          python3 scripts/test-native-carets.py --compiler build/stage2
+          python3 scripts/test-native-vertices.py --compiler build/stage2
+          python3 scripts/test-json-copy.py --compiler build/stage2 --out build/json-copy
+          python3 tests/tooling/wayland-commit-check.py
+          build/stage2 tests/ui/font-sizing.flex -o build/test-font-sizing
+          build/stage2 --native-pipeline direct tests/ui/font-sizing.flex -o build/test-font-sizing-direct
+          python3 scripts/test-font-sizing.py --binary build/test-font-sizing --binary build/test-font-sizing-direct --out build/font-sizing
+          python3 scripts/test-native-keyboard.py --compiler build/stage2
+          python3 scripts/test-native-cursor.py --compiler build/stage2
+          python3 scripts/test-wayland-metadata.py --compiler build/stage2
+          build/stage2 tests/ui/display-state.flex -o build/test-display-state
+          build/test-display-state
+          build/stage2 tests/ui/toplevel-state.flex -o build/test-toplevel-state
+          build/test-toplevel-state
+          build/stage2 --native-pipeline direct tests/ui/toplevel-state.flex -o build/test-toplevel-state-direct
+          build/test-toplevel-state-direct
+          build/stage2 tests/ui/weighted-layout.flex -o build/test-weighted-layout
+          SDL_VIDEODRIVER=dummy build/test-weighted-layout
+          build/stage2 --native-pipeline direct tests/ui/weighted-layout.flex -o build/test-weighted-layout-direct
+          SDL_VIDEODRIVER=dummy build/test-weighted-layout-direct
+          build/stage2 tests/ui/measure-reuse.flex -o build/test-measure-reuse
+          SDL_VIDEODRIVER=dummy build/test-measure-reuse
+          build/stage2 --native-pipeline direct tests/ui/measure-reuse.flex -o build/test-measure-reuse-direct
+          SDL_VIDEODRIVER=dummy build/test-measure-reuse-direct
+          build/stage2 tests/ui/model-copy.flex -o build/test-model-copy
+          SDL_VIDEODRIVER=dummy build/test-model-copy build/model-copy-ir- build/model-copy-ir.json
+          build/stage2 --native-pipeline direct tests/ui/model-copy.flex -o build/test-model-copy-direct
+          SDL_VIDEODRIVER=dummy build/test-model-copy-direct build/model-copy-direct- build/model-copy-direct.json
+          build/stage2 tests/ui/presentation-state.flex -o build/test-presentation-state
+          build/test-presentation-state
+          build/stage2 --native-pipeline direct tests/ui/presentation-state.flex -o build/test-presentation-state-direct
+          build/test-presentation-state-direct
+          build/stage2 tests/ui/wait-sources.flex -o build/test-wait-sources
+          SDL_VIDEODRIVER=dummy build/test-wait-sources
+          build/stage2 --native-pipeline direct tests/ui/wait-sources.flex -o build/test-wait-sources-direct
+          SDL_VIDEODRIVER=dummy build/test-wait-sources-direct
+          build/stage2 tests/ui/clipboard-pipes.flex -o build/test-clipboard-pipes
+          SDL_VIDEODRIVER=dummy build/test-clipboard-pipes
+          build/stage2 tests/ui/clipboard-editor.flex -o build/test-clipboard-editor
+          SDL_VIDEODRIVER=dummy build/test-clipboard-editor
+          build/stage2 tests/ui/ime-editor.flex -o build/test-ime-editor
+          cc -shared -fPIC -O2 -Wall -Wextra -Werror tests/ui/ime-events.c -o build/ime-events.so -ldl
+          SDL_VIDEODRIVER=dummy build/test-ime-editor build/ime-events.so
+          build/stage2 --native-pipeline direct tests/ui/ime-editor.flex -o build/test-ime-editor-direct
+          SDL_VIDEODRIVER=dummy build/test-ime-editor-direct build/ime-events.so
+          build/stage2 tests/ui/ime-noop.flex -o build/test-ime-noop
+          SDL_VIDEODRIVER=dummy build/test-ime-noop
+          build/stage2 --native-pipeline direct tests/ui/ime-noop.flex -o build/test-ime-noop-direct
+          SDL_VIDEODRIVER=dummy build/test-ime-noop-direct
+          build/stage2 tests/ui/grapheme-editor.flex -o build/test-grapheme-editor
+          SDL_VIDEODRIVER=dummy build/test-grapheme-editor
+          build/stage2 --native-pipeline direct tests/ui/grapheme-editor.flex -o build/test-grapheme-editor-direct
+          SDL_VIDEODRIVER=dummy build/test-grapheme-editor-direct
+
+      - name: Test native writable and shared literal pools
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-literals.py
+
+      - name: Test preserved offline GPU code-object support
+        run: |
+          build/stage2 scripts/test-gpu-codeobject.flex -o build/test-gpu-codeobject
+          build/test-gpu-codeobject build/stage2
+
+      - name: Test native Collie desktop and shared Android core integration
+        run: |
+          build/stage2 apps/collie/desktop/build.flex -o build/build-collie-desktop
+          build/build-collie-desktop --compiler build/stage2
+          build/test-collie-core --desktop --out build/collie-desktop
+          build/test-collie-thinking --desktop --out build/collie-desktop
+          python3 scripts/test-collie-native.py --out build/collie-desktop --compiler build/stage2
+          python3 scripts/test-collie-native-platform.py --out build/collie-desktop --compiler build/stage2
+          python3 scripts/test-collie-desktop-layout.py --out build/collie-desktop
+          python3 scripts/test-collie-imagegen.py --out build/collie-desktop
+          python3 scripts/test-collie-no-python.py --out build/collie-desktop --compiler build/stage2
+
+      - name: Test compact desktop UI specialization
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-ui-desktop-profile.py
+
+      - name: Test native HTTP client framing, TLS, streaming and cancellation
+        run: FLEX_COMPILER=build/stage2 python3 scripts/test-http-client.py
+
       - name: Test buffered native word I/O and failure recovery
         run: python3 tests/word-io/check.py build/stage2
 
@@ -155,6 +360,9 @@ jobs:
 
       - name: Test frontend extensions across interpreter, JIT, native and WebAssembly
         run: build/tools/test-extensions build/stage2 --report build/extensions-tests.json
+
+      - name: Test large SetaScript function graphs across native, Wasm and VM/JIT
+        run: build/tools/test-seta-functions build/stage2 --report build/seta-functions-tests.json
 
       - name: Test SetaScript shader targets, OpenGL and WebGPU execution
         run: |
@@ -232,6 +440,7 @@ jobs:
             build/sass-float-tests.json
             build/gpu-features.json
             build/extensions-tests.json
+            build/seta-functions-tests.json
             build/shader-tests.json
             build/transform-tests.json
             build/ml-tests.json
@@ -241,6 +450,12 @@ jobs:
             build/gui-report.json
             build/library-tests.json
             build/monolith-syntax-tests.json
+            build/ui-tests.json
+            build/collie-ui-report.json
+            build/ui-desktop-report.json
+            build/ui-desktop-*.png
+            build/ui-permissions-browser.png
+            build/collie-ui-browser.png
             build/monolith-*.png
           if-no-files-found: error
           retention-days: 30

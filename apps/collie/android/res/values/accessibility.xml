@@ -1,0 +1,4 @@
+<resources>
+    <string name="accessibility_label">Collie device control</string>
+    <string name="accessibility_description">Let an approved Collie conversation inspect screen elements and perform actions or gestures. Each conversation also needs its separate Accessibility permission in Collie. No events are collected without an open conversation session. Turn this service off here to disconnect every session.</string>
+</resources>

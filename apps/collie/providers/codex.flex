@@ -1,4 +1,5 @@
 import "../lib/json.flex";
+import "../lib/state.flex";
 import "../../../lib/http.flex";
 import "instructions.flex";
 import "../core/protocol.flex";
@@ -55,7 +56,7 @@ fn co_auth_path() {
     return h_join(home,"auth.json");
 }
 fn co_header_valid(text) {
-    if !text || !h_len(text) {return 0;}
+    if !text || !h_len(text) || h_len(text)>32768 {return 0;}
     let i=0;while load8(text+i) {
         let c=load8(text+i);if c<33 || c>126 {return 0;}i=i+1;
     }
@@ -64,7 +65,10 @@ fn co_header_valid(text) {
 fn co_auth(path) {
     co_problem=0;let text=c_read(path,65536);
     if !text {co_problem="Cannot read Codex auth.json. Run codex login with ChatGPT or select --auth-file.";return 0;}
-    let data=c_json(text);
+    return co_auth_tokens(c_json(text));
+}
+fn co_auth_tokens(data) {
+    co_problem=0;
     if j_kind(data)!=4 {co_problem="Invalid Codex authentication cache.";return 0;}
     let mode=j_get(data,"auth_mode");
     if mode && j_kind(mode)!=0 && (j_kind(mode)!=2 || !h_equal(j_value(mode),"chatgpt")) {
@@ -86,9 +90,16 @@ fn co_request(model,messages) {
         if item {j_push(input,item);}else {let role=j_s(message,"role");let part=j_object();let kind="input_text";if h_equal(role,"assistant") {kind="output_text";}j_set(part,"type",j_string(kind));j_set(part,"text",j_string(j_s(message,"content")));let content=j_array();j_push(content,part);item=j_object();j_set(item,"role",j_string(role));j_set(item,"content",content);j_push(input,item);}i=i+1;
     }
     let tools=j_array();j_push(tools,pt_tool());j_set(request,"input",input);j_set(request,"tools",tools);j_set(request,"tool_choice",j_string("auto"));j_set(request,"parallel_tool_calls",j_bool(0));let include=j_array();j_push(include,j_string("reasoning.encrypted_content"));j_set(request,"include",include);
-    j_set(request,"store",j_bool(0));j_set(request,"stream",j_bool(1));return request;
+    let reasoning=j_object();j_set(reasoning,"summary",j_string("auto"));j_set(request,"reasoning",reasoning);j_set(request,"store",j_bool(0));j_set(request,"stream",j_bool(1));return request;
 }
 
+// Platform HTTPS adapters execute this descriptor; backend identity, auth
+// headers and timeouts are provider policy shared with the conversation core.
+fn co_transport(auth){
+    let out=j_object();j_set(out,"url",j_string("https://chatgpt.com/backend-api/codex/responses"));j_set(out,"method",j_string("POST"));
+    let headers=j_object();j_set(headers,"Authorization",j_string(h_cat("Bearer ",j_s(auth,"access"))));j_set(headers,"ChatGPT-Account-ID",j_need(auth,"account"));j_set(headers,"originator",j_string("collie"));j_set(headers,"User-Agent",j_string("collie/0.1"));j_set(headers,"Content-Type",j_string("application/json"));j_set(headers,"Accept",j_string("text/event-stream"));j_set(headers,"Accept-Encoding",j_string("identity"));j_set(out,"headers",headers);
+    j_set(out,"connect_timeout_ms",j_int(30000));j_set(out,"read_timeout_ms",j_int(120000));return out;
+}
 fn co_http_status(status) {
     if status==401 {return "ChatGPT login rejected. Let Codex refresh auth.json or run codex login.";}
     if status==429 {return "Codex usage limit reached; retry later.";}
@@ -205,10 +216,14 @@ fn co_sse_line() {
 }
 fn co_output(output) {
     if !output || j_kind(output)!=3 || j_count(output)>128 {co_problem="Invalid model output items.";return 0;}
-    let message=h_buffer();let items=j_array();let call=0;let i=0;
+    let message=h_buffer();let items=j_array();let summaries=j_array();let summary_bytes=0;let call=0;let i=0;
     while i<j_count(output) {
         let item=j_at(output,i);let type=c_string(item,"type");
-        if h_equal(type,"reasoning") {let reasoning=pt_reasoning(item);if reasoning {j_push(items,reasoning);}}
+        if h_equal(type,"reasoning") {
+            let parts=pt_summary_parts(item);if !parts{co_problem="Invalid reasoning summary.";return 0;}let k=0;
+            while k<j_count(parts){let text=j_s(j_at(parts,k),"text");summary_bytes=summary_bytes+h_len(text);if summary_bytes>65536 || j_count(summaries)>=128{co_problem="Reasoning summaries exceed limit.";return 0;}if h_len(text){let part=j_object();j_set(part,"item_id",j_string(cj_text(item,"id")));j_set(part,"summary_index",j_int(k));j_set(part,"text",j_string(text));j_push(summaries,part);}k=k+1;}
+            let reasoning=pt_reasoning(item);if reasoning {j_push(items,reasoning);}
+        }
         else if h_equal(type,"custom_tool_call") {
             if call {co_problem="Multiple tool calls in one response are unsupported; no program was executed.";return 0;}call=pt_call(item);if !call {co_problem="Invalid flexscript tool call (name, ID, status or 64 KiB source limit); no program was executed.";return 0;}j_push(items,call);
         }else if h_equal(type,"message") && h_equal(c_string(item,"role"),"assistant") {
@@ -224,7 +239,7 @@ fn co_output(output) {
         if pp_code_size && !h_equal(pp_code,source) {co_problem="Completed tool source differed from streamed input; no program was executed.";return 0;}if !pp_code_size && h_len(source) {pp_source(source);}
     }else if pp_code_size || h_len(co_tool_key) {co_problem="Streamed tool input was missing from the completed response.";return 0;}
     if pp_problem {co_problem=pp_problem;return 0;}
-    let reply=j_object();j_set(reply,"text",j_string(text));j_set(reply,"message",j_string(text));j_set(reply,"source",j_string(source));j_set(reply,"has_code",j_bool(call!=0));j_set(reply,"message_streamed",j_bool(pp_text_sent>0));j_set(reply,"items",items);if call {j_set(reply,"tool_call",call);}return reply;
+    let reply=j_object();j_set(reply,"summaries",summaries);j_set(reply,"text",j_string(text));j_set(reply,"message",j_string(text));j_set(reply,"source",j_string(source));j_set(reply,"has_code",j_bool(call!=0));j_set(reply,"message_streamed",j_bool(pp_text_sent>0));j_set(reply,"items",items);if call {j_set(reply,"tool_call",call);}return reply;
 }
 fn co_completed(event) {
     let kind=c_string(event,"type");

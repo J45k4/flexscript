@@ -6,6 +6,15 @@ global bt_port=0;
 global bt_checks=0;
 global bt_source=0;
 global bt_name=0;
+fn bt_port_file_fixture(){
+    let temp=h_temp();let file=h_join(temp,"DevToolsActivePort");
+    h_assert(!cd_port_file(file),"missing DevTools port file reported ready");
+    let values=h_args("","9","9222","0\n","65536\n","x\n");
+    let i=0;while i<h_count(values){h_save(file,h_at(values,i));h_assert(!cd_port_file(file),"incomplete or invalid DevTools port reported ready");i=i+1;}
+    h_save(file,"9222\n/devtools/browser/fixture");h_assert(cd_port_file(file)==9222,"complete DevTools port line not ready");
+    h_save(file,"65535\n");h_assert(cd_port_file(file)==65535,"maximum DevTools port rejected");
+    h_remove(temp);h_print(1,"PASS: missing, empty, partial, invalid and complete DevTools port-file readiness\n");return 0;
+}
 fn bt_free_port() {
     let fd=tcp_listen("127.0.0.1","0",8);h_assert(fd>=0,"cannot allocate test port");let address=h_take(16);let size=h_take(8);store64(size,16);syscall(51,fd,address,size,0,0,0);let port=(load8(address+2)<<8)|load8(address+3);h_close(fd);return port;
 }
@@ -65,11 +74,23 @@ fn bt_fixture() {
     cd_close(tab);h_stop(process);return 0;
 }
 fn main(argc,argv) {
-    h_environment(argc,argv);h_assert(argc==3 || (argc==4 && h_equal(load64(argv+24),"--source")),"Usage: test-browser TODO-BINARY-OR-COMPILER CHROMIUM [--source]");if argc==4 {bt_source=h_real("examples/monolith/todo.flex");}bt_name="Monolith Todo listening";bt_binary=h_real(load64(argv+8));let chromium=load64(argv+16);let temp=h_temp();bt_database=h_join(temp,"todo.db");bt_port=bt_free_port();let process=bt_start();
+    h_environment(argc,argv);bt_port_file_fixture();h_assert(argc==3 || (argc==4 && h_equal(load64(argv+24),"--source")),"Usage: test-browser TODO-BINARY-OR-COMPILER CHROMIUM [--source]");if argc==4 {bt_source=h_real("examples/monolith/todo.flex");}bt_name="Monolith Todo listening";bt_binary=h_real(load64(argv+8));let chromium=load64(argv+16);let temp=h_temp();bt_database=h_join(temp,"todo.db");bt_port=bt_free_port();let process=bt_start();
     let profile=h_join(temp,"chromium");let args=h_args(chromium,"--headless","--no-sandbox","--disable-gpu","--no-first-run","--no-default-browser-check");h_add(args,h_cat("--user-data-dir=",profile));h_add(args,"--remote-debugging-address=127.0.0.1");h_add(args,"--remote-debugging-port=0");h_add(args,"about:blank");let chrome=h_spawn(args,"",0);
-    cd_chrome=chrome;let port_file=h_join(profile,"DevToolsActivePort");let end=net_now()+10000;
-    while !h_exists(port_file) {h_pump(chrome,10);h_assert(h_status(chrome)==-999 && net_now()<end,h_cat("Chromium did not start: ",h_err(chrome)));}
-    let text=h_read(port_file);let newline=h_find(text,"\n");h_assert(newline>0,"DevTools port file invalid");cd_port=h_number(h_slice(text,newline));
+    // A fresh browser profile can need more time on a shared CI runner.
+    // Keep startup bounded and distinguish a slow launch from a crashed browser.
+    cd_chrome=chrome;let port_file=h_join(profile,"DevToolsActivePort");let end=net_now()+30000;
+    cd_port=0;
+    while !cd_port {
+        cd_port=cd_port_file(port_file);
+        if !cd_port {
+            h_pump(chrome,10);let status=h_status(chrome);
+            if status!=-999 || net_now()>=end {
+                let reason="timed out after 30 seconds";if status!=-999 {reason=h_cat("exited with status ",h_int(status));}
+                let diagnostic=h_cat3("Chromium ",reason,h_cat3(": ",h_err(chrome),h_out(chrome)));
+                h_stop(chrome);h_stop(process);h_die(diagnostic);
+            }
+        }
+    }
     let url=h_cat3("http://127.0.0.1:",h_int(bt_port),"/");let a=cd_tab(url);let b=cd_tab(url);let live="document.querySelector('[data-mkey=\"connection\"]')?.textContent==='Live'";cd_wait(a,live);cd_wait(b,live);
     bt_check(a,"document.querySelectorAll('.task').length===0","initial UI not empty");
     cd_eval(b,"window.testDraft=document.querySelector('[data-mkey=\"draft\"]');testDraft.value='My unfinished local draft';testDraft.focus();testDraft.setSelectionRange(3,8);true");

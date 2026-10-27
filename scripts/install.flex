@@ -19,12 +19,14 @@ fn main(argc,argv) {
     h_mkdir(h_dir(destination));h_mkdir(share);
     install_copy("libs",h_join(share,"libs"));install_copy("lib",h_join(share,"lib"));
     install_copy("examples/monolith",h_join(share,"examples/monolith"));
+    h_mkdir(h_join(share,"examples/ui"));install_copy("examples/ui/counter.flex",h_join(share,"examples/ui/counter.flex"));install_copy("examples/ui/counter-view.flex",h_join(share,"examples/ui/counter-view.flex"));install_copy("examples/ui/desktop-counter.flex",h_join(share,"examples/ui/desktop-counter.flex"));
     install_copy("examples/render",h_join(share,"examples/render"));
     h_mkdir(h_join(share,"scripts/lib"));
     install_copy("scripts/lib/build.flex",h_join(share,"scripts/lib/build.flex"));
     install_copy("scripts/lib/json.flex",h_join(share,"scripts/lib/json.flex"));
     install_copy("scripts/lib/host.flex",h_join(share,"scripts/lib/host.flex"));
     h_mkdir(h_join(share,"docs"));install_copy("docs/monolith.md",h_join(share,"docs/monolith.md"));
+    install_copy("docs/ui.md",h_join(share,"docs/ui.md"));
     install_copy("docs/render.md",h_join(share,"docs/render.md"));
     // Atomic binary replacement. Library sources are copied before publishing
     // the new compiler; existing compiler processes retain their old inode.

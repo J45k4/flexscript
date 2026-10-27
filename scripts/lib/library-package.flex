@@ -5,6 +5,7 @@ fn lp_bundle(dist,version) {
     let args=h_args("tar","--sort=name","--mtime=@0","--owner=0","--group=0","--numeric-owner");
     h_add(args,"-czf");h_add(args,h_join(dist,name));
     h_add(args,"VERSION");h_add(args,"libs");h_add(args,"lib");h_add(args,"examples/monolith");h_add(args,"docs/monolith.md");
+    h_add(args,"examples/ui/counter.flex");h_add(args,"examples/ui/counter-view.flex");h_add(args,"examples/ui/desktop-counter.flex");h_add(args,"docs/ui.md");
     h_add(args,"examples/render");h_add(args,"docs/render.md");
     h_add(args,"scripts/install.flex");h_add(args,"scripts/lib/build.flex");h_add(args,"scripts/lib/json.flex");h_add(args,"scripts/lib/host.flex");
     h_ok(args);return name;

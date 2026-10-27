@@ -1,0 +1,11 @@
+// Requires the private compositor-side input fixture to enter this surface.
+import "../../libs/gui/draw.flex";
+import "../../scripts/lib/json.flex";
+fn main(argc,argv){
+    h_environment(argc,argv);h_assert(gui_backend_select("wayland"),gui_error);let window=gui_open("Native cursor fixture",800,600,GUI_RESIZABLE);h_assert(window && gui_canvas_open(window,0),gui_error);gui_clear(window,0x10151a);gui_present(window);
+    let c=load64(gui__record(window));let cursor=load64(load64(c+192)+248);let event=gui_event();let until=gui_ticks()+3000;while !load64(cursor+96) && gui_ticks()<until{while gui_poll(event){}h_assert(!load64(c+112),wl_error);gui_wait(20);}h_assert(load64(cursor+96) && load64(cursor+40),"Compositor did not enter the cursor surface");
+    h_assert(gui_cursor(window,GUI_CURSOR_SIZE_HORIZONTAL),gui_error);let updates=load64(cursor+120);let i=0;while i<100{h_assert(gui_cursor(window,GUI_CURSOR_SIZE_HORIZONTAL),gui_error);i=i+1;}h_assert(load64(cursor+120)==updates,"Unchanged cursor created repeated protocol updates");let normal_path=load64(cursor+144);h_assert(gui_cursor(window,GUI_CURSOR_DEFAULT),gui_error);
+    store64(cursor+112,1);store64(cursor+48,-1);h_assert(gui_cursor(window,GUI_CURSOR_SIZE_HORIZONTAL),gui_error);h_assert(load64(cursor+144)==2 && load64(cursor+64+(load64(cursor+56)-1)*8),"The cursor theme fallback was not used");h_assert(gui_cursor(window,GUI_CURSOR_DEFAULT),gui_error);wl_sync(c);
+    if argc>1{h_assert(gui_cursor(window,GUI_CURSOR_SIZE_HORIZONTAL),gui_error);h_assert(!load64(cursor+192) && !load64(cursor+184),"Switch to static cursor retained animation");h_assert(gui_cursor(window,GUI_CURSOR_DEFAULT),gui_error);h_assert(load64(cursor+184) && load64(cursor+192),"Close fixture requires a pending animated callback");}
+    let report=j_object();j_set(report,"normal_path",j_int(normal_path));j_set(report,"fallback_path",j_int(load64(cursor+144)));j_set(report,"updates",j_int(load64(cursor+120)));j_set(report,"scale",j_int(load64(cursor+56)));j_set(report,"close_with_callback",j_bool(load64(cursor+192)!=0));let maps=h_read("/proc/self/maps");h_assert(h_find(maps,"libSDL2")<0,"Native cursors loaded SDL");gui_close(window);gui_quit();syscall(11,event,128,0,0,0,0);h_print(1,h_cat(j_dump(report),"\n"));return 0;
+}
