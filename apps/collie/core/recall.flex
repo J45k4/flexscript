@@ -1,10 +1,11 @@
+import "permissions.flex";
 // Cross-conversation recall. Platform hooks expose only sibling session archives;
 // search, paging, permissions and field selection stay in shared Flexscript.
 import "../adapters/workspace.flex";
 import "../lib/state.flex";
 global cm_size=0;
 fn cm_id(text){let n=h_len(text);if n<1 || n>80{return 0;}let i=0;while i<n{let c=load8(text+i);if !((c>=65 && c<=90) || (c>=97 && c<=122) || (c>=48 && c<=57) || c==45){return 0;}i=i+1;}return 1;}
-fn cm_allowed(saved){let p=cj_get(saved,"permissions");if !p || j_kind(p)==0{return 1;}let value=cj_get(p,"history");return value && j_kind(value)==5 && j_value(value);}
+fn cm_allowed(saved){let p=cj_get(saved,"permissions");if !p || j_kind(p)==0{return 1;}return h_equal(cp_mode(p,"history"),"allow");}
 fn cm_load(id){let text=cm_storage_read(id);if !text{return 0;}let saved=c_json(text);if j_kind(saved)!=4 || !cm_allowed(saved){return 0;}let a=cj_get(saved,"archive");if !a || j_kind(a)!=3{return 0;}return a;}
 fn cm_excerpt(text,at,limit){let n=h_len(text);let start=at-160;if start<0{start=0;}while start>0 && (load8(text+start)&192)==128{start=start-1;}let end=start+limit;if end>n{end=n;}while end>start && (load8(text+end)&192)==128{end=end-1;}return h_slice(text+start,end-start);}
 fn cm_lower(text){let n=h_len(text);let out=h_take(n+1);let i=0;while i<n{let c=load8(text+i);if c>=65 && c<=90{c=c+32;}store8(out+i,c);i=i+1;}return out;}

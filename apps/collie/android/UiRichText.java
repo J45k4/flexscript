@@ -8,7 +8,11 @@ import org.json.*;
 
 /** Native span adapter; parsing and syntax highlighting are supplied by Flexscript. */
 final class UiRichText {
+    interface Link { void open(String href); }
     static CharSequence spans(String encoded) throws JSONException {
+        return spans(encoded, null);
+    }
+    static CharSequence spans(String encoded, Link link) throws JSONException {
         SpannableStringBuilder out = new SpannableStringBuilder();
         JSONArray runs = new JSONArray(encoded);
         for (int i=0; i<runs.length(); i++) {
@@ -25,7 +29,9 @@ final class UiRichText {
             if (run.has("color")) out.setSpan(new ForegroundColorSpan(Color.parseColor(run.getString("color"))),start,end,flags);
             if (run.has("href")) {
                 String href=run.getString("href");
-                if (href.startsWith("https://") || href.startsWith("http://")) out.setSpan(new URLSpan(href),start,end,flags);
+                if (link != null) out.setSpan(new ClickableSpan() {
+                    @Override public void onClick(android.view.View widget) { link.open(href); }
+                },start,end,flags);
             }
         }
         return out;

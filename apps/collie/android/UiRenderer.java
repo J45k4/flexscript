@@ -66,7 +66,7 @@ final class UiRenderer extends FrameLayout {
         return node;
     }
     private void event(Node node, String type, Object value) {
-        if (node.changing || node.action.isEmpty()) return;
+        if (node.changing || (node.action.isEmpty() && !type.equals("link"))) return;
         try {
             events.dispatch(new JSONObject().put("key", node.key).put("type", type)
                             .put("action", node.action).put("action_id", node.actionId)
@@ -188,7 +188,7 @@ final class UiRenderer extends FrameLayout {
                     String content = props.has("timestamp") ? new java.text.SimpleDateFormat("MMM d · HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(Long.parseLong(props.optString("timestamp")))) : node.text;
                     String signature = content + "\u0000" + props.optString("runs");
                     if (!signature.equals(node.renderedText)) {
-                        try { text.setText(props.has("runs") ? UiRichText.spans(props.getString("runs")) : content); }
+                        try { text.setText(props.has("runs") ? UiRichText.spans(props.getString("runs"),href -> event(node,"link",href)) : content); }
                         catch (JSONException error) { throw new IllegalArgumentException(error); }
                         node.renderedText=signature;
                     }

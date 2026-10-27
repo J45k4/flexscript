@@ -277,6 +277,46 @@ jq -r '.[] | select(.source != "") | .source' collie-trace.json
 
 ## VM boundary
 
+In Android and desktop **Permissions → Access scope**, choose **Workspace** to
+allow files and FlexDB in the current workspace without prompting. On desktop,
+the file root is the explicitly selected project folder; Android uses this
+conversation's private files. Existing path and symlink boundaries remain enforced.
+Network, hardware, selected Android document trees, workers and cross-chat recall
+stay at Ask, and existing Deny choices remain denied. Selecting Workspace reduces
+previously broader outside grants and revokes their active resources.
+
+Access scope is independent of Approval mode: combine Workspace with Ask me or
+Auto-review for requests outside those local capabilities. Editing an individual
+grant selects Custom while preserving all other current limits; selecting Custom
+also keeps the current limits instead of restoring older broader grants. Both
+choices persist with the conversation and are inherited by its workers.
+
+The Android and desktop Permissions view has an **Approval mode** selector:
+**Ask me** (the default) or **Auto-review**. Capability settings remain separate:
+Allow runs normally, Deny blocks access, and Ask pauses the VM for the selected
+reviewer. Auto-review sends the exact operation arguments, current program and
+bounded visible conversation evidence to a separate, tools-free model request.
+The preferred model is `codex-auto-review`; a transport/model availability failure
+retries once with the conversation's selected model in the same isolated role.
+
+An approval covers one operation, including any additional capability checks and
+Android consent needed to finish that same call. It never changes Ask to Allow.
+Even identical later calls need new reviews. Denials and failed reviews return an
+error without performing the operation; three consecutive denials stop the turn.
+Changing grants, selecting Ask me, or changing user instructions during review
+invalidates its authority. Android's OS permissions and selected-folder boundaries
+remain enforced. Reviews use additional model requests and appear in Thinking.
+Before a reviewed continuation starts, the harness durably records its checkpoint.
+If an interruption leaves that same checkpoint behind, its completion is reported
+as uncertain and it is not replayed automatically.
+VM approval checkpoints still cannot suspend an open database transaction.
+Workspace already allows the local database capabilities unless explicitly denied;
+Custom transactional work needs its required capabilities set to Allow first.
+
+The shared policy, evidence builder and JSON validation live in
+[`core/autoreview.flex`](core/autoreview.flex). This is model-based judgment,
+alongside the existing VM restrictions; it is not a deterministic safety guarantee.
+
 Programs are self-contained. Imports and compiler extensions are unavailable.
 Each round gets fresh memory. Programs can calculate, write stdout/stderr, and
 use the provided `db_*` functions to query and mutate their session workspace.

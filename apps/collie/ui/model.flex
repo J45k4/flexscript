@@ -43,7 +43,7 @@ fn cu_items(array){let list=ui_items();let i=0;while i<j_count(array){ui_item_ad
 fn cu_indices(array,start,limit){let list=ui_items();let i=start;while i<j_count(array) && i<start+limit{ui_item_add(list,i);i=i+1;}return list;}
 fn cu_expanded(key){let object=cj_get(cu_state,"expanded");if !object || j_kind(object)!=4{return 0;}return cj_int(object,key);}
 fn cu_toggle(key){let object=cu_copy(cj_get(cu_state,"expanded"));j_set(object,key,j_bool(!cu_expanded(key)));j_set(cu_state,"expanded",object);return 0;}
-fn cu_text_runs(text){if cu_desktop(){return rt_cached_markdown_tables(text);}return rt_markdown(text);}
+fn cu_text_runs(text){return rt_cached_markdown_tables(text);}
 fn cu_code_runs(text){return rt_code(text,"#c5e3ae","#e6c3a6","#c9b5e8","#8e9d9f");}
 fn cu_line_count(text){let n=h_len(text);let count=1;let i=0;while i<n{if load8(text+i)==10{count=count+1;}i=i+1;}return count;}
 fn cu_line_numbers(text){let b=m_buffer();let count=cu_line_count(text);let i=1;while i<=count{if i>1{m_text(b,"\n");}m_text(b,m_int(i));i=i+1;}return m_data(b);}

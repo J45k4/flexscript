@@ -8,12 +8,13 @@ import "../providers/images.flex";
 import "../providers/stream.flex";
 import "../providers/imagegen.flex";
 import "signals.flex";
+import "autoreview.flex";
 global ch_config=0;
 global ch_events=0;
 fn ch_pending(s){let p=cj_get(s,"pending");if p && j_kind(p)==4{return p;}p=cj_get(s,"pending_execution");if p && j_kind(p)==4{return p;}return 0;}
 fn ch_pending_phase(p){let kind=cj_text(cj_get(p,"signal"),"kind");if h_equal(kind,"permission") || h_equal(kind,"platform_permission"){return kind;}let answer=cj_get(p,"feedback");if h_equal(kind,"imagegen") && (!answer || j_kind(answer)!=4){return kind;}return "vm";}
 fn ch_set_pending(s,p){if !p{p=cj_null();}if cj_int(ch_config,"agent_id"){j_set(s,"pending",p);j_set(s,"pending_execution",cj_null());}else{j_set(s,"pending",cj_null());j_set(s,"pending_execution",p);}return p;}
-fn ch_restart(s){j_set(s,"step",j_int(0));j_set(s,"requests",j_int(0));j_set(s,"compacted_step",j_int(-1));j_set(s,"error",j_string(""));j_set(s,"finish_status",j_string(""));j_set(s,"manual_compact",j_bool(0));return 0;}
+fn ch_restart(s){j_set(s,"step",j_int(0));j_set(s,"requests",j_int(0));j_set(s,"compacted_step",j_int(-1));j_set(s,"error",j_string(""));j_set(s,"finish_status",j_string(""));j_set(s,"review_denials",j_int(0));j_set(s,"manual_compact",j_bool(0));return 0;}
 fn ch_normalize(s){
     if !s || j_kind(s)!=4{s=j_object();}cj_array(s,"messages");cj_array(s,"archive");cj_array(s,"cards");
     if !cj_get(s,"anchor"){j_set(s,"anchor",j_int(0));}return s;
@@ -52,13 +53,14 @@ fn ch_worker_finish(s,status,error){
 fn ch_result_text(o){let text=h_cat3(cj_text(o,"state")," (exit ",h_cat(h_int(cj_int(o,"exit_code")),")\n"));text=h_cat(text,cj_text(o,"stdout"));let error=cj_text(o,"stderr");if h_len(error){text=h_cat3(text,"\n",error);}if cj_int(o,"output_truncated"){text=h_cat(text,"\n[output truncated]");}return text;}
 fn ch_failure_observation(s,text){let p=ch_pending(s);let o=j_object();j_set(o,"state",j_string("error"));j_set(o,"executed",j_bool(cj_int(p,"resume")));j_set(o,"execution_uncertain",j_bool(cj_int(p,"restored") && !cj_int(p,"resume")));j_set(o,"exit_code",j_int(-1));j_set(o,"stdout",j_string(cj_text(p,"stdout")));j_set(o,"stderr",j_string(h_cat(cj_text(p,"stderr"),text)));return o;}
 fn ch_observe(s,o){
-    let p=ch_pending(s);let keys=h_args("stdout","stderr",0,0,0,0);let i=0;
+    let p=ch_pending(s);if !p{return c_error("No program is pending for this VM observation.");}let keys=h_args("stdout","stderr",0,0,0,0);let i=0;
     while i<2{let key=h_at(keys,i);let text=h_cat(cj_text(p,key),cj_text(o,key));if h_len(text)>32768{text=ag_clip(text,32768);j_set(p,"output_truncated",j_bool(1));}j_set(p,key,j_string(text));i=i+1;}
     let views=cj_get(o,"views");if views && j_kind(views)==3{let all=cj_array(p,"views");i=0;while i<j_count(views){j_push(all,j_at(views,i));i=i+1;}}
     if cj_int(o,"output_truncated"){j_set(p,"output_truncated",j_bool(1));}
     if h_equal(cj_text(o,"state"),"progress") || h_equal(cj_text(o,"state"),"feedback") || h_equal(cj_text(o,"state"),"permission") || h_equal(cj_text(o,"state"),"platform_permission") || h_equal(cj_text(o,"state"),"imagegen"){
         let signal=j_need(o,"signal");let signals=cj_array(p,"signals");let expected=j_count(signals)+1;
         if cj_int(signal,"id")!=expected || expected>32 || !h_equal(cj_text(signal,"kind"),cj_text(o,"state")){return c_error("Invalid VM signal sequence.");}
+        let chain=cj_int(signal,"review_chain");if !chain || chain!=cj_int(p,"review_chain"){j_set(p,"review_grants",j_array());}j_set(p,"review_chain",j_int(chain));j_set(p,"review_attempt",j_int(0));j_set(p,"reviewing",j_bool(0));
         j_push(signals,signal);j_set(p,"signal",signal);j_set(p,"feedback",cj_null());j_set(p,"resume",j_bool(1));
         let phase="vm";let text=cj_text(signal,"text");if h_equal(cj_text(o,"state"),"feedback"){phase="feedback";text=h_cat("Feedback requested: ",text);}if h_equal(cj_text(o,"state"),"permission") || h_equal(cj_text(o,"state"),"platform_permission") || h_equal(cj_text(o,"state"),"imagegen"){phase=cj_text(o,"state");}ch_card(s,"progress",text,0);j_set(s,"phase",j_string(phase));return 0;
     }
@@ -77,6 +79,22 @@ fn ch_reply(s,reply){
     let p=j_object();j_set(p,"call",call);j_set(p,"reply",reply);ch_set_pending(s,p);ch_card(s,"source",j_s(call,"input"),0);j_set(s,"phase",j_string("vm"));return 0;
 }
 fn ch_set_feedback(p,answer){j_set(p,"feedback",answer);j_set(j_need(p,"signal"),"answer",answer);let signals=cj_array(p,"signals");if j_count(signals){j_set(j_at(signals,j_count(signals)-1),"answer",answer);}return 0;}
+fn ch_review(s,request,error){
+    let p=ch_pending(s);if !p || !cj_int(p,"reviewing") || !h_equal(cj_text(s,"phase"),"permission"){return c_error("No automatic review is pending.");}
+    let signal=j_need(p,"signal");
+    if !h_len(error) && (cj_int(request,"request_id")!=cj_int(signal,"id") || !h_equal(cj_text(request,"call_id"),cj_text(j_need(p,"call"),"call_id")) || cj_int(request,"attempt")!=cj_int(p,"review_attempt")){return c_error("Stale automatic review result.");}
+    j_set(p,"reviewing",j_bool(0));j_set(s,"requests",j_int(cj_int(s,"requests")+1));
+    // A user can revoke access or switch to manual approval during the request.
+    if !h_equal(cp_mode(cj_get(ch_config,"permissions"),j_s(signal,"key")),"ask") || !h_equal(cp_reviewer(cj_get(ch_config,"permissions")),"auto_review"){j_set(p,"review_grants",j_array());return 0;}
+    if h_len(error) && !cj_int(p,"review_attempt") && !h_equal(cj_text(ch_config,"model"),"codex-auto-review"){
+        j_set(p,"review_attempt",j_int(1));ch_card(s,"progress","Auto-review: preferred reviewer unavailable; trying the conversation model in a separate review branch.",0);return 0;
+    }
+    let assessment=0;if h_len(error){assessment=cr_denial("Automatic review failed; no action was approved.");}else if !h_equal(cj_text(p,"review_context"),cr_authorization(s,ch_config)){assessment=cr_denial("User instructions changed during review; no action was approved.");}else{assessment=cr_assessment(cj_get(request,"reply"));}
+    let allowed=h_equal(j_s(assessment,"outcome"),"allow");let grant=j_object();j_set(grant,"key",j_need(signal,"key"));j_set(grant,"request_hex",j_need(signal,"request_hex"));j_set(grant,"allowed",j_bool(allowed));j_set(grant,"rationale",j_need(assessment,"rationale"));let prior=cj_array(p,"review_grants");let next=j_array();let i=0;while i<j_count(prior){let old=j_at(prior,i);if !h_equal(cj_text(old,"key"),j_s(signal,"key")) || !h_equal(cj_text(old,"request_hex"),j_s(signal,"request_hex")){j_push(next,old);}i=i+1;}j_push(next,grant);j_set(p,"review_grants",next);
+    let label="Auto-review denied: ";if allowed{label="Auto-review approved: ";}j_set(assessment,"key",j_need(signal,"key"));j_set(assessment,"operation",j_need(signal,"operation"));j_set(assessment,"model",j_string("codex-auto-review"));if cj_int(p,"review_attempt"){j_set(assessment,"model",j_need(ch_config,"model"));}ch_card(s,"progress",h_cat3(label,j_s(signal,"title"),h_cat(". ",j_s(assessment,"rationale"))),assessment);
+    let denied=cj_int(s,"review_denials")+1;if allowed{denied=0;}j_set(s,"review_denials",j_int(denied));j_set(s,"phase",j_string("vm"));
+    if denied>=3{let o=ch_failure_observation(s,"Stopped after three consecutive automatic-review denials. Ask the user before continuing.");j_set(p,"stdout",j_string(""));j_set(p,"stderr",j_string(""));ch_observe(s,o);j_set(s,"phase",j_string("done"));ch_card(s,"error","Stopped after three consecutive automatic-review denials.",0);}return 0;
+}
 fn ch_feedback(s,reply,error){
     let p=ch_pending(s);if !p || !h_equal(cj_text(s,"phase"),"feedback"){return c_error("No model feedback is pending.");}
     let answer=j_object();j_set(answer,"id",j_need(j_need(p,"signal"),"id"));let text=cj_text(reply,"message");
@@ -113,19 +131,23 @@ fn ch_command(s){
         let p=ch_pending(s);let signal=j_need(p,"signal");let key=j_s(signal,"key");
         if !cp_entry(key){return c_error("Unknown pending permission.");}
         if h_equal(cp_mode(cj_get(ch_config,"permissions"),key),"ask"){
-            j_set(cmd,"kind",j_string("permission"));j_set(cmd,"signal",signal);j_set(cmd,"call_id",j_need(j_need(p,"call"),"call_id"));return cmd;
+            j_set(cmd,"kind",j_string("permission"));j_set(cmd,"signal",signal);j_set(cmd,"call_id",j_need(j_need(p,"call"),"call_id"));
+            if h_equal(cp_reviewer(cj_get(ch_config,"permissions")),"auto_review"){
+                if !h_len(cj_text(signal,"request_hex")) || !cj_int(signal,"review_chain"){return c_error("This checkpoint has no exact operation to review. No action was approved.");}
+                let authorization=cr_authorization(s,ch_config);if h_len(authorization)>262144{return c_error("Automatic review authorization exceeds 256 KiB. Use manual approval for this conversation.");}if !cj_int(p,"reviewing"){ch_card(s,"progress",h_cat("Auto-review: checking ",j_s(signal,"title")),0);}j_set(p,"reviewing",j_bool(1));j_set(p,"review_context",j_string(authorization));j_set(cmd,"kind",j_string("autoreview"));j_set(cmd,"body",cr_request(s,p,ch_config));j_set(cmd,"request_id",j_need(signal,"id"));j_set(cmd,"attempt",j_int(cj_int(p,"review_attempt")));j_set(cmd,"response_index",j_int(cj_int(s,"requests")));
+            }return cmd;
         }
         j_set(s,"phase",j_string("vm"));phase="vm";
     }
     if h_equal(phase,"feedback"){
         let p=ch_pending(s);let permissions=cj_get(ch_config,"permissions");
-        if permissions && (j_kind(cj_get(permissions,"workers"))!=5 || !cj_int(permissions,"workers")){let answer=j_object();j_set(answer,"id",j_need(j_need(p,"signal"),"id"));j_set(answer,"error",j_string("Permission denied: workers"));ch_set_feedback(p,answer);ch_card(s,"feedback","Model feedback failed: Permission denied: workers",0);j_set(s,"phase",j_string("vm"));phase="vm";}
+        if permissions && !cp_deferred_allowed(permissions,"workers",j_need(p,"signal")){let answer=j_object();j_set(answer,"id",j_need(j_need(p,"signal"),"id"));j_set(answer,"error",j_string("Permission denied: workers"));ch_set_feedback(p,answer);ch_card(s,"feedback","Model feedback failed: Permission denied: workers",0);j_set(s,"phase",j_string("vm"));phase="vm";}
         else{j_set(cmd,"kind",j_string("feedback"));j_set(cmd,"messages",sg_messages(cj_array(s,"messages"),p));j_set(cmd,"response_index",j_int(cj_int(s,"requests")));return cmd;}
     }
     if h_equal(phase,"imagegen"){
         let p=ch_pending(s);let permissions=cj_get(ch_config,"permissions");let error="";let signals=cj_array(p,"signals");let count=0;let i=0;while i<j_count(signals){if h_equal(cj_text(j_at(signals,i),"kind"),"imagegen"){count=count+1;}i=i+1;}
         if count>4{error="At most four images may be generated per program.";}
-        if permissions && (!cj_int(permissions,"workers") || j_kind(cj_get(permissions,"workers"))!=5 || !cj_int(permissions,"files_write") || j_kind(cj_get(permissions,"files_write"))!=5){error="Permission denied: image generation requires workers and files_write.";}
+        if permissions && (!cp_deferred_allowed(permissions,"workers",j_need(p,"signal")) || !cp_deferred_allowed(permissions,"files_write",j_need(p,"signal"))){error="Permission denied: image generation requires workers and files_write.";}
         if h_len(error){ch_imagegen(s,0,error);phase="vm";}
         else{j_set(cmd,"kind",j_string("imagegen"));j_set(cmd,"signal",j_need(p,"signal"));j_set(cmd,"call_id",j_need(j_need(p,"call"),"call_id"));return cmd;}
     }
@@ -135,7 +157,7 @@ fn ch_command(s){
     }
     if h_equal(phase,"vm"){
         let p=ch_pending(s);if cj_int(p,"restored") && !cj_int(p,"resume"){return c_error("Interrupted program has no safe checkpoint. Side effects may already have happened; no program was replayed.");}
-        let call=j_need(p,"call");let r=j_object();j_set(r,"source",j_need(call,"input"));j_set(r,"call_id",j_need(call,"call_id"));j_set(r,"resume",j_int(cj_int(p,"resume")));let feedback=cj_get(p,"feedback");if feedback && j_kind(feedback)==4{j_set(r,"feedback",feedback);}j_set(cmd,"kind",j_string("vm"));j_set(cmd,"request",r);return cmd;
+        let call=j_need(p,"call");let r=j_object();j_set(r,"source",j_need(call,"input"));j_set(r,"call_id",j_need(call,"call_id"));j_set(r,"resume",j_int(cj_int(p,"resume")));j_set(r,"review_grants",cj_array(p,"review_grants"));j_set(r,"review_chain",j_int(cj_int(p,"review_chain")));j_set(r,"review_signal_id",j_int(cj_int(cj_get(p,"signal"),"id")));let feedback=cj_get(p,"feedback");if feedback && j_kind(feedback)==4{j_set(r,"feedback",feedback);}j_set(cmd,"kind",j_string("vm"));j_set(cmd,"request",r);return cmd;
     }
     if h_equal(phase,"next"){
         if cj_int(s,"step")>=16{j_set(s,"phase",j_string("failed"));j_set(s,"error",j_string("Stopped after 16 programs. Send a message to continue."));j_set(s,"finish_status",j_string("paused"));phase="failed";}
@@ -147,6 +169,7 @@ fn ch_command(s){
 fn ch_host(request){
     ch_config=j_need(request,"config");ch_events=j_array();let action=cj_text(request,"action");
     if h_equal(action,"permissions"){return cp_permissions(cj_get(request,"saved"));}
+    if h_equal(action,"permission_update"){return cp_update(cj_get(request,"saved"),cj_text(request,"key"),cj_get(request,"value"));}
     if h_equal(action,"stream"){return co_stream_packet(request);}
     if h_equal(action,"transport_error"){let out=j_object();j_set(out,"message",j_string(co_http_status(cj_int(request,"status"))));return out;}
     if h_equal(action,"authenticate"){let auth=co_auth_tokens(j_need(request,"auth"));if !auth{return c_error(co_problem);}return co_transport(auth);}
@@ -158,13 +181,15 @@ fn ch_host(request){
     if h_equal(action,"compact"){j_set(s,"manual_compact",j_bool(1));j_set(s,"phase",j_string("compact"));}
     j_set(s,"fixture",j_bool(cj_int(request,"fixture")));
     if h_equal(action,"reply"){failed=ch_reply(s,j_need(request,"reply"));}
+    if h_equal(action,"reviewed"){failed=ch_review(s,request,"");}
     if h_equal(action,"observation"){failed=ch_observe(s,j_need(request,"observation"));}
     if h_equal(action,"platform_completed"){if !h_equal(cj_text(s,"phase"),"platform_permission"){return c_error("No Android consent is pending.");}j_set(s,"phase",j_string("vm"));}
     if h_equal(action,"feedback"){failed=ch_feedback(s,j_need(request,"reply"),"");}
     if h_equal(action,"image_generated"){failed=ch_imagegen(s,cj_get(request,"file"),"");}
     if h_equal(action,"compacted"){let reply=j_need(request,"reply");j_set(s,"messages",j_need(reply,"messages"));j_set(s,"usage",cj_null());j_set(s,"anchor",j_int(0));j_set(s,"compacted_step",j_int(cj_int(s,"step")));let phase="next";if cj_int(s,"manual_compact"){phase="done";}j_set(s,"manual_compact",j_bool(0));j_set(s,"phase",j_string(phase));ch_card(s,"info","Context compacted. FlexDB and workspace files are unchanged.",0);}
     if h_equal(action,"failure"){
-        let text=j_s(request,"error");if h_equal(cj_text(s,"phase"),"feedback") && !cj_int(request,"cancelled"){failed=ch_feedback(s,0,text);}
+        let text=j_s(request,"error");if h_equal(cj_text(s,"phase"),"permission") && cj_int(ch_pending(s),"reviewing") && !cj_int(request,"cancelled"){failed=ch_review(s,request,text);}
+        else if h_equal(cj_text(s,"phase"),"feedback") && !cj_int(request,"cancelled"){failed=ch_feedback(s,0,text);}
         else if h_equal(cj_text(s,"phase"),"imagegen") && !cj_int(request,"cancelled"){failed=ch_imagegen(s,0,text);}
         else if h_equal(cj_text(s,"phase"),"vm") || h_equal(cj_text(s,"phase"),"waiting") || h_equal(cj_text(s,"phase"),"feedback") || h_equal(cj_text(s,"phase"),"permission") || h_equal(cj_text(s,"phase"),"platform_permission") || h_equal(cj_text(s,"phase"),"imagegen"){
             let o=ch_failure_observation(s,text);let p=ch_pending(s);j_set(p,"stdout",j_string(""));j_set(p,"stderr",j_string(""));ch_observe(s,o);

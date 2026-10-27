@@ -648,6 +648,28 @@ and the production ARM64 UI image. See [`docs/ui.md`](../../../docs/ui.md) for t
 DSL, wire ABI, platform differences and browser checks. Emulator evidence is not
 physical-phone deployment evidence.
 
+## Markdown rendering
+
+Android and desktop use the same Flexscript Markdown formatter for headings,
+bold/italic/strike, inline and fenced code, lists and links. Android tables are
+ordinary shared view nodes: native horizontal scrolling, aligned wrapping
+cells, header/alternating row backgrounds and 20 data rows per page. Previous
+and Next reach the complete table; Copy table copies all rows as TSV, including
+rows outside the visible page. The desktop retains its native text/table layout.
+
+Android link spans send the rendered target back through shared event validation.
+Web links open the system browser. Relative workspace links open bounded text
+or image previews; escaped paths are decoded, fragments are removed for file
+lookup, and traversal/absolute paths are rejected. Android also checks the
+canonical file location before opening it. Formatting, table structure, paging
+and path normalization stay in Flexscript; Java supplies spans, taps and the
+platform file/image/browser operations.
+
+`build/tools/test-collie-markdown-android --out DIR --serial emulator-N` checks
+real link taps, workspace previews, all 47 table fixture rows and a summary-only
+response, with original-state restoration. The portable UI check also verifies
+actual Android spans, table scrolling and shared link effects.
+
 ## Thinking summaries and tool activity
 
 Model requests enable `reasoning.summary: "auto"`. The shared provider processes
@@ -664,6 +686,12 @@ panel shows the history, with existing controls for viewing code and results.
 Assistant messages stream and remain outside the panel. The same grouping is
 used in worker conversations. Older conversations with tool activity but no API
 summary get a generic activity preview.
+
+Android now forwards pending stream activity immediately, including worker
+requests before their first SSE event. An expanded pending panel explains when
+the model has not sent a public summary yet. Summary-only replies use the same
+panel without inventing tool calls; models that supply no summary retain the
+normal assistant reply. Summary text always comes from the API.
 
 Android Java continues to own HTTPS and frame delivery. Summary parsing, display
 field selection, persistent cards, grouping and expansion are shared Flexscript.

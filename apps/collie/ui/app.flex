@@ -124,7 +124,7 @@ fn cu_event(event){
         // Ask/Allow/Deny binding changes policy; other controls keep routing.
         let choice=cp_choice(action,key);if choice{
             if !h_equal(type,"click"){return c_error("Invalid permission choice.");}
-            let next=cu_copy(cu_policy);j_set(next,action,choice);j_set(cu_state,"policy",next);command=cu_command("permission");j_set(command,"key",j_string(action));j_set(command,"allowed",choice);return command;
+            let change=cp_update(cu_policy,action,choice);if cj_get(change,"error"){return change;}let next=j_get(change,"policy");j_set(cu_state,"policy",next);command=cu_command("permission");j_set(command,"key",j_string(action));j_set(command,"allowed",choice);return command;
         }
     }
     if cu_desktop() && h_equal(action,"settings_section"){
@@ -153,6 +153,7 @@ fn cu_event(event){
         if cu_n("busy"){return command;}if !h_starts(key,"desktop-session-"){return c_error("Invalid desktop conversation binding.");}
         cu_set("page","chat");if h_equal(key+16,cu_selected_session()){return command;}cu_set("pending_session_id",key+16);cu_int("session_request",cu_n("session_request")+1);command=cu_command("open_session");j_set(command,"id",j_string(key+16));j_set(command,"request_id",j_int(cu_n("session_request")));return command;
     }
+    if h_equal(action,"table_page"){let n=h_len(key);let suffix=5;if n>9 && h_equal(key+n-9,"-previous"){suffix=9;}if n<=suffix || id<0 || id%20{return c_error("Invalid table page.");}let offsets=cu_copy(cj_get(cu_state,"table_offsets"));j_set(offsets,h_slice(key,n-suffix),j_int(id));j_set(cu_state,"table_offsets",offsets);return command;}
     if h_equal(action,"fold"){cu_toggle(key);return command;}
     if h_equal(action,"back"){return cu_back();}
     if h_equal(action,"copy"){
@@ -243,14 +244,22 @@ fn cu_session_summary(saved){
     while i<j_count(history){let item=j_at(history,i);let role=cj_text(item,"role");let text=cj_text(item,"content");if (h_equal(role,"user") || h_equal(role,"assistant")) && h_len(h_trim(text)){if !titled && h_equal(role,"user"){title=text;titled=1;}preview=rt_plain(text);}i=i+1;}
     let result=j_object();j_set(result,"title",j_string(cu_clip(title,256)));j_set(result,"preview",j_string(cu_clip(preview,180)));return result;
 }
+fn cu_link_hex(c){if c>=48 && c<=57{return c-48;}if c>=65 && c<=70{return c-55;}if c>=97 && c<=102{return c-87;}return -1;}
+fn cu_link_target(href){
+    if !rt_href(href){return c_error("Invalid message link.");}let out=j_object();
+    if h_starts(href,"http://") || h_starts(href,"https://"){j_set(out,"kind",j_string("web"));j_set(out,"href",j_string(href));return out;}
+    let b=h_buffer();let i=0;while load8(href+i) && load8(href+i)!=63 && load8(href+i)!=35{let c=load8(href+i);if c==37{let a=cu_link_hex(load8(href+i+1));if a<0 || !load8(href+i+1){return c_error("Invalid file link escape.");}let d=cu_link_hex(load8(href+i+2));if d<0{return c_error("Invalid file link escape.");}c=a*16+d;i=i+2;}if c<32 || c==127 || c==92 || c==58{return c_error("Invalid workspace file link.");}let byte=h_take(1);store8(byte,c);h_append(b,byte,1);i=i+1;}
+    let path=h_data(b);if !h_len(path) || load8(path)==47{return c_error("Choose a file inside this workspace.");}let start=0;i=0;let length=h_len(path);while i<=length{if i==length || load8(path+i)==47{let part=h_slice(path+start,i-start);if h_equal(part,".."){return c_error("File link escapes this workspace.");}start=i+1;}i=i+1;}
+    let kind="file";let lower=cu_lower(path);let n=h_len(lower);if (n>=4 && (h_equal(lower+n-4,".png") || h_equal(lower+n-4,".jpg"))) || (n>=5 && (h_equal(lower+n-5,".jpeg") || h_equal(lower+n-5,".webp"))){kind="image";}let file=j_object();j_set(file,"type",j_string(kind));j_set(file,"path",j_string(h_cat("/",path)));j_set(out,"kind",j_string("file"));j_set(out,"file",file);return out;
+}
 fn cu_open_link(node,event){
-    let href=cj_text(event,"value");if !cu_desktop() || !rt_href(href){return c_error("Invalid message link.");}
+    let href=cj_text(event,"value");if !rt_href(href){return c_error("Invalid message link.");}
     let attr=load64(node+96);while attr{if h_equal(load64(attr),"runs"){let runs=j_parse(load64(attr+8));let i=0;while i<j_count(runs){if h_equal(cj_text(j_at(runs,i),"href"),href){let command=cu_command("open_link");j_set(command,"href",j_string(href));return command;}i=i+1;}}attr=load64(attr+16);}return c_error("Stale message link.");
 }
 fn cu_ui_host(request){
-    let action=cj_text(request,"action");if h_equal(action,"summary"){return cu_session_summary(cj_get(request,"saved"));}
+    let action=cj_text(request,"action");if h_equal(action,"link_target"){return cu_link_target(cj_text(request,"href"));}if h_equal(action,"summary"){return cu_session_summary(cj_get(request,"saved"));}
     if h_equal(action,"navigation"){
-        let state=cj_get(request,"state");let out=j_object();let keys=j_parse("[\"page\",\"draft\",\"query\",\"worker\",\"expanded\",\"model_input\",\"model_query\",\"model_return\",\"settings_section\",\"preview\",\"preview_back\",\"card_offset\",\"session_offset\",\"notice_return\",\"notice\",\"sidebar_collapsed\",\"sidebar_width\",\"sidebar_mode\",\"sidebar_closed\",\"workspace\",\"workspace_side\"]");let i=0;
+        let state=cj_get(request,"state");let out=j_object();let keys=j_parse("[\"table_offsets\",\"page\",\"draft\",\"query\",\"worker\",\"expanded\",\"model_input\",\"model_query\",\"model_return\",\"settings_section\",\"preview\",\"preview_back\",\"card_offset\",\"session_offset\",\"notice_return\",\"notice\",\"sidebar_collapsed\",\"sidebar_width\",\"sidebar_mode\",\"sidebar_closed\",\"workspace\",\"workspace_side\"]");let i=0;
         while i<j_count(keys){let key=j_value(j_at(keys,i));let value=cj_get(state,key);if value{j_set(out,key,value);}i=i+1;}let prior=cu_state;cu_state=state;out=cm_navigation(out);cu_state=prior;return out;
     }
     let state=cj_get(request,"state");cu_state=cu_copy(state);if cj_int(cj_get(request,"data"),"multi_chat"){cu_int("multi_chat",1);}if !h_len(cu_s("page")){cu_set("page","chat");}if !h_len(cu_s("model")){cu_set("model","gpt-6.1-sol");}cu_desktop_settings_restore();if cm_enabled(){cws_prepare();cm_prepare();request=cm_filter_request(request);action=cj_text(request,"action");}
@@ -274,7 +283,7 @@ fn cu_ui_host(request){
     if h_equal(action,"append") || cj_get(request,"append_cards"){
         let array=j_array();let prior=cu_a("cards");let i=0;while i<j_count(prior){j_push(array,j_at(prior,i));i=i+1;}let card=cj_get(request,"card");if card{j_push(array,card);}let added=cu_array(request,"append_cards");i=0;while i<j_count(added){j_push(array,j_at(added,i));i=i+1;}j_set(cu_state,"cards",array);
     }
-    if h_equal(action,"clear"){j_set(cu_state,"permission_request",j_object());j_set(cu_state,"cards",j_array());j_set(cu_state,"expanded",j_object());j_set(cu_state,"worker_messages",j_array());j_set(cu_state,"worker_streams",j_object());j_set(cu_state,"live",j_object());cu_int("worker",0);cu_set("page","chat");cu_set("stream","");cu_set("draft","");cu_int("card_offset",0);}
+    if h_equal(action,"clear"){j_set(cu_state,"permission_request",j_object());j_set(cu_state,"cards",j_array());j_set(cu_state,"expanded",j_object());j_set(cu_state,"table_offsets",j_object());j_set(cu_state,"worker_messages",j_array());j_set(cu_state,"worker_streams",j_object());j_set(cu_state,"live",j_object());cu_int("worker",0);cu_set("page","chat");cu_set("stream","");cu_set("draft","");cu_int("card_offset",0);}
     if data && cj_get(data,"busy") && !cu_n("busy"){cu_set("status","");cu_set("stream","");j_set(cu_state,"live",j_object());}
     if h_equal(action,"notice"){cu_set("pending_session_id","");cu_notice(cj_text(request,"text"));}
     if h_equal(action,"health_rationale"){cu_notice("Collie reads health sensor data only after this conversation has Sensors access and Android grants the required permission. Programs can return readings to the AI model and save them in this conversation. Revoke access in Collie Permissions or Android settings. No health sensors are accessed just by opening Collie.");}
