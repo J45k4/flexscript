@@ -70,12 +70,12 @@ view desktop_chat_screen(){
         row("chat-header",padding_x:20,padding_y:12,gap:12){
             button("desktop-toggle",text:"☰",description:"Toggle sidebar · Ctrl+B",action:"desktop_sidebar",width:34,height:34,align:"center",size:18,color:"#a4b2b5");
             text("chat-title",text:cu_chat_title(),max_lines:1,size:15,font:"medium",color:"#edf2ed",weight:1);
-            if !cu_sidebar(){button("chat-project",text:cu_project_name(),action:"projects",enabled:!cu_n("busy"),min_height:34,padding_x:8,size:12,color:"#c5e3ae");}
-            if !cu_sidebar(){button("chat-conversations",text:"Chats",description:"Conversations · Ctrl+K",action:"conversations",min_height:34,size:12,color:"#c5e3ae");button("chat-new",text:"＋",description:"New conversation · Ctrl+N",action:"new_session",enabled:!cu_n("busy"),width:34,height:34,align:"center",size:22,color:"#c5e3ae");}
-            if cu_main_width()>=640{
+            if !cm_enabled() && !cu_sidebar(){button("chat-project",text:cu_project_name(),action:"projects",enabled:!cu_n("busy"),min_height:34,padding_x:8,size:12,color:"#c5e3ae");}
+            if !cm_enabled() && !cu_sidebar(){button("chat-conversations",text:"Chats",description:"Conversations · Ctrl+K",action:"conversations",min_height:34,size:12,color:"#c5e3ae");button("chat-new",text:"＋",description:"New conversation · Ctrl+N",action:"new_session",enabled:!cu_n("busy"),width:34,height:34,align:"center",size:22,color:"#c5e3ae");}
+            if (!cm_enabled() && cu_main_width()>=640) || (cm_enabled() && cu_n("panel_width")>=420){
             button("desktop-model",text:cu_current_model_label(),description:"Choose model · Ctrl+,",action:"model",enabled:!cu_n("busy"),min_height:34,padding_x:10,size:12,color:"#c5e3ae",background:"#19232a",radius:8);
             }
-            if !cu_sidebar(){use desktop_settings_icon("chat-menu");}
+            if !cm_enabled() && !cu_sidebar(){use desktop_settings_icon("chat-menu");}
         }
         row("chat-status-row",padding_x:26,padding_y:5,gap:8){text("chat-dot",text:"●",size:8,color:cu_send_color());text("chat-status",text:cu_status(),size:12,color:"#a4b2b5",weight:1);if !cu_sidebar(){button("chat-workers",text:m_cat("Workers · ",m_int(cu_active())),action:"workers",size:12,min_height:24,color:"#a4b2b5");}text("chat-context",text:cu_context(),size:12,color:"#a4b2b5");}
         if cu_n("continuation") && !cu_n("busy"){button("chat-continue",text:"Resume saved program  ›",description:"Resume saved program",action:"resume_main",size:14,color:"#c5e3ae",min_height:36,padding_x:26);}

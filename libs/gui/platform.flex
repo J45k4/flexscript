@@ -5,7 +5,8 @@ import "clipboard.flex";
 import "text-input.flex";
 global GUI_CURSOR_DEFAULT=0;
 global GUI_CURSOR_SIZE_HORIZONTAL=1;
-global gui__resize_cursor=0;
+global GUI_CURSOR_SIZE_VERTICAL=2;
+global gui__resize_cursor=0;global gui__vertical_cursor=0;
 global gui__event_queue=0;
 global gui__event_read=0;
 global gui__event_write=0;
@@ -18,10 +19,10 @@ fn gui_pointer_capture(window,enabled){
 fn gui_cursor(window,kind){
     if !gui__record(window){return 0;}
     if gui__native{let p=gui__record(window);let c=load64(p);return wn_set(c,load64(c+192),kind);}
-    if kind!=GUI_CURSOR_DEFAULT && kind!=GUI_CURSOR_SIZE_HORIZONTAL{return gui__fail("Unknown GUI cursor");}
+    if kind!=GUI_CURSOR_DEFAULT && kind!=GUI_CURSOR_SIZE_HORIZONTAL && kind!=GUI_CURSOR_SIZE_VERTICAL{return gui__fail("Unknown GUI cursor");}
     let cursor=0;if kind==GUI_CURSOR_SIZE_HORIZONTAL{
         if !gui__resize_cursor{gui__resize_cursor=gui__call("SDL_CreateSystemCursor",7,0,0,0,0,0);}cursor=gui__resize_cursor;
-    }else{cursor=gui__call("SDL_GetDefaultCursor",0,0,0,0,0,0);}
+    }else if kind==GUI_CURSOR_SIZE_VERTICAL{if !gui__vertical_cursor{gui__vertical_cursor=gui__call("SDL_CreateSystemCursor",8,0,0,0,0,0);}cursor=gui__vertical_cursor;}else{cursor=gui__call("SDL_GetDefaultCursor",0,0,0,0,0,0);}
     if !cursor{return gui__sdl_error();}gui__call("SDL_SetCursor",cursor,0,0,0,0,0);return 1;
 }
 fn gui_platform_close(){
@@ -29,6 +30,7 @@ fn gui_platform_close(){
     gui__ime_clear();gui__ime_window=0;gui__ime_identity=0;gui__ime_epoch=gui__ime_epoch+1;gui__text_enabled=0;
     gui_clipboard_cancel(gui__clipboard_id);
     if gui__resize_cursor{gui__call("SDL_FreeCursor",gui__resize_cursor,0,0,0,0,0);gui__resize_cursor=0;}
+    if gui__vertical_cursor{gui__call("SDL_FreeCursor",gui__vertical_cursor,0,0,0,0,0);gui__vertical_cursor=0;}
     gui__event_read=0;gui__event_write=0;return 0;
 }
 // A bounded normalized event queue shared by native platform callbacks and test

@@ -41,7 +41,7 @@ fn ud_content(node){
 }
 fn ud_display_content(node){let text=ud_content(node);if node==ud_ime_node && ud_ime_text{let at=load64(node+144);return h_cat3(h_slice(text,at),ud_ime_text,text+at);}return text;}
 fn ud_display_caret(node){let at=load64(node+144);if node==ud_ime_node{let begin=ud_ime_begin;if begin<0{begin=ud_ime_bytes;}at=at+begin;}return at;}
-fn ud_runs(node,text){let raw=ud_s(node,"runs");if h_len(raw) && load64(node+8)!=8{return j_parse(raw);}let runs=j_array();let r=j_object();j_set(r,"text",j_string(text));j_set(r,"style",j_int(0));j_push(runs,r);return runs;}
+fn ud_runs(node,text){let raw=ud_s(node,"runs");if h_len(raw){let parsed=j_parse(raw);if load64(node+8)!=8{return parsed;}let joined=h_buffer();let i=0;while i<j_count(parsed){h_text(joined,j_s(j_at(parsed,i),"text"));i=i+1;}if h_equal(h_data(joined),text){return parsed;}}let runs=j_array();let r=j_object();j_set(r,"text",j_string(text));j_set(r,"style",j_int(0));j_push(runs,r);return runs;}
 fn ud_font_runs(node,text){
     let source=ud_runs(node,text);let out=j_array();let i=0;
     while i<j_count(source){let run=j_at(source,i);let value=j_s(run,"text");let n=h_len(value);let style=j_n(run,"style");let size=ud_n(node,"size",14);if style&4{size=size*112/100;}if style&8{size=size*88/100;}let at=0;
@@ -81,6 +81,7 @@ fn ud_text_flow_pixels(node,width,text,runs){
 }
 fn ud_text_layout_pixels(node,width,text){let runs=ud_font_runs(node,text);let i=0;while i<j_count(runs){if j_get(j_at(runs,i),"cell"){return ud_table_document(node,width,text,runs);}i=i+1;}return ud_text_flow_pixels(node,width,text,runs);}
 fn ud_text_layout(node,width,text){
+    if !ud_n(node,"wrap",1){width=8192;}
     let out=ud_text_layout_pixels(node,ud_pixels(width),text);let pieces=j_need(out,"pieces");let i=0;
     while i<j_count(pieces){let p=j_at(pieces,i);j_set(p,"px",j_need(p,"x"));j_set(p,"py",j_need(p,"y"));j_set(p,"x",j_int(j_n(p,"x")*1000/ud_scale));j_set(p,"y",j_int(j_n(p,"y")*1000/ud_scale));j_set(p,"w",j_int(ud_units(j_n(p,"w"))));i=i+1;}
     j_set(out,"w",j_int(ud_units(j_n(out,"w"))));j_set(out,"h",j_int(ud_units(j_n(out,"h"))));j_set(out,"line",j_int(ud_units(j_n(out,"line"))));j_set(out,"caret_x",j_int(ud_units(j_n(out,"caret_x"))));j_set(out,"caret_y",j_int(j_n(out,"caret_y")*1000/ud_scale));return out;

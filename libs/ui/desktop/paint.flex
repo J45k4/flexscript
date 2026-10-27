@@ -13,7 +13,7 @@ fn ud_scroll_thumb_y(node){let travel=load64(node+88)-ud_scroll_thumb(node);retu
 fn ud_alpha(color,alpha){return (color&0xffffff)|((((color>>24)&255)*alpha/100)<<24);}
 fn ud_text_origin(node){
     let px=ud_padding(node,0);let py=ud_padding(node,1);let x=load64(node+64)+px;let y=load64(node+72)+py;let w=load64(node+80)-px*2;let h=load64(node+88)-py*2;let tw=load64(node+208);let th=load64(node+216);
-    if h_equal(ud_s(node,"align"),"center"){x=x+ud_max(0,(w-tw)/2);}if h_equal(ud_s(node,"align"),"end"){x=x+ud_max(0,w-tw);}y=y+ud_max(0,(h-th)/2);
+    if h_equal(ud_s(node,"align"),"center"){x=x+ud_max(0,(w-tw)/2);}if h_equal(ud_s(node,"align"),"end"){x=x+ud_max(0,w-tw);}if !h_equal(ud_s(node,"vertical_align"),"start"){y=y+ud_max(0,(h-th)/2);}
     let out=ud_origin;store64(out,x-load64(node+232));store64(out+8,y-load64(node+240));return out;
 }
 fn ud_paint_ime_range(start,end,x,y,line,color,underline){
@@ -23,7 +23,7 @@ fn ud_paint_text(node,alpha){
     let kind=load64(node+8);let layout=0;
     if node==ud_focus && (kind==8 || ud_n(node,"selectable",0)){
         layout=ud_edit_layout(node);let x=j_n(layout,"caret_x");let y=j_n(layout,"caret_y");let width=load64(node+80)-2*ud_padding(node,0);let height=load64(node+88)-2*ud_padding(node,1);let sx=load64(node+232);let sy=load64(node+240);
-        if kind==8{if x-sx>width-2{sx=x-width+2;}if x<sx{sx=x;}if y-sy>height-j_n(layout,"line"){sy=y-height+j_n(layout,"line");}if y<sy{sy=y;}store64(node+232,ud_max(0,sx));store64(node+240,ud_max(0,sy));}
+        if kind==8 && !load64(node+200){if x-sx>width-2{sx=x-width+2;}if x<sx{sx=x;}if y-sy>height-j_n(layout,"line"){sy=y-height+j_n(layout,"line");}if y<sy{sy=y;}store64(node+232,ud_max(0,sx));store64(node+240,ud_max(0,sy));}
     }
     let origin=ud_text_origin(node);let x=load64(origin);let y=load64(origin+8);
     let background=load64(node+176);if background{gui_texture_alpha(background,alpha*255/100);gui_texture_draw(ud_window,background,x,y,load64(node+208),load64(node+216));}

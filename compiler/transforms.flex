@@ -79,9 +79,9 @@ fn tx_snapshot(phase,config,request_module) {
 fn tx_vm_reset() {
     vm_mode=1;vm_restricted=1;vm_heap_limit=268435456;vm_heap_used=16;
     vm_sp=0;vm_depth=0;vm_local_base=0;vm_local_top=0;vm_finished=0;vm_error=0;vm_steps=0;
-    // Full portable applications export several screens and permission rows.
+    // Full portable applications export workspace panels, screens and permission rows.
     // Keep a fixed fuel/deadline bound while allowing their validated source export.
-    vm_fuel=100000000;vm_timeout=5000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
+    vm_fuel=500000000;vm_timeout=15000;vm_output_left=1048576;vm_stdin=0;vm_read_root=-1;
     vm_jit_enabled=1;vm_jit_explicit=0;vm_jit_threshold=1;
     if !vm_initialize() {fail("cannot initialize transformation VM");}return 0;
 }
