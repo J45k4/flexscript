@@ -1,0 +1,49 @@
+[
+  {
+    "_events": [
+      {
+        "type": "response.created"
+      },
+      {
+        "type": "response.reasoning_summary_text.delta",
+        "item_id": "rs_prose",
+        "summary_index": 0,
+        "delta": "Checking **the source**."
+      },
+      {
+        "type": "response.output_text.delta",
+        "delta": "**Styled answer.**"
+      },
+      {
+        "type": "response.completed",
+        "response": {
+          "status": "completed",
+          "output": [
+            {
+              "type": "reasoning",
+              "id": "rs_prose",
+              "encrypted_content": "private-marker",
+              "summary": [
+                {
+                  "type": "summary_text",
+                  "text": "Checking **the source**."
+                }
+              ]
+            },
+            {
+              "type": "message",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "**Styled answer.**"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "_event_delay_ms": 2500
+  }
+]

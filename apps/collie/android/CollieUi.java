@@ -78,7 +78,14 @@ final class CollieUi {
         try { update(new JSONObject().put("workers",rows).put("workers_error",error)); }
         catch(JSONException failure) { throw new IllegalArgumentException(failure); }
     }
-    Object beginStream(long id) { Object token=new Object();streamTokens.put(id,token);return token; }
+    Object beginStream(long id) {
+        Object token=new Object();streamTokens.put(id,token);
+        // Render the actual pending request before its first SSE event, also
+        // for workers (which do not use the main conversation's busy flag).
+        try { stream(id,token,object("text","").put("active",true)); }
+        catch(JSONException error) { throw new IllegalArgumentException(error); }
+        return token;
+    }
     void stream(long id,Object token,JSONObject live) {
         if (streamTokens.get(id)!=token) return;
         try {

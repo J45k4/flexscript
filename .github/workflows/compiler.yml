@@ -175,10 +175,16 @@ jobs:
           build/test-collie-recall --out build/android-worker-tests
           build/stage2 scripts/test-collie-thinking.flex -o build/test-collie-thinking
           build/test-collie-thinking --out build/android-worker-tests
+          build/stage2 scripts/test-collie-autoreview.flex -o build/test-collie-autoreview
+          build/test-collie-autoreview --out build/android-worker-tests
+          build/stage2 scripts/test-collie-workspace-mode.flex -o build/test-collie-workspace-mode
+          build/test-collie-workspace-mode --out build/android-worker-tests
           build/stage2 scripts/test-collie-core.flex -o build/test-collie-core
           build/test-collie-core --out build/android-worker-tests
           build/stage2 apps/collie/tests/shared-core.flex -o build/test-collie-shared-core
           build/test-collie-core --out build/android-worker-tests --core-driver build/test-collie-shared-core
+          build/test-collie-autoreview --out build/android-worker-tests --core-driver build/test-collie-shared-core
+          build/test-collie-workspace-mode --out build/android-worker-tests --core-driver build/test-collie-shared-core
 
       - name: Install the WebAssembly test host
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -331,6 +337,12 @@ jobs:
           build/build-collie-desktop --compiler build/stage2
           build/test-collie-core --desktop --out build/collie-desktop
           build/test-collie-thinking --desktop --out build/collie-desktop
+          build/test-collie-autoreview --desktop --out build/collie-desktop
+          build/stage2 scripts/test-collie-autoreview-desktop.flex -o build/test-collie-autoreview-desktop
+          build/test-collie-autoreview-desktop build/collie-desktop
+          build/test-collie-workspace-mode --desktop --out build/collie-desktop
+          build/stage2 scripts/test-collie-workspace-desktop.flex -o build/test-collie-workspace-desktop
+          build/test-collie-workspace-desktop build/collie-desktop
           python3 scripts/test-collie-native.py --out build/collie-desktop --compiler build/stage2
           python3 scripts/test-collie-native-platform.py --out build/collie-desktop --compiler build/stage2
           python3 scripts/test-collie-desktop-layout.py --out build/collie-desktop

@@ -26,7 +26,7 @@ fn cu_thinking_preview(panel){let text=cj_text(panel,"latest");if h_len(text){re
 view cu_activity_card(key,card){
     column(cu_key(key,"-activity"),gap:8){
     if h_equal(cj_text(card,"kind"),"thinking"){
-        column(key,gap:6){text(cu_key(key,"-label"),text:"Summary",size:11,color:"#8e9d9f");text(cu_key(key,"-body"),text:cj_text(card,"text"),runs:cu_text_runs(cj_text(card,"text")),size:14,color:"#d8e2e7",selectable:1,line_height:4);}
+        column(key,gap:6){text(cu_key(key,"-label"),text:"Summary",size:11,color:"#8e9d9f");use cm_text(cu_key(key,"-body"),cj_text(card,"text"),14,"#d8e2e7");}
     }else{if h_equal(cj_text(card,"kind"),"worker_result"){use cu_fold(cu_key(key,"-result"),"Show result",cj_text(card,"text"),0);}else{use cu_card(key,card);}}
     }
 }
@@ -44,7 +44,7 @@ view cu_thinking_panel(panel){
             each row in cu_items(cu_array(panel,"items")){use cu_activity_card(cj_text(row,"key"),j_need(row,"card"));}
             each index in cu_indices(cu_array(live,"summaries"),0,128){
                 let text=cj_text(j_at(cu_array(live,"summaries"),index),"text");
-                if h_len(text){text(cu_key(key,cu_k("-live-summary-",index)),text:text,runs:cu_text_runs(text),selectable:1,size:14,color:"#d8e2e7",line_height:4);}
+                if h_len(text){use cm_text(cu_key(key,cu_k("-live-summary-",index)),text,14,"#d8e2e7");}
             }
             if h_len(cj_text(live,"source")){use cu_fold(cu_key(key,"-live-source"),"Generating Flexscript",cj_text(live,"source"),1);}
             if h_len(cj_text(live,"feedback")){text(cu_key(key,"-live-feedback"),text:cj_text(live,"feedback"),selectable:1,size:14,color:"#d8e2e7");}

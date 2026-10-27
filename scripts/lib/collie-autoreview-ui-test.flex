@@ -1,0 +1,17 @@
+fn cu_autoreview_ui(){
+    let platforms=c_json("[\"android\",\"linux\"]");let i=0;while i<2{
+        cu_step("clear",0,0);let data=c_json("{\"page\":\"permissions\",\"viewport_width\":1100,\"viewport_height\":850,\"policy\":{\"files_write\":\"ask\",\"files_read\":false,\"approval_reviewer\":\"user\"}}");j_set(data,"platform",j_at(platforms,i));cu_update(data);
+        if i{cu_click("desktop-settings");cu_click("settings-nav-access");}
+        h_assert(uw_has("reviewer-user")&&uw_has("reviewer-auto")&&h_equal(uw_text("permission-reviewer-title"),"Approval mode"),"Approval mode is missing from permissions");
+        cu_command(cu_click("reviewer-auto"),"{\"kind\":\"permission\",\"key\":\"approval_reviewer\",\"allowed\":\"auto_review\"}");let policy=cj_get(cu_state,"policy");h_assert(h_equal(cj_text(policy,"files_write"),"ask")&&!cj_int(policy,"files_read")&&h_equal(cj_text(policy,"approval_reviewer"),"auto_review"),"Reviewer selection changed capability grants");
+        cu_command(cu_click("reviewer-user"),"{\"kind\":\"permission\",\"key\":\"approval_reviewer\",\"allowed\":\"user\"}");h_assert(h_equal(cj_text(cj_get(cu_state,"policy"),"approval_reviewer"),"user"),"Manual approval selection did not persist in UI state");i=i+1;
+    }
+    cu_step("clear",0,0);cu_pass("Android and desktop expose independent Ask me / Auto-review selection through actual rendered bindings without widening grants");return 0;
+}
+fn cu_workspace_ui(){
+    let platforms=c_json("[\"android\",\"linux\"]");let i=0;while i<2{
+        cu_step("clear",0,0);let data=c_json("{\"page\":\"permissions\",\"viewport_width\":1100,\"viewport_height\":850,\"policy\":{\"files_write\":\"ask\",\"files_read\":false,\"db_read\":\"ask\",\"db_write\":\"ask\",\"internet\":true,\"history\":true,\"workers\":true,\"approval_reviewer\":\"auto_review\"}}");j_set(data,"platform",j_at(platforms,i));cu_update(data);if i{cu_click("desktop-settings");cu_click("settings-nav-access");}
+        h_assert(uw_has("profile-workspace")&&uw_has("profile-custom")&&h_equal(uw_text("permission-profile-title"),"Access scope"),"Workspace selector is missing");cu_command(cu_click("profile-workspace"),"{\"kind\":\"permission\",\"key\":\"permission_profile\",\"allowed\":\"workspace\"}");let p=cj_get(cu_state,"policy");h_assert(h_equal(cj_text(p,"permission_profile"),"workspace")&&cj_int(p,"files_write")&&cj_int(p,"db_write")&&!cj_int(p,"files_read")&&h_equal(cj_text(p,"internet"),"ask")&&h_equal(cj_text(p,"workers"),"ask")&&h_equal(cj_text(p,"approval_reviewer"),"auto_review"),"Workspace selection widened outside access or changed the reviewer");
+        cu_command(cu_click("allow-internet"),"{\"kind\":\"permission\",\"key\":\"internet\",\"allowed\":true}");p=cj_get(cu_state,"policy");h_assert(h_equal(cj_text(p,"permission_profile"),"custom")&&cj_int(p,"internet")&&cj_int(p,"db_write")&&h_equal(cj_text(p,"workers"),"ask"),"Customizing a Workspace grant changed other limits");cu_click("profile-workspace");cu_command(cu_click("profile-custom"),"{\"kind\":\"permission\",\"key\":\"permission_profile\",\"allowed\":\"custom\"}");p=cj_get(cu_state,"policy");h_assert(cj_int(p,"files_write")&&h_equal(cj_text(p,"internet"),"ask"),"Custom restored broader prior grants");i=i+1;
+    }cu_step("clear",0,0);cu_pass("Android and desktop Workspace controls apply bounded local grants, retain Deny choices and compose with Auto-review through real bindings");return 0;
+}

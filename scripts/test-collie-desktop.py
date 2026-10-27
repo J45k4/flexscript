@@ -49,7 +49,7 @@ async def integration(out, work, passed):
     d = Desktop(out/'engine', work/'data', fixture=fixture, emit=packets.append)
     try:
         await d.initialize()
-        assert set(d.permissions.values()) == {'ask'}
+        assert d.permissions['approval_reviewer']=='user' and {v for k,v in d.permissions.items() if k not in ('approval_reviewer','permission_profile')} == {'ask'}
         assert len(d.permission_entries)==11 and all(row['key'] not in ('nfc','bluetooth','uwb','camera') for row in d.permission_entries)
         assert not d.tasks
         before=len(packets)

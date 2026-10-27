@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix='native-controller-',dir=out) as tmp:
  source='fn main(){let x=alloc(8);store64(x,42);if(!fs_write("native.txt",db_text("Native persisted"))){return 7;}progress("Saved a real file");let answer=agent_ask("Check the result");if(!answer){return 8;}db_io(0,1,db_word(answer),db_bytes(answer));return load64(x)-42;}'
  h=Host(work/'conversation',[completed(tool(source)),completed(message('Feedback verified')),completed(message('Native completed'))])
  try:
-  assert set(h.view['policy'].values())=={'ask'} and len(h.view['permission_entries'])==11
+  assert h.view['policy']['approval_reviewer']=='user' and {v for k,v in h.view['policy'].items() if k not in ('approval_reviewer','permission_profile')}=={'ask'} and len(h.view['permission_entries'])==11
   assert h.view['accounts']==[] and h.view['account']=={}
   count=len(h.packets);end=time.monotonic()+.65
   while time.monotonic()<end:h.poll()

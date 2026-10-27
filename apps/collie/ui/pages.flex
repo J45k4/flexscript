@@ -61,7 +61,7 @@ view workers_screen(){
                 if selected{
                     if h_len(j_value(j_at(selected,4))){text("worker-error",text:j_value(j_at(selected,4)),color:"#f1aaa6",size:14);}
                     use cu_timeline(cu_worker_cards(),0,1000,cu_worker_live(),cu_k("worker-",cu_n("worker")));
-                    if h_len(cj_text(cu_worker_live(),"text")){text("worker-stream-reply",text:cj_text(cu_worker_live(),"text"),runs:cu_text_runs(cj_text(cu_worker_live(),"text")),selectable:1,size:15,color:"#edf2ed");}
+                    if h_len(cj_text(cu_worker_live(),"text")){use cm_text("worker-stream-reply",cj_text(cu_worker_live(),"text"),15,"#edf2ed");}
                 }else{
                     if !j_count(cu_a("workers")){
                         text("workers-welcome",text:"A little help from the pack",color:"#c5e3ae",size:20);

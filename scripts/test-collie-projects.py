@@ -45,7 +45,7 @@ async def exercise(out, work, passed):
         first = d.project_id;first_chat = d.root.name
         assert first and first_chat != personal and d.files_directory() == folder
         assert d.project_name() == folder.name and len(d.projects.entries) == 1
-        assert all(p == 'ask' for p in d.permissions.values())
+        assert d.permissions['approval_reviewer']=='user' and all(v == 'ask' for k,v in d.permissions.items() if k not in ('approval_reviewer','permission_profile'))
         await d.command(dict(kind='permission', key='files_write', allowed=False))
         result = await d.call(3, source='fn main(){return fs_write("denied.txt",db_text("No"));}', call_id='denied')
         assert result['exit_code'] == 0 and not (folder/'denied.txt').exists()
