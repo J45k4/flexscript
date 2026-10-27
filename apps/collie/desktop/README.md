@@ -62,12 +62,80 @@ feeds all stream events back through the shared provider validator.
 build/collie-desktop/collie --data /path/to/private/collie --auth /path/to/auth.json
 ```
 
-The sidebar has **Projects** and **Timeline** modes. Projects groups chats under
+The sidebar switches between **Chats**, **Files**, and **Git**. Chats has
+**Projects** and **Timeline** modes. Projects groups chats under
 collapsible project headings, with a chat count and a **+** to start a chat in
 that project. Timeline shows every project's chats and personal chats in saved
 activity order, with project labels and dates. Search covers all conversations
 and project names in either mode and reveals matching collapsed groups. The
 mode and collapsed groups survive chat switches and restart.
+
+## Dockable workspace
+
+Chat, file editors, Git diffs and terminals share a workspace with tabs and nested
+horizontal/vertical splits. Drag a tab onto another panel: its centre joins the
+tab group, and its left/right/top/bottom edges create a split. The highlighted
+drop region previews the result. Drag a divider to resize either direction. A
+wider grab area, a highlighted divider and a resize cursor help you find it.
+Click a divider and use the arrow keys for smaller adjustments. The **⋯** menu offers Move left/right/above/below, Join another
+tab group, and Reset layout. Moving a panel preserves its buffer and terminal
+process. Reset layout joins the existing panels without discarding their data.
+
+**Files** browses the selected project folder, expands directories, and opens
+UTF-8 files up to 256 KiB. Editors have line numbers, syntax colours, indentation,
+undo/redo, and find. Ctrl+S saves, Ctrl+F opens find, Ctrl+Z undoes, and Ctrl+Y or
+Ctrl+Shift+Z redoes. Tab inserts four spaces; Enter retains indentation. Dirty
+tabs show a dot. Closing a dirty file offers Save and close, Discard changes, or
+Keep editing. Save checks for external changes before replacing the file and
+preserves its executable permissions. A failed save keeps the buffer open.
+
+**Git** shows the current branch and staged, unstaged and untracked changes.
+Choosing a change opens a read-only diff tab. Refresh reloads the file tree and
+Git status. These controls do not stage, commit or push changes.
+
+**Ctrl+J** opens or hides the terminal. A new terminal starts below the workspace
+in the project folder, using `$SHELL` (falling back to `/bin/sh`) and a real Linux
+PTY. The terminal supports colours, cursor movement, scrollback, alternate-screen
+applications, Unicode, paste, resize, and Ctrl+C for interrupting foreground jobs.
+The **+** opens another terminal tab. Hiding keeps the shell and jobs alive;
+closing a terminal tab or exiting Collie closes that terminal session. The VT
+implementation is bounded and does not implement every xterm extension.
+
+Selecting a conversation in the sidebar opens a chat panel, or focuses its
+existing panel. **Ctrl+N** opens another new chat. Each chat has its own draft,
+messages, model, permissions and response stream; several replies can run at
+once. Chat tabs can be moved, docked, resized and closed like other panels.
+Closing a chat panel lets its response finish in the background; opening that
+conversation again restores its result. Up to eight chats can be open.
+
+The desktop layout, open files, unsaved contents, and bounded editor history are
+saved in `DATA/workspaces/desktop.json`. The first run imports the previous
+project/personal layout while keeping its original file. Each conversation saves
+its own draft and history in its session directory. Files and terminals retain
+their original folder when another chat becomes active. Terminal processes last
+for the current Collie run; restoring a terminal panel starts a fresh shell when
+displayed. Up to 24 panels, six split levels, and eight live terminals are supported.
+
+Below 680 pixels of workspace width, the saved splits are displayed as a single
+tab group. Expanding the window restores the splits. Narrow windows expose Files
+and Git through the workspace toolbar and a dismissible sidebar drawer.
+
+Run the native workspace integration checks headlessly after building:
+
+```sh
+python3 scripts/test-collie-workspace.py --out build/collie-desktop
+python3 scripts/test-collie-docking.py --out build/collie-desktop
+python3 scripts/test-collie-multichat.py --out build/collie-desktop
+# Use the same checks on an explicitly selected private headless Wayland display:
+# python3 scripts/test-collie-multichat.py --wayland-session PATH/TO/session.json
+```
+
+The checks replay normalized GUI pointer/key/text events, project file writes,
+restart recovery, Git status/diffs, and PTY shell input, hiding, colour and
+foreground interruption without opening desktop windows or requesting a model.
+The docking checks compare live native widgets with a fresh declarative tree
+after repeated edge moves, joins, nested splits and reset, including promotion
+of an existing panel out of a removed outer split.
 
 The top speech-bubble icon starts a **New chat** in the current project. The adjacent
 **New project** icon, or the **+** beside the Projects heading, opens a host

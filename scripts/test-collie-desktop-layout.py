@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix='layout-',dir=out) as directory:
     env=dict(os.environ,SDL_VIDEODRIVER='dummy',COLLIE_HEADLESS='1');env.pop('DISPLAY',None);env.pop('WAYLAND_DISPLAY',None)
     def run(name,width=1280,height=860,events=None):
         script=work/(name+'-events.json');script.write_text(json.dumps(events or []))
-        state=work/(name+'-state.json');layout=out/(name+'-layout.json');raw=out/(name+'.rgba')
+        state=out/(name+'-state.json');layout=out/(name+'-layout.json');raw=out/(name+'.rgba')
         command=[str(out/'collie'),'--hidden','--frames','75','--width',str(width),'--height',str(height),'--data',str(data),
                  '--fixture',str(fixture),'--events',str(script),'--dump-state',str(state),'--dump-layout',str(layout),'--capture',str(raw)]
         r=subprocess.run(command,env=env,capture_output=True,timeout=20)
@@ -54,7 +54,8 @@ with tempfile.TemporaryDirectory(prefix='layout-',dir=out) as directory:
         editor=boxes['composer-draft'];assert editor['width']>150 and editor['y']+editor['height']<=h
     facts,boxes=run('desktop-layout-chat',1600,1000)
     assert_chat(facts,boxes)
-    sidebar=boxes['desktop-sidebar'];assert sidebar['x']==0 and sidebar['y']==0 and sidebar['height']==1000
+    sidebar=boxes['workspace-sidebar'];assert sidebar['x']==0 and sidebar['y']==0 and sidebar['height']==1000
+    assert boxes['desktop-sidebar']['y']==boxes['workspace-sidebar-modes']['height']
     assert 'desktop-session-conversation-4' in boxes
     assert boxes['card-0-user']['y']<180,boxes['card-0-user']
     passed('wide desktop keeps persistent conversations, full-height panes, readable centered messages and a visible composer')
@@ -120,7 +121,7 @@ with tempfile.TemporaryDirectory(prefix='layout-',dir=out) as directory:
     passed('native text events edit in the middle of a controlled draft without moving the caret to the end')
 
     facts,boxes=run('desktop-layout-narrow',800,700,events=[dict(at=100,request=dict(action='back'))])
-    assert_chat(facts,boxes);assert 'desktop-sidebar' not in boxes and 'chat-conversations' in boxes
+    assert_chat(facts,boxes);assert 'desktop-sidebar' not in boxes and 'workspace-toggle-sidebar' in boxes
     passed('narrow windows use compact navigation while keeping the editor and full-height chat usable')
     draft='A draft that survives resizing — 中文'
     facts,boxes=run('desktop-layout-resized',1600,1000,events=[event(120,'composer-draft','draft',draft,'change'),
@@ -138,6 +139,8 @@ with tempfile.TemporaryDirectory(prefix='layout-',dir=out) as directory:
     assert Image.open(out/'desktop-layout-search.png').getpixel(pixel)[:3]==(44,53,59)
     passed('Ctrl+B toggles the sidebar, its preference survives restart, and Ctrl+K focuses conversation search')
     facts,boxes=run('desktop-layout-welcome',events=[key(140,17)])
+    active_prefix=f"chat-panel-{facts['chat_active']}::"
+    boxes={k.removeprefix(active_prefix) if k.startswith(active_prefix) else k:v for k,v in boxes.items()}
     assert facts['page']=='chat' and not facts['cards'] and 'desktop-welcome' in boxes
     assert facts['session_id']!='conversation-0'
     assert_chat(facts,boxes)

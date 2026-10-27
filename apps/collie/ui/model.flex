@@ -12,7 +12,7 @@ fn cu_desktop(){return h_equal(cu_s("platform"),"linux");}
 fn cu_sidebar(){return cu_desktop() && cu_n("viewport_width")>=960 && !cu_n("sidebar_collapsed");}
 fn cu_sidebar_width(){let n=cu_n("sidebar_width");if n<1{n=252;}let limit=cu_n("viewport_width")-526;if limit>520{limit=520;}if limit<220{limit=220;}if n>limit{n=limit;}if n<220{n=220;}return n;}
 fn cu_main_width(){let n=cu_n("viewport_width");if n<1{n=1000;}if cu_sidebar(){n=n-cu_sidebar_width()-6;}return n;}
-fn cu_content_width(){let n=cu_main_width()-48;if n<240{n=240;}if n>820{n=820;}return n;}
+fn cu_content_width(){let width=cu_n("panel_width");if width<1{width=cu_main_width();}let n=width-48;if n<160{n=160;}if n>820{n=820;}return n;}
 fn cu_welcome_width(){let n=cu_content_width()-36;if n>480{n=480;}return n;}
 fn cu_dialog_width(){let n=cu_main_width()-32;if n>560{n=560;}if n<240{n=240;}return n;}
 fn cu_overlay_bg(){if cu_desktop(){return "#00000000";}return "#99000000";}

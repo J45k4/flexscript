@@ -28,6 +28,20 @@ fn ui_compiled_same(node,index) {
 fn ui_compiled_ancestor_changed(node,index) {
     let parent=load64(node+64);while parent {if !ui_compiled_same(parent,index) {return 1;}parent=load64(parent+64);}return 0;
 }
+fn ui_compiled_removal_covered(node,new_index) {
+    let parent=load64(node+64);
+    while parent {
+        let next=ui_find(new_index,load64(parent+8));
+        if !next || load64(parent+104)!=load64(next+104) {return 1;}
+        // A surviving ancestor may move out of a deleted split. Its obsolete
+        // children then need their own removals: deleting the old outer split
+        // no longer removes them once that ancestor has been reparented.
+        let before=load64(parent+64);let after=load64(next+64);
+        if (!before)!=(!after) {return 0;}
+        if before && !m_eq(load64(before+8),load64(after+8)) {return 0;}
+        parent=before;
+    }return 0;
+}
 fn ui_compiled_structure(b,old,new,old_index,new_index) {
     if !old {ui_insert(b,new);return 0;}
     // Only conditional/list/component roots participate. A removed ancestor
@@ -35,7 +49,7 @@ fn ui_compiled_structure(b,old,new,old_index,new_index) {
     let roots=load64(old+128);let i=0;
     while roots && i<load64(roots) {
         let node=load64(roots+8+i*8);ui_compiled_structures=ui_compiled_structures+1;
-        if !ui_compiled_same(node,new_index) && !ui_compiled_ancestor_changed(node,new_index) {ui_op(b,"remove",load64(node+8));m_text(b,"}");}i=i+1;
+        if !ui_compiled_same(node,new_index) && !ui_compiled_removal_covered(node,new_index) {ui_op(b,"remove",load64(node+8));m_text(b,"}");}i=i+1;
     }
     roots=load64(new+128);i=0;
     while roots && i<load64(roots) {

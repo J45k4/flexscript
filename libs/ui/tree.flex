@@ -3,6 +3,8 @@
 global ui_index=0;
 global ui_count=0;
 global ui_generic_diff_calls=0;
+// A component may render the same keyed view for independent documents.
+global ui_key_prefix=0;
 fn ui_hash(key) {let hash=2166136261;let i=0;while load8(key+i) {hash=((hash^load8(key+i))*16777619)&0xffffffff;i=i+1;}return hash&8191;}
 fn ui_find(index,key) {
     if !index {return 0;}let slot=ui_hash(key);let i=0;
@@ -10,6 +12,7 @@ fn ui_find(index,key) {
 }
 fn ui_begin() {ui_index=m_take(65536);let i=0;while i<65536 {store64(ui_index+i,0);i=i+8;}ui_count=0;return 0;}
 fn ui_node(kind,key,text) {
+    if ui_key_prefix && m_len(ui_key_prefix){key=m_cat(ui_key_prefix,key);}
     m_assert(ui_count<2048 && m_len(key)>0 && !ui_find(ui_index,key),"UI keys must be unique; tree limit is 2048 nodes");ui_count=ui_count+1;
     let p=m_take(144);let i=0;while i<144 {store64(p+i,0);i=i+8;}store64(p,kind);store64(p+8,key);store64(p+16,text);
     let slot=ui_hash(key);while load64(ui_index+slot*8) {slot=(slot+1)&8191;}store64(ui_index+slot*8,p);return p;

@@ -1,5 +1,5 @@
 // Entire Collie application UI: declarative screens, navigation and event policy.
-import "desktop.flex";
+import "workspace-events.flex";
 fn cu_notice(text){cu_set("notice_return",cu_s("page"));cu_set("notice",text);cu_set("page","notice");return 0;}
 view notice_screen(){
     column("notice-overlay",height:-1,background:cu_overlay_bg()){
@@ -45,9 +45,9 @@ view app_view(){
     stack("app-root",height:-1,background:"#10151a"){
         if cu_desktop(){
             row("desktop-shell",height:-1){
-                if cu_sidebar(){use desktop_sidebar();column("desktop-sidebar-divider",width:6,height:-1,background:"#20292f",focus_background:"#78966d",action:"sidebar_resize",description:"Resize sidebar · Drag or use Left/Right when focused");}
+                if cu_sidebar(){use workspace_sidebar();column("desktop-sidebar-divider",width:6,height:-1,background:"#20292f",focus_background:"#78966d",action:"sidebar_resize",description:"Resize sidebar · Drag or use Left/Right when focused");}
                 stack("desktop-main",weight:1,height:-1){
-                    use desktop_chat_screen();
+                    use desktop_workspace();
                     if h_equal(cu_s("page"),"conversations"){use conversations_screen();}
                     if h_equal(cu_s("page"),"workers"){use workers_screen();}
                     if h_equal(cu_s("page"),"permissions"){use permission_screen();}
@@ -65,6 +65,11 @@ view app_view(){
                     }
                 }
             }
+            if !cu_sidebar() && cu_n("workspace_drawer"){
+                stack("workspace-drawer-overlay",height:-1,background:"#88000000",action:"workspace_drawer_close"){
+                    stack("workspace-drawer-slot",width:cu_sidebar_width(),height:-1){use workspace_sidebar();}
+                }
+            }
             if cj_int(cj_get(cu_state,"permission_request"),"request_id"){
                 stack("desktop-permission-dimmer",height:-1,background:"#aa000000"){
                     stack("desktop-permission-slot",width:cu_dialog_width(),height:-1,position:"center"){use permission_request_screen();}
@@ -74,7 +79,7 @@ view app_view(){
     }
 }
 
-fn cu_prepare(){cu_policy=j_get(cp_permissions(cj_get(cu_state,"policy")),"policy");cu_entries=cj_get(cu_state,"permission_entries");cu_platform=cu_s("platform");let width=cu_main_width();if cu_settings_visible(){width=cu_settings_content_width();}cu_permission_compact=cu_desktop() && width>=700;cu_previews=ui_items();cu_copies=ui_items();return app_view();}
+fn cu_prepare(){cws_prepare();cm_prepare();cu_policy=j_get(cp_permissions(cj_get(cu_state,"policy")),"policy");cu_entries=cj_get(cu_state,"permission_entries");cu_platform=cu_s("platform");let width=cu_main_width();if cu_settings_visible(){width=cu_settings_content_width();}cu_permission_compact=cu_desktop() && width>=700;cu_previews=ui_items();cu_copies=ui_items();return app_view();}
 fn cu_model_return(){let page="chat";if cu_desktop() && h_equal(cu_s("model_return"),"settings"){page="settings";}cu_set("model_return","");cu_set("page",page);return 0;}
 fn cu_desktop_settings_restore(){if cu_desktop(){if h_equal(cu_s("page"),"menu"){cu_set("page","settings");}if h_equal(cu_s("page"),"permissions"){cu_set("page","settings");cu_set("settings_section","access");}}return 0;}
 fn cu_command(kind){let command=j_object();j_set(command,"kind",j_string(kind));
@@ -102,6 +107,7 @@ fn cu_event(event){
         return cu_permission_decision(h_equal(key,"permission-request-allow"),h_equal(action,"permission_stop"));
     }
     if pending_id{if h_equal(action,"back"){return cu_permission_decision(0,0);}return command;}
+    if cu_desktop() && h_starts(action,"workspace_"){return cws_event(event);}
     if cu_desktop() && cu_session_loading() && !h_equal(action,"desktop_open_session") && !h_equal(action,"query") && !h_equal(action,"sessions_next") && !h_equal(action,"sessions_previous") && !h_equal(action,"desktop_sidebar") && !h_equal(action,"desktop_search") && !h_equal(action,"sidebar_resize"){return command;}
     if cu_desktop() && h_equal(action,"sidebar_resize"){
         if h_equal(type,"click"){return command;}
@@ -133,7 +139,7 @@ fn cu_event(event){
         let url=cj_text(cj_get(cu_state,"account_login"),"url");if !h_len(url){return command;}command=cu_command("copy");j_set(command,"text",j_string(url));return command;
     }
     if cu_desktop() && h_equal(action,"desktop_sidebar"){
-        if cu_n("viewport_width")<960{cu_set("page","conversations");return cu_command("load_sessions");}
+        if cu_n("viewport_width")<960{cu_int("workspace_drawer",!cu_n("workspace_drawer"));return command;}
         cu_int("sidebar_collapsed",!cu_n("sidebar_collapsed"));return command;
     }
     if cu_desktop() && (h_equal(action,"desktop_chat") || h_equal(action,"desktop_search")){
@@ -244,22 +250,23 @@ fn cu_open_link(node,event){
 fn cu_ui_host(request){
     let action=cj_text(request,"action");if h_equal(action,"summary"){return cu_session_summary(cj_get(request,"saved"));}
     if h_equal(action,"navigation"){
-        let state=cj_get(request,"state");let out=j_object();let keys=j_parse("[\"page\",\"draft\",\"query\",\"worker\",\"expanded\",\"model_input\",\"model_query\",\"model_return\",\"settings_section\",\"preview\",\"preview_back\",\"card_offset\",\"session_offset\",\"notice_return\",\"notice\",\"sidebar_collapsed\",\"sidebar_width\",\"sidebar_mode\",\"sidebar_closed\"]");let i=0;
-        while i<j_count(keys){let key=j_value(j_at(keys,i));let value=cj_get(state,key);if value{j_set(out,key,value);}i=i+1;}return out;
+        let state=cj_get(request,"state");let out=j_object();let keys=j_parse("[\"page\",\"draft\",\"query\",\"worker\",\"expanded\",\"model_input\",\"model_query\",\"model_return\",\"settings_section\",\"preview\",\"preview_back\",\"card_offset\",\"session_offset\",\"notice_return\",\"notice\",\"sidebar_collapsed\",\"sidebar_width\",\"sidebar_mode\",\"sidebar_closed\",\"workspace\",\"workspace_side\"]");let i=0;
+        while i<j_count(keys){let key=j_value(j_at(keys,i));let value=cj_get(state,key);if value{j_set(out,key,value);}i=i+1;}let prior=cu_state;cu_state=state;out=cm_navigation(out);cu_state=prior;return out;
     }
-    let state=cj_get(request,"state");cu_state=cu_copy(state);if !h_len(cu_s("page")){cu_set("page","chat");}if !h_len(cu_s("model")){cu_set("model","gpt-6.1-sol");}cu_desktop_settings_restore();
+    let state=cj_get(request,"state");cu_state=cu_copy(state);if cj_int(cj_get(request,"data"),"multi_chat"){cu_int("multi_chat",1);}if !h_len(cu_s("page")){cu_set("page","chat");}if !h_len(cu_s("model")){cu_set("model","gpt-6.1-sol");}cu_desktop_settings_restore();if cm_enabled(){cws_prepare();cm_prepare();request=cm_filter_request(request);action=cj_text(request,"action");}
     // A previous load can finish after another sidebar selection. Keep the
     // latest local selection visible and ignore the older session's packets.
-    if cu_desktop() && cj_get(request,"session_request") && cj_int(request,"session_request")!=cu_n("session_request"){
+    if cu_desktop() && !cm_enabled() && cj_get(request,"session_request") && cj_int(request,"session_request")!=cu_n("session_request"){
         let out=j_object();j_set(out,"version",j_int(1));j_set(out,"state",cu_state);j_set(out,"ops",j_array());j_set(out,"command",cu_command("none"));return out;
     }
     let old=0;let index=0;if !c_flag(request,"reset"){old=cu_prepare();index=ui_index;}
-    let before=cu_state;cu_state=cu_copy(before);let command=cu_command("none");let data=cj_get(request,"data");
+    let before=cu_state;cu_state=cu_copy(before);let command=cu_command("none");let chat_frame=cm_packet_begin(request);let data=cj_get(request,"data");
     // Ignore messages that completed after the user selected a different worker.
     if data && cj_get(data,"worker_owner") && cj_int(data,"worker_owner")!=cu_n("worker"){data=0;}
     if cu_desktop() && !cu_sidebar() && data && cj_get(data,"project_id") && !h_equal(cj_text(data,"project_id"),cu_s("project_id")){cu_set("query","");cu_int("session_offset",0);}
     cu_merge(cu_state,data);
-    cu_desktop_settings_restore();
+    cu_desktop_settings_restore();cws_update(data);
+    if cu_desktop() && h_equal(cu_s("page"),"chat") && data && (cj_get(data,"workspace_file") || cj_get(data,"workspace_saved") || cj_get(data,"workspace")){j_set(command,"focus_key",j_string(cws_focus_key(cws_focused())));}
     if h_equal(action,"restore"){
         if h_equal(cu_s("page"),"conversations"){cu_int("sessions_loading",1);command=cu_command("load_sessions");}
         else if h_equal(cu_s("page"),"workers") && cu_n("worker"){command=cu_command("load_worker");j_set(command,"id",j_int(cu_n("worker")));}
@@ -274,17 +281,24 @@ fn cu_ui_host(request){
     if h_equal(action,"event"){
         let event=cj_get(request,"event");let key=cj_text(event,"key");let node=ui_find(index,key);let type=cj_text(event,"type");
         if !node{return c_error("Stale or invalid UI event binding.");}let bound_action=load64(node+32);if !bound_action{bound_action="";}if !h_equal(bound_action,cj_text(event,"action")) || load64(node+88)!=cj_int(event,"action_id"){return c_error("Stale or invalid UI event binding.");}
-        if h_equal(type,"link"){command=cu_open_link(node,event);}else{if !h_equal(type,"click") && !h_equal(type,"change") && !h_equal(type,"submit"){return c_error("Invalid UI event type.");}command=cu_event(event);}if j_get(command,"error"){return command;}
+        if h_equal(type,"link"){let p=cm_for_key(key);if !p && cm_enabled(){let ancestor=node;while ancestor && !p{if h_equal(load64(ancestor+8),"workspace-chat-body"){p=cws_panel(1);}ancestor=load64(ancestor+64);}}if p{cm_activate(cj_int(p,"id"));}command=cu_open_link(node,event);if cm_enabled(){command=cm_command(command,p);}}else{if !h_equal(type,"click") && !h_equal(type,"change") && !h_equal(type,"submit"){return c_error("Invalid UI event type.");}command=cm_event(event);}if j_get(command,"error"){return command;}
+    }else if h_equal(action,"chat_focus") && cm_enabled(){
+        let p=cws_panel(cj_int(request,"panel"));if p && h_equal(cj_text(p,"kind"),"chat"){cm_activate(cj_int(p,"id"));command=cm_command(cu_command("chat_activate"),p);}
+    }else if h_equal(action,"workspace_dock") && cu_desktop(){
+        if !cu_n("workspace_close") && !cu_n("workspace_menu") && !cj_int(cj_get(cu_state,"permission_request"),"request_id"){cws_move(cj_int(request,"panel"),cj_int(request,"group"),cj_int(request,"edge"));cu_int("workspace_drag_group",0);}
+    }else if h_equal(action,"workspace_ratio") && cu_desktop(){
+        let split=cws_find(cws_root(),cj_int(request,"split"));let ratio=cj_int(request,"ratio");if split && cj_get(split,"first"){if ratio<150{ratio=150;}if ratio>850{ratio=850;}j_set(split,"ratio",j_int(ratio));}
     }else if h_equal(action,"shortcut") && cu_desktop(){
         let shortcut=cj_text(request,"shortcut");let name="";
         if h_equal(shortcut,"new"){name="new_session";}else if h_equal(shortcut,"search"){name="desktop_search";}else if h_equal(shortcut,"sidebar"){name="desktop_sidebar";}else if h_equal(shortcut,"attach"){name="files";}else if h_equal(shortcut,"model"){name="model";}else if h_equal(shortcut,"composer"){name="desktop_chat";}
-        if !h_len(name){return c_error("Unknown desktop shortcut.");}let event=j_object();j_set(event,"action",j_string(name));j_set(event,"type",j_string("click"));command=cu_event(event);
-    }else if h_equal(action,"back"){command=cu_back();}
+        if h_equal(shortcut,"terminal"){name="workspace_terminal";}else if h_equal(shortcut,"save"){name="workspace_save_active";}else if h_equal(shortcut,"find"){name="workspace_find_active";}else if h_equal(shortcut,"undo"){name="workspace_undo";}else if h_equal(shortcut,"redo"){name="workspace_redo";}
+        if !h_len(name){return c_error("Unknown desktop shortcut.");}let event=j_object();j_set(event,"action",j_string(name));j_set(event,"type",j_string("click"));command=cm_event(event);
+    }else if h_equal(action,"back"){if cu_desktop() && cu_n("workspace_close"){cu_int("workspace_close",0);}else if cu_desktop() && cu_n("workspace_menu"){cu_int("workspace_menu",0);}else if cu_desktop() && cu_n("workspace_drawer"){cu_int("workspace_drawer",0);}else{command=cu_back();}}
     else if h_equal(action,"preview"){
         cu_set("preview_back",cu_s("page"));cu_set("page","preview");j_set(cu_state,"preview",j_need(request,"file"));
     }
     if data && cj_get(data,"workers") && h_equal(cu_s("page"),"workers") && cu_n("worker"){
         command=cu_command("load_worker");j_set(command,"id",j_int(cu_n("worker")));
     }
-    let next=cu_prepare();let out=j_object();j_set(out,"version",j_int(1));j_set(out,"state",cu_state);j_set(out,"ops",j_parse(ui_compiled_diff(old,next,index,ui_index)));j_set(out,"command",command);return out;
+    cm_packet_end(chat_frame,request);let next=cu_prepare();let out=j_object();j_set(out,"version",j_int(1));j_set(out,"state",cu_state);j_set(out,"ops",j_parse(ui_compiled_diff(old,next,index,ui_index)));j_set(out,"command",command);return out;
 }

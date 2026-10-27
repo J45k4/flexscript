@@ -3,7 +3,7 @@
 // Private 256-byte record: key0, kind8, descriptor16, parent24, first32,
 // last40, next48, previous56; box64..88, desired96..104, content112..120;
 // scroll/pan128..136, caret144, anchor152, texture160, wrap168, table background176, follow184,
-// identity192, follow paused200, texture size208..216, zoom224, editor pan232..240,
+// identity192, follow paused/editor manual pan200, texture size208..216, zoom224, editor pan232..240,
 // caret affinity248: ((byte+1)<<1)|upstream, 0=default downstream.
 import "../runtime.flex";
 import "../../gui/draw.flex";
@@ -92,7 +92,9 @@ fn ud_tree(raw){
     if node && load64(node+8)!=kind{ud_remove(node);node=0;}if !node{node=ud_alloc_node(key,kind);}ud_descriptor(node,raw);
     let children=j_get(raw,"children");let wanted=j_object();let after=0;let i=0;
     while children && i<j_count(children){let child=ud_tree(j_at(children,i));h_assert(!j_get(wanted,load64(child)),"Duplicate desktop UI child");j_set(wanted,load64(child),j_bool(1));ud_position(child,node,after);after=child;i=i+1;}
-    let child=load64(node+32);while child{let next=load64(child+48);if !j_get(wanted,load64(child)){ud_remove(child);}child=next;}return node;
+    // Reparenting can move descendants out of a removed split or tab group.
+    // Keep detached nodes alive until the whole patch transaction is applied.
+    let child=load64(node+32);while child{let next=load64(child+48);if !j_get(wanted,load64(child)){ud_detach(child);}child=next;}return node;
 }
 fn ud_copy(value){if ud_direct_copy{return j_copy(value);}return j_parse(j_dump(value));}
 fn ud_compact(){
@@ -111,7 +113,7 @@ fn ui_desktop_apply(packet){
     while i<j_count(ops){let op=j_at(ops,i);let kind=j_s(op,"op");let key=j_s(op,"key");
         if h_equal(kind,"insert"){let parent=ud_mount;if !h_equal(j_s(op,"parent"),"mount"){parent=ud_need(j_s(op,"parent"));}let after=0;if h_len(j_s(op,"after")){after=ud_need(j_s(op,"after"));}ud_position(ud_tree(j_need(op,"node")),parent,after);}
         else{let node=ud_need(key);let desc=load64(node+16);
-            if h_equal(kind,"remove"){ud_remove(node);}
+            if h_equal(kind,"remove"){ud_detach(node);}
             else if h_equal(kind,"move"){let parent=ud_mount;if !h_equal(j_s(op,"parent"),"mount"){parent=ud_need(j_s(op,"parent"));}let after=0;if h_len(j_s(op,"after")){after=ud_need(j_s(op,"after"));}ud_position(node,parent,after);}
             else if h_equal(kind,"text") || h_equal(kind,"label") || h_equal(kind,"placeholder"){j_set(desc,"text",j_need(op,"value"));ud_invalidate(node);}
             else if h_equal(kind,"checked") || h_equal(kind,"hidden"){j_set(desc,kind,j_need(op,"value"));}
@@ -123,6 +125,7 @@ fn ui_desktop_apply(packet){
             }else{h_die("Unsupported desktop UI operation");}
         }i=i+1;
     }
+    i=0;while i<2048{let node=ud_nodes+i*256;if load64(node) && !load64(node+24){ud_remove(node);}i=i+1;}
     if ud_focus && !ud_enabled(ud_focus){ud_set_focus(0);}
     if ud_scroll_drag && !ud_enabled(ud_scroll_drag){ud_scroll_cancel();}
     if ud_focus && load64(ud_focus+8)!=8 && ud_n(ud_focus,"selectable",0){let content=ud_content(ud_focus);let n=h_len(content);let field=144;while field<=152{let offset=load64(ud_focus+field);if offset>n{offset=n;}while offset>0 && (load8(content+offset)&192)==128{offset=offset-1;}store64(ud_focus+field,offset);field=field+8;}}

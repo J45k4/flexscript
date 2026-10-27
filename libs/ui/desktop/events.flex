@@ -60,7 +60,7 @@ fn ud_link_at(node,x,y){
 fn ud_replace(node,text){
     ud_paste_cancel();ud_ime_clear();
     if load64(node+144)!=load64(node+152){ud_expand_selection(node);}
-    let value=ud_content(node);let start=ud_min(load64(node+144),load64(node+152));let end=ud_max(load64(node+144),load64(node+152));h_assert(start>=0 && end<=h_len(value),"Desktop editor selection");if h_len(value)-end+start+h_len(text)>1048576{return 0;}
+    let value=ud_content(node);let start=ud_min(load64(node+144),load64(node+152));let end=ud_max(load64(node+144),load64(node+152));h_assert(start>=0 && end<=h_len(value),"Desktop editor selection");if h_len(value)-end+start+h_len(text)>ud_n(node,"max_bytes",1048576){return 0;}
     value=h_cat3(h_slice(value,start),text,value+end);j_set(load64(node+16),"local_value",j_string(value));store64(node+144,start+h_len(text));store64(node+152,load64(node+144));store64(node+248,0);ud_caret_epoch=gui_ticks();ud_invalidate(node);ud_dirty=1;return ud_emit(node,"change",j_string(value));
 }
 fn ud_tab_walk(node,list){if !ud_enabled(node){return 0;}let kind=load64(node+8);if kind==8 || kind==7 || kind==9 || h_len(ud_string(load64(node+16),"action")){j_push(list,j_int(node));}let child=load64(node+32);while child{ud_tab_walk(child,list);child=load64(child+48);}return 0;}
@@ -135,5 +135,14 @@ fn ui_desktop_event(event){
     if gui_event_window(event) && gui_event_window(event)!=ud_window{return 0;}
     let saved=h_blocks;let used=h_used;let capacity=h_capacity;h_blocks=ud_pool;h_used=ud_pool_used;h_capacity=ud_pool_capacity;
     let result=ud_native_event(event);ud_ime_sync(gui_event_kind(event)!=GUI_IME);ud_pool=h_blocks;ud_pool_used=h_used;ud_pool_capacity=h_capacity;h_blocks=saved;h_used=used;h_capacity=capacity;
+    if result{return ud_copy(result);}return 0;
+}
+// Programmatic editing uses the same owned arena and change event as native
+// input. Callers may release their frame memory immediately after returning.
+fn ui_desktop_replace(key,text){
+    let node=ud_find(key);if !node || load64(node+8)!=8 || !ud_enabled(node){return 0;}
+    let saved=h_blocks;let used=h_used;let capacity=h_capacity;h_blocks=ud_pool;h_used=ud_pool_used;h_capacity=ud_pool_capacity;
+    let result=ud_replace(node,text);ud_ime_sync(1);
+    ud_pool=h_blocks;ud_pool_used=h_used;ud_pool_capacity=h_capacity;h_blocks=saved;h_used=used;h_capacity=capacity;
     if result{return ud_copy(result);}return 0;
 }

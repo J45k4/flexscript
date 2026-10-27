@@ -25,7 +25,7 @@ fn cu_sidebar_data(){
 fn cu_sidebar_project_label(entry){let id=cj_text(entry,"project_id");if !h_len(id){return "Personal chats";}let projects=cu_a("projects");let i=0;while i<j_count(projects){let project=j_at(projects,i);if h_equal(id,cj_text(project,"id")){return cj_text(project,"name");}i=i+1;}return "Project";}
 view desktop_session_row(entry){
     let id=cj_text(entry,"id");let key=cu_key("desktop-session-",id);let bg=cu_desktop_session_bg(entry);
-    column(key,padding:10,padding_x:cu_sidebar_chat_padding(),gap:5,background:bg,radius:9,action:"desktop_open_session",enabled:!cu_n("busy"),description:cj_text(entry,"title")){
+    column(key,padding:10,padding_x:cu_sidebar_chat_padding(),gap:5,background:bg,radius:9,action:"desktop_open_session",enabled:cm_enabled() || !cu_n("busy"),description:cj_text(entry,"title")){
         text(cu_key(key,"-title"),text:cj_text(entry,"title"),max_lines:1,size:14,color:"#edf2ed",font:"medium");
         text(cu_key(key,"-preview"),text:cj_text(entry,"preview"),max_lines:1,size:12,color:"#a4b2b5");
         if cu_sidebar_timeline(){
@@ -40,17 +40,17 @@ view desktop_sidebar_group(group){
         row(cu_key(key,"-heading"),gap:4){
             button(cu_key("sidebar-fold-",id),text:cu_sidebar_group_label(group),description:m_cat("Expand or collapse ",cj_text(group,"name")),action:"sidebar_group",weight:1,min_height:32,padding_x:5,size:13,font:"medium",color:"#c5d5cb");
             text(cu_key(key,"-count"),text:m_int(cj_int(group,"count")),size:12,color:"#93a1a5");
-            button(cu_key("sidebar-new-",id),text:"＋",description:m_cat("New conversation in ",cj_text(group,"name")),action:"project_new_chat",enabled:!cu_n("busy") && !cu_session_loading(),width:28,height:30,align:"center",size:19,color:"#c5e3ae");
+            button(cu_key("sidebar-new-",id),text:"＋",description:m_cat("New conversation in ",cj_text(group,"name")),action:"project_new_chat",enabled:cm_enabled() || !cu_n("busy") && !cu_session_loading(),width:28,height:30,align:"center",size:19,color:"#c5e3ae");
         }
     }
 }
 view desktop_header_icon(key,source,description,action){
-    stack(key,width:30,height:32,background:"#1b252b",focus_background:"#2b3a30",radius:7,description:description,action:action,enabled:!cu_n("busy") && !cu_session_loading()){
+    stack(key,width:30,height:32,background:"#1b252b",focus_background:"#2b3a30",radius:7,description:description,action:action,enabled:cm_enabled() || !cu_n("busy") && !cu_session_loading()){
         image(cu_key(key,"-icon"),source:source,width:20,height:20,position:"center");
     }
 }
 view desktop_settings_icon(key){
-    stack(key,width:34,height:36,description:"Settings and account",action:"menu",enabled:!cu_n("busy"),background:cu_desktop_nav_bg("settings"),focus_background:"#2b3a30",radius:8){
+    stack(key,width:34,height:36,description:"Settings and account",action:"menu",enabled:cm_enabled() || !cu_n("busy"),background:cu_desktop_nav_bg("settings"),focus_background:"#2b3a30",radius:8){
         image(cu_key(key,"-icon"),source:"resource:collie/settings",width:20,height:20,position:"center");
     }
 }
@@ -74,7 +74,7 @@ view desktop_sidebar(){
                 if cu_sidebar_timeline(){text("desktop-recents-label",text:"RECENT CHATS",size:12,color:"#a4b2b5",weight:1);}
                 else{
                     text("desktop-recents-label",text:"PROJECTS",size:12,color:"#a4b2b5",weight:1);
-                    button("sidebar-projects-add",text:"＋",description:"Create project · Choose folder",action:"choose_project_folder",enabled:!cu_n("busy") && !cu_session_loading(),width:28,height:28,align:"center",size:20,color:"#c5e3ae");
+                    button("sidebar-projects-add",text:"＋",description:"Create project · Choose folder",action:"choose_project_folder",enabled:cm_enabled() || !cu_n("busy") && !cu_session_loading(),width:28,height:28,align:"center",size:20,color:"#c5e3ae");
                 }
             }
         }

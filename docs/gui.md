@@ -356,7 +356,7 @@ fractional scales use a viewport; otherwise output/integer scale is used.
 The experimental implementation supports 1x through 4x and rejects framebuffer
 sizes beyond its limits rather than silently reducing resolution. Cursor shapes
 are supplied by the compositor when supported, with `libwayland-cursor` theme
-fallback. Current public cursors are default and horizontal resize. The fallback
+fallback. Current public cursors are default, horizontal resize and vertical resize. The fallback
 honors `XCURSOR_THEME`/`XCURSOR_SIZE`, caches up to four integer densities, and
 animates immutable theme images with per-frame hotspots and one outstanding
 cursor-surface frame callback. Animation uses elapsed monotonic time and clamps
