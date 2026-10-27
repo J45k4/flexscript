@@ -13,6 +13,9 @@ low-level adapters in `lib/` remain available and can be imported directly.
   deadlines and cancellation, with verified OpenSSL TLS and no libcurl.
 - [`image`](image/README.md): owned RGBA images, EXIF orientation, alpha-correct
   area/linear resizing and bounded previews, with direct PNG/JPEG/WebP adapters.
+- [`unicode`](unicode/README.md): strict UTF-8, paragraph bidirectional layout and
+  Unicode extended grapheme segmentation/default line-break opportunities in
+  Flexscript, with pinned property data and conformance tests.
 - [`db`](db/README.md): FlexDB, an experimental single-file relational database
   with typed rows, transactions and programmatic queries.
 - [`physics`](physics/README.md): a portable rigid-body engine with shared native,

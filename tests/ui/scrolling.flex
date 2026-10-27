@@ -1,16 +1,17 @@
 // Reproduce a stationary pointer crossing code blocks while scrolling a chat.
-import "../../libs/ui/desktop.flex";
-global sw_fixture=0;global sw_window=0;global sw_event=0;
+import "replay.flex";
+global sw_native_mode=0;global sw_fixture=0;global sw_window=0;global sw_event=0;
 fn sw_node(key,kind,props,text){let n=j_object();j_set(n,"key",j_string(key));j_set(n,"kind",j_string(kind));j_set(n,"props",j_parse(props));j_set(n,"text",j_string(text));j_set(n,"action",j_string(""));j_set(n,"action_id",j_int(0));j_set(n,"children",j_array());return n;}
 fn sw_child(parent,node){j_push(j_get(parent,"children"),node);return node;}
-fn sw_native(kind,a,b,c){h_assert(ffi_call_i32(ffi_symbol(sw_fixture,"gui_fixture_event"),kind,sw_window,a,b,c,0)>0,"Inject scroll event");h_assert(gui_poll(sw_event),"Poll scroll event");return ui_desktop_event(sw_event);}
+fn sw_native(kind,a,b,c){if sw_native_mode{return ur_event(sw_event,kind,a,b,c,0);}h_assert(ffi_call_i32(ffi_symbol(sw_fixture,"gui_fixture_event"),kind,sw_window,a,b,c,0)>0,"Inject scroll event");h_assert(gui_poll(sw_event),"Poll scroll event");return ui_desktop_event(sw_event);}
+fn sw_mods(value){if sw_native_mode{ur_modifiers=value;return 0;}return gui__call("SDL_SetModState",value,0,0,0,0,0);}
 fn sw_max(node,axis){if axis{return ud_max(0,load64(node+120)-load64(node+88));}return ud_max(0,load64(node+112)-load64(node+80));}
 fn sw_pointer(node){let x=load64(node+64)+20;let y=load64(node+72)+20;sw_native(1024,x,y,0);return 0;}
-fn sw_rgb(x,y){let pixels=h_take(640*480*4);h_assert(gui_read_pixels(ud_window,pixels,640*4,640*480*4),gui_error);let p=pixels+(y*640+x)*4;return (load8(p)<<16)|(load8(p+1)<<8)|load8(p+2);}
+fn sw_rgb(x,y){let w=gui_pixel_width(ud_window);let h=gui_pixel_height(ud_window);let pixels=h_take(w*h*4);h_assert(gui_read_pixels(ud_window,pixels,w*4,w*h*4),gui_error);x=x*gui_scale(ud_window)/1000;y=y*gui_scale(ud_window)/1000;let p=pixels+(y*w+x)*4;return (load8(p)<<16)|(load8(p+1)<<8)|load8(p+2);}
 fn sw_grab(node){let x=load64(node+64)+load64(node+80)-12;let y=ud_scroll_thumb_y(node)+7;sw_native(1024,x,y,0);sw_native(1025,1,x,y);return 0;}
 fn main(argc,argv){
-    h_environment(argc,argv);h_assert(argc==2,"Usage: scroll-tests SDL-FIXTURE-LIBRARY");sw_fixture=ffi_open(load64(argv+8));h_assert(sw_fixture,"Scroll event fixture");
-    h_assert(ui_desktop_open("Scroll regression",640,480,GUI_HIDDEN),gui_error);sw_window=load64(gui__record(ud_window)+32);sw_event=gui_event();gui__poll_fn=ffi_symbol(sw_fixture,"gui_fixture_poll");
+    h_environment(argc,argv);h_assert(argc==2,"Usage: scroll-tests SDL-FIXTURE-LIBRARY");sw_native_mode=h_equal(load64(argv+8),"--native");if sw_native_mode{h_assert(gui_backend_select("wayland"),gui_error);}else{sw_fixture=ffi_open(load64(argv+8));h_assert(sw_fixture,"Scroll event fixture");}
+    h_assert(ui_desktop_open("Scroll regression",640,480,GUI_RESIZABLE),gui_error);sw_window=load64(gui__record(ud_window)+32);sw_event=gui_event();if sw_native_mode{ur_ready(sw_event);}else{gui__poll_fn=ffi_symbol(sw_fixture,"gui_fixture_poll");}
     let root=sw_node("page","column","{\"height\":-1,\"padding\":12}","");
     let scroll=sw_child(root,sw_node("chat-scroll","scroll","{\"height\":360,\"width\":560,\"follow\":1}",""));
     let content=sw_child(scroll,sw_node("messages","column","{}",""));
@@ -34,7 +35,7 @@ fn main(argc,argv){
     sw_native(1027,0,10000,0);sw_native(1027,0,-1,0);ui_desktop_draw();h_assert(load64(outer+136)==42,"Reversing from the top does not move immediately");
     // Actual horizontal intent stays inside the code's horizontal viewport.
     store64(outer+136,420);ui_desktop_draw();sw_pointer(horizontal);let before=load64(outer+136);sw_native(1027,-2,0,0);ui_desktop_draw();h_assert(load64(horizontal+128)==84 && load64(outer+136)==before,"Horizontal wheel does not pan code independently");
-    gui__call("SDL_SetModState",1,0,0,0,0,0);sw_native(1027,0,-1,0);gui__call("SDL_SetModState",0,0,0,0,0,0);ui_desktop_draw();h_assert(load64(horizontal+128)==126 && load64(outer+136)==before,"Shift+wheel does not pan code independently");
+    sw_mods(1);sw_native(1027,0,-1,0);sw_mods(0);ui_desktop_draw();h_assert(load64(horizontal+128)==126 && load64(outer+136)==before,"Shift+wheel does not pan code independently");
     // Vertical subpanes consume their wheel only while they can move.
     store64(outer+136,620);ui_desktop_draw();sw_pointer(inner);before=load64(outer+136);sw_native(1027,0,-1,0);ui_desktop_draw();h_assert(load64(inner+136)==42 && load64(outer+136)==before,"Nested vertical scrolling moves the wrong pane");
     store64(inner+136,sw_max(inner,1));ui_desktop_draw();sw_pointer(inner);sw_native(1027,0,-1,0);ui_desktop_draw();h_assert(load64(outer+136)==before+42,"A vertical pane at its bottom traps the parent wheel");

@@ -36,6 +36,7 @@ jobs:
           fi
           sudo apt-get update
           sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang unzip xvfb xauth libx11-dev libpng-dev libturbojpeg libwebp7 libwebpdemux2 qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 python3-pil qemu-user lld
+          sudo apt-get install --yes pkg-config fontconfig libfontconfig1-dev libfreetype-dev libharfbuzz-dev libxkbcommon-dev libwayland-dev libwayland-bin fonts-noto-color-emoji fonts-noto-core fonts-noto-cjk
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
           # verifier alone on the disposable runner, without a global sysctl.
@@ -235,6 +236,78 @@ jobs:
 
       - name: Test the default native IR pipeline and direct reference path
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-pipeline.py
+
+      - name: Test native callbacks, stack argument adapter, text and keyboard libraries
+        run: |
+          python3 scripts/test-native-callback.py --compiler build/stage2
+          gcc -shared -fPIC -O2 tests/tooling/ffi-words.c -o build/ffi-words-fixture.so
+          build/stage2 tests/tooling/ffi-words.flex -o build/test-ffi-words
+          build/test-ffi-words build/ffi-words-fixture.so
+          build/stage2 --native-pipeline direct tests/tooling/ffi-words.flex -o build/test-ffi-words-direct
+          build/test-ffi-words-direct build/ffi-words-fixture.so
+          python3 scripts/test-native-text.py --compiler build/stage2
+          python3 scripts/test-unicode.py --compiler build/stage2
+          python3 scripts/test-unicode-bidi.py --compiler build/stage2
+          python3 scripts/test-unicode-linebreak.py --compiler build/stage2
+          python3 scripts/test-ui-bidi.py --compiler build/stage2
+          python3 scripts/test-ui-linebreak.py --compiler build/stage2
+          build/stage2 tests/ui/wrap-editor.flex -o build/test-wrap-editor
+          build/test-wrap-editor
+          build/stage2 --native-pipeline direct tests/ui/wrap-editor.flex -o build/test-wrap-editor-direct
+          build/test-wrap-editor-direct
+          python3 scripts/test-native-carets.py --compiler build/stage2
+          python3 scripts/test-native-vertices.py --compiler build/stage2
+          python3 scripts/test-json-copy.py --compiler build/stage2 --out build/json-copy
+          python3 tests/tooling/wayland-commit-check.py
+          build/stage2 tests/ui/font-sizing.flex -o build/test-font-sizing
+          build/stage2 --native-pipeline direct tests/ui/font-sizing.flex -o build/test-font-sizing-direct
+          python3 scripts/test-font-sizing.py --binary build/test-font-sizing --binary build/test-font-sizing-direct --out build/font-sizing
+          python3 scripts/test-native-keyboard.py --compiler build/stage2
+          python3 scripts/test-native-cursor.py --compiler build/stage2
+          python3 scripts/test-wayland-metadata.py --compiler build/stage2
+          build/stage2 tests/ui/display-state.flex -o build/test-display-state
+          build/test-display-state
+          build/stage2 tests/ui/toplevel-state.flex -o build/test-toplevel-state
+          build/test-toplevel-state
+          build/stage2 --native-pipeline direct tests/ui/toplevel-state.flex -o build/test-toplevel-state-direct
+          build/test-toplevel-state-direct
+          build/stage2 tests/ui/weighted-layout.flex -o build/test-weighted-layout
+          SDL_VIDEODRIVER=dummy build/test-weighted-layout
+          build/stage2 --native-pipeline direct tests/ui/weighted-layout.flex -o build/test-weighted-layout-direct
+          SDL_VIDEODRIVER=dummy build/test-weighted-layout-direct
+          build/stage2 tests/ui/measure-reuse.flex -o build/test-measure-reuse
+          SDL_VIDEODRIVER=dummy build/test-measure-reuse
+          build/stage2 --native-pipeline direct tests/ui/measure-reuse.flex -o build/test-measure-reuse-direct
+          SDL_VIDEODRIVER=dummy build/test-measure-reuse-direct
+          build/stage2 tests/ui/model-copy.flex -o build/test-model-copy
+          SDL_VIDEODRIVER=dummy build/test-model-copy build/model-copy-ir- build/model-copy-ir.json
+          build/stage2 --native-pipeline direct tests/ui/model-copy.flex -o build/test-model-copy-direct
+          SDL_VIDEODRIVER=dummy build/test-model-copy-direct build/model-copy-direct- build/model-copy-direct.json
+          build/stage2 tests/ui/presentation-state.flex -o build/test-presentation-state
+          build/test-presentation-state
+          build/stage2 --native-pipeline direct tests/ui/presentation-state.flex -o build/test-presentation-state-direct
+          build/test-presentation-state-direct
+          build/stage2 tests/ui/wait-sources.flex -o build/test-wait-sources
+          SDL_VIDEODRIVER=dummy build/test-wait-sources
+          build/stage2 --native-pipeline direct tests/ui/wait-sources.flex -o build/test-wait-sources-direct
+          SDL_VIDEODRIVER=dummy build/test-wait-sources-direct
+          build/stage2 tests/ui/clipboard-pipes.flex -o build/test-clipboard-pipes
+          SDL_VIDEODRIVER=dummy build/test-clipboard-pipes
+          build/stage2 tests/ui/clipboard-editor.flex -o build/test-clipboard-editor
+          SDL_VIDEODRIVER=dummy build/test-clipboard-editor
+          build/stage2 tests/ui/ime-editor.flex -o build/test-ime-editor
+          cc -shared -fPIC -O2 -Wall -Wextra -Werror tests/ui/ime-events.c -o build/ime-events.so -ldl
+          SDL_VIDEODRIVER=dummy build/test-ime-editor build/ime-events.so
+          build/stage2 --native-pipeline direct tests/ui/ime-editor.flex -o build/test-ime-editor-direct
+          SDL_VIDEODRIVER=dummy build/test-ime-editor-direct build/ime-events.so
+          build/stage2 tests/ui/ime-noop.flex -o build/test-ime-noop
+          SDL_VIDEODRIVER=dummy build/test-ime-noop
+          build/stage2 --native-pipeline direct tests/ui/ime-noop.flex -o build/test-ime-noop-direct
+          SDL_VIDEODRIVER=dummy build/test-ime-noop-direct
+          build/stage2 tests/ui/grapheme-editor.flex -o build/test-grapheme-editor
+          SDL_VIDEODRIVER=dummy build/test-grapheme-editor
+          build/stage2 --native-pipeline direct tests/ui/grapheme-editor.flex -o build/test-grapheme-editor-direct
+          SDL_VIDEODRIVER=dummy build/test-grapheme-editor-direct
 
       - name: Test native writable and shared literal pools
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-literals.py

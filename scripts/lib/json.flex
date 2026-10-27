@@ -376,6 +376,18 @@ fn j_dump(p) {
     j_emit(b,p);
     return h_data(b);
 }
+// Deep-copy a valid JSON node into the current host arena. Keys, text, vectors
+// and pairs are owned by the destination; no source storage is retained. The
+// same depth/collection limits as the reader apply. Numeric metadata stays exact.
+fn j_copy_at(p,depth) {
+    h_assert(depth<=64,"JSON nesting limit");let kind=j_kind(p);let value=j_value(p);
+    if kind==0{return j_node(0,0);}if kind==1{return j_int(value);}if kind==5{return j_bool(value);}
+    if kind==2{return j_string(h_slice(value,h_len(value)));}
+    if kind==6{h_assert(j_raw_number(value),"invalid raw JSON numeric metadata");return j_node(6,h_slice(value,h_len(value)));}
+    h_assert(kind==3 || kind==4,"unknown JSON node kind");let count=h_count(value);let limit=65536;if kind==4{limit=4096;}h_assert(count>=0 && count<=limit,"JSON collection limit");let capacity=16;while capacity<count{capacity=capacity*2;}let items=h_vec_sized(capacity);let out=j_node(kind,items);let i=0;
+    while i<count{let item=h_at(value,i);if kind==4{let key=load64(item);h_assert(key,"JSON object key expected");key=h_slice(key,h_len(key));h_assert(!j_get(out,key),"duplicate JSON object key");let pair=h_take(16);store64(pair,key);store64(pair+8,j_copy_at(load64(item+8),depth+1));h_add_sized(items,pair);}else{h_add_sized(items,j_copy_at(item,depth+1));}i=i+1;}return out;
+}
+fn j_copy(p){return j_copy_at(p,1);}
 fn j_save(path,p) {
     return h_save(path,h_cat(j_dump(p),"\n"));
 }

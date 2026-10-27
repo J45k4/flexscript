@@ -27,9 +27,20 @@ fn baremetal_builtin(kind) {
 // A six-word System V AMD64 callback into a Flexscript function. The callback
 // pushes C argument registers in source order for Flexscript's stack ABI.
 fn baremetal_callback() {
-    if vm_mode {fail("native_callback requires native x86-64 code");}
+    if vm_mode && !native_ir_target && !tx_recording {fail("native_callback requires native x86-64 code");}
     expect(40);if token!=256 {fail("native_callback expects a function name");}
     let name=source+token_start;let size=token_size;next();expect(41);
+    if call_count>=65536 {fail("too many calls");}
+    if vm_mode {
+        // Native-only address producer. Semantic transforms may inspect this
+        // instruction in a source snapshot; it is never a callable VM pointer.
+        // The ordinary native resolver validates the six-word target.
+        let site=calls+call_count*32;store64(site,name);store64(site+8,size);
+        store64(site+16,vm_emit(29,0)+8);store64(site+24,6);call_count=call_count+1;return 0;
+    }
+    return native_callback_address(name,size);
+}
+fn native_callback_address(name,size) {
     if call_count>=65536 {fail("too many calls");}
     let skip=jump(233);let address=output_size;
     bm_hex("55 48 89 E5 57 56 52 51 41 50 41 51 E8");

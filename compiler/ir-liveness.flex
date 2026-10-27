@@ -47,7 +47,7 @@ fn ir_live_analyze(code,start,end,slots,slot_bits) {
     il_queue=il_links+il_capacity*16;il_queued=il_queue+il_capacity*8;
     i=0;while i<il_count {
         let pc=start+i*16;let op=load64(code+pc);let arg=load64(code+pc+8);
-        if (op<0 || op>23) && op!=28 {return 0;}
+        if (op<0 || op>23) && op!=28 && op!=29 {return 0;}
         if (op==3 || op==4) && (arg<0 || arg>=slots) {return 0;}
         if op>=10 && op<=12 {if arg<start || arg>end || (arg-start)%16 {return 0;}}
         store64(il_in+i*8,0);store64(il_heads+i*8,-1);store8(il_queued+i,1);

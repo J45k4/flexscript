@@ -255,6 +255,17 @@ An embedding application owns its event loop and platform effects:
   `ui_desktop_draw()` reflows/paints, and `ui_desktop_present()` presents.
   `ui_desktop_repaint()` paints cached geometry for visual-only changes such as
   a container background. Use `draw()` after content, layout or window changes.
+
+- `ui_desktop_wait_ms(maximum)` returns the next required UI deadline, bounded
+  by the caller's 0–2147483647 ms limit. Dirty content and density changes return
+  0; an enabled, visible, focused input schedules its next 500-ms caret phase.
+  Unfocused/hidden/disabled inputs and IME-hidden carets retain no blink timer.
+  Combine this limit with application deadlines and `gui_wait_sources` after
+  draining input, service output and drawing any dirty content.
+  On the native backend, also gate drawing with `gui_frame_ready(window)`. While
+  a frame callback is pending or the window is hidden/unconfigured, retain dirty
+  state and wait for platform/service events plus application deadlines. Do not
+  use a dirty UI's zero deadline to spin while waiting for compositor readiness.
 - `ui_desktop_image(source,path)` binds virtual sources such as `preview:ID` or
   `resource:TYPE/NAME` to host-approved local files. Plain paths and `file://` work
   directly. Remote image URLs are not fetched by the renderer.
@@ -275,10 +286,20 @@ An embedding application owns its event loop and platform effects:
 - `ui_desktop_close()` releases textures, font handles and the private model.
   The caller retains ownership of other GUI windows and application allocations.
 
+The desktop adapter reuses repeated measurements at the same available width
+within one arrange pass. Its table is bounded to 32 KiB and cleared logically by
+each new pass; it does not retain geometry measurements across draws. Reflowing
+a descendant at another width invalidates earlier ancestor measurements. This
+keeps content, editing, image and scale changes on the ordinary reflow path.
+
 Stable keys preserve editor drafts/caret/selection and scroll offsets through
 moves and reconnect snapshots. Explicit `value` changes replace the draft.
 Editing supports committed UTF-8 text input, selection, arrows, Home/End,
 Backspace/Delete, Tab, clipboard shortcuts, and `ime:"send"` submit events.
+Paste is asynchronous. Keep delivering `GUI_CLIPBOARD` events to
+`ui_desktop_event`; its change result is handled like any other editor change.
+The adapter rejects delayed paste results after focus, text or selection changes,
+and cancels its pending request when the UI closes.
 Set `selection_scope:1` on a desktop document container to let a press in its
 blank space begin a drag into nearby selectable text. The press stays pending
 until the drag threshold is crossed; an ordinary blank click clears focus.
@@ -299,6 +320,47 @@ window units. Moving between display densities invalidates font bitmaps while
 preserving drafts and selection. Text-only layers retain straight glyph alpha,
 so antialiased edges blend against the final background once.
 
+Font fallback and emergency wrapping keep Unicode 17 extended graphemes intact,
+including combining marks, emoji flags/families and Indic conjuncts. The same
+boundaries constrain hit testing and arrow/delete operations. The native
+backend derives caret/selection x positions from its rendered HarfBuzz runs,
+including kerning, ligatures and RTL run coordinates; warm hits reuse owned
+geometry and do not reshape text prefixes. SDL retains compatibility prefix
+measurements. Native text resolves Unicode 17 paragraph bidi across style/font
+runs and independently within table cells. Wrapping uses resolved directions;
+L1 whitespace resets and L2 positioning follow the chosen line breaks. Rendering,
+measurement and caret geometry share explicit direction and cached glyph runs.
+Common/Inherited script characters inherit their run context; strong script
+changes split shaping runs at grapheme boundaries. This uses HarfBuzz's existing
+Script property adapter, rather than a complete Script_Extensions resolver.
+Native horizontal arrows move visually through bidi text; pointer and arrow
+positions preserve affinity at shared logical boundaries. Selection/copy retain
+logical byte order. SDL retains its compatibility layout/navigation path.
+Native wrapping uses Unicode 17 UAX #14 opportunities across rich/style/font
+runs, with soft opportunities filtered at extended grapheme boundaries.
+Exponential search and binary refinement fit actual shaped slices to the line,
+rather than average character widths or separately shaped grapheme widths.
+An overwide unbreakable span uses emergency grapheme breaks. Tabs display as four
+spaces. CRLF, newline functions and bidi paragraph separators end lines.
+Selected U+00AD soft-hyphen breaks display a hyphen; copy and editing retain the
+source U+00AD. Trailing ASCII spaces at a soft break, or overflowing final spaces,
+retain source ranges with collapsed display/caret geometry. This avoids an
+otherwise fitting word wrapping merely because its following spaces do not fit.
+Native horizontal arrows cross wrapped RTL lines in the paragraph's direction
+and enter adjacent paragraphs at logical endpoints. Tables retain visual editing
+capability through their merged layouts. Read-only `max_lines` caps visible
+layout; multiline inputs retain the geometry needed for scrolling and use their
+viewport to cap visible lines.
+Window focus loss hides the caret and stops blink-driven redraw requests;
+focus return makes it visible immediately. This does not suspend service work
+or replace the application's event-loop scheduling.
+
+The native per-run shaper limit is 32 KiB; long ordinary words are wrapped before
+that limit. A single grapheme larger than it is explicitly unsupported. Typeface
+shaping is expected to have nonnegative, ordinarily monotone advances. Locale
+dictionaries, automatic hyphenation, complete Script_Extensions resolution and
+broader complex-script/input-method acceptance remain separate work.
+
 Desktop applications can use `rt_markdown_tables(text)` from
 `libs/ui/markdown-tables.flex` for pipe tables. It emits cell metadata on the
 usual rich text runs, with a tab/newline copy order. The desktop renderer keeps
@@ -307,8 +369,13 @@ and draws table backgrounds separately from antialiased glyphs. This avoids
 allocating one native widget per cell. The extension supports up to 16 columns
 and 256 rows per table; plain `rt_markdown` retains its existing inline output.
 
-The initial desktop backend does not yet expose an OS accessibility tree or
-preedit composition display. It consumes completed SDL text input. Markdown
+The desktop backend does not yet expose an OS accessibility tree. It renders
+underlined IME preedit and its selected range/caret separately from the saved
+draft, then applies commits and surrounding deletions atomically. Text-input-v3
+on native Wayland and SDL editing events share the editor path. Candidate popup
+rectangles follow the actual caret after layout, scrolling and density changes.
+Editor/session changes and external value replacement reject delayed results;
+Escape cancels active composition before Collie's page navigation. Markdown
 text selection uses rendered UTF-8 content, so copying a
 selection excludes formatting delimiters. Desktop link runs are underlined and
 emit a `type:"link"` event with the destination in `value` on click; dragging

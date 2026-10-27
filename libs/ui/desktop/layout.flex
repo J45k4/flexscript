@@ -3,6 +3,13 @@ fn ud_hidden(node){return ud_number(load64(node+16),"hidden",0);}
 fn ud_padding(node,axis){let name="padding_y";if axis==0{name="padding_x";}return ud_n(node,name,ud_n(node,"padding",0));}
 fn ud_source(node){let source=ud_s(node,"source");let bound=0;if ud_images{bound=j_get(ud_images,source);}if bound{return j_value(bound);}if h_starts(source,"file://"){return source+7;}if h_starts(source,"resource:") || h_starts(source,"preview:") || h_find(source,"://")>=0{return "";}return source;}
 fn ud_measure(node,available){
+    let memo=ud_measures+((node-ud_nodes)/256)*16;
+    if ud_measure_reuse && ud_measure_pass && load64(memo)==ud_measure_pass && load64(memo+8)==available{return 0;}
+    // Reflow at another width changes descendants' desired sizes. Any earlier
+    // parent measurement depending on those sizes must no longer be reused.
+    if ud_measure_reuse && load64(memo)==ud_measure_pass{let parent=load64(node+24);while parent && parent!=ud_mount{store64(ud_measures+((parent-ud_nodes)/256)*16,0);parent=load64(parent+24);}}
+    gui_metrics_add(15,1);
+    store64(memo+8,available);store64(memo,ud_measure_pass);
     if ud_hidden(node){store64(node+96,0);store64(node+104,0);return 0;}
     let kind=load64(node+8);let px=ud_padding(node,0);let py=ud_padding(node,1);let explicit=ud_n(node,"width",-2);let width=available;if explicit>=0{width=explicit;}width=ud_max(1,width-2*px);let w=0;let h=0;
     if kind==6 || kind==7 || kind==8{
@@ -27,10 +34,12 @@ fn ud_measure(node,available){
             }child=load64(child+48);
         }
         if count>1{if kind==2{w=w+(count-1)*gap;}if kind==1{h=h+(count-1)*gap;}}
+        // Match cumulative remainder allocation in placement exactly; a
+        // one-pixel width disagreement otherwise rebuilds text every frame.
         if kind==2{
             let fixed=0;let weights=0;child=load64(node+32);while child{if !ud_hidden(child){let weight=ud_n(child,"weight",0);if weight>0{weights=weights+weight;}else{fixed=fixed+load64(child+96);}}child=load64(child+48);}
             if count>1{fixed=fixed+(count-1)*gap;}
-            if weights{let rest=ud_max(0,width-fixed);h=0;child=load64(node+32);while child{if !ud_hidden(child){let weight=ud_n(child,"weight",0);if weight>0{ud_measure(child,rest*weight/weights);}h=ud_max(h,load64(child+104));}child=load64(child+48);}w=width;}
+            if weights{let rest=ud_max(0,width-fixed);let allotted=0;let seen_weight=0;h=0;child=load64(node+32);while child{if !ud_hidden(child){let weight=ud_n(child,"weight",0);if weight>0{seen_weight=seen_weight+weight;let end=rest*seen_weight/weights;ud_measure(child,end-allotted);allotted=end;}h=ud_max(h,load64(child+104));}child=load64(child+48);}w=width;}
         }
         if kind==4{h=ud_min(h,400);}if kind==5{w=ud_min(w,width);}
     }
@@ -68,4 +77,4 @@ fn ud_layout(node,x,y,w,h){
         }child=load64(child+48);
     }return 0;
 }
-fn ud_arrange(){let w=gui_width(ud_window);let h=gui_height(ud_window);let child=load64(ud_mount+32);while child{ud_measure(child,w);let cw=w;let ch=h;let explicit=ud_n(child,"width",-1);if explicit>=0{cw=explicit;}explicit=ud_n(child,"height",-1);if explicit>=0{ch=explicit;}ud_layout(child,0,0,cw,ch);child=load64(child+48);}return 0;}
+fn ud_arrange(){if ud_measure_pass==9223372036854775807{bytes_fill(ud_measures,0,2048*16);ud_measure_pass=0;}ud_measure_pass=ud_measure_pass+1;let w=gui_width(ud_window);let h=gui_height(ud_window);let child=load64(ud_mount+32);while child{ud_measure(child,w);let cw=w;let ch=h;let explicit=ud_n(child,"width",-1);if explicit>=0{cw=explicit;}explicit=ud_n(child,"height",-1);if explicit>=0{ch=explicit;}ud_layout(child,0,0,cw,ch);child=load64(child+48);}return 0;}

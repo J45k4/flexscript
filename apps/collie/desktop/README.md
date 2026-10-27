@@ -1,10 +1,24 @@
 # Collie on Linux desktop
 
-The native SDL window runs a desktop layout with shared message views, pages, event reducer, provider
+The native Wayland window runs a desktop layout with shared message views, pages, event reducer, provider
 protocol, conversation machine, worker scheduler, permission gates, checked VM,
 FlexDB and resumable VM checkpoints as the Android application. It starts from
 `83e8b37` on `codex/collie-hardware-adapters`; the older `codex/collie-android`
 branch is also included in this history.
+
+On a Wayland session Collie selects its Flexscript Wayland/EGL/OpenGL renderer
+and direct Fontconfig/FreeType/HarfBuzz text adapters. This path loads neither
+SDL nor SDL_ttf. The initial target is Linux x86-64 with one application window.
+X11 sessions continue through the retained SDL backend. Other GUI/OpenGL
+applications keep their existing backend selection.
+
+Use `FLEX_GUI_BACKEND=sdl2 ./build/collie-desktop/collie` for the compatibility
+backend, or `FLEX_GUI_BACKEND=wayland` to require native Wayland explicitly.
+An explicit `SDL_VIDEODRIVER`/`SDL_VIDEO_DRIVER` also selects compatibility unless
+`FLEX_GUI_BACKEND` overrides it. A native initialization error is reported; it
+never silently changes rendering backend. See
+[the correctness acceptance report](../../../docs/sdl-migration-correctness-2026-10-27.md)
+for validation and platform limits.
 
 Build in this worktree using a full Flexscript compiler:
 
@@ -24,10 +38,12 @@ Android engine and bounded broker; its native syscall ABI, native callbacks, pla
 and application bootstrap change. Android sources are not modified by building.
 
 The desktop application and its build driver are Flexscript. Python and Pillow
-are not needed to build or run Collie. Runtime dependencies are SDL2 2.26+,
-SDL2_ttf, libpng16, libturbojpeg, libwebp (libwebpdemux for animated WebP),
-OpenSSL 3 libssl/libcrypto, and system sans/monospace
-fonts. A C compiler builds the existing small native broker.
+are not needed to build or run Collie. Native Wayland dependencies are
+libwayland-client/libwayland-egl/libwayland-cursor, EGL/OpenGL 3.3, xkbcommon,
+Fontconfig, FreeType and HarfBuzz, plus system sans/monospace fonts. SDL2 2.26+
+and SDL2_ttf are needed only for compatibility. Both paths use libpng16,
+libturbojpeg, libwebp (libwebpdemux for animated WebP) and OpenSSL 3
+libssl/libcrypto. A C compiler builds the existing small native broker.
 Install `zenity` or `kdialog` for file selection. `ffmpeg` enables one-shot Linux
 V4L2 camera attachments; camera access remains subject to actual OS/device
 permissions. Missing dialogs, cameras and platform adapters return actionable
@@ -124,7 +140,7 @@ user's runtime directory. It does not guess between multiple sessions, change
 desktop configuration, or attach headless runs to the desktop. To inspect video
 initialization without creating a window, run
 `build/collie-desktop/collie --video-diagnostics`. Startup failures print the
-relevant display settings and SDL backend list.
+relevant display settings, selected GUI backend and video driver.
 
 The desktop UI supports streaming replies and public thinking summaries,
 collapsible source/results, text selection and clipboard, multiline Unicode

@@ -63,6 +63,7 @@ fn tx_snapshot(phase,config,request_module) {
         while pc<end {let op=load64(output+pc);let arg=load64(output+pc+8);
             if op==5 {effects=effects|1;}else if op==6 {effects=effects|2;}
             else if op==8 {effects=effects|64;}
+            else if op==29 {effects=effects|32;}
             else if op==17 {if arg<=2 {effects=effects|4;}else if arg<=4 {effects=effects|8;}else if arg==5 {effects=effects|16;}else {effects=effects|32;}}
             pc=pc+16;
         }store64(r+72,effects);i=i+1;

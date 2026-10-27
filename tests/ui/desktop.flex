@@ -1,32 +1,36 @@
 // Actual SDL renderer, real fonts/pixels and independent SDL input structures.
-import "../../libs/ui/desktop.flex";
+import "replay.flex";
 import "../../libs/ui/richtext.flex";
 import "../../apps/collie/ui/permissions.flex";
 extend "../../libs/ui/syntax.flex";
 global dt_fixture=0;
+global dt_native=0;
+global dt_capture_root=0;
 global dt_id=0;
 global dt_event=0;
 global dt_checks=0;
 view app_view(){use permission_screen();}
 fn dt_check(ok,text){h_assert(ok,text);dt_checks=dt_checks+1;h_print(1,h_cat3("PASS ",text,"\n"));return 0;}
-fn dt_inject(kind,a,b,c,d){h_assert(ffi_call_i32(ffi_symbol(dt_fixture,"gui_fixture_event"),kind,dt_id,a,b,c,d)>0,"SDL event injection");h_assert(gui_poll(dt_event),"SDL poll");return ui_desktop_event(dt_event);}
-fn dt_text(text){h_assert(ffi_call_i32(ffi_symbol(dt_fixture,"ui_fixture_text"),dt_id,text,0,0,0,0),"SDL text input injection");h_assert(gui_poll(dt_event),"SDL text poll");return ui_desktop_event(dt_event);}
-fn dt_shot(path){let w=gui_pixel_width(ud_window);let h=gui_pixel_height(ud_window);let pixels=h_take(w*h*4);dt_check(gui_read_pixels(ud_window,pixels,w*4,w*h*4),"native rendered pixel capture");h_save_bytes(path,pixels,w*h*4,420);return 0;}
-fn dt_rgb(x,y){let w=gui_pixel_width(ud_window);let h=gui_pixel_height(ud_window);let pixels=h_take(w*h*4);h_assert(gui_read_pixels(ud_window,pixels,w*4,w*h*4),gui_error);let p=pixels+(y*w+x)*4;return (load8(p)<<16)|(load8(p+1)<<8)|load8(p+2);}
+// Replay the same widget checks through normalized events on the native backend.
+// OS protocol delivery is covered by the separate private-seat/input suites.
+fn dt_inject(kind,a,b,c,d){if dt_native{return ur_event(dt_event,kind,a,b,c,d);}h_assert(ffi_call_i32(ffi_symbol(dt_fixture,"gui_fixture_event"),kind,dt_id,a,b,c,d)>0,"SDL event injection");h_assert(gui_poll(dt_event),"SDL poll");let result=ui_desktop_event(dt_event);if ud_paste_token{h_assert(gui_poll(dt_event) && gui_event_kind(dt_event)==GUI_CLIPBOARD,"SDL clipboard completion missing");result=ui_desktop_event(dt_event);}return result;}
+fn dt_text(text){if dt_native{gui__zero(dt_event,128);store64(dt_event,GUI_TEXT);store64(dt_event+8,ud_window);h_assert(gui_event_text_set(dt_event,text),gui_error);return ui_desktop_event(dt_event);}h_assert(ffi_call_i32(ffi_symbol(dt_fixture,"ui_fixture_text"),dt_id,text,0,0,0,0),"SDL text input injection");h_assert(gui_poll(dt_event),"SDL text poll");return ui_desktop_event(dt_event);}
+fn dt_shot(path){if dt_capture_root{path=h_join(dt_capture_root,path+6);}let w=gui_pixel_width(ud_window);let h=gui_pixel_height(ud_window);let pixels=h_take(w*h*4);dt_check(gui_read_pixels(ud_window,pixels,w*4,w*h*4),"native rendered pixel capture");h_save_bytes(path,pixels,w*h*4,420);return 0;}
+fn dt_rgb(x,y){let w=gui_pixel_width(ud_window);let h=gui_pixel_height(ud_window);let pixels=h_take(w*h*4);h_assert(gui_read_pixels(ud_window,pixels,w*4,w*h*4),gui_error);x=x*gui_scale(ud_window)/1000;y=y*gui_scale(ud_window)/1000;let p=pixels+(y*w+x)*4;return (load8(p)<<16)|(load8(p+1)<<8)|load8(p+2);}
 fn dt_pool_bytes(){let n=0;let p=ud_pool;while p{n=n+load64(p+8);p=load64(p);}return n;}
 fn main(argc,argv){
-    h_environment(argc,argv);h_assert(argc==2 || argc==3,"Usage: desktop-tests SDL-FIXTURE-LIBRARY [--x11]");dt_fixture=ffi_open(load64(argv+8));h_assert(dt_fixture,"SDL fixture library");
-    let window=ui_desktop_open("Flexscript desktop UI verification",640,760,GUI_RESIZABLE);dt_check(window,"native window creation");dt_event=gui_event();dt_id=load64(gui__record(window)+32);gui__poll_fn=ffi_symbol(dt_fixture,"gui_fixture_poll");
-    let packets=j_parse(h_read("build/ui-portable-packets.json"));ui_desktop_apply(j_at(packets,0));ui_desktop_draw();ui_desktop_apply(j_parse("{\"version\":1,\"ops\":[]}"));dt_check(!ud_dirty,"empty update batches leave the rendered window idle");dt_inject(768,43,0,0,0);dt_check(ud_focus==ud_find("act"),"Tab focuses the first interactive control");let identity=ui_desktop_identity("input-2");ui_desktop_focus("input-2");
-    let typed=dt_text("你好");dt_check(h_equal(j_s(typed,"value"),"initial你好") && h_equal(j_s(typed,"type"),"change"),"actual SDL UTF-8 text becomes a portable input event");
+    h_environment(argc,argv);h_assert(argc==2 || argc==3,"Usage: desktop-tests SDL-FIXTURE-LIBRARY [--x11]");dt_native=h_equal(load64(argv+8),"--native");if dt_native && argc==3{dt_capture_root=load64(argv+16);}if dt_native{h_assert(gui_backend_select("wayland"),gui_error);}else{dt_fixture=ffi_open(load64(argv+8));h_assert(dt_fixture,"SDL fixture library");}
+    let window=ui_desktop_open("Flexscript desktop UI verification",640,760,GUI_RESIZABLE);dt_check(window,"native window creation");dt_event=gui_event();dt_id=load64(gui__record(window)+32);if !dt_native{gui__poll_fn=ffi_symbol(dt_fixture,"gui_fixture_poll");}
+    let packets=j_parse(h_read("build/ui-portable-packets.json"));ui_desktop_apply(j_at(packets,0));ui_desktop_draw();if dt_native{ur_ready(dt_event);}ui_desktop_apply(j_parse("{\"version\":1,\"ops\":[]}"));dt_check(!ud_dirty,"empty update batches leave the rendered window idle");dt_inject(768,43,0,0,0);dt_check(ud_focus==ud_find("act"),"Tab focuses the first interactive control");let identity=ui_desktop_identity("input-2");ui_desktop_focus("input-2");
+    let typed=dt_text("你好");dt_check(h_equal(j_s(typed,"value"),"initial你好") && h_equal(j_s(typed,"type"),"change"),"UTF-8 text becomes a portable input event");
     dt_inject(768,80,0,0,0);dt_inject(768,42,0,0,0);
     dt_check(h_equal(ui_desktop_value("input-2"),"initial好"),"arrow/backspace remove a complete UTF-8 code point");let caret=load64(ud_focus+144);
     ui_desktop_apply(j_at(packets,1));ui_desktop_apply(j_at(packets,2));ui_desktop_apply(j_at(packets,3));ui_desktop_draw();
     dt_check(identity==ui_desktop_identity("input-2") && h_equal(ui_desktop_value("input-2"),"initial好") && ud_focus==ud_find("input-2") && load64(ud_focus+144)==caret,"keyed move and property patches preserve editor identity, draft, focus and selection");
     dt_check(load64(ud_find("rows")+32)==ud_find("row-2") && load64(ud_find("branch")+8)==7 && ud_hidden(ud_find("hidden")),"keyed reorder, conditional replacement and visibility");
     let bounds=h_take(32);ui_desktop_bounds("act",bounds);let x=load64(bounds)+load64(bounds+16)/2;let y=load64(bounds+8)+load64(bounds+24)/2;
-    dt_inject(1025,1,x,y,0);let clicked=dt_inject(1026,1,x,y,0);dt_check(clicked && h_equal(j_s(clicked,"action"),"changed") && j_n(clicked,"action_id")==2,"real SDL mouse click resolves the updated action binding");
-    if argc==3{
+    dt_inject(1025,1,x,y,0);let clicked=dt_inject(1026,1,x,y,0);dt_check(clicked && h_equal(j_s(clicked,"action"),"changed") && j_n(clicked,"action_id")==2,"mouse click resolves the updated action binding");
+    if argc==3 && !dt_native{
         ui_desktop_focus("input-2");ui_desktop_draw();ui_desktop_present();gui__poll_fn=gui__symbol("SDL_PollEvent");
         dt_check(ffi_call_i32(ffi_symbol(dt_fixture,"ui_fixture_native"),load64(gui__record(window)),x,y,1,0,0)==1,"native desktop window is actually mapped on the isolated X server");
         let typed_native=0;let clicked_native=0;let until=gui_ticks()+200;
@@ -35,7 +39,7 @@ fn main(argc,argv){
         while gui_ticks()<until && !typed_native{while gui_poll(dt_event){let reply=ui_desktop_event(dt_event);if reply && h_equal(j_s(reply,"type"),"change") && h_equal(j_s(reply,"value"),"initiala好"){typed_native=1;}}gui_delay(5);}
         ffi_call_i32(ffi_symbol(dt_fixture,"ui_fixture_native"),load64(gui__record(window)),x,y,3,0,0);until=gui_ticks()+1000;
         while gui_ticks()<until && !clicked_native{while gui_poll(dt_event){let reply=ui_desktop_event(dt_event);if reply && h_equal(j_s(reply,"action"),"changed") && j_n(reply,"action_id")==2{clicked_native=1;}}gui_delay(5);}
-        dt_check(typed_native && clicked_native,"real X11 keyboard and pointer input traverse SDL and the portable event adapter");gui__poll_fn=ffi_symbol(dt_fixture,"gui_fixture_poll");
+        dt_check(typed_native && clicked_native,"real X11 keyboard and pointer input traverse SDL and the portable event adapter");if !dt_native{gui__poll_fn=ffi_symbol(dt_fixture,"gui_fixture_poll");}
     }
     ui_desktop_apply(j_at(packets,4));ui_desktop_apply(j_at(packets,5));dt_check(identity==ui_desktop_identity("input-2") && !ui_desktop_identity("row-1") && ui_desktop_identity("input-3"),"insert/remove preserves surviving native records");
     ui_desktop_apply(j_at(packets,6));dt_check(!ui_desktop_identity("input-2") && !load64(ud_find("rows")+32),"recursive removal clears children and focused editors");
@@ -50,7 +54,7 @@ fn main(argc,argv){
     let next=j_parse(j_dump(policy));j_set(next,"internet",j_bool(0));request=j_object();j_set(request,"policy",policy);j_set(request,"next_policy",next);j_set(request,"event",permission);let changed=cu_permissions(request);ui_desktop_apply(changed);ui_desktop_draw();
     dt_check(h_equal(ui_desktop_value("permissions-summary"),"0 allowed · 30 ask · 1 denied") && !j_value(j_need(j_need(changed,"command"),"allowed")),"actual desktop input round-trips through the compiled shared permission view/reducer");
     ui_desktop_close();dt_check(ui_desktop_open("Collie shared UI on desktop",430,932,GUI_RESIZABLE),"renderer can close and reopen");
-    dt_id=load64(gui__record(ud_window)+32);
+    dt_id=load64(gui__record(ud_window)+32);if dt_native{ur_ready(dt_event);}
     ui_desktop_image("resource:mipmap/ic_launcher","apps/collie/android/res/drawable-nodpi/collie_border_collie.png");
     ui_desktop_image("preview:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","apps/collie/android/res/drawable-nodpi/collie_border_collie.png");
     let app=j_parse(h_read("build/collie-ui-packets.json"));let seen=j_object();let code=0;let image=0;i=0;
@@ -99,8 +103,14 @@ fn main(argc,argv){
     ui_desktop_apply(j_parse("{\"version\":1,\"ops\":[{\"op\":\"attribute\",\"key\":\"selection-control\",\"name\":\"enabled\",\"value\":\"false\"}]}"));ui_desktop_draw();dt_inject(1025,1,x,y,0);dt_inject(1024,tx+30,ty+10,10,-20);dt_check(!dt_inject(1026,1,tx+30,ty+10,0) && !ud_selection_pending && ud_focus!=text_node,"disabled controls also block blank-space selection starts");
     // Removal must cancel the candidate before its stable slot can be reused.
     dt_inject(1025,1,tx-10,ty+5,0);dt_check(ud_selection_pending==text_node,"pending selection has a live candidate");ui_desktop_apply(j_parse("{\"version\":1,\"ops\":[{\"op\":\"remove\",\"key\":\"markdown-body\"}]}"));dt_inject(1024,tx+30,ty+10,40,5);dt_check(!ud_selection_pending && !ud_pressed,"removing the pending text cancels the drag safely");dt_inject(1026,1,tx+30,ty+10,0);
-    gui__poll_fn=gui__symbol("SDL_PollEvent");while gui_poll(dt_event){}h_assert(ffi_call_i32(ffi_symbol(dt_fixture,"ui_fixture_push_key"),dt_id,80,0,0,0,0)>0,"native queued key");
-    dt_check(gui_wait(200) && gui_poll(dt_event) && gui_event_kind(dt_event)==GUI_KEY_DOWN && gui_event_code(dt_event)==80,"event wait wakes for queued input without consuming the key");gui__poll_fn=ffi_symbol(dt_fixture,"gui_fixture_poll");
-    ui_desktop_close();gui_quit();ffi_call(ffi_symbol(dt_fixture,"ui_fixture_release"),0,0,0,0,0,0);
+    if dt_native{
+        while gui_poll(dt_event){}gui__zero(dt_event,128);store64(dt_event,GUI_KEY_DOWN);store64(dt_event+8,ud_window);store64(dt_event+16,80);h_assert(gui_event_enqueue(dt_event),gui_error);
+        dt_check(gui_wait(200) && gui_poll(dt_event) && gui_event_kind(dt_event)==GUI_KEY_DOWN && gui_event_code(dt_event)==80,"event wait preserves queued normalized input");
+        dt_check(h_find(h_read("/proc/self/maps"),"libSDL2")<0,"complete native UI workflow loads no SDL");
+    }else{
+        gui__poll_fn=gui__symbol("SDL_PollEvent");while gui_poll(dt_event){}h_assert(ffi_call_i32(ffi_symbol(dt_fixture,"ui_fixture_push_key"),dt_id,80,0,0,0,0)>0,"native queued key");
+        dt_check(gui_wait(200) && gui_poll(dt_event) && gui_event_kind(dt_event)==GUI_KEY_DOWN && gui_event_code(dt_event)==80,"event wait wakes for queued input without consuming the key");
+    }
+    ui_desktop_close();gui_quit();if dt_fixture{ffi_call(ffi_symbol(dt_fixture,"ui_fixture_release"),0,0,0,0,0,0);}
     h_print(1,h_cat3("PASS: ",h_int(dt_checks)," native desktop UI checks\n"));return 0;
 }

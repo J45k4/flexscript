@@ -51,6 +51,7 @@ fn main(argc,argv) {
     check(!gui_gl_shader(a,0x8b31,0),"null GLSL rejected without a device call");
     check(gui_resize(a,80,60),"resize requested");check(gui_width(a)==80 && gui_height(a)==60,"resized dimensions");
     check(!gui_resize(a,0,60),"invalid resize rejected");drain();
+    check(gui_maximize(a,1) && gui_maximize(a,0),"maximize and unmaximize requested");check(gui_minimize(a),"minimize requested");check(gui_restore(a),"restore requested");drain();
     gui__poll_fn=ffi_symbol(fixture,"gui_fixture_poll");check(gui__poll_fn,"independent SDL structure decoder oracle");
     emit(512,a,6,80,60,0);expect(GUI_RESIZE,a);check(gui_event_x(gt_event)==80 && gui_event_y(gt_event)==60,"normalized resize");
     emit(768,a,26,119,3,1);expect(GUI_KEY_DOWN,a);check(gui_event_code(gt_event)==26 && gui_event_repeat(gt_event)==1 && gui_event_modifiers(gt_event)==3,"key ABI, modifiers and repeat");

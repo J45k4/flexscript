@@ -6,6 +6,7 @@ fn ud_round(x,y,w,h,r,color){
 }
 fn ud_focus_within(node){let focused=ud_focus;while focused && focused!=ud_mount{if focused==node{return 1;}focused=load64(focused+24);}return 0;}
 fn ud_caret_phase(){return (gui_ticks()-ud_caret_epoch)/500;}
+fn ud_caret_animated(){if ud_ime_suspended || !ud_focus || load64(ud_focus+8)!=8 || !ud_enabled(ud_focus) || (ud_focus==ud_ime_node && ud_ime_begin<0){return 0;}let node=ud_focus;while node && node!=ud_mount{if ud_hidden(node){return 0;}node=load64(node+24);}return 1;}
 fn ud_scroll_range(node){return ud_max(0,load64(node+120)-load64(node+88));}
 fn ud_scroll_thumb(node){let h=load64(node+88);return ud_min(h,ud_max(28,h*h/ud_max(1,load64(node+120))));}
 fn ud_scroll_thumb_y(node){let travel=load64(node+88)-ud_scroll_thumb(node);return load64(node+72)+ud_max(0,ud_min(ud_scroll_range(node),load64(node+136)))*travel/ud_max(1,ud_scroll_range(node));}
@@ -14,6 +15,9 @@ fn ud_text_origin(node){
     let px=ud_padding(node,0);let py=ud_padding(node,1);let x=load64(node+64)+px;let y=load64(node+72)+py;let w=load64(node+80)-px*2;let h=load64(node+88)-py*2;let tw=load64(node+208);let th=load64(node+216);
     if h_equal(ud_s(node,"align"),"center"){x=x+ud_max(0,(w-tw)/2);}if h_equal(ud_s(node,"align"),"end"){x=x+ud_max(0,w-tw);}y=y+ud_max(0,(h-th)/2);
     let out=ud_origin;store64(out,x-load64(node+232));store64(out+8,y-load64(node+240));return out;
+}
+fn ud_paint_ime_range(start,end,x,y,line,color,underline){
+    let i=0;while i<ud_edit_count{let record=ud_edit_records+i*96;let a=ud_max(start,load64(record+32));let b=ud_min(end,load64(record+40));if a<b{let left=load64(record+8)+ud_edit_prefix(record,a-load64(record+32));let right=load64(record+8)+ud_edit_prefix(record,b-load64(record+32));if left>right{let swap=left;left=right;right=swap;}let top=y+load64(record+16);let height=line;if underline{top=top+line-2;height=1;}if right>left{gui_canvas_rgba(ud_window,x+left,top,right-left,height,color);}}i=i+1;}return 0;
 }
 fn ud_paint_text(node,alpha){
     let kind=load64(node+8);let layout=0;
@@ -24,10 +28,15 @@ fn ud_paint_text(node,alpha){
     let origin=ud_text_origin(node);let x=load64(origin);let y=load64(origin+8);
     let background=load64(node+176);if background{gui_texture_alpha(background,alpha*255/100);gui_texture_draw(ud_window,background,x,y,load64(node+208),load64(node+216));}
     if layout && load64(node+144)!=load64(node+152){let start=ud_min(load64(node+144),load64(node+152));let end=ud_max(load64(node+144),load64(node+152));let pieces=j_need(layout,"pieces");let i=0;
-        while i<ud_edit_count{let record=ud_edit_records+i*96;let a=ud_max(start,load64(record+32));let b=ud_min(end,load64(record+40));if a<b{let prefix=ud_edit_prefix(record,a-load64(record+32));let right=ud_edit_prefix(record,b-load64(record+32));let left=load64(record+8)+prefix;right=load64(record+8)+right;let clip=j_get(load64(record),"clip_x");if clip{let clip_x=j_value(clip)*1000/ud_scale;let clip_w=ud_units(j_value(j_get(load64(record),"clip_w")));left=ud_max(left,clip_x);right=ud_min(right,clip_x+clip_w);}if right>left{gui_canvas_rgba(ud_window,x+left,y+load64(record+16),right-left,j_n(layout,"line"),0x665e9bba);}}i=i+1;}
+        while i<ud_edit_count{let record=ud_edit_records+i*96;let a=ud_max(start,load64(record+32));let b=ud_min(end,load64(record+40));if a<b{let prefix=ud_edit_prefix(record,a-load64(record+32));let right=ud_edit_prefix(record,b-load64(record+32));let left=load64(record+8)+prefix;right=load64(record+8)+right;if left>right{let swap=left;left=right;right=swap;}let clip=j_get(load64(record),"clip_x");if clip{let clip_x=j_value(clip)*1000/ud_scale;let clip_w=ud_units(j_value(j_get(load64(record),"clip_w")));left=ud_max(left,clip_x);right=ud_min(right,clip_x+clip_w);}if right>left{gui_canvas_rgba(ud_window,x+left,y+load64(record+16),right-left,j_n(layout,"line"),0x665e9bba);}}i=i+1;}
     }
+    if layout && node==ud_ime_node && ud_ime_begin>=0 && ud_ime_end>=0{let at=load64(node+144);ud_paint_ime_range(at+ud_min(ud_ime_begin,ud_ime_end),at+ud_max(ud_ime_begin,ud_ime_end),x,y,j_n(layout,"line"),0x665e9bba,0);}
     let texture=load64(node+160);if texture{gui_texture_alpha(texture,alpha*255/100);gui_texture_draw(ud_window,texture,x,y,load64(node+208),load64(node+216));}
-    if layout && kind==8 && ud_caret_phase()%2==0{gui_canvas_rgba(ud_window,x+j_n(layout,"caret_x"),y+j_n(layout,"caret_y"),1,j_n(layout,"line"),ud_color(ud_s(node,"color"),0xff000000));}return 0;
+    if layout && node==ud_ime_node{let at=load64(node+144);ud_paint_ime_range(at,at+ud_ime_bytes,x,y,j_n(layout,"line"),ud_alpha(ud_color(ud_s(node,"color"),0xff000000),alpha),1);}
+    if layout && kind==8{
+        let cx=x+j_n(layout,"caret_x");let cy=y+j_n(layout,"caret_y");gui_text_area(ud_max(load64(node+64),ud_min(load64(node+64)+load64(node+80)-1,cx)),ud_max(load64(node+72),ud_min(load64(node+72)+load64(node+88)-1,cy)),1,j_n(layout,"line"));
+        if ud_caret_animated() && ud_caret_phase()%2==0{gui_canvas_rgba(ud_window,cx,cy,1,j_n(layout,"line"),ud_color(ud_s(node,"color"),0xff000000));}
+    }return 0;
 }
 fn ud_paint(node,left,top,right,bottom,alpha){
     if ud_hidden(node){return 0;}let x=load64(node+64);let y=load64(node+72);let w=load64(node+80);let h=load64(node+88);left=ud_max(left,x);top=ud_max(top,y);right=ud_min(right,x+w);bottom=ud_min(bottom,y+h);if left>=right || top>=bottom{return 0;}
@@ -56,9 +65,10 @@ fn ud_paint(node,left,top,right,bottom,alpha){
     return 0;
 }
 fn ud_draw_frame(arrange){
+    let frame_start=gui_metrics_start();
     h_assert(ud_window,"Desktop UI is closed");let saved=h_blocks;let used=h_used;let capacity=h_capacity;h_blocks=0;h_used=0;h_capacity=0;
-    ud_set_scale(ud_device_scale());gui_canvas_unclip(ud_window);gui_canvas_size(ud_window,gui_width(ud_window),gui_height(ud_window));gui_clear(ud_window,0x10151a);if arrange{ud_arrange();}if ud_scroll_drag && (!ud_enabled(ud_scroll_drag) || !ud_scroll_range(ud_scroll_drag)){ud_scroll_cancel();}ud_scroll_hover_at(ud_pointer_x,ud_pointer_y);let node=load64(ud_mount+32);while node{ud_paint(node,0,0,gui_width(ud_window),gui_height(ud_window),100);node=load64(node+48);}gui_canvas_unclip(ud_window);
-    h_reset(0);h_blocks=saved;h_used=used;h_capacity=capacity;ud_dirty=0;ud_blink=ud_caret_phase();return 1;
+    ud_set_scale(ud_device_scale());gui_canvas_unclip(ud_window);gui_canvas_size(ud_window,gui_width(ud_window),gui_height(ud_window));gui_clear(ud_window,0x10151a);if arrange{let layout_start=gui_metrics_start();ud_arrange();gui_metrics_end(10,layout_start);}if ud_scroll_drag && (!ud_enabled(ud_scroll_drag) || !ud_scroll_range(ud_scroll_drag)){ud_scroll_cancel();}ud_scroll_hover_at(ud_pointer_x,ud_pointer_y);let node=load64(ud_mount+32);while node{ud_paint(node,0,0,gui_width(ud_window),gui_height(ud_window),100);node=load64(node+48);}gui_canvas_unclip(ud_window);
+    ud_ime_sync(1);h_reset(0);h_blocks=saved;h_used=used;h_capacity=capacity;ud_dirty=0;ud_blink=ud_caret_phase();gui_metrics_end(11,frame_start);return 1;
 }
 fn ui_desktop_draw(){return ud_draw_frame(1);}
 // Repaint only visual changes using already arranged bounds and text textures.

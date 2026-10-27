@@ -1,7 +1,7 @@
 // Real wrapped Markdown and fonts, measured without a visible window.
 import "../../libs/ui/desktop.flex";
 import "../../libs/ui/richtext.flex";
-fn sp_counter(){return gui__call("SDL_GetPerformanceCounter",0,0,0,0,0,0);}
+fn sp_counter(){return gui_monotonic_ns();}
 fn sp_hit(node,x,y){let saved=h_blocks;let used=h_used;let capacity=h_capacity;h_blocks=0;h_used=0;h_capacity=0;let at=ud_caret_at(node,x,y);h_reset(0);h_blocks=saved;h_used=used;h_capacity=capacity;return at;}
 fn sp_reference(node,x,y){
     let saved=h_blocks;let used=h_used;let capacity=h_capacity;h_blocks=0;h_used=0;h_capacity=0;let origin=ud_text_origin(node);x=x-load64(origin);y=y-load64(origin+8);let layout=ud_text_layout(node,load64(node+80)-2*ud_padding(node,0),ud_content(node));let pieces=j_get(layout,"pieces");let best=0;let distance=0x7fffffffffffffff;let i=0;
@@ -13,7 +13,7 @@ fn main(argc,argv){
     h_environment(argc,argv);h_assert(argc==2,"Usage: selection-performance report.json");h_assert(ui_desktop_open("Selection benchmark",800,600,GUI_HIDDEN),gui_error);
     let body=h_buffer();let i=0;while i<35{h_text(body,"## A project note\nSelect **formatted text**, [a guide](https://example.com), `source_code` and 中文 without changing its layout. This paragraph wraps across the message.\n\n");i=i+1;}let markdown=h_data(body);
     let packet=j_parse("{\"version\":1,\"ops\":[{\"op\":\"insert\",\"key\":\"page\",\"parent\":\"mount\",\"after\":\"\",\"node\":{\"key\":\"page\",\"kind\":\"column\",\"props\":{\"height\":-1,\"padding\":20},\"children\":[{\"key\":\"body\",\"kind\":\"text\",\"text\":\"\",\"props\":{\"selectable\":1,\"size\":16,\"line_height\":5,\"color\":\"#edf2ed\"},\"children\":[]}]}}]}");
-    let desc=j_at(j_get(j_get(j_at(j_get(packet,"ops"),0),"node"),"children"),0);j_set(desc,"text",j_string(markdown));j_set(j_get(desc,"props"),"runs",j_string(rt_markdown(markdown)));ui_desktop_apply(packet);ui_desktop_draw();ui_desktop_focus("body");let node=ud_need("body");let frequency=gui__call("SDL_GetPerformanceFrequency",0,0,0,0,0,0);let timings=alloc(60*16+20*8);
+    let desc=j_at(j_get(j_get(j_at(j_get(packet,"ops"),0),"node"),"children"),0);j_set(desc,"text",j_string(markdown));j_set(j_get(desc,"props"),"runs",j_string(rt_markdown(markdown)));ui_desktop_apply(packet);ui_desktop_draw();ui_desktop_focus("body");let node=ud_need("body");let frequency=1000000000;let timings=alloc(60*16+20*8);
     i=0;while i<60{let start=sp_counter();let at=sp_hit(node,30+(i*137)%730,25+(i*43)%530);let elapsed=sp_counter()-start;store64(timings+i*16,elapsed*1000000/frequency);store64(timings+i*16+8,at);i=i+1;}
     // Fixed path repeated so a retained layout and prefix metrics can be warmed.
     i=0;while i<20{store64(node+144,sp_hit(node,30+(i*137)%730,25+(i*43)%530));ui_desktop_draw();i=i+1;}

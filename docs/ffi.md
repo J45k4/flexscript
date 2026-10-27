@@ -50,18 +50,32 @@ Programs using `ffi_open` or `ffi_symbol` require the glibc dynamic loader at
 retain the standalone ELF format. Calling a function pointer alone does not add
 a loader dependency.
 
-The direct native x86-64 pipeline also supports `native_callback(function)` for
-a named function taking exactly six words and returning one word. Compile with
-`--native-pipeline direct`. It returns a System V AMD64 trampoline suitable for
+Both native x86-64 pipelines support `native_callback(function)` for
+a named function taking exactly six words and returning one word. It returns
+a System V AMD64 trampoline suitable for
 passing to C; the target must have all six parameters, including unused ones.
 The callback and its globals belong to the originating executable and must not
 outlive it. Call synchronously on the originating thread; this does not provide
 thread safety, foreign-thread attachment or exception unwinding. Restricted VM,
 portable IR and other architecture targets reject this intrinsic. The native
-IR pipeline currently rejects it too; use the direct pipeline explicitly.
-`scripts/test-native-callback.py` verifies repeated C-to-Flexscript calls with
+IR pipeline retains functions reachable only through their callback address.
+Semantic source transforms can inspect callback address instructions and their
+capability effect in snapshots. Executing a callback-address intrinsic in a
+transform remains rejected; the transform VM receives no native function pointer.
+`scripts/test-native-callback.py` checks both pipelines and optimization modes,
+escaped callback pointers, repeated calls, nested calls, locals and globals,
 six arguments and signed results. Collie's desktop broker uses this adapter to
 reuse the shared checked engine.
+
+`lib/ffi-words.flex` supplies an owned Linux x86-64 System V adapter for zero to
+twelve integer/pointer arguments, including arguments passed on the stack.
+Create a thread-local context with `ffi_words_context()`, call
+`ffi_words_call(context, function, argument_words, count)`, then release it with
+`ffi_words_free(context)`. It clears the SysV vector-argument count for integer
+varargs. Floating-point arguments passed by value are unsupported; float arrays
+passed by pointer work normally. The adapter seals generated code RX after
+writing it RW. Neither function pointers nor the libraries they belong to may
+outlive their owner.
 
 `lib/ffi.flex` provides `ffi_close(handle)` for `dlclose`. A symbol pointer must
 not outlive its library handle.

@@ -1,3 +1,7 @@
+import "metrics.flex";
+import "platform.flex";
+import "wait.flex";
+import "presentation.flex";
 // All GUI operations belong on the main thread. No SDL headers or linker needed.
 // Private record layout and SDL2 ABI are contained in this module.
 global GUI_RESIZABLE=1;
@@ -16,6 +20,8 @@ global GUI_MOUSE_UP=10;
 global GUI_WHEEL=11;
 global GUI_EXPOSE=12;
 global GUI_RENDER_RESET=13;
+global GUI_CLIPBOARD=14;
+global GUI_IME=15;
 global GUI_KEY_ESCAPE=41;
 global GUI_KEY_LEFT=80;
 global GUI_KEY_RIGHT=79;
@@ -54,10 +60,12 @@ fn gui__sdl_error() {
 }
 fn gui_init() {
     if gui__initialized {return 1;}
+    if !gui__backend_selected && !gn_configure(){return 0;}
     if !gui__records {
         gui__records=gui__zero(alloc(32*704),32*704);
         gui__raw=alloc(64);gui__scratch=alloc(1088);
     }
+    if gui__native{gui__initialized=1;gui_error=0;return 1;}
     if !gui__sdl {gui__sdl=ffi_open("libSDL2-2.0.so.0");}
     if !gui__sdl {return gui__fail("SDL2 runtime is required (libSDL2-2.0.so.0)");}
     gui__call("SDL_GetVersion",gui__scratch,0,0,0,0,0);
@@ -79,6 +87,7 @@ fn gui__by_id(id) {
     let i=0;while i<32 {let p=gui__records+i*704;if load64(p) && load64(p+32)==id {return p;}i=i+1;}return 0;
 }
 fn gui__dimensions(p) {
+    if gui__native{return gn_dimensions(p);}
     gui__zero(gui__scratch,16);
     gui__call("SDL_GetWindowSize",load64(p),gui__scratch,gui__scratch+4,0,0,0);
     store64(p+56,gui__u32(gui__scratch));store64(p+64,gui__u32(gui__scratch+4));
@@ -95,6 +104,7 @@ fn gui__dimensions(p) {
 fn gui__create(title,width,height,flags,gl) {
     if !title || width<1 || height<1 || width>16384 || height>16384 || flags<0 || flags>7 {return gui__fail("Invalid window title, dimensions or flags");}
     if !gui_init() {return 0;}
+    if gui__native{return gn_create(title,width,height,flags,gl);}
     let i=0;while i<32 && load64(gui__records+i*704) {i=i+1;}
     if i==32 {return gui__fail("GUI window limit (32) reached");}
     let native_flags=0;if flags&GUI_RESIZABLE {native_flags=native_flags|32;}
@@ -112,6 +122,10 @@ fn gui__create(title,width,height,flags,gl) {
 fn gui_open(title,width,height,flags) {return gui__create(title,width,height,flags,0);}
 fn gui_close(window) {
     let p=gui__record(window);if !p {return 0;}
+    if gui__clipboard_window==window{gui_clipboard_cancel(gui__clipboard_id);}
+    if gui__ime_window==window{gui_text_focus(window,0);gui__ime_clear();gui__ime_window=0;}
+    if gui__native{return gn_close(p);}
+    gd_release(p);
     if gui__relative==window {gui__int("SDL_SetRelativeMouseMode",0,0,0,0,0,0);gui__relative=0;}
     if load64(p+16) {gui__call("SDL_DestroyTexture",load64(p+16),0,0,0,0,0);}
     if load64(p+8) {gui__call("SDL_DestroyRenderer",load64(p+8),0,0,0,0,0);}
@@ -120,32 +134,45 @@ fn gui_close(window) {
     gui__call("SDL_DestroyWindow",load64(p),0,0,0,0,0);store64(p,0);return 1;
 }
 fn gui_quit() {
+    gui_platform_close();
     let i=0;while gui__records && i<32 {let p=gui__records+i*704;if load64(p) {gui_close(gui__handle(p));}i=i+1;}
+    if gui__native{gn_quit();gui__initialized=0;return 0;}
+    gd_stop();
     if gui__initialized {gui__call("SDL_QuitSubSystem",32,0,0,0,0,0);gui__initialized=0;}return 0;
 }
 fn gui_width(window) {let p=gui__record(window);if !p {return 0;}gui__dimensions(p);return load64(p+56);}
 fn gui_height(window) {let p=gui__record(window);if !p {return 0;}gui__dimensions(p);return load64(p+64);}
 fn gui_pixel_width(window) {let p=gui__record(window);if !p {return 0;}gui__dimensions(p);return load64(p+72);}
 fn gui_pixel_height(window) {let p=gui__record(window);if !p {return 0;}gui__dimensions(p);return load64(p+80);}
+// Density in thousandths, independent of pixel rounding at odd window sizes.
+fn gui_scale(window){let p=gui__record(window);if !p{return 0;}if gui__native{return ws_scale(load64(p))*1000/120;}gui__dimensions(p);let w=load64(p+56);let h=load64(p+64);if w<1{w=1;}if h<1{h=1;}let x=load64(p+72)*1000/w;let y=load64(p+80)*1000/h;if y>x{return y;}return x;}
 fn gui_title(window,title) {
     let p=gui__record(window);if !p || !title {return gui__fail("Invalid window or title");}
+    if gui__native{if !wt_title(load64(p),title){return gui__fail(wl_error);}return wt_flush(load64(p));}
     gui__call("SDL_SetWindowTitle",load64(p),title,0,0,0,0);return 1;
 }
 fn gui_resize(window,width,height) {
     let p=gui__record(window);if !p {return 0;}
     if width<1 || height<1 || width>16384 || height>16384 {return gui__fail("Invalid window dimensions");}
+    if gui__native{return gn_resize(p,width,height);}
     gui__call("SDL_SetWindowSize",load64(p),width,height,0,0,0);return gui__dimensions(p);
 }
 fn gui_show(window,visible) {
     let p=gui__record(window);if !p {return 0;}
-    if visible {gui__call("SDL_ShowWindow",load64(p),0,0,0,0,0);}else {gui__call("SDL_HideWindow",load64(p),0,0,0,0,0);}return 1;
+    if gui__native{return gn_show(p,visible);}
+    if !visible && load64(p+696){wpd_cancel(load64(p+696));gd_frame_cancel(load64(p+696));}if visible {gui__call("SDL_ShowWindow",load64(p),0,0,0,0,0);}else {gui__call("SDL_HideWindow",load64(p),0,0,0,0,0);}if load64(p+696){gd_refresh(p,load64(p+696));}return 1;
 }
 fn gui_fullscreen(window,enabled) {
     let p=gui__record(window);if !p {return 0;}let flags=0;if enabled {flags=4097;}
+    if gui__native{return wt_mode(load64(p),1,enabled);}
     if gui__int("SDL_SetWindowFullscreen",load64(p),flags,0,0,0,0)<0 {return gui__sdl_error();}return 1;
 }
+fn gui_maximize(window,enabled){let p=gui__record(window);if !p{return 0;}if gui__native{return wt_mode(load64(p),0,enabled);}let name="SDL_RestoreWindow";if enabled{name="SDL_MaximizeWindow";}gui__call(name,load64(p),0,0,0,0,0);return 1;}
+fn gui_minimize(window){let p=gui__record(window);if !p{return 0;}if gui__native{return wt_minimize(load64(p));}gui__call("SDL_MinimizeWindow",load64(p),0,0,0,0,0);return 1;}
+fn gui_restore(window){let p=gui__record(window);if !p{return 0;}if gui__native{return gn_restore(p);}if gui__int("SDL_SetWindowFullscreen",load64(p),0,0,0,0,0)<0{return gui__sdl_error();}gui__call("SDL_RestoreWindow",load64(p),0,0,0,0,0);gui__call("SDL_ShowWindow",load64(p),0,0,0,0,0);return 1;}
 fn gui_relative_mouse(window,enabled) {
     let p=gui__record(window);if !p {return 0;}
+    if gui__native{return gui__fail("Native relative pointer mode is not supported yet");}
     if enabled && (!load64(p+640) || (gui__relative && gui__relative!=window)) {return gui__fail("Relative mouse requires the focused window and one owner");}
     if !enabled && gui__relative!=window {return 1;}
     gui__call("SDL_SetWindowGrab",load64(p),enabled!=0,0,0,0,0);
@@ -161,16 +188,19 @@ fn gui_mouse_buttons(window) {let p=gui__record(window);if !p {return 0;}return 
 fn gui_focused(window) {let p=gui__record(window);if !p {return 0;}return load64(p+640);}
 fn gui_text_input(enabled) {
     if !gui__initialized {return gui__fail("GUI is not initialized");}
+    gui__text_enabled=enabled!=0;
+    if gui__native{gn_text_enabled=enabled!=0;let p=gui__records;if p && load64(p){let c=load64(p);wm_enable(c,load64(load64(c+192)+256),enabled);}return 1;}
     if enabled {gui__call("SDL_StartTextInput",0,0,0,0,0,0);}else {gui__call("SDL_StopTextInput",0,0,0,0,0,0);}return 1;
 }
-fn gui_ticks() {if !gui_init() {return 0;}return gui__call("SDL_GetTicks64",0,0,0,0,0,0);}
+fn gui_ticks() {if !gui_init() {return 0;}if gui__native{return gui_monotonic_ns()/1000000;}return gui__call("SDL_GetTicks64",0,0,0,0,0,0);}
 fn gui_delay(ms) {
     if ms<0 || ms>0xffffffff {return gui__fail("Invalid delay");}if !gui_init() {return 0;}
+    if gui__native{store64(gui__scratch,ms/1000);store64(gui__scratch+8,(ms%1000)*1000000);syscall(35,gui__scratch,0,0,0,0,0);return 1;}
     gui__call("SDL_Delay",ms,0,0,0,0,0);return 1;
 }
 // Wait for input without consuming it. gui_poll still owns event normalization.
 // Unlike gui_delay, this wakes as soon as an event reaches the SDL queue.
-fn gui_wait(ms){if ms<0 || ms>2147483647{return gui__fail("Invalid event wait timeout");}if !gui_init(){return 0;}return gui__int("SDL_WaitEventTimeout",0,ms,0,0,0,0)>0;}
+fn gui_wait(ms){if gui__event_read!=gui__event_write{return 1;}if ms<0 || ms>2147483647{return gui__fail("Invalid event wait timeout");}if !gui_init(){return 0;}if gui__native{return gn_wait(ms);}if gd_active(){return gd_wait(ms);}return gui__int("SDL_WaitEventTimeout",0,ms,0,0,0,0)>0;}
 // Caller owns one 128-byte event buffer; polling does not allocate.
 fn gui_event() {return gui__zero(alloc(128),128);}
 fn gui_event_kind(event) {return load64(event);}
@@ -188,7 +218,8 @@ fn gui__release_input(p) {
     gui__zero(p+128,512);store64(p+120,0);
     if gui__relative==gui__handle(p) {gui_relative_mouse(gui__relative,0);}return 0;
 }
-fn gui_poll(event) {
+fn gui_poll(event){if !gui__native{gd_pending();}gui_ime_release(gui__ime_active);if gui__event_pop(event){gui_metrics_add(14,1);return 1;}let found=0;if gui__native{found=gn_poll(event,0);}else{found=gui__sdl_poll(event);gd_pending();}if found{gui_metrics_add(14,1);}return found;}
+fn gui__sdl_poll(event) {
     if !event {return gui__fail("Event buffer is null");}gui__zero(event,128);
     if !gui__initialized {return 0;}
     while ffi_call_i32(gui__poll_fn,gui__raw,0,0,0,0,0)>0 {
@@ -201,7 +232,8 @@ fn gui_poll(event) {
         if kind==0x1000 || kind==0x1001 {
             gui__call("SDL_free",load64(gui__raw+8),0,0,0,0,0);
         }else if kind==0x305 {
-            gui__call("SDL_free",load64(gui__raw+16),0,0,0,0,0);
+            let p=gui__by_id(gui__u32(gui__raw+8));let text=load64(gui__raw+16);if p && text{gui__sdl_preedit(gui__handle(p),text,gui__i32(gui__raw+24),gui__i32(gui__raw+28));}
+            gui__call("SDL_free",text,0,0,0,0,0);if gui__event_pop(event){return 1;}
         }else if kind==0x2000 || kind==0x2001 {
             // Streaming textures can be recreated on the next pixels upload.
             let i=0;while i<32 {let p=gui__records+i*704;if load64(p) && load64(p+16) {
@@ -228,6 +260,8 @@ fn gui_poll(event) {
                     store64(event,GUI_KEY_DOWN);if kind==769 {store64(event,GUI_KEY_UP);}
                     store64(event+16,code);store64(event+64,load8(gui__raw+13));
                     store64(event+72,load8(gui__raw+24)|(load8(gui__raw+25)<<8));return 1;
+                }else if kind==770 {
+                    gui__sdl_preedit(gui__handle(p),gui__raw+12,gui__i32(gui__raw+44),gui__i32(gui__raw+48));if gui__event_pop(event){return 1;}
                 }else if kind==771 {
                     let i=0;while i<31 && load8(gui__raw+12+i) {store8(event+80+i,load8(gui__raw+12+i));i=i+1;}
                     store64(event,GUI_TEXT);return 1;

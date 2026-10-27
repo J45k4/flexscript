@@ -1,0 +1,18 @@
+import "../../libs/ui/desktop.flex";
+import "../../libs/ui/richtext.flex";
+fn main(argc,argv){
+    h_environment(argc,argv);h_assert(gui_backend_select("wayland"),gui_error);h_assert(ui_desktop_open("Native scaling fixture",801,601,GUI_RESIZABLE),gui_error);
+    ui_desktop_apply(j_parse("{\"version\":1,\"ops\":[{\"op\":\"insert\",\"key\":\"page\",\"parent\":\"mount\",\"after\":\"\",\"node\":{\"key\":\"page\",\"kind\":\"column\",\"props\":{\"padding\":40},\"children\":[{\"key\":\"label\",\"kind\":\"text\",\"text\":\"Häät 中文 — native scale\",\"props\":{\"size\":16,\"color\":\"#edf2ed\",\"selectable\":1},\"children\":[]},{\"key\":\"field\",\"kind\":\"input\",\"props\":{\"value\":\"Draft 中文\",\"width\":400,\"height\":64,\"size\":16,\"color\":\"#edf2ed\"},\"children\":[]}]}}]}"));ui_desktop_focus("field");
+    let event=gui_event();let seen=0;let previous=0;let reports=j_array();let until=gui_ticks()+6000;let pointer_ok=0;
+    while gui_ticks()<until && j_count(reports)<5{
+        while gui_poll(event){if gui_event_kind(event)==GUI_MOUSE_MOVE && gui_event_x(event)==500 && gui_event_y(event)==300{pointer_ok=1;}if gui_event_kind(event)==GUI_RESIZE{ud_dirty=1;}}
+        let scale=gui_scale(ud_window);if scale!=previous{
+            let c=load64(gui__record(ud_window));let numerator=ws_scale(c);ui_desktop_draw();let logicalw=gui_width(ud_window);let logicalh=gui_height(ud_window);let width=gui_pixel_width(ud_window);let height=gui_pixel_height(ud_window);h_assert(width==ws_pixels(logicalw,numerator) && height==ws_pixels(logicalh,numerator),"Native framebuffer scale differs");h_assert(ud_scale==scale,"Text cache did not follow native scale");let field=ud_need("field");h_assert(load64(field+80)==400 && load64(field+88)==64 && load64(field+64)==40,"Scaling changed logical editor bounds");h_assert(h_equal(ui_desktop_value("field"),"Draft 中文"),"Scaling changed the editor draft");
+            gui_canvas_clip(ud_window,10,10,20,20);gui_canvas_rgba(ud_window,0,0,50,50,0xffc5e3ae);gui_canvas_unclip(ud_window);let bytes=width*height*4;let pixels=alloc(bytes);h_assert(gui_read_pixels(ud_window,pixels,width*4,bytes),gui_error);
+            let at=pixels+(ws_pixels(15,numerator)*width+ws_pixels(15,numerator))*4;h_assert(load8(at)==197 && load8(at+1)==227 && load8(at+2)==174,"Scaled clip inner pixel differs");at=pixels+(ws_pixels(5,numerator)*width+ws_pixels(5,numerator))*4;h_assert(load8(at)==16 && load8(at+1)==21 && load8(at+2)==26,"Scaled clip leaked");
+            if argc>1{h_save_bytes(h_cat3(load64(argv+8),h_int(j_count(reports)),".rgba"),pixels,bytes,420);}syscall(11,pixels,bytes,0,0,0,0);h_assert(ui_desktop_present(),gui_error);let row=j_object();j_set(row,"scale",j_int(scale));j_set(row,"width",j_int(width));j_set(row,"height",j_int(height));j_set(row,"logical_width",j_int(logicalw));j_set(row,"logical_height",j_int(logicalh));j_set(row,"gl_error",j_int(gr_gl(load64(gui__record(ud_window)+8),48,0,0,0,0,0,0)));j_push(reports,row);previous=scale;seen=seen+1;
+        }
+        gui_wait(20);
+    }
+    h_assert(j_count(reports)==5 && pointer_ok,"Scale transitions or logical pointer delivery were incomplete");h_assert(j_n(j_at(reports,0),"scale")==1000 && j_n(j_at(reports,1),"scale")==1250 && j_n(j_at(reports,2),"scale")==1500 && j_n(j_at(reports,3),"scale")==2000 && j_n(j_at(reports,4),"scale")==1000,"Preferred-scale order differs");let maps=h_read("/proc/self/maps");h_assert(h_find(maps,"libSDL2")<0,"Native scaling loaded SDL");if argc>1{h_save(h_cat(load64(argv+8),"report.json"),j_dump(reports));}ui_desktop_close();gui_quit();syscall(11,event,128,0,0,0,0);h_print(1,h_cat(j_dump(reports),"\n"));return 0;
+}

@@ -3,16 +3,19 @@
 import "../../../libs/ui/desktop.flex";
 import "../ui/app.flex";
 import "launch.flex";
+import "wait.flex";
+import "probe.flex";
 extend "../../../libs/ui/syntax.flex";
 global cd_state=0;global cd_in=0;global cd_used=0;global cd_queue=0;global cd_queued=0;global cd_sent=0;global cd_child=0;global cd_running=1;global cd_ready=0;global cd_service_lost=0;global cd_script_start=-1;
 global cd_sidebar_drag=0;global cd_sidebar_grab=0;global cd_sidebar_hover=0;global cd_sidebar_cursor=0;global cd_sidebar_value=252;global cd_sidebar_pending=0;global cd_sidebar_x=0;
+global cd_render_failed=0;global cd_error_eof=0;global cd_error_buffer=0;global cd_pidfd=-1;
+fn cd_errors(){if cd_error_eof{return 0;}let budget=65536;while budget>0{let count=budget;if count>8192{count=8192;}let n=syscall(0,load64(cd_child+48),cd_error_buffer,count,0,0,0);if n>0{h_write(2,cd_error_buffer,n);budget=budget-n;}else if n==-4{}else{if !n{cd_error_eof=1;}else{h_assert(n==-11,"Desktop service error stream failed");}return 0;}}return 0;}
 fn cd_sidebar_feedback(active){
     let node=ud_find("desktop-sidebar-divider");if !node{active=0;}if active==cd_sidebar_hover{return 0;}cd_sidebar_hover=active;
-    if active{if !cd_sidebar_cursor{cd_sidebar_cursor=gui__call("SDL_CreateSystemCursor",7,0,0,0,0,0);}if cd_sidebar_cursor{gui__call("SDL_SetCursor",cd_sidebar_cursor,0,0,0,0,0);}}
-    else{gui__call("SDL_SetCursor",gui__call("SDL_GetDefaultCursor",0,0,0,0,0,0),0,0,0,0,0);}
+    let cursor=GUI_CURSOR_DEFAULT;if active{cursor=GUI_CURSOR_SIZE_HORIZONTAL;}gui_cursor(ud_window,cursor);
     if node{let color="#20292f";if active{color="#78966d";}let op=j_object();j_set(op,"op",j_string("attribute"));j_set(op,"key",j_string("desktop-sidebar-divider"));j_set(op,"name",j_string("background"));j_set(op,"value",j_string(color));let packet=j_object();let ops=j_array();j_push(ops,op);j_set(packet,"version",j_int(1));j_set(packet,"ops",ops);ui_desktop_apply(packet);}return 0;
 }
-fn cd_sidebar_stop(){if cd_sidebar_drag{gui__call("SDL_CaptureMouse",0,0,0,0,0,0);}cd_sidebar_drag=0;cd_sidebar_pending=0;return 0;}
+fn cd_sidebar_stop(){if cd_sidebar_drag{gui_pointer_capture(ud_window,0);}cd_sidebar_drag=0;cd_sidebar_pending=0;return 0;}
 fn cd_sidebar_resize(x,done){
     let limit=gui_width(ud_window)-526;if limit>520{limit=520;}if limit<220{limit=220;}let width=x-cd_sidebar_grab;if width<220{width=220;}if width>limit{width=limit;}
     if !done && cd_sidebar_value==width{return 0;}
@@ -35,7 +38,7 @@ fn cd_sidebar_event(event){
         }
         cd_sidebar_feedback(hit);
         if kind==GUI_MOUSE_DOWN && gui_event_button(event)==1 && hit && !ud_pressed && !ud_scroll_drag{
-            ud_set_focus(node);cd_sidebar_grab=x-load64(node+64);cd_sidebar_drag=1;gui__call("SDL_CaptureMouse",1,0,0,0,0,0);return 1;
+            ud_set_focus(node);cd_sidebar_grab=x-load64(node+64);cd_sidebar_drag=1;gui_pointer_capture(ud_window,1);return 1;
         }
     }
     if kind==GUI_FOCUS && !gui_event_code(event){cd_sidebar_feedback(0);}return 0;
@@ -93,21 +96,26 @@ fn cd_receive(){
     let at=0;let start=0;while at<cd_used{if load8(cd_in+at)==10{store8(cd_in+at,0);let request=j_parse(cd_in+start);let images=cj_get(request,"images");if images && j_kind(images)==4{let fields=j_value(images);let i=0;while i<h_count(fields){let pair=h_at(fields,i);ui_desktop_image(load64(pair),j_value(load64(pair+8)));i=i+1;}}cd_update(request);start=at+1;}at=at+1;}
     if start{h_copy(cd_in,cd_in+start,cd_used-start);cd_used=cd_used-start;}return 0;
 }
-fn cd_native_event(event){if cd_sidebar_event(event){return 0;}let kind=gui_event_kind(event);if kind==GUI_QUIT || kind==GUI_CLOSE{cd_running=0;}else if kind==GUI_RESIZE{ud_dirty=1;let resize=j_object();j_set(resize,"action",j_string("update"));cd_update(resize);}else if kind==GUI_KEY_DOWN && cd_shortcut(gui_event_code(event),gui_event_modifiers(event)){}else if kind==GUI_KEY_DOWN && gui_event_code(event)==GUI_KEY_ESCAPE{let request=j_object();j_set(request,"action",j_string("back"));cd_update(request);}else{let input=ui_desktop_event(event);if input{let request=j_object();j_set(request,"action",j_string("event"));j_set(request,"event",input);cd_update(request);}}return 0;}
+fn cd_native_event(event){if cd_sidebar_event(event){return 0;}let kind=gui_event_kind(event);if kind==GUI_QUIT || kind==GUI_CLOSE{cd_running=0;}else if kind==GUI_RESIZE{ud_dirty=1;let resize=j_object();j_set(resize,"action",j_string("update"));cd_update(resize);}else if kind==GUI_KEY_DOWN && gui_event_code(event)==GUI_KEY_ESCAPE && ud_ime_node{ui_desktop_event(event);}else if kind==GUI_KEY_DOWN && cd_shortcut(gui_event_code(event),gui_event_modifiers(event)){}else if kind==GUI_KEY_DOWN && gui_event_code(event)==GUI_KEY_ESCAPE{let request=j_object();j_set(request,"action",j_string("back"));cd_update(request);}else{let input=ui_desktop_event(event);if input{let request=j_object();j_set(request,"action",j_string("event"));j_set(request,"event",input);cd_update(request);}}return 0;}
 fn cd_script(request){
     let action=cj_text(request,"action");
+    if h_equal(action,"native_probe"){h_assert(gui__metrics_on && !cd_probe_path && h_len(cj_text(request,"path")),"Replay probe needs --dump-loop, a path and a distinct event-loop iteration");cd_probe_path=cj_text(request,"path");return 0;}
     if h_equal(action,"native_resize"){gui_resize(ud_window,cj_int(request,"width"),cj_int(request,"height"));ud_dirty=1;let update=j_object();j_set(update,"action",j_string("update"));return cd_update(update);}
-    if h_equal(action,"native_text"){
-        // The existing test fixture feeds real SDL_Event text structures to
-        // gui_poll; SDL2 compatibility layers cannot PushEvent text reliably.
-        let library=ffi_open(cj_text(request,"fixture"));h_assert(library,"Native input fixture required");let inject=ffi_symbol(library,"ui_fixture_text");let poll=ffi_symbol(library,"gui_fixture_poll");h_assert(inject && poll,"Invalid native input fixture");
-        h_assert(ffi_call_i32(inject,load64(gui__record(ud_window)+32),cj_text(request,"text"),0,0,0,0)>0,"Cannot inject native text");let prior=gui__poll_fn;gui__poll_fn=poll;let event=gui_event();let available=gui_poll(event);gui__poll_fn=prior;h_assert(available,"Native text event unavailable");let input=ui_desktop_event(event);if input{let change=j_object();j_set(change,"action",j_string("event"));j_set(change,"event",input);return cd_update(change);}return 0;
+    if h_equal(action,"native_text") || h_equal(action,"native_key") || h_equal(action,"native_mouse"){
+        // Script replay uses the public normalized event ABI. Separate platform
+        // acceptance tests exercise actual display-server input delivery.
+        let event=gui_event();store64(event+8,ud_window);
+        if h_equal(action,"native_text"){store64(event,GUI_TEXT);h_assert(gui_event_text_set(event,cj_text(request,"text")),gui_error);}
+        else if h_equal(action,"native_key"){store64(event,GUI_KEY_DOWN);store64(event+16,cj_int(request,"code"));store64(event+72,cj_int(request,"modifiers"));}
+        else{
+            let kind=cj_int(request,"kind");let a=cj_int(request,"a");let b=cj_int(request,"b");let c=cj_int(request,"c");
+            if kind==1024{store64(event,GUI_MOUSE_MOVE);store64(event+24,a);store64(event+32,b);store64(event+40,c);store64(event+48,cj_int(request,"d"));}
+            else if kind==1025 || kind==1026{let type=GUI_MOUSE_DOWN;if kind==1026{type=GUI_MOUSE_UP;}store64(event,type);store64(event+56,a);store64(event+24,b);store64(event+32,c);}
+            else if kind==1027{store64(event,GUI_WHEEL);if c==1{a=-a;b=-b;}store64(event+40,a);store64(event+48,b);}
+            else{h_die("Unknown legacy replay event kind");}
+        }
+        h_assert(gui_event_enqueue(event),gui_error);while gui_poll(event){cd_native_event(event);}syscall(11,event,128,0,0,0,0);return 0;
     }
-    if h_equal(action,"native_mouse"){
-        let library=ffi_open(cj_text(request,"fixture"));h_assert(library,"Native mouse fixture required");let inject=ffi_symbol(library,"gui_fixture_event");let poll=ffi_symbol(library,"gui_fixture_poll");h_assert(inject && poll,"Invalid native mouse fixture");
-        h_assert(ffi_call_i32(inject,cj_int(request,"kind"),load64(gui__record(ud_window)+32),cj_int(request,"a"),cj_int(request,"b"),cj_int(request,"c"),cj_int(request,"d"))>0,"Cannot inject native pointer event");let prior=gui__poll_fn;gui__poll_fn=poll;let event=gui_event();let available=gui_poll(event);gui__poll_fn=prior;h_assert(available,"Native pointer event unavailable");return cd_native_event(event);
-    }
-    if h_equal(action,"native_key"){let raw=h_zero(h_take(64),64);gui__put32(raw,768);gui__put32(raw+8,load64(gui__record(ud_window)+32));gui__put32(raw+16,cj_int(request,"code"));let mods=cj_int(request,"modifiers");store8(raw+24,mods&255);store8(raw+25,(mods>>8)&255);h_assert(gui__int("SDL_PushEvent",raw,0,0,0,0,0)>0,"Cannot inject keyboard event");let event=gui_event();while gui_poll(event){cd_native_event(event);}return 0;}
     return cd_update(request);
 }
 fn cd_dump_layout(path){
@@ -119,32 +127,46 @@ fn cd_shortcut(code,mods){
     if !h_len(key){return 0;}let request=j_object();j_set(request,"action",j_string("shortcut"));j_set(request,"shortcut",j_string(key));cd_update(request);return 1;
 }
 fn cd_option(argc,argv,key,fallback){let i=1;while i<argc{if h_equal(load64(argv+i*8),key){h_assert(i+1<argc,"Option needs a value");return load64(argv+(i+1)*8);}i=i+1;}return fallback;}
+// Collie uses the native canvas on Wayland; other GUI consumers keep their
+// existing selection policy. Explicit backend/SDL-driver overrides win.
+fn cd_backend(){
+    let explicit=h_getenv("FLEX_GUI_BACKEND");if h_len(explicit){return gui_backend_select(explicit);}
+    if h_len(h_getenv("SDL_VIDEODRIVER")) || h_len(h_getenv("SDL_VIDEO_DRIVER")){return gui_backend_select("sdl2");}
+    if h_len(h_getenv("WAYLAND_DISPLAY")){return gui_backend_select("wayland");}
+    return gui_backend_select("sdl2");
+}
 fn cd_video_report(){
     let keys=h_args("WAYLAND_DISPLAY","DISPLAY","XDG_RUNTIME_DIR","XDG_SESSION_TYPE","SDL_VIDEODRIVER","SDL_VIDEO_DRIVER");let i=0;
     while i<h_count(keys){let key=h_at(keys,i);h_print(2,h_cat3(key,"=",h_getenv(key)));h_print(2,"\n");i=i+1;}
-    if gui__sdl{let n=gui__int("SDL_GetNumVideoDrivers",0,0,0,0,0,0);h_print(2,"SDL video backends:");i=0;while i<n{h_print(2," ");h_print(2,gui__call("SDL_GetVideoDriver",i,0,0,0,0,0));i=i+1;}h_print(2,"\nSelected backend: ");h_print(2,gui__call("SDL_GetCurrentVideoDriver",0,0,0,0,0,0));h_print(2,"\n");}return 0;
+    if gui_init(){let n=gui_video_driver_count();h_print(2,"GUI video backends:");i=0;while i<n{h_print(2," ");h_print(2,gui_video_driver_at(i));i=i+1;}h_print(2,h_cat3("\nGUI backend: ",gui_backend_name(),"\nSelected backend: "));h_print(2,gui_video_driver());h_print(2,"\n");}return 0;
+}
+fn cd_window_report(window,path){
+    let report=j_object();j_set(report,"backend",j_string(gui_backend_name()));j_set(report,"width",j_int(gui_width(window)));j_set(report,"height",j_int(gui_height(window)));j_set(report,"pixel_width",j_int(gui_pixel_width(window)));j_set(report,"pixel_height",j_int(gui_pixel_height(window)));j_set(report,"scale",j_int(gui_scale(window)));let maps=h_read("/proc/self/maps");j_set(report,"sdl_loaded",j_bool(h_find(maps,"libSDL2")>=0));return h_save(path,j_dump(report));
 }
 fn main(argc,argv){
-    h_environment(argc,argv);cd_display_environment(argc,argv);if cd_has_option(argc,argv,"--display-environment"){return cd_display_report();}let help=1;while help<argc{if h_equal(load64(argv+help*8),"--help"){h_print(1,"Usage: collie [--data DIRECTORY] [--auth auth.json] [--width W] [--height H]\nShortcuts: Ctrl+N new, Ctrl+K search, Ctrl+B sidebar, Ctrl+O attach, Ctrl+, model, Ctrl+Q quit\nVideo initialization only (no window): --video-diagnostics\nHeadless checks: --hidden --frames N --capture FILE.rgba --dump-state FILE.json\n");return 0;}if h_equal(load64(argv+help*8),"--video-diagnostics"){let ok=gui_init();if !ok{h_print(2,h_cat("SDL initialization failed: ",gui_error));h_print(2,"\n");}cd_video_report();gui_quit();return !ok;}help=help+1;}let here=h_dir(h_real(load64(argv)));let root=h_real(h_join(here,"../.."));let service=cd_option(argc,argv,"--service",h_join(here,"service-native"));let app=h_join(here,"resources/collie/desktop");if !h_isdir(app){app=h_join(root,"apps/collie/desktop");}app=cd_option(argc,argv,"--app",app);
+    h_environment(argc,argv);cd_display_environment(argc,argv);h_assert(cd_backend(),gui_error);if cd_has_option(argc,argv,"--display-environment"){return cd_display_report();}let help=1;while help<argc{if h_equal(load64(argv+help*8),"--help"){h_print(1,"Usage: collie [--data DIRECTORY] [--auth auth.json] [--width W] [--height H]\nShortcuts: Ctrl+N new, Ctrl+K search, Ctrl+B sidebar, Ctrl+O attach, Ctrl+, model, Ctrl+Q quit\nVideo initialization only (no window): --video-diagnostics\nHeadless checks: --hidden --frames N --capture FILE.rgba --dump-state FILE.json\nEvent-loop diagnostics: --run-ms N --dump-loop FILE.json\n");return 0;}if h_equal(load64(argv+help*8),"--video-diagnostics"){let ok=gui_init();if !ok{h_print(2,h_cat("GUI initialization failed: ",gui_error));h_print(2,"\n");}cd_video_report();gui_quit();return !ok;}help=help+1;}let here=h_dir(h_real(load64(argv)));let root=h_real(h_join(here,"../.."));let service=cd_option(argc,argv,"--service",h_join(here,"service-native"));let app=h_join(here,"resources/collie/desktop");if !h_isdir(app){app=h_join(root,"apps/collie/desktop");}app=cd_option(argc,argv,"--app",app);
     let flags=GUI_RESIZABLE|GUI_HIGH_DPI;let i=1;while i<argc{if h_equal(load64(argv+i*8),"--hidden"){flags=flags|GUI_HIDDEN;}i=i+1;}
     let width=h_number(cd_option(argc,argv,"--width","1280"));let height=h_number(cd_option(argc,argv,"--height","860"));
     let window=ui_desktop_open("Collie",width,height,flags);if !window{h_print(2,h_cat("Collie could not open a window: ",gui_error));h_print(2,"\n");cd_video_report();h_print(2,"Run Collie from a graphical terminal, or set WAYLAND_DISPLAY/DISPLAY for the intended session.\n");gui_quit();return 1;}
     rt_cache_open();
     let args=h_args(service,"--engine",h_join(here,"engine"),"--app",app,0);i=1;while i<argc{let arg=load64(argv+i*8);if h_equal(arg,"--data") || h_equal(arg,"--auth") || h_equal(arg,"--fixture"){h_assert(i+1<argc,"Option needs a value");h_add(args,arg);i=i+1;h_add(args,load64(argv+i*8));}i=i+1;}
     cd_child=h_spawn(args,0,root);cd_state=alloc(8388609);store8(cd_state,123);store8(cd_state+1,125);store8(cd_state+2,0);cd_in=alloc(8388609);cd_queue=alloc(8388609);
-    let limit=h_number(cd_option(argc,argv,"--frames","0"));let capture=cd_option(argc,argv,"--capture","");let events_path=cd_option(argc,argv,"--events","");let events_text="[]";if h_len(events_path){events_text=h_read(events_path);}let events=h_slice(events_text,h_len(events_text));let event_index=0;let status=alloc(8);let event=gui_event();let frame=0;let start=gui_ticks();let base=h_mark();
-    while cd_running && (!limit || frame<limit){
-        cd_receive();let scripted=j_parse(events);while cd_script_start>=0 && event_index<j_count(scripted) && cj_int(j_at(scripted,event_index),"at")<=gui_ticks()-cd_script_start{cd_script(j_need(j_at(scripted,event_index),"request"));event_index=event_index+1;}
+    cd_error_buffer=alloc(8192);cd_pidfd=syscall(434,load64(cd_child),0,0,0,0,0);let sources=alloc(4*24);let waits=0;let source_wakes=0;let zero_waits=0;let duration=h_number(cd_option(argc,argv,"--run-ms","0"));h_assert(duration>=0 && duration<=2147483647,"Invalid run duration");let loop_dump=cd_option(argc,argv,"--dump-loop","");if h_len(loop_dump){gui_metrics_reset(1);}let limit=h_number(cd_option(argc,argv,"--frames","0"));let capture=cd_option(argc,argv,"--capture","");let events_path=cd_option(argc,argv,"--events","");let events_text="[]";if h_len(events_path){events_text=h_read(events_path);}let events=h_slice(events_text,h_len(events_text));let event_index=0;let status=alloc(8);let event=gui_event();let frame=0;let start=gui_ticks();let base=h_mark();
+    while cd_running && (!limit || frame<limit) && (!duration || gui_ticks()-start<duration){
+        cd_receive();cd_errors();let scripted=j_parse(events);while cd_script_start>=0 && event_index<j_count(scripted) && cj_int(j_at(scripted,event_index),"at")<=gui_ticks()-cd_script_start{cd_script(j_need(j_at(scripted,event_index),"request"));event_index=event_index+1;}
         while gui_poll(event){cd_native_event(event); }cd_sidebar_flush();
-        if cd_sent<cd_queued{let n=syscall(1,load64(cd_child+32),cd_queue+cd_sent,cd_queued-cd_sent,0,0,0);if n>0{cd_sent=cd_sent+n;}else{h_assert(n==-11 || n==-4,"Desktop service closed");}}
-        if cd_ready && ui_desktop_needs_draw(){ui_desktop_draw();ui_desktop_present();}
+        if cd_sent<cd_queued{let n=syscall(1,load64(cd_child+32),cd_queue+cd_sent,cd_queued-cd_sent,0,0,0);if n>0{cd_sent=cd_sent+n;}else if n==-32{cd_running=0;cd_service_lost=1;}else{h_assert(n==-11 || n==-4,"Desktop service closed");}}
+        if cd_running && cd_ready && (!gui__native || limit || gui_frame_ready(window)) && ui_desktop_needs_draw(){if !ui_desktop_draw() || !ui_desktop_present(){cd_running=0;cd_render_failed=1;h_print(2,"Collie rendering failed: ");if gui_error{h_print(2,gui_error);}h_print(2,"\n");}}
         if syscall(61,load64(cd_child),status,1,0,0,0)>0{store64(cd_child+8,load64(status));cd_running=0;}
-        m_reset(0);h_reset(base);if limit{gui_delay(16);}else{gui_wait(16);}frame=frame+1;
+        if cd_probe_path{cd_probe_report(window,cd_probe_path,frame,waits,source_wakes,zero_waits);cd_probe_path=0;}
+        let wait=16;let count=0;if gui__native && !limit{wait=2147483647;if cd_ready && gui_frame_ready(window){wait=ui_desktop_wait_ms(wait);}let pending=event_index<j_count(scripted);let next_at=0;if pending{next_at=cj_int(j_at(scripted,event_index),"at");}wait=cd_wait_limit(gui_ticks(),wait,cd_script_start,next_at,pending,start,duration,cd_pidfd);count=cd_wait_set(cd_child,cd_sent<cd_queued,!cd_error_eof,cd_pidfd,sources);}
+        m_reset(0);h_reset(base);if cd_running{if limit{gui_delay(16);}else if gui__native{waits=waits+1;if !wait{zero_waits=zero_waits+1;}gui_wait_sources(wait,sources,count);let ready=0;let source=0;while source<count{if load64(sources+source*24+16){ready=1;}source=source+1;}source_wakes=source_wakes+ready;}else{gui_wait(16);}}frame=frame+1;
     }
+    if h_len(loop_dump){let facts=j_object();j_set(facts,"backend",j_string(gui_backend_name()));j_set(facts,"iterations",j_int(frame));j_set(facts,"waits",j_int(waits));j_set(facts,"source_wakes",j_int(source_wakes));j_set(facts,"zero_waits",j_int(zero_waits));j_set(facts,"elapsed_ms",j_int(gui_ticks()-start));j_set(facts,"pidfd",j_bool(cd_pidfd>=0));j_set(facts,"presents",j_int(gui_metrics_value(7)));j_set(facts,"uploads",j_int(gui_metrics_value(3)));j_set(facts,"uploaded_bytes",j_int(gui_metrics_value(4)));h_save(loop_dump,j_dump(facts));}
     if cd_ready && h_len(capture){ui_desktop_draw();let pw=gui_pixel_width(window);let ph=gui_pixel_height(window);let bytes=pw*ph*4;let pixels=alloc(bytes);h_assert(gui_read_pixels(window,pixels,pw*4,bytes),gui_error);let fd=syscall(2,capture,0x241,384,0,0,0);h_assert(fd>=0,"Cannot save capture");h_write(fd,pixels,bytes);h_close(fd);}
     // Closing stdin gives the service a chance to cancel, journal and release
     // native resources before a bounded forced shutdown.
-    cd_sidebar_stop();cd_sidebar_feedback(0);if cd_sidebar_cursor{gui__call("SDL_FreeCursor",cd_sidebar_cursor,0,0,0,0,0);cd_sidebar_cursor=0;}h_close(load64(cd_child+32));store64(cd_child+32,-1);let until=gui_ticks()+4000;let ended=load64(cd_child+8)!=-999;
+    cd_sidebar_stop();cd_sidebar_feedback(0);h_close(load64(cd_child+32));store64(cd_child+32,-1);let until=gui_ticks()+4000;let ended=load64(cd_child+8)!=-999;
     let scratch=alloc(8192);
     while !ended && gui_ticks()<until{
         let channel=0;while channel<2{let n=syscall(0,load64(cd_child+40+channel*8),scratch,8192,0,0,0);while n>0{if channel{h_write(2,scratch,n);}n=syscall(0,load64(cd_child+40+channel*8),scratch,8192,0,0,0);}channel=channel+1;}
@@ -153,5 +175,5 @@ fn main(argc,argv){
     let error_bytes=syscall(0,load64(cd_child+48),scratch,8192,0,0,0);if error_bytes>0{h_write(2,scratch,error_bytes);}
     syscall(11,scratch,8192,0,0,0,0);
     let layout=cd_option(argc,argv,"--dump-layout","");if cd_ready && h_len(layout){ui_desktop_draw();cd_dump_layout(layout);}
-    let dump=cd_option(argc,argv,"--dump-state","");if cd_ready && h_len(dump){h_save(dump,cd_state);}h_stop(cd_child);rt_cache_close();ui_desktop_close();gui_quit();if !cd_ready || cd_service_lost || load64(cd_child+8)!=0{return 1;}return 0;
+    let dump=cd_option(argc,argv,"--dump-state","");if cd_ready && h_len(dump){h_save(dump,cd_state);}let window_dump=cd_option(argc,argv,"--dump-window","");if h_len(window_dump){cd_window_report(window,window_dump);}h_stop(cd_child);if cd_pidfd>=0{h_close(cd_pidfd);cd_pidfd=-1;}syscall(11,sources,4*24,0,0,0,0);syscall(11,cd_error_buffer,8192,0,0,0,0);rt_cache_close();ui_desktop_close();gui_quit();if !cd_ready || cd_service_lost || cd_render_failed || load64(cd_child+8)!=0{return 1;}return 0;
 }

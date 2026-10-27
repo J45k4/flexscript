@@ -36,8 +36,8 @@ fn ni_reachable() {
     while read<used {
         let index=load64(queue+read*8);read=read+1;let pc=load64(ni_entries+index*8);let end=ni_size;
         if index+1<function_count {end=load64(ni_entries+(index+1)*8);}
-        while pc<end {if load64(ni_code+pc)==8 {let target=load64(ni_code+pc+8);let f=functions+target*32;
-            if !lowering_lookup(load64(f),load64(f+8),0) && !load64(ni_live+target*8) {store64(ni_live+target*8,1);store64(queue+used*8,target);used=used+1;}
+        while pc<end {let op=load64(ni_code+pc);if op==8 || op==29 {let target=load64(ni_code+pc+8);let f=functions+target*32;
+            if (op==29 || !lowering_lookup(load64(f),load64(f+8),0)) && !load64(ni_live+target*8) {store64(ni_live+target*8,1);store64(queue+used*8,target);used=used+1;}
         }pc=pc+16;}
     }return 0;
 }
@@ -60,7 +60,7 @@ fn ni_analyze(start,end,arity) {
 }
 fn ni_acc_dead(pc,end) {
     let rounds=0;while pc<end && load64(ni_code+pc)==10 && rounds<64 {pc=load64(ni_code+pc+8);rounds=rounds+1;}
-    if pc>=end {return 0;}let op=load64(ni_code+pc);return op==1 || op==3 || op==5 || op==28;
+    if pc>=end {return 0;}let op=load64(ni_code+pc);return op==1 || op==3 || op==5 || op==28 || op==29;
 }
 fn ni_call(name,n,arity) {
     if call_count>=65536 {fail("too many native IR calls");}
@@ -87,6 +87,7 @@ fn ni_emit(start,end,arity) {
         store64(ni_map+pc/2,output_size);let at=output_size;let op=load64(ni_code+pc);let arg=load64(ni_code+pc+8);
         if op==1 {immediate(arg);ni_acc_begin=at;}
         else if op==28 {ni_literal(arg);ni_acc_begin=at;}
+        else if op==29 {let target=functions+arg*32;native_callback_address(load64(target),load64(target+8));ni_acc_begin=at;}
         else if op==3 || op==4 {native_local(arg,op==4);if op==4 && native_spill_slots<=arg {native_spill_slots=arg+1;}ni_acc_begin=at;}
         else if op==5 || op==6 {emit(72);if op==5 {emit(139);}else {emit(137);}emit(5);emit32(ni_data+arg-16-output_size-4);ni_acc_begin=at;}
         else if op==2 {

@@ -30,7 +30,7 @@ fn ud_table_layout(node,width,runs){
         }
         ud_table_rect(rects,width-border,y,border,height,0xff35464b);ud_table_rect(rects,0,y,width,border,0xff35464b);y=y+height;row_index=row_index+1;
     }
-    ud_table_rect(rects,0,ud_max(0,y-border),width,border,0xff35464b);let out=j_object();j_set(out,"pieces",pieces);j_set(out,"table_rects",rects);j_set(out,"cells",boxes);j_set(out,"w",j_int(width));j_set(out,"h",j_int(y));j_set(out,"line",j_int(line));j_set(out,"pixel_line",j_int(line));j_set(out,"ascent",j_int(ascent));j_set(out,"caret_x",j_int(0));j_set(out,"caret_y",j_int(y));return out;
+    ud_table_rect(rects,0,ud_max(0,y-border),width,border,0xff35464b);let out=j_object();j_set(out,"bidi",j_int(gui_text_carets_available()));j_set(out,"pieces",pieces);j_set(out,"table_rects",rects);j_set(out,"cells",boxes);j_set(out,"w",j_int(width));j_set(out,"h",j_int(y));j_set(out,"line",j_int(line));j_set(out,"pixel_line",j_int(line));j_set(out,"ascent",j_int(ascent));j_set(out,"caret_x",j_int(0));j_set(out,"caret_y",j_int(y));return out;
 }
 fn ud_table_document(node,width,text,runs){
     width=ud_max(1,ud_min(width,8192));let pieces=j_array();let rects=j_array();let cells=j_array();let y=0;let maximum=0;let offset=0;let line=0;let ascent=0;let i=0;let end_x=0;let end_y=0;
@@ -41,5 +41,5 @@ fn ud_table_document(node,width,text,runs){
         let boxes=j_get(layout,"cells");p=0;while boxes && p<j_count(boxes){let box=j_at(boxes,p);j_set(box,"y",j_int(j_n(box,"y")+y));j_set(box,"start",j_int(j_n(box,"start")+offset));j_set(box,"end",j_int(j_n(box,"end")+offset));j_push(cells,box);p=p+1;}
         maximum=ud_max(maximum,j_n(layout,"w"));line=ud_max(line,j_n(layout,"line"));ascent=ud_max(ascent,j_n(layout,"ascent"));end_x=j_n(layout,"caret_x");end_y=y+j_n(layout,"caret_y");let height=j_n(layout,"h");if !table && bytes && load8(text+offset+bytes-1)==10{height=ud_max(0,height-j_n(layout,"line"));}y=y+height;offset=offset+bytes;
     }
-    let out=j_object();let height=ud_max(line,y);let cap=ud_n(node,"max_lines",0);if cap>0{height=ud_min(height,line*cap);}j_set(out,"pieces",pieces);j_set(out,"table_rects",rects);j_set(out,"cells",cells);j_set(out,"w",j_int(ud_min(8192,maximum)));j_set(out,"h",j_int(ud_min(16384,height)));j_set(out,"line",j_int(line));j_set(out,"pixel_line",j_int(line));j_set(out,"ascent",j_int(ascent));j_set(out,"caret_x",j_int(end_x));j_set(out,"caret_y",j_int(end_y));return out;
+    let out=j_object();j_set(out,"bidi",j_int(gui_text_carets_available()));let height=ud_max(line,y);let cap=ud_n(node,"max_lines",0);if cap>0{height=ud_min(height,line*cap);}j_set(out,"pieces",pieces);j_set(out,"table_rects",rects);j_set(out,"cells",cells);j_set(out,"w",j_int(ud_min(8192,maximum)));j_set(out,"h",j_int(ud_min(16384,height)));j_set(out,"line",j_int(line));j_set(out,"pixel_line",j_int(line));j_set(out,"ascent",j_int(ascent));j_set(out,"caret_x",j_int(end_x));j_set(out,"caret_y",j_int(end_y));return out;
 }
