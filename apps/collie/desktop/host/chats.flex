@@ -1,6 +1,7 @@
 // One independently scheduled controller per open conversation. The host owns
 // shared accounts/settings and tags every session packet for the desktop UI.
 import "login.flex";
+import "command-queue.flex";
 global scm_hub=0;
 fn scm_id(){return sh_leaf(sv_s("root"));}
 fn scm_contexts(){return cj_get(scm_hub,"contexts");}
@@ -11,6 +12,13 @@ fn scm_select(context){let shared=cj_get(scm_hub,"shared");let keys=scm_keys();l
 fn scm_restore(){let context=cj_get(scm_contexts(),scm_active());if context{scm_select(context);}return 0;}
 fn scm_init(){scm_hub=j_object();j_set(scm_hub,"shared",j_object());let contexts=j_object();j_set(contexts,scm_id(),sv);j_set(scm_hub,"contexts",contexts);sh_s(scm_hub,"active",scm_id());j_set(scm_hub,"commands",sh_array(sv,"commands"));scm_publish();return 0;}
 fn scm_queue(){if scm_hub{return cj_array(scm_hub,"commands");}return cj_array(sv,"commands");}
+// Navigation snapshots contain every open chat's latest draft. Only replace
+// superseded view commands in the trailing view-only run; submit/cancel/file
+// operations form ordering barriers and retain every command before them.
+fn scm_enqueue(command){
+    let queue=scm_queue();if scm_hub{queue=scm_view_queue(queue,command);j_set(scm_hub,"commands",queue);}
+    if j_count(queue)>=128{sv_notice("Too many pending desktop commands");return 0;}j_push(queue,command);return 1;
+}
 fn scm_cancel_target(command){let context=sv;if scm_hub{let id=cj_text(command,"chat_session");if !h_len(id){id=scm_active();}context=cj_get(scm_contexts(),id);}let tasks=cj_get(context,"tasks");if tasks{let fields=j_value(tasks);let i=0;while i<h_count(fields){sh_b(load64(h_at(fields,i)+8),"cancelled",1);i=i+1;}}return 0;}
 fn scm_idle(context){let tasks=cj_get(context,"tasks");return (!tasks || !j_count(tasks)) && !c_flag(cj_get(context,"login_view"),"running");}
 fn scm_room(){let contexts=scm_contexts();if j_count(contexts)<16{return 1;}let fields=j_value(contexts);let i=0;while i<h_count(fields){let pair=h_at(fields,i);let id=load64(pair);let context=load64(pair+8);if !h_equal(id,scm_active()) && scm_idle(context){let prior=sv;scm_select(context);sv_save();sp_close(sv_s("root"),0);sv=prior;j_set(scm_hub,"contexts",sh_without(contexts,id));return 1;}i=i+1;}return sh_fail("Too many conversations are running. Stop an unused response before opening another.");}
@@ -25,7 +33,11 @@ fn scm_navigation(command){
     let navigation=cj_get(command,"data");let chats=sh_array(navigation,"chat_navigation");let i=0;while i<j_count(chats){let entry=j_at(chats,i);let context=cj_get(scm_contexts(),cj_text(entry,"session_id"));if context{let next=cj_get(entry,"navigation");if next && !h_equal(j_dump(next),j_dump(cj_get(context,"navigation"))){scm_select(context);j_set(sv,"navigation",next);sv_save();}}i=i+1;}
     scm_restore();let clean=sh_copy(sv_get("navigation"));let names=j_parse("[\"workspace\",\"workspace_side\",\"sidebar_width\",\"sidebar_mode\",\"sidebar_closed\",\"sidebar_collapsed\",\"query\",\"session_offset\",\"page\"]");let n=0;while n<j_count(names){let key=j_value(j_at(names,n));let value=cj_get(navigation,key);if value{j_set(clean,key,value);}n=n+1;}let clone=sh_copy(command);j_set(clone,"data",clean);sv_command(clone);scm_publish();return !se;
 }
-fn scm_focus(command){let old_files=sv_files();let id=cj_text(command,"chat_session");let context=cj_get(scm_contexts(),id);if !context{return scm_open(id,0,cj_int(command,"chat_panel"),1);}sv_save();scm_publish();sh_s(scm_hub,"active",id);scm_select(context);sh_n(sv,"chat_panel",cj_int(command,"chat_panel"));sv_facts();if !h_equal(old_files,sv_files()){sw_refresh(j_object());}sv_save();scm_publish();scm_restore();return !se;}
+fn scm_focus(command){let old_files=sv_files();let id=cj_text(command,"chat_session");let context=cj_get(scm_contexts(),id);if !context{return scm_open(id,0,cj_int(command,"chat_panel"),1);}sv_save();scm_publish();sh_s(scm_hub,"active",id);scm_select(context);sh_n(sv,"chat_panel",cj_int(command,"chat_panel"));
+    // The GUI already owns this loaded chat's model, transcript, draft and usage.
+    // A focus acknowledgement must not run the engine and resend the transcript.
+    let data=j_object();sh_s(data,"session_id",id);sh_s(data,"project_id",sv_s("project_id"));sh_s(data,"project_name",sv_project_name());sh_s(data,"project_path",sv_files());sv_update(data);
+    if !h_equal(old_files,sv_files()){sw_refresh(j_object());}sv_save();scm_publish();scm_restore();return !se;}
 fn scm_files(context){let project=cj_text(context,"project_id");if h_len(project){let rows=sh_array(cj_get(scm_hub,"shared"),"projects");let i=0;while i<j_count(rows){let p=j_at(rows,i);if h_equal(cj_text(p,"id"),project){return cj_text(p,"path");}i=i+1;}}return h_join(cj_text(context,"root"),"files");}
 fn scm_dispatch(command){
     let kind=cj_text(command,"kind");if h_equal(kind,"chat_load"){return scm_open(cj_text(command,"id"),0,cj_int(command,"chat_panel"),0);}

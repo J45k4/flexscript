@@ -17,7 +17,11 @@ fn cd_workspace_editor_event(event){
 }
 fn cd_workspace_gutters(){let i=0;while i<2048{let node=ud_nodes+i*256;if load64(node) && h_starts(load64(node),"workspace-editor-") && load64(node+8)==8{let id=ud_number(load64(node+16),"action_id",0);let gutter=ud_find(cu_k("workspace-gutter-",id));if gutter{store64(gutter+240,load64(node+240));}}i=i+1;}return 0;}
 fn cd_escape(text){let out=h_take(h_len(text)+2);store8(out,27);h_copy(out+1,text,h_len(text)+1);return out;}
-fn cd_workspace_blocked(){let state=j_parse(cd_state);return ud_focus_scope || !h_equal(cj_text(state,"page"),"chat") || cj_int(state,"workspace_close") || cj_int(state,"workspace_menu") || cj_int(cj_get(state,"permission_request"),"request_id");}
+// Scalar view guards are refreshed with cd_state, rather than reparsing every
+// open transcript for each motion/focus/IME notification.
+global cd_workspace_guard=1;
+fn cd_workspace_sync(state){cd_workspace_guard=!h_equal(cj_text(state,"page"),"chat") || cj_int(state,"workspace_close") || cj_int(state,"workspace_menu") || cj_int(cj_get(state,"permission_request"),"request_id");return 0;}
+fn cd_workspace_blocked(){return ud_focus_scope || cd_workspace_guard;}
 fn cd_workspace_node(node,prefix){while node && node!=ud_mount{if h_starts(load64(node),prefix){let suffix=load64(node)+h_len(prefix);if load8(suffix)>=48 && load8(suffix)<=57{return node;}}node=load64(node+24);}return 0;}
 fn cd_workspace_terminal(){if cd_workspace_blocked(){return 0;}let node=cd_workspace_node(ud_focus,"workspace-terminal-screen-");if !node{return 0;}return h_number(load64(node)+h_len("workspace-terminal-screen-"));}
 fn cd_terminal_root(state,p){let root=cj_text(p,"project_path");if !h_len(root){root=cj_text(p,"cwd");}if !h_len(root){root=cj_text(state,"project_path");}return root;}

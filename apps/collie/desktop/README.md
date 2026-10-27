@@ -420,3 +420,24 @@ writable literal storage.
 `FLEX_COMPILER=build/flex python3 scripts/test-ui-desktop-profile.py` compares
 portable and specialized patch traces, property order/types, escaping and
 native/interpreter/JIT output.
+
+### Chat-switch responsiveness checks
+
+Cached chat focus uses a lightweight acknowledgement; it does not re-run the
+engine or resend a loaded transcript. Superseded tab selections and complete
+navigation snapshots coalesce within an input batch. Typing, submit, cancel,
+file operations and partial navigation updates preserve their ordering. The
+native event pump processes a bounded batch before rendering and reclaiming its
+frame arena. Workspace modal/focus guards use scalar state instead of reparsing
+all open chats for every platform event.
+
+```sh
+python3 scripts/test-collie-chat-switch.py --package build/collie-desktop --out build/chat-switch-check
+```
+
+The test sends 120 rapid tab requests followed immediately by typing, checks the
+input target and saved drafts, and compares the live native tree to a fresh
+render. Add `--session PRIVATE_SESSION.json` for an already isolated Wayland
+session. Its time bound is a liveness regression, not physical input latency.
+`COLLIE_TRACE_UI=1` enables opt-in reducer/apply/serialization/effect timings,
+queue byte counts and service command timings on stderr, without message text.

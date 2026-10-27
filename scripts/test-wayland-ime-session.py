@@ -36,6 +36,7 @@ p.add_argument('--binary',type=Path,required=True);p.add_argument('--collie',typ
 p.add_argument('--text-fixture',type=Path)
 p.add_argument('--window-fixture',type=Path)
 p.add_argument('--weighted-fixture',type=Path)
+p.add_argument('--chat-switch-check',type=Path,help='Run an independent chat switch stress check in the private session')
 p.add_argument('--gpu-timing-fixture',type=Path,action='append',default=[])
 p.add_argument('--renderer-state-fixture',type=Path,action='append',default=[])
 p.add_argument('--font-sizing-fixture',type=Path,action='append',default=[])
@@ -120,7 +121,7 @@ with tempfile.TemporaryDirectory(prefix='fs-ime-') as runtime,(out/'sway.log').o
         command=[sys.executable,str(ROOT/'scripts/test-wayland-ime.py'),'--binary',str(a.binary.resolve()),'--session',str(session),'--expect-scale',str(a.scale),'--out',str(out/'results')]
         if a.collie:command+=['--collie',str(a.collie.resolve())]
         subprocess.run(command,check=True,env=env,cwd=ROOT,timeout=90)
-        if a.paired_benchmark or a.typing_protocol_trace:
+        if a.paired_benchmark or a.typing_protocol_trace or a.chat_switch_check:
             # A text-input enter without any keyboard gives the native adapter
             # focus, while SDL needs a real keyboard enter to activate its IME.
             # Keep one idle virtual device for BOTH variants and all paired runs.
@@ -166,6 +167,11 @@ with tempfile.TemporaryDirectory(prefix='fs-ime-') as runtime,(out/'sway.log').o
             facts=json.loads(result.stdout);assert facts['backend']=='wayland' and facts['scale']==a.scale and facts['gl_error']==0,facts
             text_capture_png(out/'results/text-editing-capture.rgba',facts['width'],facts['height'])
             print('PASS native retained Unicode editor:',facts,flush=True)
+        if a.chat_switch_check:
+            result=subprocess.run([str(a.chat_switch_check.resolve()),str(session)],env=dict(private,FLEX_GUI_BACKEND='wayland'),cwd=ROOT,capture_output=True,text=True,timeout=45)
+            (out/'chat-switch.stdout.log').write_text(result.stdout);(out/'chat-switch.stderr.log').write_text(result.stderr)
+            assert result.returncode==0,('Chat switch stress failed',result.returncode,result.stdout,result.stderr)
+            print(result.stdout,flush=True)
         if a.weighted_fixture:
             result=subprocess.run([str(a.weighted_fixture.resolve())],env=dict(private,FLEX_GUI_BACKEND='wayland'),cwd=ROOT,capture_output=True,text=True,timeout=20)
             (out/'results/weighted-layout.stdout.log').write_text(result.stdout);(out/'results/weighted-layout.stderr.log').write_text(result.stderr)

@@ -308,6 +308,10 @@ jobs:
           SDL_VIDEODRIVER=dummy build/test-ime-editor build/ime-events.so
           build/stage2 --native-pipeline direct tests/ui/ime-editor.flex -o build/test-ime-editor-direct
           SDL_VIDEODRIVER=dummy build/test-ime-editor-direct build/ime-events.so
+          build/stage2 tests/ui/chat-command-queue.flex -o build/test-chat-command-queue
+          build/test-chat-command-queue
+          build/stage2 --native-pipeline direct tests/ui/chat-command-queue.flex -o build/test-chat-command-queue-direct
+          build/test-chat-command-queue-direct
           build/stage2 tests/ui/ime-noop.flex -o build/test-ime-noop
           SDL_VIDEODRIVER=dummy build/test-ime-noop
           build/stage2 --native-pipeline direct tests/ui/ime-noop.flex -o build/test-ime-noop-direct
