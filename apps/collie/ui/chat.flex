@@ -39,7 +39,7 @@ view chat_transcript(){
                 use cu_timeline(cu_a("cards"),cu_card_begin(),40,cu_chat_live(),"card-");
                 if cu_n("card_offset")>0{use cu_action("chat-newer","Show newer messages","newer",0);}
                 if h_len(cu_s("stream")){
-                    column("chat-stream",gap:10){text("chat-stream-author",text:"Collie",size:13,color:"#c5e3ae");text("chat-stream-body",text:cu_s("stream"),runs:cu_text_runs(cu_s("stream")),selectable:1,size:16,color:"#edf2ed",line_height:5);}
+                    column("chat-stream",gap:10){text("chat-stream-author",text:"Collie",size:13,color:"#c5e3ae");use cm_text("chat-stream-body",cu_s("stream"),16,"#edf2ed");}
                 }
             }
 }

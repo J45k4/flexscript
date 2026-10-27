@@ -68,6 +68,8 @@ view desktop_settings_content(){
             text("settings-access-title",text:"Permissions",size:24,font:"medium",color:"#edf2ed");
             text("settings-access-detail",text:"Permissions for this conversation and its workers. Choose Ask, Allow or Deny for each capability.",size:14,color:"#a4b2b5");
             text("settings-access-summary",text:cu_summary(),size:13,color:"#c5e3ae");
+            use permission_profile();
+            use permission_reviewer();
             each entry in cu_rows(){use permission_row(entry);}
             text("settings-access-note",text:"Changes are saved automatically for this conversation. Denying access blocks future calls; it does not erase information already in the chat.",size:12,color:"#a4b2b5");
         }

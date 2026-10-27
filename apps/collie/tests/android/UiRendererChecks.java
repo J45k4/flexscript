@@ -11,6 +11,39 @@ public final class UiRendererChecks {
     private static void check(boolean ok, String message) {
         if (!ok) throw new IllegalStateException(message);
     }
+    private static void richText(Activity owner,ViewGroup mount) throws Exception {
+        JSONObject[] state={new JSONObject()}, effect={new JSONObject()};
+        UiRenderer[] renderer=new UiRenderer[1];
+        renderer[0]=new UiRenderer(owner,event -> {
+            try {
+                JSONObject reply=((MainActivity)owner).uiCall(new JSONObject().put("action","event").put("state",state[0]).put("event",event));
+                state[0]=reply.getJSONObject("state");effect[0]=reply.getJSONObject("command");renderer[0].apply(reply);
+            } catch(Exception error) {throw new IllegalStateException(error);}
+        });
+        UiRenderer ui=renderer[0];mount.addView(ui,new ViewGroup.LayoutParams(-1,-1));
+        try {
+            String text="## Heading\n**Bold** *italic* ~~old~~ `inline` [Document](notes/report%20one.txt#L2) [Web](https://example.com/).\n\n| Name | Detail | Count |\n| :--- | :---: | ---: |\n| Alice | A long cell wraps without losing any of its actual content | 42 |\n\nAfter the table.\n```flexscript\nfn main(){return 42;}\n```\n";
+            JSONObject packet=((MainActivity)owner).uiCall(new JSONObject().put("reset",true).put("action","update").put("data",new JSONObject().put("platform","android").put("cards",new JSONArray().put(new JSONObject().put("kind","assistant").put("text",text)))));
+            state[0]=packet.getJSONObject("state");ui.apply(packet);
+            TextView paragraph=(TextView)ui.widget("card-0-body-block-0");
+            android.text.Spanned spans=(android.text.Spanned)paragraph.getText();String plain=spans.toString();
+            check(!plain.contains("**") && plain.startsWith("Heading\nBold italic old inline"),"Markdown delimiters leaked into native text");
+            check(spans.getSpans(plain.indexOf("Bold"),plain.indexOf("Bold")+4,android.text.style.StyleSpan.class).length>0,"native bold spans missing");
+            check(spans.getSpans(plain.indexOf("italic"),plain.indexOf("italic")+6,android.text.style.StyleSpan.class)[0].getStyle()==android.graphics.Typeface.ITALIC,"native italic spans missing");
+            check(spans.getSpans(0,spans.length(),android.text.style.StrikethroughSpan.class).length==1,"native strike spans missing");
+            TextView code=(TextView)ui.widget("card-0-body-block-2");android.text.Spanned codeSpans=(android.text.Spanned)code.getText();
+            check(codeSpans.toString().contains("fn main(){return 42;}") && codeSpans.getSpans(0,codeSpans.length(),android.text.style.TypefaceSpan.class).length>0,"fenced code after table missing");
+            HorizontalScrollView scroll=(HorizontalScrollView)ui.widget("card-0-body-block-1-scroll");
+            int width=Math.round(340*owner.getResources().getDisplayMetrics().density);
+            ui.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(2000,View.MeasureSpec.EXACTLY));ui.layout(0,0,width,2000);
+            check(scroll.getChildAt(0).getWidth()>scroll.getWidth(),"wide table did not retain horizontal overflow");scroll.scrollTo(100,0);check(scroll.getScrollX()>0,"native table cannot scroll horizontally");
+            TextView count=(TextView)ui.widget("card-0-body-block-1-row-1-cell-2");check(count.getText().toString().equals("42") && (count.getGravity()&android.view.Gravity.RELATIVE_HORIZONTAL_GRAVITY_MASK)==android.view.Gravity.END,"table cell text/alignment missing");
+            android.text.style.ClickableSpan[] links=spans.getSpans(0,spans.length(),android.text.style.ClickableSpan.class);check(links.length==2,"file/web clickable spans missing");
+            links[0].onClick(paragraph);check(effect[0].getString("kind").equals("open_link") && effect[0].getString("href").equals("notes/report%20one.txt#L2"),"native file tap bypassed shared rendered-link validation");
+            links[1].onClick(paragraph);check(effect[0].getString("href").equals("https://example.com/"),"native web tap lost its actual target");
+            ui.widget("card-0-body-block-1-copy").performClick();check(effect[0].getString("kind").equals("copy") && effect[0].getString("text").startsWith("Name\tDetail\tCount\nAlice\t"),"native table copy is not selectable TSV content");
+        } finally {mount.removeView(ui);}
+    }
     public static JSONObject run(Activity owner, ViewGroup mount, JSONArray packets) throws Exception {
         JSONArray events = new JSONArray();
         UiRenderer ui = new UiRenderer(owner, events::put);
@@ -85,7 +118,8 @@ public final class UiRendererChecks {
                 JSONObject chat=((MainActivity)owner).uiCall(new JSONObject().put("state",state[0]).put("action","update").put("data",new JSONObject().put("page","chat")));live[0].apply(chat);
                 EditText composer=(EditText)live[0].widget("composer-draft");check((composer.getInputType()&capFlags)==android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,"shared chat input lost its declared sentence-capitalization hint");
             } finally {mount.removeView(live[0]);}
-            return new JSONObject().put("ok",true).put("checks",11);
+            richText(owner,mount);
+            return new JSONObject().put("ok",true).put("checks",19);
         } finally { mount.removeView(ui); }
     }
 }

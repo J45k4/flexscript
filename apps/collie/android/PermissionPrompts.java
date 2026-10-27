@@ -39,6 +39,7 @@ final class PermissionPrompts {
             host.runOnUiThread(() -> { queue.remove(pending); show(); });
         }
     }
+    void changed() { show(); }
     private void show() {
         while (!queue.isEmpty()) {
             Pending pending=queue.get(0);

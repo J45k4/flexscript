@@ -1,4 +1,4 @@
-import "model.flex";
+import "markdown.flex";
 view cu_header(key,title,back){
     row(cu_key(key,"-header"),padding_x:16,padding_y:12,gap:12){
         button(cu_key(key,"-back"),text:"‹",description:back,action:"back",size:28,align:"center",width:46,height:46,color:"#c5e3ae");
@@ -96,7 +96,7 @@ view cu_card(key,card){
                             text(cu_key(key,"-author"),text:"Collie",size:13,color:"#c5e3ae",font:"medium",weight:1);
                             button(cu_key(key,"-copy"),text:"Copy",description:"Copy reply",action:"copy",action_id:cu_copy_text(body),color:"#c5e3ae",size:12,min_height:36);
                         }
-                        text(cu_key(key,"-body"),text:body,runs:cu_text_runs(body),selectable:1,size:16,color:"#edf2ed",line_height:5);
+                        use cm_text(cu_key(key,"-body"),body,16,"#edf2ed");
                     }else{
                         if h_equal(kind,"error"){
                             column(cu_key(key,"-error"),padding:16,gap:8,background:"#2b2023",radius:16){

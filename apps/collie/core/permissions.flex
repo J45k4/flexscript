@@ -1,15 +1,39 @@
 // Shared grant schema, conservative stored-policy normalization and UI metadata.
 import "../lib/state.flex";
+// Reviewer selection is independent of capability grants. Deny stays denied.
+fn cp_reviewer(saved){if h_equal(cj_text(saved,"approval_reviewer"),"auto_review"){return "auto_review";}return "user";}
+fn cp_profile(saved){if h_equal(cj_text(saved,"permission_profile"),"workspace"){return "workspace";}return "custom";}
+fn cp_workspace_key(key){return h_has(",files_read,files_write,db_read,db_write,",h_cat3(",",key,","));}
+fn cp_effective(saved,key,mode){
+    if h_equal(cp_profile(saved),"workspace") && !h_equal(mode,"deny"){
+        if cp_workspace_key(key){return "allow";}return "ask";
+    }return mode;
+}
+// A feedback/image effect continues an already-reviewed VM operation. This
+// ticket is produced only by the trusted capability broker, never by the guest.
+fn cp_deferred_allowed(saved,key,signal){
+    let mode=cp_mode(saved,key);if h_equal(mode,"allow"){return 1;}
+    if !h_equal(mode,"ask") || !h_equal(cp_reviewer(saved),"auto_review"){return 0;}
+    let keys=cj_get(signal,"reviewed_permissions");if !keys || j_kind(keys)!=3{return 0;}let i=0;while i<j_count(keys){if h_equal(j_value(j_at(keys,i)),key){return 1;}i=i+1;}return 0;
+}
 // Keep old boolean grants readable. New conversations ask only on first use.
 fn cp_mode(saved,key){
     if !saved || j_kind(saved)==0{return "ask";}
-    if j_kind(saved)!=4{return "deny";}let value=cj_get(saved,key);if !value && cp_hardware_key(key){return "ask";}
-    if value && j_kind(value)==5{if j_value(value){return "allow";}return "deny";}
-    if value && j_kind(value)==2 && h_equal(j_value(value),"ask"){return "ask";}
+    if j_kind(saved)!=4{return "deny";}let value=cj_get(saved,key);if !value && (cp_hardware_key(key) || h_equal(cp_profile(saved),"workspace")){return cp_effective(saved,key,"ask");}
+    if value && j_kind(value)==5{if j_value(value){return cp_effective(saved,key,"allow");}return "deny";}
+    if value && j_kind(value)==2 && h_equal(j_value(value),"ask"){return cp_effective(saved,key,"ask");}
     return "deny";
 }
 fn cp_value(mode){if h_equal(mode,"ask"){return j_string("ask");}return j_bool(h_equal(mode,"allow"));}
 fn cp_choice(key,binding){
+    if h_equal(key,"permission_profile"){
+        if h_equal(binding,"profile-custom"){return j_string("custom");}
+        if h_equal(binding,"profile-workspace"){return j_string("workspace");}return 0;
+    }
+    if h_equal(key,"approval_reviewer"){
+        if h_equal(binding,"reviewer-user"){return j_string("user");}
+        if h_equal(binding,"reviewer-auto"){return j_string("auto_review");}return 0;
+    }
     if h_equal(binding,h_cat("ask-",key)){return cp_value("ask");}
     if h_equal(binding,h_cat("allow-",key)){return cp_value("allow");}
     if h_equal(binding,h_cat("deny-",key)){return cp_value("deny");}return 0;
@@ -52,6 +76,23 @@ fn cp_permissions(saved){
     cp_permission(rows,"workers","Model tools and workers","Start helper agents, ask the model for feedback, and generate images inside a running program. Workers share this workspace and inherit its permissions.");
     cp_hardware_permissions(rows);
     let policy=j_object();let i=0;while i<j_count(rows){let key=j_s(j_at(rows,i),"key");j_set(policy,key,cp_value(cp_mode(saved,key)));i=i+1;}
+    j_set(policy,"approval_reviewer",j_string(cp_reviewer(saved)));
+    j_set(policy,"permission_profile",j_string(cp_profile(saved)));
     let out=j_object();j_set(out,"policy",policy);j_set(out,"entries",rows);return out;
 }
 fn cp_entry(key){let entries=j_get(cp_permissions(0),"entries");let i=0;while i<j_count(entries){let entry=j_at(entries,i);if h_equal(j_s(entry,"key"),key){return entry;}i=i+1;}return 0;}
+// Canonical effective grants are persisted, so platform services see the same
+// limits as the VM. Customizing one capability keeps all other current limits.
+fn cp_update(saved,key,value){
+    let old=j_get(cp_permissions(saved),"policy");let next=c_json(j_dump(old));
+    if h_equal(key,"permission_profile"){
+        if !value || j_kind(value)!=2 || !(h_equal(j_value(value),"custom") || h_equal(j_value(value),"workspace")){return c_error("Invalid permission profile.");}
+    }else if h_equal(key,"approval_reviewer"){
+        if !value || j_kind(value)!=2 || !(h_equal(j_value(value),"user") || h_equal(j_value(value),"auto_review")){return c_error("Invalid approval mode.");}
+    }else{
+        if !cp_entry(key) || !value || (j_kind(value)!=5 && !(j_kind(value)==2 && h_equal(j_value(value),"ask"))){return c_error("Invalid permission setting.");}
+        j_set(next,"permission_profile",j_string("custom"));
+    }
+    j_set(next,key,value);let out=cp_permissions(next);let policy=j_get(out,"policy");let entries=j_get(out,"entries");let revoked=j_array();let i=0;
+    while i<j_count(entries){let name=j_s(j_at(entries,i),"key");let before=cp_mode(old,name);let after=cp_mode(policy,name);if !h_equal(after,"allow") && !h_equal(before,after){j_push(revoked,j_string(name));}i=i+1;}j_set(out,"revoked",revoked);return out;
+}

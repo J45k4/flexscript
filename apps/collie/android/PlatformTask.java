@@ -94,6 +94,17 @@ final class PlatformTask implements AutoCloseable {
                     action = "feedback";
                     break;
                 }
+                case "autoreview": {
+                    JSONObject base = new JSONObject().put("config", config)
+                        .put("messages", new JSONArray()).put("feedback", true).put("autoreview", true);
+                    event.put("request_id", command.getLong("request_id"))
+                        .put("call_id", command.getString("call_id"))
+                        .put("attempt", command.getInt("attempt"));
+                    event.put("reply", host.responseAt(command.getJSONObject("body"), false, fixture,
+                        command.getInt("response_index"), root, base, this));
+                    action = "reviewed";
+                    break;
+                }
                 case "vm": {
                     JSONObject vm = command.getJSONObject("request")
                                         .put("config", config)

@@ -143,7 +143,7 @@ public class MainActivity extends Activity {
         return result.getJSONObject("policy");
     }
     boolean workersAllowed() { return permissions.optBoolean("workers"); }
-    boolean permissionNeedsPrompt(String key) { return "ask".equals(permissions.opt(key)); }
+    boolean permissionNeedsPrompt(String key) { return "ask".equals(permissions.opt(key)) && !"auto_review".equals(permissions.opt("approval_reviewer")); }
     boolean ownsPermissionRequest(File workspace) { return workspace.equals(session) && !destroyed; }
     void showPermissionRequest(JSONObject request) {
         if (!destroyed) ui.update(CollieUi.object("permission_request",request));
@@ -151,20 +151,22 @@ public class MainActivity extends Activity {
     void savePermission(String key,Object value) throws Exception {
         JSONObject previous=permissions;
         try {
+            JSONObject change=engine(8,new JSONObject().put("config",config())
+                .put("action","permission_update").put("saved",previous)
+                .put("key",key).put("value",value));
+            JSONArray revoked=change.getJSONArray("revoked");
             boolean backgroundCleanupFailed=false;
-            if(key.equals("nfc")&&!Boolean.TRUE.equals(value)){
-                try{HardwareHceBackground.revoke(this,session);}
-                catch(Exception cleanup){backgroundCleanupFailed=true;}
+            for(int i=0;i<revoked.length();i++) if(revoked.getString(i).equals("nfc")) {
+                try { HardwareHceBackground.revoke(this,session); }
+                catch(Exception cleanup) { backgroundCleanupFailed=true; }
             }
-            permissions=new JSONObject(previous.toString()).put(key,value);
-            save();if(!Boolean.TRUE.equals(value)){
-                // A running VM holds a configuration snapshot. Stop it on an
-                // actual revocation so it cannot reopen devices with old grants.
-                // Permission dialogs resume outside nativeCall and keep their
-                // ordinary denied-call result rather than being cancelled.
-                if(Boolean.TRUE.equals(previous.opt(key))&&nativeThread!=null){nativeCancel();VmInternet.cancel();VmHardware.cancel();}
-                VmHardware.revoke(session,key);
-            }updateUiFacts();if(backgroundCleanupFailed)ui.notice("NFC access is disabled. Android could not finish removing the background card.");
+            permissions=change.getJSONObject("policy");save();
+            if(revoked.length()>0 && nativeThread!=null) {
+                nativeCancel();VmInternet.cancel();VmHardware.cancel();
+            }
+            for(int i=0;i<revoked.length();i++) VmHardware.revoke(session,revoked.getString(i));
+            updateUiFacts();if(key.equals("permission_profile") || key.equals("approval_reviewer")) permissionPrompts.changed();
+            if(backgroundCleanupFailed) ui.notice("NFC access is disabled. Android could not finish removing the background card.");
         } catch(Exception error) { permissions=previous;updateUiFacts();throw error; }
     }
     boolean hasAuthentication() {
@@ -479,7 +481,7 @@ public class MainActivity extends Activity {
         final long streamId=baseRequest.getJSONObject("config").optLong("agent_id");
         final boolean feedback=baseRequest.optBoolean("feedback");
         Object token=null;
-        if(!compact) {
+        if(!compact && !baseRequest.optBoolean("autoreview")) {
             java.util.concurrent.FutureTask<Object> start=new java.util.concurrent.FutureTask<>(() -> ui.beginStream(streamId));
             runOnUiThread(start);token=start.get();
         }
@@ -922,6 +924,15 @@ public class MainActivity extends Activity {
             case "copy":
                 ((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE))
                     .setPrimaryClip(android.content.ClipData.newPlainText("",command.getString("text"))); return;
+            case "open_link": {
+                JSONObject target=uiCall(new JSONObject().put("action","link_target").put("href",command.getString("href")));
+                if(target.getString("kind").equals("web")) {
+                    Uri uri=Uri.parse(target.getString("href"));
+                    if(uri.getHost()==null || uri.getHost().isEmpty()) throw new IOException("Invalid web link.");
+                    startActivity(new Intent(Intent.ACTION_VIEW,uri));
+                } else readPreview(target.getJSONObject("file"));
+                return;
+            }
             case "read_preview": readPreview(command.getJSONObject("file")); return;
             case "remove_attachment": removeAttachment(command.getInt("index")); return;
             case "resume_main": resumeMain(); return;
@@ -942,6 +953,19 @@ public class MainActivity extends Activity {
                 File root=new File(owner,"files").getCanonicalFile();
                 File file=new File(root,path.startsWith("/")?path.substring(1):path).getCanonicalFile();
                 if(!file.getPath().startsWith(root.getPath()+File.separator) || !file.isFile()) throw new IOException("Preview file is unavailable.");
+                if(descriptor.optString("type").equals("image")) {
+                    if(file.length()<1 || file.length()>2097152) throw new IOException("Images must be at most 2 MiB.");
+                    byte[] pixels=new byte[(int)file.length()];
+                    try(DataInputStream in=new DataInputStream(new FileInputStream(file))) { in.readFully(pixels); }
+                    JSONObject image;
+                    VmViews.begin(owner);
+                    try { image=new JSONObject(new String(VmViews.capture(pixels),StandardCharsets.UTF_8)); }
+                    finally { VmViews.end(); }
+                    if(image.has("error")) throw new IOException(image.getString("error"));
+                    image.put("path",path).put("file_bytes",file.length());
+                    if(owner.equals(session)) ui.preview(image);
+                    return;
+                }
                 byte[] bytes=new byte[16385]; int count;
                 try(InputStream in=new FileInputStream(file)) { count=in.read(bytes); }
                 if(count<0) count=0;

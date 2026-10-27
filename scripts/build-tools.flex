@@ -57,6 +57,12 @@ fn main(argc,argv) {
     h_add(names,"test-collie-android-packaging");
     h_add(names,"test-collie-core");
     h_add(names,"test-collie-thinking");
+    h_add(names,"test-collie-autoreview");
+    h_add(names,"test-collie-workspace-mode");
+    h_add(names,"test-collie-workspace-desktop");
+    h_add(names,"test-collie-workspace-android");
+    h_add(names,"test-collie-autoreview-android");
+    h_add(names,"test-collie-autoreview-desktop");
     h_add(names,"test-collie-workers");
     h_add(names,"test-collie-signals");
     h_add(names,"test-collie-lazy-permissions");
@@ -93,6 +99,7 @@ fn main(argc,argv) {
     h_add(names,"test-collie-screen-android");
     h_add(names,"test-collie-signals-android");
     h_add(names,"test-collie-thinking-android");
+    h_add(names,"test-collie-markdown-android");
     h_add(names,"test-collie-ui-android");
     h_add(names,"test-collie-ui");
     h_add(names,"test-collie-uwb-android");
