@@ -1,4 +1,7 @@
 import "../../apps/collie/desktop/host/commands.flex";
+// This isolated adapter harness never starts the service task loop. The
+// imported multi-chat host also references the service's shutdown hook.
+fn sv_shutdown_tasks(){return 0;}
 fn nh_check(ok,message){h_assert(ok,message);h_print(1,h_cat3("PASS ",message,"\n"));return 0;}
 fn main(argc,argv){h_environment(argc,argv);h_assert(argc==2,"native-host CONFIG");let options=sj_parse(h_read(load64(argv+8)));sh_libc=ffi_open("libc.so.6");sv=j_object();sv_input=alloc(8388609);let pipe=h_take(8);syscall(293,pipe,0x80000,0,0,0,0);syscall(33,load64(pipe)&0xffffffff,0,0,0,0,0);syscall(72,0,4,2048,0,0,0);sh_s(sv,"data",cj_text(options,"root"));sh_s(sv,"root",cj_text(options,"root"));sh_s(sv,"engine",cj_text(options,"engine"));sh_s(sv,"project_id","");sh_s(sv,"model","gpt-6.1-sol");j_set(sv,"permissions",j_parse("{\"network\":true,\"internet\":true,\"files_read\":true,\"files_write\":true}"));j_set(sv,"tasks",j_object());h_mkdir(h_join(sv_s("root"),"files"));
     nh_check(!sj_parse("{bad}") && !sj_parse("[1,]") && !sj_parse("{\"x\":1,\"x\":2}") && !sj_parse("\"\\u0000\"") && !sj_parse("\"\\ud800\""),"malformed saved/remote JSON is recoverable");nh_check(sj_parse("{\"text\":\"中文 \\ud83d\\udc4b\",\"number\":1.25e-3}"),"JSON Unicode, surrogate pairs and numeric metadata parse");
