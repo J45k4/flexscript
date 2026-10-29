@@ -350,6 +350,10 @@ jobs:
           python3 scripts/test-collie-native.py --out build/collie-desktop --compiler build/stage2
           python3 scripts/test-collie-native-platform.py --out build/collie-desktop --compiler build/stage2
           python3 scripts/test-collie-desktop-layout.py --out build/collie-desktop
+          python3 scripts/test-collie-terminal-cursor.py --package build/collie-desktop --out build/collie-terminal-cursor-test
+          python3 scripts/test-collie-terminal-word.py --package build/collie-desktop --out build/collie-terminal-word-test
+          python3 scripts/test-collie-terminal-latency.py --package build/collie-desktop --out build/collie-terminal-latency-test
+          python3 scripts/test-collie-terminal-wait.py --package build/collie-desktop --out build/collie-terminal-wait-test
           python3 scripts/test-collie-imagegen.py --out build/collie-desktop
           python3 scripts/test-collie-no-python.py --out build/collie-desktop --compiler build/stage2
 

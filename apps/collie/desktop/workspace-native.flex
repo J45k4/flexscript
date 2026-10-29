@@ -20,13 +20,24 @@ fn cd_escape(text){let out=h_take(h_len(text)+2);store8(out,27);h_copy(out+1,tex
 // Scalar view guards are refreshed with cd_state, rather than reparsing every
 // open transcript for each motion/focus/IME notification.
 global cd_workspace_guard=1;
-fn cd_workspace_sync(state){cd_workspace_guard=!h_equal(cj_text(state,"page"),"chat") || cj_int(state,"workspace_close") || cj_int(state,"workspace_menu") || cj_int(cj_get(state,"permission_request"),"request_id");return 0;}
+global cd_terminal_cursor_id=0;global cd_terminal_cursor_x=0;global cd_terminal_cursor_y=0;global cd_terminal_cursor_exited=0;
+fn cd_workspace_sync(state){
+    cd_workspace_guard=!h_equal(cj_text(state,"page"),"chat") || cj_int(state,"workspace_close") || cj_int(state,"workspace_menu") || cj_int(cj_get(state,"permission_request"),"request_id");
+    // The terminal cursor is painted by the native overlay, outside the shared
+    // text widget. Readline can move it without changing a single screen cell,
+    // so an empty declarative diff must still schedule the overlay's repaint.
+    // Retain scalars: the shared reducer updates nested panel objects in place.
+    let id=cd_workspace_terminal();let panel=cd_terminal_panel(state,id);let x=cj_int(panel,"cursor_x");let y=cj_int(panel,"cursor_y");let exited=cj_int(panel,"exited");
+    if id!=cd_terminal_cursor_id || (id && (x!=cd_terminal_cursor_x || y!=cd_terminal_cursor_y || exited!=cd_terminal_cursor_exited)){ud_dirty=1;}
+    cd_terminal_cursor_id=id;cd_terminal_cursor_x=x;cd_terminal_cursor_y=y;cd_terminal_cursor_exited=exited;
+    return 0;
+}
 fn cd_workspace_blocked(){return ud_focus_scope || cd_workspace_guard;}
 fn cd_workspace_node(node,prefix){while node && node!=ud_mount{if h_starts(load64(node),prefix){let suffix=load64(node)+h_len(prefix);if load8(suffix)>=48 && load8(suffix)<=57{return node;}}node=load64(node+24);}return 0;}
 fn cd_workspace_terminal(){if cd_workspace_blocked(){return 0;}let node=cd_workspace_node(ud_focus,"workspace-terminal-screen-");if !node{return 0;}return h_number(load64(node)+h_len("workspace-terminal-screen-"));}
 fn cd_terminal_root(state,p){let root=cj_text(p,"project_path");if !h_len(root){root=cj_text(p,"cwd");}if !h_len(root){root=cj_text(state,"project_path");}return root;}
 fn cd_terminal_panel(state,id){let panels=cu_array(cj_get(state,"workspace"),"panels");let i=0;while i<j_count(panels){let p=j_at(panels,i);if cj_int(p,"id")==id{return p;}i=i+1;}return 0;}
-fn cd_workspace_send(id,text){let command=j_object();j_set(command,"kind",j_string("workspace_terminal_input"));j_set(command,"id",j_int(id));j_set(command,"text",j_string(text));let state=j_parse(cd_state);let panel=cd_terminal_panel(state,id);j_set(command,"project_path",j_string(cd_terminal_root(state,panel)));if h_len(cj_text(panel,"chat_session")){j_set(command,"chat_session",j_get(panel,"chat_session"));}cd_send(command);return 1;}
+fn cd_workspace_send(id,text){let started=0;if cd_trace_terminal{started=gui_monotonic_ns();}let command=j_object();j_set(command,"kind",j_string("workspace_terminal_input"));j_set(command,"id",j_int(id));j_set(command,"text",j_string(text));let state=j_parse(cd_state);let panel=cd_terminal_panel(state,id);j_set(command,"project_path",j_string(cd_terminal_root(state,panel)));if h_len(cj_text(panel,"chat_session")){j_set(command,"chat_session",j_get(panel,"chat_session"));}cd_send(command);cd_terminal_trace_at("input",id,cj_int(panel,"cursor_x"),cj_int(panel,"cursor_y"),started);return 1;}
 fn cd_workspace_terminal_event(event){
     if gui_event_kind(event)==GUI_CLIPBOARD && cd_terminal_paste && gui_event_code(event)==cd_terminal_paste{let raw=gui_clipboard_take(cd_terminal_paste);let id=cd_workspace_terminal();if raw && id && ud_focus==cd_terminal_paste_node && load64(ud_focus+192)==cd_terminal_paste_identity{let text=raw;let state=j_parse(cd_state);let p=cd_terminal_panel(state,id);if cj_int(p,"bracketed"){text=h_cat3(cd_escape("[200~"),raw,cd_escape("[201~"));}cd_workspace_send(id,text);}gui_clipboard_release(raw);cd_terminal_paste=0;return 1;}
     let id=cd_workspace_terminal();if !id{return 0;}let kind=gui_event_kind(event);
@@ -38,7 +49,7 @@ fn cd_workspace_terminal_event(event){
     let text="";
     if ctrl && code>=4 && code<=29{let out=h_take(2);store8(out,code-3);text=out;}
     else if code==40{text="\r";}else if code==42{let out=h_take(2);store8(out,127);text=out;}else if code==43{text="\t";}else if code==41{text=cd_escape("");}
-    else if code==79{text=cd_escape("[C");}else if code==80{text=cd_escape("[D");}else if code==81{text=cd_escape("[B");}else if code==82{text=cd_escape("[A");}else if code==74{text=cd_escape("[H");}else if code==77{text=cd_escape("[F");}else if code==73{text=cd_escape("[2~");}else if code==76{text=cd_escape("[3~");}else if code==75{text=cd_escape("[5~");}else if code==78{text=cd_escape("[6~");}
+    else if code==79{if ctrl{text=cd_escape("[1;5C");}else{text=cd_escape("[C");}}else if code==80{if ctrl{text=cd_escape("[1;5D");}else{text=cd_escape("[D");}}else if code==81{text=cd_escape("[B");}else if code==82{text=cd_escape("[A");}else if code==74{text=cd_escape("[H");}else if code==77{text=cd_escape("[F");}else if code==73{text=cd_escape("[2~");}else if code==76{text=cd_escape("[3~");}else if code==75{text=cd_escape("[5~");}else if code==78{text=cd_escape("[6~");}
     else if code>=58 && code<=61{let suffix="OP";if code==59{suffix="OQ";}if code==60{suffix="OR";}if code==61{suffix="OS";}text=cd_escape(suffix);}
     if h_len(text){return cd_workspace_send(id,text);}return 1;
 }

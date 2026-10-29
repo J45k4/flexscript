@@ -97,6 +97,8 @@ Git status. These controls do not stage, commit or push changes.
 in the project folder, using `$SHELL` (falling back to `/bin/sh`) and a real Linux
 PTY. The terminal supports colours, cursor movement, scrollback, alternate-screen
 applications, Unicode, paste, resize, and Ctrl+C for interrupting foreground jobs.
+Left and Right repaint the shell cursor even when the command text stays the same.
+Ctrl+Left and Ctrl+Right move between words using the shell's editing rules.
 The **+** opens another terminal tab. Hiding keeps the shell and jobs alive;
 closing a terminal tab or exiting Collie closes that terminal session. The VT
 implementation is bounded and does not implement every xterm extension.
@@ -126,6 +128,10 @@ Run the native workspace integration checks headlessly after building:
 python3 scripts/test-collie-workspace.py --out build/collie-desktop
 python3 scripts/test-collie-docking.py --out build/collie-desktop
 python3 scripts/test-collie-multichat.py --out build/collie-desktop
+python3 scripts/test-collie-terminal-cursor.py --package build/collie-desktop --out build/terminal-cursor-test
+python3 scripts/test-collie-terminal-word.py --package build/collie-desktop --out build/terminal-word-test
+python3 scripts/test-collie-terminal-latency.py --package build/collie-desktop --out build/terminal-latency-test
+python3 scripts/test-collie-terminal-wait.py --package build/collie-desktop --out build/terminal-wait-test
 # Use the same checks on an explicitly selected private headless Wayland display:
 # python3 scripts/test-collie-multichat.py --wayland-session PATH/TO/session.json
 ```
@@ -133,6 +139,8 @@ python3 scripts/test-collie-multichat.py --out build/collie-desktop
 The checks replay normalized GUI pointer/key/text events, project file writes,
 restart recovery, Git status/diffs, and PTY shell input, hiding, colour and
 foreground interruption without opening desktop windows or requesting a model.
+The latency check measures from the normalized terminal input handler in the GUI
+until frame submission, rather than physical input or display scanout.
 The docking checks compare live native widgets with a fresh declarative tree
 after repeated edge moves, joins, nested splits and reset, including promotion
 of an existing panel out of a removed outer split.

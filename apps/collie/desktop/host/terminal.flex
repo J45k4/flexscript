@@ -1,6 +1,6 @@
 // Bounded PTY sessions and a VT screen. Raw bytes and escape-parser state survive
 // read boundaries; terminal memory is independent of the service's JSON arena.
-global ct_slots=0;global ct_scratch=0;global ct_wait=0;
+global ct_slots=0;global ct_scratch=0;global ct_wait=0;global ct_frame_ms=16;
 fn ct_escape(text){let out=h_take(h_len(text)+2);store8(out,27);h_copy(out+1,text,h_len(text)+1);return out;}
 fn ct_init(){if !ct_slots{ct_slots=alloc(8*8192);ct_scratch=alloc(8192);ct_wait=alloc(8);}return 0;}
 fn ct_find(id,root){ct_init();let i=0;while i<8{let t=ct_slots+i*8192;if load64(t) && load64(t+24)==id && h_equal(t+1024,root){return t;}i=i+1;}return 0;}
@@ -56,7 +56,19 @@ fn ct_start(id,root){ct_init();let existing=ct_find(id,root);if existing{return 
 }
 fn ct_input(id,root,text){let t=ct_find(id,root);if !t || load64(t+152){return 0;}let n=h_len(text);if n>65536{return 0;}let sent=0;let until=net_now()+250;while sent<n && net_now()<until{let got=syscall(1,load64(t+8),text+sent,n-sent,0,0,0);if got>0{sent=sent+got;}else if got==-11 || got==-4{ct_poll();h_sleep(1);}else{return 0;}}return sent==n;}
 fn ct_resize(id,root,cols,rows){let t=ct_find(id,root);if !t{return 0;}if cols<10{cols=10;}if cols>240{cols=240;}if rows<3{rows=3;}if rows>80{rows=80;}if cols==load64(t+40) && rows==load64(t+48){return 1;}store64(t+40,cols);store64(t+48,rows);if load64(t+56)>=cols{store64(t+56,cols-1);}if load64(t+64)>=rows{store64(t+64,rows-1);}store64(t+232,0);store64(t+240,rows-1);let size=h_zero(h_take(8),8);store8(size,rows&255);store8(size+1,rows>>8);store8(size+2,cols&255);store8(size+3,cols>>8);syscall(16,load64(t+8),0x5414,size,0,0,0);store64(t+144,1);return 1;}
-fn ct_poll(){if !ct_slots{return 0;}let i=0;while i<8{let t=ct_slots+i*8192;if load64(t){let budget=32768;let n=1;while n>0 && budget>0{n=syscall(0,load64(t+8),ct_scratch,8192,0,0,0);if n>0{let at=0;while at<n{ct_byte(t,load8(ct_scratch+at));at=at+1;}store64(t+144,1);sv_dirty=1;budget=budget-n;}}if !load64(t+152) && syscall(61,load64(t+16),ct_wait,1,0,0,0)>0{store64(t+152,1);store64(t+144,1);}if load64(t+144) && net_now()-load64(t+160)>=50{ct_emit(t);}}i=i+1;}return 0;}
+fn ct_poll(){if !ct_slots{return 0;}let i=0;while i<8{let t=ct_slots+i*8192;if load64(t){let budget=32768;let n=1;while n>0 && budget>0{n=syscall(0,load64(t+8),ct_scratch,8192,0,0,0);if n>0{store64(t+296,0);let at=0;while at<n{ct_byte(t,load8(ct_scratch+at));at=at+1;}store64(t+144,1);sv_dirty=1;budget=budget-n;}else if n== -11{store64(t+296,0);}else if n!= -4{store64(t+296,1);}}if !load64(t+152) && syscall(61,load64(t+16),ct_wait,1,0,0,0)>0{store64(t+152,1);store64(t+144,1);}if load64(t+144) && net_now()-load64(t+160)>=ct_frame_ms{ct_emit(t);}}i=i+1;}return 0;}
+// Wake immediately on a live PTY as well as a desktop command. If an update
+// was coalesced, bound the wait by its next frame deadline even when no more
+// bytes arrive. PTYs returning EOF/errors are temporarily excluded, so a
+// persistent HUP cannot spin even when the shell has not yet exited. Regular
+// ticks still recheck them if a slave is reopened.
+fn ct_idle_wait(poll,timeout){
+    store64(poll,1<<32);let count=1;let now=net_now();let i=0;
+    while ct_slots && i<8{let t=ct_slots+i*8192;if load64(t){
+        if !load64(t+296){store64(poll+count*8,load64(t+8)|(1<<32));count=count+1;}
+        if load64(t+144){let left=ct_frame_ms-(now-load64(t+160));if left<0{left=0;}if left<timeout{timeout=left;}}
+    }i=i+1;}return syscall(7,poll,count,timeout,0,0,0);
+}
 fn ct_close(t){if !t || !load64(t){return 0;}let pid=load64(t+16);h_close(load64(t+8));if !load64(t+152){syscall(62,-pid,1,0,0,0,0);}let until=net_now()+150;let ended=load64(t+152);while !ended && net_now()<until{if syscall(61,pid,ct_wait,1,0,0,0)>0{ended=1;}else{h_sleep(2);}}if !ended{syscall(62,-pid,9,0,0,0,0);syscall(61,pid,ct_wait,0,0,0,0);}syscall(11,load64(t+168),240*80*16,0,0,0,0);syscall(11,load64(t+200),240*80*16,0,0,0,0);syscall(11,load64(t+176),240*200*16,0,0,0,0);store64(t,0);return 1;}
 fn ct_close_id(id,root){return ct_close(ct_find(id,root));}
 fn ct_shutdown(){if !ct_slots{return 0;}let i=0;while i<8{ct_close(ct_slots+i*8192);i=i+1;}return 0;}
