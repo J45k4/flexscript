@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='terminal-wait-', dir=out) as directory:
     # The process stays alive after closing every PTY slave descriptor. Polling
     # its master must not spin on POLLHUP while the child is still running.
     shell = work / 'shell'
-    shell.write_text("#!/bin/sh\nexec /bin/sh -c 'exec 0<&- 1>&- 2>&-; sleep 4'\n")
+    shell.write_text("#!/bin/sh\nexec /bin/sh -c 'exec 0<&- 1>&- 2>&-; exec sleep 4'\n")
     shell.chmod(0o700)
     events = [dict(at=100, request=dict(action='shortcut', shortcut='terminal'))]
     (work / 'events.json').write_text(json.dumps(events))
