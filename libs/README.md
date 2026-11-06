@@ -16,8 +16,6 @@ low-level adapters in `lib/` remain available and can be imported directly.
 - [`unicode`](unicode/README.md): strict UTF-8, paragraph bidirectional layout and
   Unicode extended grapheme segmentation/default line-break opportunities in
   Flexscript, with pinned property data and conformance tests.
-- [`db`](db/README.md): FlexDB, an experimental single-file relational database
-  with typed rows, transactions and programmatic queries.
 - [`physics`](physics/README.md): a portable rigid-body engine with shared native,
   WebAssembly, HIP and direct AMD RDNA solver source.
 - [`render`](render/README.md): native meshes, cameras, custom shader materials,

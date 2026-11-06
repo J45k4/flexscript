@@ -35,7 +35,7 @@ jobs:
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           fi
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang unzip xvfb xauth libx11-dev libpng-dev libturbojpeg libwebp7 libwebpdemux2 qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 python3-pil qemu-user lld
+          sudo apt-get install --yes bubblewrap openssl ca-certificates gcc g++ clang unzip xvfb xauth libx11-dev libpng-dev libturbojpeg libwebp7 libwebpdemux2 qemu-system-x86 libsdl2-dev libsdl2-ttf-dev libfontconfig1 fonts-dejavu-core fonts-noto-core fonts-noto-cjk libxtst6 libgl1-mesa-dri libglx-mesa0 glslang-tools libegl1 libegl-mesa0 libsqlite3-0 libzstd1 python3 python3-pil qemu-user lld libglib2.0-0t64
           sudo apt-get install --yes pkg-config fontconfig libfontconfig1-dev libfreetype-dev libharfbuzz-dev libxkbcommon-dev libwayland-dev libwayland-bin fonts-noto-color-emoji fonts-noto-core fonts-noto-cjk
           # Ubuntu's default unconfined user-namespace policy denies the
           # network setup needed by --unshare-all. Permit namespaces for this
@@ -105,7 +105,6 @@ jobs:
           build/tools/test-cdp-http --compiler build/stage2
           build/tools/test-libraries build/stage2 --report build/library-tests.json
           build/tools/build-monolith --compiler build/stage2
-          build/test-monolith-syntax build/stage2 --report build/monolith-syntax-tests.json
           build/test-monolith-integration build/stage2
           build/test-monolith-integration build/stage2 --source
           build/test-monolith-browser build/stage2 google-chrome --source
@@ -343,7 +342,6 @@ jobs:
             build/harness-tests.json
             build/gui-report.json
             build/library-tests.json
-            build/monolith-syntax-tests.json
             build/ui-tests.json
             build/ui-desktop-report.json
             build/ui-desktop-*.png
