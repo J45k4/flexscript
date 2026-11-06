@@ -114,9 +114,10 @@ The embedding application owns model state, revision/order tracking and routing
 of events; the renderer owns widgets. Arbitrary guest programs have not gained
 access to the app UI bridge.
 
-The Android adapter is `apps/collie/android/UiRenderer.java`; the DOM adapter is
+The Android adapter is `android/UiRenderer.java` in the separate
+[Collie repository](https://github.com/J45k4/collie); the DOM adapter is
 `libs/ui/web.js`. All Collie screens and interaction policy are under
-`apps/collie/ui/`. `libs/ui/richtext.flex` converts Markdown/code to generic rich
+Collie's `ui/` directory. `libs/ui/richtext.flex` converts Markdown/code to generic rich
 text runs; Android only constructs the corresponding native spans.
 
 The UI reducer consumes `{state,action,data,event}` and returns
@@ -168,9 +169,6 @@ HTML and require JavaScript. This browser host is currently Linux x86-64.
 ```sh
 build/flexscript examples/ui/counter.flex -o build/ui-counter
 build/ui-counter 8092
-# From the checkout: the identical view used by the Android app.
-build/flexscript examples/ui/collie-permissions.flex -o build/ui-permissions-web
-build/ui-permissions-web 8092
 ```
 
 Existing `import "monolith"; extend "monolith/syntax.flex";` applications keep
@@ -184,27 +182,17 @@ build/flexscript scripts/build-tools.flex -o build/build-tools
 build/build-tools --compiler build/flexscript
 build/tools/ui-assets --check
 build/tools/test-ui --compiler build/flexscript
-build/tools/test-collie-ui --compiler build/flexscript
 xvfb-run -a build/tools/test-ui-desktop --compiler build/flexscript --x11
-# After building Collie's debug APK, also compare actual ARM64 output and widgets:
-build/tools/test-ui --compiler build/flexscript \
-  --out build/android-collie-ui --serial emulator-5580
-build/tools/test-collie-ui --compiler build/flexscript \
-  --out build/android-collie-ui
-build/tools/test-collie-ui-android --out build/android-collie-ui \
-  --serial emulator-5580
-build/flexscript examples/ui/collie-permissions.flex -o build/ui-permissions-web
+build/flexscript examples/ui/counter.flex -o build/ui-counter
 build/flexscript tests/ui/browser.flex -o build/test-ui-browser
-build/test-ui-browser build/ui-permissions-web /usr/bin/chromium
+build/test-ui-browser build/ui-counter /usr/bin/chromium
 ```
 
-The native/interpreter/JIT fixtures, real Chromium tests and Android widget tests
-consume the same compiler-generated batches. Checks cover structure changes,
-keyed identity, event bindings, input drafts/focus/selection, controlled values,
-minimal screen patches, cross-client actions, and Linux/Android output parity.
-The browser test replays every Collie screen and saves
-`build/ui-permissions-browser.png` and `build/collie-ui-browser.png`. Rebuild the
-embedded browser asset after editing either browser source:
+The native/interpreter/JIT fixtures and real Chromium tests consume the same
+compiler-generated batches. Checks cover structure changes, keyed identity,
+event bindings, input drafts/focus/selection and controlled values. Collie's
+application-screen, ARM64 parity and Android widget suites live in its repository.
+Regenerate the browser assets after editing browser source with
 `build/tools/ui-assets`.
 
 Android's existing build flattens and adapts engine sources to its bounded host
@@ -232,16 +220,12 @@ The production implementation is entirely Flexscript with integer FFI calls.
 ```sh
 build/flexscript examples/ui/desktop-counter.flex -o build/ui-desktop-counter
 build/ui-desktop-counter
-# From the checkout, the actual Collie permissions view and reducer:
-build/flexscript examples/ui/desktop-permissions.flex -o build/ui-desktop-permissions
-build/ui-desktop-permissions
 ```
 
 The browser and desktop counters import `counter-view.flex`, including the same
-view and counter actions. Both desktop examples accept an optional frame count
-for bounded smoke checks. The permissions example keeps grants in memory and
-Back closes its window; it is not a complete desktop Collie agent host.
-The complete [Collie desktop host](../apps/collie/desktop/README.md) wires the
+view and counter actions. The desktop counter accepts an optional frame count for bounded smoke checks.
+The application permissions example moved to Collie.
+The complete [Collie desktop host](https://github.com/J45k4/collie/blob/codex/standalone-collie/desktop/README.md) wires the
 shared chat, conversations, permissions and worker views to the checked engine,
 native event loop, persistence and Linux platform services.
 
@@ -387,9 +371,9 @@ by 16,384 pixels; very long text still
 needs tiled rendering/virtualization. The host supplies authentication, storage,
 networking, file dialogs and agent execution for a full application.
 
-`scripts/test-ui-desktop.flex` applies the actual generic and Collie compiler
-batches, verifies decoded text/image pixels, and saves native screenshots under
-`build/ui-desktop-*.png`. Its text raster regression compares cached glyphs with
+`scripts/test-ui-desktop.flex` applies the generic compiler batches and verifies
+native widgets, editor behavior, text, tables and selection. Collie screen replay
+and application screenshots are tested in the Collie repository. Its text raster regression compares cached glyphs with
 direct font rendering on dark/light backgrounds and at reduced opacity, using
 simulated 1x and 2x framebuffers, and checks density-aware caret hit testing.
 The selection regression also compares cached hit testing with independent font

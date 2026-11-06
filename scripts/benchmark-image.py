@@ -20,7 +20,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageStat
 
 ROOT=Path(__file__).resolve().parents[1]
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--compiler',type=Path,default=ROOT/'build/collie-desktop/compiler')
+p.add_argument('--compiler',type=Path,default=ROOT/'build/flexscript')
 p.add_argument('--out',type=Path,default=ROOT/'build/image/benchmark')
 p.add_argument('--report',type=Path,default=ROOT/'libs/image/benchmark-results.json')
 p.add_argument('--samples',type=int,default=5);p.add_argument('--rounds',type=int,default=5)
@@ -53,7 +53,7 @@ alpha=Image.new('RGBA',(1024,768));draw=ImageDraw.Draw(alpha)
 for y in range(20,700,70):draw.rounded_rectangle((20,y,1000,y+55),radius=25,fill=(80+y//4,170,110,32+y//4))
 alpha.save(out/'alpha.png');cases.append(('small transparent PNG',out/'alpha.png'))
 texture(640,480,314159).save(out/'small.jpg',quality=90);cases.append(('small JPEG',out/'small.jpg'))
-logo=ROOT/'apps/collie/android/res/drawable-nodpi/collie_border_collie.png';cases.append(('Collie logo PNG',logo))
+logo=ROOT/'tests/ui/fixtures/pattern.png';cases.append(('RGBA test pattern PNG',logo))
 noise=Image.frombytes('RGB',(2048,1536),random.Random(70001).randbytes(2048*1536*3));noise.save(out/'noise.png')
 cases.append(('incompressible PNG / budget boundary',out/'noise.png'))
 noise.crop((0,0,1536,1536)).save(out/'noise-no-resize.png')

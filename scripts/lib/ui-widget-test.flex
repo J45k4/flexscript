@@ -1,5 +1,5 @@
 // Independent retained widget oracle for compiled portable patch batches.
-import "../../apps/collie/lib/state.flex";
+import "json-state.flex";
 global uw_nodes=0;
 fn uw_drop(object,key){let pairs=j_value(object);let i=0;while i<h_count(pairs){if h_equal(load64(h_at(pairs,i)),key){let j=i+1;while j<h_count(pairs){store64(pairs+8+(j-1)*8,h_at(pairs,j));j=j+1;}store64(pairs,h_count(pairs)-1);return 0;}i=i+1;}return 0;}
 fn uw_node(key){let value=cj_get(uw_nodes,key);h_assert(value,h_cat("Patch references an absent widget: ",key));return value;}

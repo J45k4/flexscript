@@ -1,4 +1,4 @@
-import "../../apps/collie/lib/json.flex";
+import "../../scripts/lib/json-values.flex";
 import "../../lib/bytes.flex";
 global jc_source=0;global jc_destination=0;global jc_pointers=0;
 fn jc_contains(blocks,p){while blocks{if p>=blocks && p<blocks+load64(blocks+8){return 1;}blocks=load64(blocks);}return 0;}

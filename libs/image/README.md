@@ -86,8 +86,8 @@ are `libpng`, `libjpeg-turbo` and `libwebp`.
 ## Verification and performance
 
 ```sh
-FLEX_COMPILER=build/collie-desktop/compiler python3 scripts/test-image.py
-FLEX_COMPILER=build/collie-desktop/compiler python3 scripts/test-image.py --pipeline direct
+FLEX_COMPILER=build/flexscript python3 scripts/test-image.py
+FLEX_COMPILER=build/flexscript python3 scripts/test-image.py --pipeline direct
 nice -n 19 python3 scripts/benchmark-image.py
 ```
 

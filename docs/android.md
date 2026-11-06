@@ -39,7 +39,7 @@ integer/pointer function addresses using AAPCS64. `ffi_open` and `ffi_symbol`
 remain unsupported; Android library loading belongs to the host. Restricted
 VM programs still cannot use raw FFI.
 
-[Collie for Android](../apps/collie/android/README.md) embeds the shared
+[Collie for Android](https://github.com/J45k4/collie/blob/codex/standalone-collie/android/README.md) embeds the shared
 compiler, checked interpreter, provider protocol and FlexDB in a native chat
 app. It includes ChatGPT auth.json import, native tool calling and an app-private
 filesystem; its guest dispatcher currently uses the interpreter.

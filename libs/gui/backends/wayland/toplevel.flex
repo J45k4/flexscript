@@ -20,7 +20,7 @@ fn wt_limits(c){
 }
 fn wt_role(c){let xdg=wl_req(c,load64(c+40),2,wp_i_xdg_surface,wl_args(c,0,load64(c+48),0,0,0,0),0);store64(c+56,wl_watch(c,xdg,4,0));let top=wl_req(c,xdg,1,wp_i_xdg_toplevel,wl_args(c,0,0,0,0,0,0),0);store64(c+64,wl_watch(c,top,5,0));let p=load64(c+456);store64(p+168,0);store64(p+176,0);return top!=0;}
 fn wt_attributes(c){
-    let p=load64(c+456);let top=load64(c+64);wl_req(c,top,2,0,wl_args(c,load64(p+64),0,0,0,0,0),0);wl_req(c,top,3,0,wl_args(c,"org.flexscript.Collie",0,0,0,0,0),0);wt_limits(c);
+    let p=load64(c+456);let top=load64(c+64);wl_req(c,top,2,0,wl_args(c,load64(p+64),0,0,0,0,0),0);wt_application_id(c,top);wt_limits(c);
     if load64(p+88){wl_req(c,top,9,0,0,0);}if load64(p+96){wl_req(c,top,11,0,wl_args(c,0,0,0,0,0,0),0);}return 1;
 }
 fn wt_pending(c,width,height,array){
@@ -55,3 +55,6 @@ fn wt_mode(c,fullscreen,enabled){
 fn wt_minimize(c){let p=load64(c+456);if !load64(p){return 1;}store64(p+104,1);wl_req(c,load64(c+64),13,0,0,0);return wt_flush(c);}
 fn wt_restore(c){let p=load64(c+456);store64(p+88,0);store64(p+96,0);if load64(p+104){wt_show(c,0);return wt_show(c,1);}if !wt_mode(c,1,0) || !wt_mode(c,0,0){return 0;}if !load64(p){return wt_show(c,1);}return 1;}
 fn wt_close(c){let p=load64(c+456);if p{if load64(p+64){syscall(11,load64(p+64),load64(p+72)+1,0,0,0,0);}syscall(11,p,256,0,0,0,0);store64(c+456,0);}return 0;}
+
+// Application identity is supplied by the host, with a generic default.
+fn wt_application_id(c,top){let id="org.flexscript.Application";let libc=ffi_open("libc.so.6");if libc{let value=ffi_call(ffi_symbol(libc,"getenv"),"FLEXSCRIPT_APP_ID",0,0,0,0,0);if value && load8(value){id=value;}}wl_req(c,top,3,0,wl_args(c,id,0,0,0,0,0),0);if libc{ffi_close(libc);}return 1;}

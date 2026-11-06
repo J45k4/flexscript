@@ -17,7 +17,7 @@ import zlib
 from PIL import Image
 
 ROOT=Path(__file__).resolve().parents[1]
-COMPILER=Path(os.environ.get('FLEX_COMPILER',ROOT/'build/collie-desktop/compiler')).resolve()
+COMPILER=Path(os.environ.get('FLEX_COMPILER',ROOT/'build/flexscript')).resolve()
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--pipeline',choices=['ir','direct'],default='ir')
 args=parser.parse_args()

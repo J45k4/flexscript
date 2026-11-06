@@ -2,7 +2,7 @@
 
 Import `libs/tui/tui.flex` to build Linux terminal applications in Flexscript.
 The library has no ML or GPU dependency. `llm.flex` and
-[`apps/collie`](../apps/collie/README.md) are chat applications using it;
+[Collie](https://github.com/J45k4/collie) are chat applications using it;
 `examples/tui/editor.flex` is a standalone editor example.
 
 ```sh

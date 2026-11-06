@@ -62,7 +62,7 @@ fn main() {
 ```
 
 The existing x86-64 Linux libraries, compiler-host runtime and FlexOS platform
-services have not been ported wholesale. [Collie for Android](../apps/collie/android/README.md)
+services have not been ported wholesale. [Collie for Android](https://github.com/J45k4/collie/blob/codex/standalone-collie/android/README.md)
 now embeds the shared compiler frontend and checked interpreter behind an
 Android host adapter, compiling guest source on-device. That does not provide
 a standalone ARM64-hosted CLI or a port of every Linux library. The compiler

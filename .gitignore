@@ -8,3 +8,9 @@ __pycache__/
 
 # Separate engine checkout used to validate compiler integrations.
 /workdir/
+
+# Local artifacts retained after extracting Collie into its own repository.
+/apps/collie/build/
+/apps/collie/auth.json
+/apps/collie/.env
+/apps/collie/collie-trace.json

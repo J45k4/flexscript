@@ -123,14 +123,15 @@ ownership. No live provider or production login is used.
 
 ## Opt-in live Responses test
 
-`tests/collie/responses-live.flex` sends one small generation request through
+`tests/collie/responses-live.flex` in the [Collie repository](https://github.com/J45k4/collie) sends one small generation request through
 Collie's actual native HTTP adapter. It checks incremental Responses SSE events,
 HTTP 200, completion and the expected output, and reports timings/token usage.
 It prints no credentials, raw event payloads or private reasoning. This test is
 excluded from ordinary CI because it consumes real account usage.
 
 ```sh
-build/collie-desktop/compiler --native-pipeline direct tests/collie/responses-live.flex -o build/responses-live
+cd ../collie
+build/compiler --native-pipeline direct tests/collie/responses-live.flex -o build/responses-live
 build/responses-live --api gpt-6.1-sol
 # Or use a saved ChatGPT/Codex login:
 build/responses-live /path/to/auth.json gpt-6.1-sol
