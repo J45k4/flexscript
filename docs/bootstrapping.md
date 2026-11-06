@@ -1,5 +1,7 @@
 # Building and verifying with Flexscript
 
+The current language and execution-model reference is [flexscript.md](../flexscript.md).
+
 The compiler, VM/JIT, build orchestration, test harness, local TCP/TLS fixtures,
 packaging, benchmarks and release signer are written in Flexscript. A published
 compiler builds the entire current toolchain without Rust or Python. The original
