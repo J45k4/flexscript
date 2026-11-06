@@ -22,7 +22,7 @@ mutations=[
  ('timer-poll-mask-ignored','esp32-sdk-timer-core.flex','esp_sdk_timer_poll','if !esp_sdk_can_block() {return -16;}','',118),
  ('wifi-stop-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_stop','esp_sdk_irq_blocked(ps) || ','',112),
  ('wifi-start-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_start','esp_sdk_irq_blocked(ps) || ','',113),
- ('wifi-deinit-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_deinit','esp_sdk_irq_blocked(ps) || ','',114),
+ ('wifi-deinit-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_deinit','(!recovery && esp_sdk_irq_blocked(ps)) || ','',114),
  ('wifi-init-mask-ignored','esp32-wifi-core.flex','esp_wifi_station_init','esp_sdk_irq_blocked(ps) || ','',115),
  ('BT-init-mask-ignored','esp32-bluetooth.flex','esp_bt_controller_init','(ps&15) || ','',116),
  ('BT-deinit-mask-ignored','esp32-bluetooth.flex','esp_bt_controller_deinit','(ps&15) || ','',117),

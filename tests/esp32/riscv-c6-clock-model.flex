@@ -42,12 +42,20 @@ fn reset(root,cpu,ahb,apb,query,ticks){
  check(!esp_radio_cpu_clock_active);if !esp_radio_pmu_saved{esp_radio_pmu_saved=alloc(416);}root_reg=root;cpu_reg=cpu;ahb_reg=ahb;apb_reg=apb;query_reg=query;rom_ticks=ticks;
  pll_reg=cv(17);dma_reg=0;regdma_reg=0;spi0_reg=0;spi1_reg=0;writes=0;ignored_write=0;ignore_ticks=0;tick=0xfffffff0;rom_calls=0;ps=0x1888;
  ready=1;isr=0;rv_hal_chip=13;esp_radio_owner=1;esp_adc_busy=0;esp_radio_phy_refs=0;esp_radio_phy_clock_refs=0;esp_radio_hw_ready=0;
- esp_radio_pmu_active=1;esp_radio_pmu_phase=1;esp_radio_pmu_configured=0;esp_radio_pmu_analog_count=3;esp_radio_pmu_digital_count=49;esp_radio_regi2c_active=0;esp_radio_ocode_active=0;esp_radio_ocode_ready=0;return 0;
+ esp_radio_pmu_active=1;esp_radio_pmu_phase=1;esp_radio_pmu_configured=0;esp_radio_pmu_analog_count=3;esp_radio_pmu_digital_count=49;esp_radio_pmu_force_count=6;esp_radio_regi2c_active=0;esp_radio_ocode_active=0;esp_radio_ocode_ready=0;return 0;
 }
 fn base(){return reset(0x28010200,0x55000003,0x66000307,0,0x1e014,160);}
 fn restored(root,cpu,ahb,apb,ticks,saved_ps){check(!esp_radio_cpu_clock_active && !esp_radio_cpu_clock_phase && ps==saved_ps && root_reg==root && cpu_reg==cpu && ahb_reg==ahb && apb_reg==apb && rom_ticks==ticks);return 0;}
 fn main(argc,argv){
  h_environment(argc,argv);cfg=h_read(load64(argv+8));check(h_file_size>=144);let count=cv(15);check(h_file_size==144+count*64);let at=cfg+144;let i=0;
+ // Start from a genuinely committable staged PMU. Otherwise an unrelated
+ // incomplete-stage guard can hide a missing clock-ownership check.
+ let commit_mode=0;while commit_mode<2{
+  case_id=20000+commit_mode;base();if commit_mode{ps=0x1880;}let saved_ps=ps;
+  check(!esp_radio_c6_pmu_commit() && ps==saved_ps && !writes && !rom_calls);
+  check(esp_radio_pmu_configured && !esp_radio_pmu_active && !esp_radio_pmu_phase && !esp_radio_pmu_analog_count && !esp_radio_pmu_digital_count && !esp_radio_pmu_force_count);
+  commit_mode=commit_mode+1;
+ }
  while i<count{
   let root=load64(at);let cpu=load64(at+8);let ahb=load64(at+16);let apb=load64(at+24);let query=load64(at+32);let cpu_hz=load64(at+40);let ahb_hz=load64(at+48);let apb_hz=load64(at+56);
   let mode=0;while mode<2{
@@ -58,6 +66,7 @@ fn main(argc,argv){
     check(!esp_radio_c6_clock_begin(100) && esp_radio_cpu_clock_active && esp_radio_cpu_clock_phase==2 && ps==(saved_ps&~8) && rom_ticks==40);
     check(esp_radio_c6_clock_frequency(0)==40000000 && esp_radio_c6_clock_frequency(1)==40000000 && esp_radio_c6_clock_frequency(2)==40000000/(((apb>>8)&255)+1));
     let before=writes;check(esp_radio_c6_clock_begin(100)==-16 && writes==before && esp_radio_c6_pmu_commit()==-16 && esp_radio_c6_pmu_abort(100)==-16);
+    check(esp_radio_pmu_active && esp_radio_pmu_phase==1 && !esp_radio_pmu_configured && esp_radio_pmu_analog_count==3 && esp_radio_pmu_digital_count==49 && esp_radio_pmu_force_count==6 && ps==(saved_ps&~8) && writes==before);
     // Unowned high/reserved bits survive the field-wise restoration.
     cpu_reg=cpu_reg^0x80000000;ahb_reg=ahb_reg^0x80000000;apb_reg=apb_reg^0x80000000;
     check(!esp_radio_c6_clock_restore(100));restored(root,cpu^0x80000000,ahb^0x80000000,apb^0x80000000,cpu_hz/1000000,saved_ps);

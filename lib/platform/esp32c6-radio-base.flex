@@ -6,6 +6,7 @@ global esp_radio_base_phase=0;global esp_radio_base_step=0;global esp_radio_base
 global esp_radio_base_ps=0;global esp_radio_base_error=0;global esp_radio_base_cleanup_error=0;
 global esp_radio_base_code=0;global esp_radio_base_slp=0;global esp_radio_base_sys_map=0;global esp_radio_base_lp_map=0;global esp_radio_base_live=0;
 global esp_radio_base_target_code=0;global esp_radio_base_target_slp=0;global esp_radio_base_command_step=0;global esp_radio_base_issued=0;global esp_radio_base_touched=0;
+global esp_radio_base_releasing=0;
 fn esp_radio_c6_base_guard(){
  if !esp_riscv_ready() || rv_hal_chip!=13{return -95;}
  if esp_radio_owner!=1 || esp_adc_busy || esp_radio_phy_refs || esp_radio_phy_clock_refs || esp_radio_hw_ready || esp32_load32(esp32_state()+16){return -16;}return 0;
@@ -45,7 +46,7 @@ fn esp_radio_c6_base_command(cycles,drain){
 fn esp_radio_c6_base_prepare(source,divider,cycles){
  if source<0 || source>5 || divider<0 || divider>4095 || cycles<1 || cycles>2147483647{return -22;}
  let ps=esp32_irq_save();let result=esp_radio_c6_base_guard();if result{esp32_irq_restore(ps);return result;}
- if esp_radio_base_active || esp_radio_base_configured || esp_radio_pmu_active || esp_radio_pmu_configured || esp_radio_modem_active || esp_radio_modem_configured || esp_radio_calibration_active || esp_radio_cpu_clock_active || esp_radio_pll_active || esp_radio_ocode_active || esp_radio_regi2c_active{esp32_irq_restore(ps);return -16;}
+ if esp_radio_base_active || esp_radio_base_releasing || esp_radio_base_configured || esp_radio_pmu_active || esp_radio_pmu_configured || esp_radio_modem_active || esp_radio_modem_configured || esp_radio_calibration_active || esp_radio_cpu_clock_active || esp_radio_pll_active || esp_radio_ocode_active || esp_radio_regi2c_active{esp32_irq_restore(ps);return -16;}
  result=esp_radio_c6_clock_idle();if result{esp32_irq_restore(ps);return result;}
  // Reject foreign radio users and a PCR handoff that could disable flash.
  if esp32_load32(0x600a9804)&0xffe00000 || esp32_load32(0x600a9814)&0x7fffff || esp32_load32(0x600af018)&11 || (esp32_load32(0x60096018)&3)!=1{esp32_irq_restore(ps);return -16;}
@@ -96,11 +97,64 @@ fn esp_radio_c6_base_abort(cycles){
   else if step==4{if esp_radio_base_touched{result=esp_radio_c6_base_command(cycles,0);}}
   else if step==5{result=esp_radio_c6_base_put(0x600af020,0xff000000,esp_radio_base_lp_map,cycles);}
   else if step==6{result=esp_radio_c6_base_put(0x600a980c,0xf0000000,esp_radio_base_sys_map,cycles);}
-  else{let start=esp32_cycles();while !result && (esp32_load32(0x600b0194)&0xf00000)!=esp_radio_base_live{if ((esp32_cycles()-start)&0xffffffff)>=cycles{result= -110;}}}
+  else{
+   let start=esp32_cycles();let matched=0;
+   while !result && !matched{
+    if ((esp32_cycles()-start)&0xffffffff)>=cycles{result= -110;}
+    if !result{
+     let observed=esp32_load32(0x600b0194)&0xf00000;
+     if ((esp32_cycles()-start)&0xffffffff)>=cycles{result= -110;}else{matched=observed==esp_radio_base_live;}
+    }
+   }
+  }
   if !result{esp_radio_base_recovery=step+1;}
  }
  esp_radio_base_internal=0;esp_radio_base_cleanup_error=result;if result{esp_radio_base_phase=2;return result;}
+ if esp_radio_base_releasing{esp_radio_base_configured=0;esp_radio_modem_configured=0;esp_radio_pmu_configured=0;esp_radio_base_releasing=0;}
  esp_radio_base_active=0;esp_radio_base_phase=0;esp_radio_base_step=0;esp_radio_base_recovery=0;esp32_irq_restore(esp_radio_base_ps);return 0;
+}
+// Release a committed platform lifetime after vendor/PHY quiescence. Keep
+// successful calibration; restore the PMU policy, gates and original maps.
+// Reuse the inverse journal, but never rearm counters on a cleanup retry.
+fn esp_radio_c6_base_release(cycles){
+ if cycles<1 || cycles>2147483647{return -22;}let ps=esp32_irq_save();
+ return esp_radio_c6_base_release_locked(cycles,ps,0);
+}
+// Internal handoff from an already masked hardware caller. Hardware mode
+// may retire readiness, but only after every quiescence/receipt check passes.
+// The saved PS belongs to that caller; recovery keeps it across later retries.
+fn esp_radio_c6_base_release_locked(cycles,ps,hardware){
+ if cycles<1 || cycles>2147483647 || hardware<0 || hardware>1{esp32_irq_restore(ps);return -22;}
+ if esp_radio_base_active{
+  if !esp_radio_base_releasing{esp32_irq_restore(ps);return -16;}
+  return esp_radio_c6_base_abort(cycles);
+ }
+ let result=0;if !hardware{result=esp_radio_c6_base_guard();}else{
+  if !esp_riscv_ready() || rv_hal_chip!=13{result= -95;}
+  else if esp_radio_owner!=1 || esp_adc_busy || esp_radio_phy_refs || esp_radio_phy_clock_refs || esp32_load32(esp32_state()+16){result= -16;}
+ }
+ if !result && (esp_radio_base_releasing || esp_radio_pmu_active || esp_radio_modem_active || esp_radio_calibration_active || esp_radio_cpu_clock_active || esp_radio_pll_active || esp_radio_ocode_active || esp_radio_regi2c_active){result= -16;}
+ if !result && !esp_radio_base_configured{
+  if esp_radio_pmu_configured || esp_radio_modem_configured{result= -16;}
+  esp32_irq_restore(ps);return result;
+ }
+ if !result && (!esp_radio_pmu_configured || !esp_radio_modem_configured || esp_radio_pmu_saved<=0 || !esp_radio_ocode_ready || !esp_radio_base_touched || esp_radio_base_issued || esp_radio_base_command_step!=2){result= -16;}
+ if !result{result=esp_radio_c6_clock_idle();}
+ if !result && (esp32_load32(0x600a9804)&0xffe00000 || esp32_load32(0x600a9814)&0x7fffff || esp32_load32(0x600af018)&10 || esp32_load32(0x600af01c)&11 || (esp32_load32(0x60096018)&3)!=1){result= -16;}
+ // Restoring the shared32k selector must not retune a foreign BLE/coex user.
+ if !result && (esp32_load32(0x600af014)&3)!=esp_radio_modem_32k && ((esp32_load32(0x600af004)|esp32_load32(0x600af008))&8){result= -16;}
+ if !result{
+  let live=esp32_load32(0x600b0194)&0xf00000;
+  if ((live>>21)&3)!=((esp32_load32(0x600b000c)>>30)&3) || ((live>>23)&1)!=((esp32_load32(0x600b0024)>>26)&1) || ((live^esp_radio_base_live)&0x100000){result= -16;}
+ }
+ if result{esp32_irq_restore(ps);return result;}
+ // All snapshots survive commit. Current caller PS replaces startup PS;
+ // nested modem/PMU cleanup must keep this new outer mask until completion.
+ if hardware{esp_radio_hw_ready=0;}
+ esp_radio_base_ps=ps;esp_radio_base_releasing=1;esp_radio_base_active=1;esp_radio_base_phase=2;esp_radio_base_step=7;esp_radio_base_recovery=0;esp_radio_base_cleanup_error=0;
+ esp_radio_modem_active=1;esp_radio_modem_phase=1;esp_radio_modem_step=8;esp_radio_modem_recovery=0;esp_radio_modem_ps=ps&~8;
+ esp_radio_pmu_active=1;esp_radio_pmu_phase=1;esp_radio_pmu_analog_count=3;esp_radio_pmu_digital_count=49;esp_radio_pmu_force_count=6;
+ return esp_radio_c6_base_abort(cycles);
 }
 fn esp_radio_c6_base_commit(){
  let ps=esp32_irq_save();if !esp_radio_base_active || esp_radio_base_phase!=1 || esp_radio_base_step!=6{esp32_irq_restore(ps);return -16;}

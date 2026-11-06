@@ -69,6 +69,32 @@ fn rv_patch_transfer(at,to,link) {
     rv_ins(0x17|(31<<7)|((((n-lo)>>12)&1048575)<<12));rv_i(0x67,0,link,31,lo);output_size=old;return 0;
 }
 fn rv_j(to) {let at=rv_jump();return rv_patch_transfer(at,to,0);}
+// Only IR edges vary in size: helper/call patch sites retain their fixed width.
+// Grow monotonically from C.J through JAL to AUIPC/JALR while laying out a
+// function. Physical PCs matter when the image has disjoint IRAM and IROM.
+fn rv_jump_form(delta) {
+    if delta%2 {fail("RISC-V jump target is not halfword aligned");}
+    if delta>= -2048 && delta<=2046 {return 0;}
+    if delta>= -1048576 && delta<=1048574 {return 1;}return 2;
+}
+fn rv_c_jump(delta) {
+    if delta%2 || delta< -2048 || delta>2046 {fail("RISC-V compressed jump out of range");}
+    return rv_ins16(0xa001|((delta&2048)<<1)|((delta&16)<<7)|((delta&768)<<1)|((delta&1024)>>2)|((delta&64)<<1)|((delta&128)>>1)|((delta&14)<<2)|((delta&32)>>3));
+}
+fn rv_medium_jump(delta) {
+    if delta%2 || delta< -1048576 || delta>1048574 {fail("RISC-V direct jump out of range");}
+    return rv_ins(0x6f|(((delta>>20)&1)<<31)|(((delta>>1)&1023)<<21)|(((delta>>11)&1)<<20)|(((delta>>12)&255)<<12));
+}
+fn rv_ir_jump(pc) {
+    let form=load64(rv_jumps+pc/2)>>32;store64(rv_jumps+pc/2,output_size|(form<<32));
+    if !form {return rv_c_jump(0);}if form==1 {return rv_medium_jump(0);}rv_jump();return 0;
+}
+fn rv_patch_ir_jump(pc) {
+    let edge=load64(rv_jumps+pc/2);let at=edge&4294967295;let form=edge>>32;
+    let to=load64(rv_map+load64(rv_ir+pc+8)/2);let delta=rv_address(to)-rv_address(at);let end=output_size;output_size=at;
+    if !form {rv_c_jump(delta);}else if form==1 {rv_medium_jump(delta);}else {rv_patch_transfer(at,to,0);}output_size=end;return 0;
+}
+
 fn rv_guard(f3,s,t) {let okay=rv_branch(f3,s,t);rv_j(0);rv_patch_branch(okay,output_size);return 0;}
 fn rv_stack_check() {rv_imm(5,rv_data_base+20);rv_lw(6,5,0);rv_guard(7,2,6);return 0;}
 fn rv_push() {rv_addi(2,2,-8);rv_stack_check();rv_sw(10,2,0);rv_sw(11,2,4);return 0;}
@@ -308,12 +334,26 @@ fn rv_function(index) {
     let init_seen=alloc((end-pc)/2+8);let init_queue=alloc((end-pc)/2+8);if init_seen<0 || init_queue<0 {fail("cannot allocate RISC-V local flow analysis");}
     rv_addi(2,2,-16);rv_stack_check();rv_sw(1,2,0);rv_sw(8,2,4);if frame {rv_imm(5,-frame);rv_add(2,2,5);rv_stack_check();}rv_mov(8,2);
     i=0;while i<slots {if load64(rv_locals+i*8)>=0 && (i<arity || rv_local_needs_initial(i,pc+16,end,init_seen,init_queue)) {if i<arity {rv_frame_pair(frame+16+(arity-i-1)*8,0);}else {rv_imm(10,0);rv_imm(11,0);}rv_frame_pair(frame-8*(load64(rv_locals+i*8)+1),1);}i=i+1;}
+    let start=output_size;let fixups=rv_fixup_count;let stable=0;
+    while !stable {
+        output_size=start;rv_fixup_count=fixups;rv_function_body(index,frame);stable=1;
+        let pc=load64(entry+16)+16;while pc<end {
+            let op=load64(rv_ir+pc);if op>=10 && op<=12 {
+                let edge=load64(rv_jumps+pc/2);let at=edge&4294967295;
+                let to=load64(rv_map+load64(rv_ir+pc+8)/2);let form=rv_jump_form(rv_address(to)-rv_address(at));
+                if form>(edge>>32) {store64(rv_jumps+pc/2,at|(form<<32));stable=0;}
+            }pc=pc+16;
+        }
+    }return 0;
+}
+fn rv_function_body(index,frame) {
+    let pc=load64(functions+index*32+16);let end=rv_end(index);
     pc=pc+16;while pc<end {store64(rv_map+pc/2,output_size);let op=load64(rv_ir+pc);let arg=load64(rv_ir+pc+8);
         if op==1 {rv_imm(10,arg);rv_imm(11,arg>>32);}else if op==2 {rv_helper(1);}
         else if op==3 || op==4 {if load64(rv_locals+arg*8)>=0 {rv_frame_pair(frame-8*(load64(rv_locals+arg*8)+1),op==4);}}
         else if op==5 || op==6 {rv_imm(5,rv_data_base+arg);if op==5 {rv_lw(10,5,0);rv_lw(11,5,4);}else {rv_sw(10,5,0);rv_sw(11,5,4);}}
         else if op==7 {rv_helper(512+arg);}else if op==8 {rv_fix(arg,0);let bytes=load64(functions+arg*32+24)*8;if bytes {if bytes<=2047 {rv_addi(2,2,bytes);}else {rv_imm(5,bytes);rv_add(2,2,5);}}}else if op==9 {rv_epilogue(frame);}
-        else if op>=10 && op<=12 {let skip=0;if op!=10 {rv_r(6,0,6,10,11);let f=0;if op==11 {f=1;}skip=rv_branch(f,6,0);}store64(rv_jumps+pc/2,rv_jump());if op!=10 {rv_patch_branch(skip,output_size);}}
+        else if op>=10 && op<=12 {let skip=0;if op!=10 {rv_r(6,0,6,10,11);let f=0;if op==11 {f=1;}skip=rv_branch(f,6,0);}rv_ir_jump(pc);if op!=10 {rv_patch_branch(skip,output_size);}}
         else if op==13 || op==15 {rv_bool(op==15);}else if op==14 {rv_neg(10,11);}else if op==16 {rv_i(0x13,4,10,10,-1);rv_i(0x13,4,11,11,-1);}
         else if op==17 {if arg==35 {rv_builtin(arg);}else {rv_helper(128+arg);}}else if op==19 || op==20 {rv_word_io(op==20);}else if op==21 || op==22 {rv_state(arg,op==22);}
         else if op==25 {rv_imm(5,rv_data_base+load64(esp_imports+arg*24+16));rv_lw(10,5,0);rv_imm(11,0);}
@@ -407,7 +447,7 @@ fn riscv32_finish() {
     i=0;while i<function_count {if load64(rv_seen+i*8) && (!rv_flash || !load64(rv_iram_functions+i*8)) {rv_function(i);}i=i+1;}
     i=0;while i<function_count {if load64(rv_c_thunks+i*8) && (!rv_flash || !load64(rv_iram_functions+i*8)) {rv_c_callback(i);}i=i+1;}if !rv_flash {rv_emit_helpers();}while output_size%4 {rv_ins16(1);}let size=output_size;
     i=0;while i<rv_fixup_count {let p=rv_fixups+i*24;let at=load64(p);let index=load64(p+8);let target=0;if load64(p+16)<0 {target=load64(rv_helpers+index*8);}else {target=load64(rv_entries+index*8);}if load64(p+16)>0 {if load64(p+16)==2 {target=load64(rv_c_thunks+index*8);}output_size=at;rv_const(10,rv_address(target));}else {rv_patch_transfer(at,target,1);}i=i+1;}output_size=size;
-    i=0;while i<function_count {if load64(rv_seen+i*8) {let pc=load64(functions+i*32+16)+16;let end=rv_end(i);while pc<end {let op=load64(rv_ir+pc);if op>=10 && op<=12 {rv_patch_transfer(load64(rv_jumps+pc/2),load64(rv_map+load64(rv_ir+pc+8)/2),0);}pc=pc+16;}}i=i+1;}
+    i=0;while i<function_count {if load64(rv_seen+i*8) {let pc=load64(functions+i*32+16)+16;let end=rv_end(i);while pc<end {let op=load64(rv_ir+pc);if op>=10 && op<=12 {rv_patch_ir_jump(pc);}pc=pc+16;}}i=i+1;}
     let code=output;if rv_elf {rv_elf_image(code,size,entry);return 0;}
     i=0;while i<esp_import_count {if load64(esp_import_used+i*8) {fail("esp32_external requires an esp32c3-elf or esp32c6-elf link target");}i=i+1;}
     output=alloc(size+vm_heap_used+128);if output<0 {fail("cannot allocate RISC-V ROM image");}output_size=0;

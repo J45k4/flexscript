@@ -49,6 +49,8 @@ fn main(argc,argv) {
     te_legacy=1;te_compile("tests/esp32/legacy-interrupts.flex",te_binary);te_run(te_binary,0,"PASS: real Xtensa software and timer interrupts");
     te_compile("tests/esp32/irq-software-replace.flex",te_binary);te_run(te_binary,0,"PASS:64 software IRQ replacements");
     te_program(h_cat3("import \"",h_absolute("tests/esp32/word-vectors.flex"),"\";fn main(){return word_vectors()!=0;}"));te_compile(te_fixture,te_binary);te_run(te_binary,0,0);te_legacy=0;
+    te_legacy=1;te_compile("tests/esp32/lifecycle-committed.flex",te_binary);te_run(te_binary,0,"PASS: committed base retains owned heap and IRQ state");te_legacy=0;
+    te_compile("tests/esp32/lifecycle-committed-s3.flex",te_binary);te_run(te_binary,0,"PASS: committed base retains owned heap and IRQ state");
     h_compile(te_compiler,"tests/esp32/legacy-register-model.flex",te_binary);h_check(h_run(h_args(te_binary,0,0,0,0,0)),0,"");te_checks=te_checks+1;
     let report=b_option(argc,argv,"--report",0);if report {
         let r=j_object();j_set(r,"target",j_string("esp32s3 and esp32"));j_set(r,"transport",j_string("Espressif QEMU, ROM flash boot"));

@@ -9,6 +9,8 @@ global esp_wifi_lifecycle_busy=0;
 global esp_wifi_control_task=0;
 global esp_wifi_control_active=0;
 global esp_wifi_cleanup_error=0;
+// Final platform cleanup may retain an IRQ-off recovery lease across returns.
+global esp_wifi_cleanup_phase=0;global esp_wifi_cleanup_ps=0;global esp_wifi_cleanup_task=0;
 global esp_wifi_init_config=0;
 global esp_wifi_started=0;
 global esp_wifi_linked=0;
@@ -181,27 +183,37 @@ fn esp_wifi_station_start() {
     if !esp_wifi_vendor_initialized || !esp_wifi_supplicant {esp32_irq_restore(ps);return -19;}if esp_sdk_irq_blocked(ps) || esp_wifi_lifecycle_busy || esp_wifi_operations_active() || (esp_wifi_control_task && esp_wifi_control_task!=esp_sdk_current) || esp32_load32(esp32_state()+16) || esp_sdk_timer_active {esp32_irq_restore(ps);return -16;}if esp_wifi_vendor_running {esp32_irq_restore(ps);return 0;}
     esp_wifi_lifecycle_busy=1;esp32_irq_restore(ps);let r=esp32_call32(esp32_external("esp_wifi_start"),0,0,0,0,0,0,0,0);if !r {esp_wifi_vendor_running=1;r=esp32_call32(esp32_external("esp_wifi_set_ps"),0,0,0,0,0,0,0,0);}ps=esp32_irq_save();esp_wifi_last_error=r;esp_wifi_lifecycle_busy=0;esp32_irq_restore(ps);return r;
 }
+fn esp_wifi_cleanup_finish_irq() {
+    let ps=esp_wifi_cleanup_ps;esp_wifi_cleanup_phase=0;esp_wifi_cleanup_ps=0;esp_wifi_cleanup_task=0;esp32_irq_restore(ps);return 0;
+}
 fn esp_wifi_teardown() {
-    let r=esp_wifi_stop_inner();if r {return r;}
-    if esp_wifi_vendor_initialized {r=esp32_call32(esp32_external("esp_wifi_deinit_internal"),0,0,0,0,0,0,0,0);if r {return r;}esp_wifi_vendor_initialized=0;}
-    if esp_wifi_supplicant {r=esp32_call32(esp32_external("esp_supplicant_deinit"),0,0,0,0,0,0,0,0);if r {return r;}esp_wifi_supplicant=0;}
-    let deadline=esp_sdk_now()+100000;r=esp_radio_resources_ready();while r && esp_sdk_now()<deadline {esp_sdk_delay(1);r=esp_radio_resources_ready();}if r {return r;}if esp_wifi_rx_busy {return -16;}
-    // Keep the final lease check, domain release and native pointer removal
-    // atomic, so an application task cannot enter the old packet storage.
-    let ps=esp32_irq_save();if esp_wifi_operations_active() {esp32_irq_restore(ps);return -16;}
-    // The pinned vendor library retains these lazy mutex pointers across its
-    // deinit calls. All its tasks have exited: clear the references before
-    // releasing their owned objects, so a later init creates fresh mutexes.
-    esp_wifi_platform_reset_locks();
-    r=esp_radio_phy_release_buffers();if r {esp32_irq_restore(ps);return r;}r=esp_wifi_platform_release();if r {esp32_irq_restore(ps);return r;}r=esp_radio_resources_end(esp32_callback(esp_radio_irq));if r {esp32_irq_restore(ps);return r;}
+    let r=0;
+    if esp_wifi_cleanup_phase {
+        esp32_irq_save();
+        if esp_wifi_cleanup_phase!=1 || !esp_sdk_current || esp_wifi_cleanup_task!=esp_sdk_current || esp32_load32(esp32_state()+16) || esp_sdk_timer_active || esp_wifi_operations_active() {return -16;}
+    }else{
+        r=esp_wifi_stop_inner();if r {return r;}
+        if esp_wifi_vendor_initialized {r=esp32_call32(esp32_external("esp_wifi_deinit_internal"),0,0,0,0,0,0,0,0);if r {return r;}esp_wifi_vendor_initialized=0;}
+        if esp_wifi_supplicant {r=esp32_call32(esp32_external("esp_supplicant_deinit"),0,0,0,0,0,0,0,0);if r {return r;}esp_wifi_supplicant=0;}
+        let deadline=esp_sdk_now()+100000;r=esp_radio_resources_ready();while r && esp_sdk_now()<deadline {esp_sdk_delay(1);r=esp_radio_resources_ready();}if r {return r;}if esp_wifi_rx_busy {return -16;}
+        // Vendor work is complete. Retain this final critical section until
+        // platform recovery, domain release and pointer removal all finish.
+        let ps=esp32_irq_save();if esp_wifi_operations_active() {esp32_irq_restore(ps);return -16;}
+        esp_wifi_platform_reset_locks();
+        r=esp_radio_phy_release_buffers();if r {esp32_irq_restore(ps);return r;}
+        esp_wifi_cleanup_ps=ps;esp_wifi_cleanup_task=esp_sdk_current;esp_wifi_cleanup_phase=1;
+    }
+    r=esp_wifi_platform_release();if r {if esp_wifi_platform_release_pending() {return r;}esp_wifi_cleanup_finish_irq();return r;}
+    r=esp_radio_resources_end(esp32_callback(esp_radio_irq));if r {esp_wifi_cleanup_finish_irq();return r;}
     esp_sdk_free(esp_wifi_init_config);esp_sdk_free(esp_wifi_rx_ring);esp_wifi_init_config=0;esp_wifi_rx_ring=0;esp_wifi_initialized=0;esp_wifi_control_task=0;esp_wifi_attempts=0;esp_wifi_reason=0;
-    esp_radio_isr=0;esp_radio_isr_arg=0;esp_radio_osi=0;esp_radio_event_hook=0;esp_radio_scan_done=0;esp_radio_scan_status= -1;esp32_irq_restore(ps);return 0;
+    esp_radio_isr=0;esp_radio_isr_arg=0;esp_radio_osi=0;esp_radio_event_hook=0;esp_radio_scan_done=0;esp_radio_scan_status= -1;esp_wifi_cleanup_finish_irq();return 0;
 }
 fn esp_wifi_station_deinit() {
     let ps=esp32_irq_save();
-    if esp_sdk_irq_blocked(ps) || esp_wifi_lifecycle_busy || esp_wifi_operations_active() || (esp_wifi_control_task && esp_wifi_control_task!=esp_sdk_current) || esp32_load32(esp32_state()+16) || esp_sdk_timer_active || (esp_radio_owner && esp_radio_owner!=1) {esp32_irq_restore(ps);return -16;}
-    if !esp_radio_owner && !esp_wifi_initialized && !esp_wifi_rx_ring && !esp_radio_osi {esp32_irq_restore(ps);return 0;}
-    esp_wifi_lifecycle_busy=1;esp32_irq_restore(ps);let r=esp_wifi_teardown();ps=esp32_irq_save();esp_wifi_cleanup_error=r;esp_wifi_lifecycle_busy=0;esp32_irq_restore(ps);return r;
+    let recovery=esp_wifi_cleanup_phase;
+    if (!recovery && esp_sdk_irq_blocked(ps)) || (recovery && (recovery!=1 || esp_wifi_cleanup_task!=esp_sdk_current)) || (!recovery && esp_wifi_lifecycle_busy) || esp_wifi_operations_active() || (esp_wifi_control_task && esp_wifi_control_task!=esp_sdk_current) || esp32_load32(esp32_state()+16) || esp_sdk_timer_active || (esp_radio_owner && esp_radio_owner!=1) {if !recovery {esp32_irq_restore(ps);}return -16;}
+    if !recovery && !esp_radio_owner && !esp_wifi_initialized && !esp_wifi_rx_ring && !esp_radio_osi {esp32_irq_restore(ps);return 0;}
+    esp_wifi_lifecycle_busy=1;if !recovery {esp32_irq_restore(ps);}let r=esp_wifi_teardown();ps=esp32_irq_save();esp_wifi_cleanup_error=r;if !esp_wifi_cleanup_phase {esp_wifi_lifecycle_busy=0;}esp32_irq_restore(ps);return r;
 }
 fn esp_wifi_station_init() {
     let ps=esp32_irq_save();
@@ -209,5 +221,5 @@ fn esp_wifi_station_init() {
     if !esp_sdk_current {esp32_irq_restore(ps);return -19;}if esp32_load32(esp32_state()+16) || esp_sdk_timer_active {esp32_irq_restore(ps);return -16;}
     esp_wifi_lifecycle_busy=1;esp_wifi_cleanup_error=0;let r=esp_radio_resources_begin(1);if !r {esp_wifi_control_task=esp_sdk_current;}esp32_irq_restore(ps);
     if !r {r=esp_wifi_station_setup();if r {esp_wifi_cleanup_error=esp_wifi_teardown();}}
-    ps=esp32_irq_save();esp_wifi_last_error=r;esp_wifi_lifecycle_busy=0;esp32_irq_restore(ps);return r;
+    ps=esp32_irq_save();esp_wifi_last_error=r;if !esp_wifi_cleanup_phase {esp_wifi_lifecycle_busy=0;}esp32_irq_restore(ps);return r;
 }

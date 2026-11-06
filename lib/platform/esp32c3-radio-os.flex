@@ -3,7 +3,7 @@ import "esp32c3-sdk-preempt.flex";
 import "esp32c3-sdk-timer.flex";
 import "esp32c3-libc-rom.flex";
 import "esp32c3-atomics.flex";
-import "esp32-riscv-radio-hardware.flex";
+import "esp32c3-radio-hardware.flex";
 import "esp32-riscv-radio-irq.flex";
 import "esp32-riscv-radio-phy.flex";
 import "esp32-radio-os-core.flex";

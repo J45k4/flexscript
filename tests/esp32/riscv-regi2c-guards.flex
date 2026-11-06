@@ -25,6 +25,19 @@ fn main(){
  if esp_radio_hardware_init()!=-16 || esp_radio_hardware_deinit()!=-16 || esp_radio_phy_enable()!=-16 || esp_radio_phy_disable()!=-16 || esp_radio_phy_clock(1)!=-16{return 20;}
  esp_radio_hw_ready=1;if esp_radio_phy_enable()!=-16 || esp_radio_phy_disable()!=-16 || esp_radio_phy_clock(1)!=-16 || esp_sdk_heap_free()!=free{return 21;}esp_radio_hw_ready=0;
  esp_radio_base_active=0;
+ let owned=esp_radio_cb_malloc(48,0,0,0,0,0,0,0);if !owned{return 25;}store64(owned,0x123456789abcdef0);store64(owned+40,0xfedcba9876543210);
+ let lifetime_free=esp_sdk_heap_free();let tasks=esp_sdk_tasks;let current=esp_sdk_current;let timers=esp_sdk_timers;let routes=esp_radio_irq_routes;let mask=esp32_irq_enabled();
+ let irq_mode=0;while irq_mode<2{
+  let saved=esp32_irq_save();let wanted=saved&~8;if !irq_mode{wanted=wanted|8;}esp32_irq_restore(wanted);
+  esp_radio_base_configured=1;
+  // Readiness permits vendor quiescence; final owner release must wait for
+  // the committed base lifetime to finish, before touching lists or heap.
+  if esp_radio_resources_ready() || esp_radio_resources_end(esp32_iram_callback(esp_radio_irq))!=-16 || esp_radio_owner!=1 || esp_sdk_heap_free()!=lifetime_free{return 22;}
+  esp_radio_owner=0;if esp_radio_resources_begin(1)!=-16 || esp_radio_resources_begin(2)!=-16 || esp_radio_owner || esp_sdk_heap_free()!=lifetime_free{return 23;}esp_radio_owner=1;
+  if esp_sdk_tasks!=tasks || esp_sdk_current!=current || esp_sdk_timers!=timers || esp_radio_irq_routes!=routes || esp32_irq_enabled()!=mask || esp_sdk_heap_owner(owned)!=1 || load64(owned)!=0x123456789abcdef0 || load64(owned+40)!=0xfedcba9876543210{return 26;}
+  let actual=esp32_irq_save();if actual!=wanted{return 24;}esp_radio_base_configured=0;esp32_irq_restore(saved);irq_mode=irq_mode+1;
+ }
+ esp_sdk_free(owned);if esp_sdk_heap_free()!=free{return 27;}
  if rv_hal_chip==5{if esp_radio_c6_regi2c_recover(100)!=-95{return 11;}}else{if esp_radio_c6_regi2c_recover(100){return 12;}}
  if esp_radio_resources_end(esp32_iram_callback(esp_radio_irq))||esp_radio_owner||esp_sdk_heap_free()!=free{return 13;}
  esp_uart_write("PASS: analog-I2C/PMU refusal guards and retained radio domain ownership; no C6 PMU execution\r\n");return 0;

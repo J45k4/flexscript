@@ -1,12 +1,14 @@
 global base_cfg=0;global base_sysmap=0;global base_lpmap=0;global base_wifi=0;global base_32k=0;
 global base_old_sysmap=0;global base_old_lpmap=0;global base_old_wifi=0;global base_old_32k=0;global base_old_clock=0;global base_old_code=0;global base_old_slp=0;global base_old_live=0;global base_old_ps=0;
+global base_final_mode=0;global base_final_delta=0;global base_final_start=0;global base_final_calls=0;global base_final_reads=0;
 global base_requests=0;global base_pending=0;global base_polls=0;global base_hang=0;global base_release=0;global base_inside=0;global base_unrestored=0;global base_ignore_map=0;
+global base_stores=0;global base_fail_address=0;global base_foreign_ble=0;global base_foreign_32k=0;
 fn base_seed(mode,branch){
  check(!esp_radio_base_active);esp_radio_base_configured=0;esp_radio_modem_configured=0;esp_radio_pmu_configured=0;flow_reset(mode,branch);restoring=1;check(!esp_radio_c6_pmu_abort(1000));stage_reset(1500+mode,85);if !branch{fuse_version=0;}if branch==2{reset_reason=2+(mode%254);}
  base_sysmap=((mode+1)*0x1234567)&0xffffffff;base_lpmap=((mode+3)*0x31415927)&0xffffffff;base_wifi=(mode*35)&0xffff;base_32k=mode&3;
  clock=clock&~11;pll_modem0=0;pll_modem1=0;base_old_clock=clock;let code=(load64(pmu_bank+5*8)>>30)&3;let slp=(load64(pmu_bank+6*8)>>26)&1;pll_power=(pll_power&~0xf00000)|(code<<21)|(slp<<23)|((mode&1)<<20);
  base_old_sysmap=base_sysmap;base_old_lpmap=base_lpmap;base_old_wifi=base_wifi;base_old_32k=base_32k;base_old_code=load64(pmu_bank+5*8);base_old_slp=load64(pmu_bank+6*8);base_old_live=pll_power&0xf00000;
- base_old_ps=0x1880|((mode&1)*8);ps=base_old_ps;base_requests=0;base_pending=0;base_polls=0;base_hang=0;base_release=0;base_inside=0;base_unrestored=0;base_ignore_map=0;return 0;
+ base_old_ps=0x1880|((mode&1)*8);ps=base_old_ps;base_requests=0;base_pending=0;base_polls=0;base_hang=0;base_release=0;base_inside=0;base_unrestored=0;base_ignore_map=0;base_final_mode=0;base_final_delta=0;base_final_start=0;base_final_calls=0;base_final_reads=0;base_stores=0;base_fail_address=0;base_foreign_ble=0;base_foreign_32k=0;return 0;
 }
 fn base_complete(){
  if base_pending==1{pll_power=(pll_power&~0x600000)|(((load64(pmu_bank+5*8)>>30)&3)<<21);}else{pll_power=(pll_power&~0x800000)|(((load64(pmu_bank+6*8)>>26)&1)<<23);}
@@ -14,12 +16,14 @@ fn base_complete(){
 }
 fn esp32_call64(address,a,b,c,d,e,f,g,h){if address==29{base_inside=1;let result=esp_radio_c6_base_strobe_iram(a,b,c,d,e,f,g,h);base_inside=0;return result;}return base_model_call64(address,a,b,c,d,e,f,g,h);}
 fn esp32_load32(address){
+ if address==0x600b0194 && base_final_mode && esp_radio_base_recovery==7 && esp_radio_base_active{base_final_reads=base_final_reads+1;let elapsed=base_final_delta;if base_final_mode==2 && base_final_reads==1{elapsed=100;}tick=(base_final_start+elapsed)&0xffffffff;if base_final_mode==2 && base_final_reads==1{return esp_radio_base_live^0x100000;}return esp_radio_base_live;}
  if address==0x600b00dc || address==0x600b00d0{check(0);}
  if address==0x600b0194 && base_pending{if base_requests!=base_hang || base_release{if base_polls{base_polls=base_polls-1;}else{base_complete();}}}
- if address==0x600a980c{return base_sysmap;}if address==0x600af020{return base_lpmap;}if address==0x600af00c{return base_wifi;}if address==0x600af014{return base_32k;}if address==0x600af01c || address==0x600af004 || address==0x600af008{return 0;}if address==0x60096018{return pll_mspi;}
+ if address==0x600a980c{return base_sysmap;}if address==0x600af020{return base_lpmap;}if address==0x600af00c{return base_wifi;}if address==0x600af014{return base_32k;}if address==0x600af01c{return base_foreign_ble;}if address==0x600af004 || address==0x600af008{return base_foreign_32k;}if address==0x60096018{return pll_mspi;}
  let result=base_model_load32(address);if address==0x600b0194 && base_unrestored{return result^0x100000;}return result;
 }
 fn esp32_store32(address,value){
+ base_stores=base_stores+1;if base_fail_address==address{return 0;}
  if address==0x600b00dc || address==0x600b00d0{
   check(base_inside && esp_radio_base_active && esp_radio_base_internal && !(ps&8) && esp_radio_base_issued && !base_pending);base_requests=base_requests+1;
   if address==0x600b00dc{check(value==0x80000000);base_pending=1;}else{check(value==0x10000000);base_pending=2;}
@@ -54,7 +58,18 @@ fn main(argc,argv){
  base_seed(9,1);check(!esp_radio_c6_base_prepare(0,0,1000));base_unrestored=1;restoring=1;check(esp_radio_c6_base_abort(400)==-110 && esp_radio_base_active);base_unrestored=0;check(!esp_radio_c6_base_abort(1000));base_restored();
  base_seed(9,1);pll_power=pll_power^0x200000;check(esp_radio_c6_base_prepare(0,0,1000)==-16 && !esp_radio_base_active && !base_requests && ps==base_old_ps);pll_power=pll_power^0x200000;
  check(esp_radio_c6_base_prepare(6,0,1000)==-22 && esp_radio_c6_base_abort(0)==-22 && !esp_radio_base_active);
+ // The final status read is a timed boundary too. Freeze the clock between
+ // observations and schedule the read at an independent elapsed timestamp.
+ let wrapped=0;while wrapped<2{let enabled=0;while enabled<2{let delayed=1;while delayed<=2{let boundary=0;while boundary<3{
+  base_seed(8+enabled,1);check(!esp_radio_c6_base_prepare(0,0,1000));base_final_mode=delayed;base_final_delta=399+boundary;if wrapped{tick=0xfffffff0;}restoring=1;
+  let result=esp_radio_c6_base_abort(400);if !boundary{check(!result);base_restored();}else{check(result==-110 && esp_radio_base_active && esp_radio_base_phase==2 && esp_radio_base_recovery==7 && esp_radio_base_cleanup_error==-110 && ps==(base_old_ps&~8));base_blocked();base_final_mode=0;check(!esp_radio_c6_base_abort(1000));base_restored();}
+  check(base_final_reads==delayed);boundary=boundary+1;
+ }delayed=delayed+1;}enabled=enabled+1;}wrapped=wrapped+1;}
+ // Once the budget has already expired, do not issue another monitor read.
+ base_seed(9,1);check(!esp_radio_c6_base_prepare(0,0,1000));base_final_mode=3;restoring=1;check(esp_radio_c6_base_abort(400)==-110 && !base_final_reads && esp_radio_base_recovery==7 && esp_radio_base_active);base_final_mode=0;check(!esp_radio_c6_base_abort(1000));base_restored();
+ // Retain the preparation failure separately from a late cleanup failure.
+ base_seed(9,1);reset_reason=256;check(esp_radio_c6_base_prepare(0,0,1000)==-5 && esp_radio_base_error==-5);base_final_mode=1;base_final_delta=400;restoring=1;check(esp_radio_c6_base_abort(400)==-110 && esp_radio_base_error==-5 && esp_radio_base_cleanup_error==-110);base_final_mode=0;check(!esp_radio_c6_base_abort(1000) && esp_radio_base_error==-5 && !esp_radio_base_cleanup_error);base_restored();
  // Commit transfers the prepared base/PMU/modem state before PHY ownership.
  base_seed(9,1);check(!esp_radio_c6_base_prepare(0,0,1000));esp_radio_base_step=5;check(esp_radio_c6_base_commit()==-16 && esp_radio_base_active);esp_radio_base_step=6;check(!esp_radio_c6_base_commit() && esp_radio_base_configured && esp_radio_modem_configured && esp_radio_pmu_configured && !esp_radio_base_active && ps==base_old_ps);check(esp_radio_c6_base_abort(1000)==-16);
- let out=alloc(8);store64(out,checks);return syscall(1,1,out,8,0,0,0)!=8;
+ base_release_suite();let out=alloc(8);store64(out,checks);return syscall(1,1,out,8,0,0,0)!=8;
 }

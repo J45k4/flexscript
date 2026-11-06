@@ -3,7 +3,7 @@ import "esp32c6-sdk-preempt.flex";
 import "esp32c6-sdk-timer.flex";
 import "esp32c6-libc-rom.flex";
 import "esp32c6-atomics.flex";
-import "esp32-riscv-radio-hardware.flex";
+import "esp32c6-radio-hardware.flex";
 import "esp32c6-radio-regi2c.flex";
 import "esp32c6-radio-pmu.flex";
 import "esp32c6-radio-pmu-stage.flex";

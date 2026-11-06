@@ -1,6 +1,6 @@
 # ESP32-C3 and C6 RISC-V targets
 
-`esp32c3` and `esp32c6` emit RV32IM machine code directly from the shared word
+`esp32c3` and `esp32c6` emit RV32IMC machine code directly from the shared word
 IR. They package two SRAM segments in an Espressif ROM image. The matching
 `esp32c3-elf` and `esp32c6-elf` targets emit ELF32 executables with symbols, SRAM profile metadata and
 optional vendor import slots for the explicit linker tool. The compiler invokes no assembler, linker or SDK build.
@@ -960,8 +960,60 @@ patched. The host wrapper only supplies the bundled ROM search path. Build with
 one low-priority job; the local Meson/Ninja tools do not replace the compiler.
 The build uses `-Ddtc:werror=false` for newer host C headers and enables the
 installed libslirp dependency because this vendor revision incorrectly treats
-a disabled wrapped dependency as found. Its C3 machine currently exits with an
-unknown AES device type, so keep the established C3 release selected separately.
+a disabled wrapped dependency as found. Its `config-host.h` leaves
+`CONFIG_GCRYPT` undefined. The pinned Meson file then omits C3 AES/RSA device
+implementations even though C3 startup requires them, causing an unknown AES
+device type before guest execution. Keep a separate, existing C3 executable;
+no emulator patch is needed to test the firmware.
+
+The C3 tool is the unmodified Linux x86_64 asset from [Espressif release
+esp-develop-9.2.2-20260417](https://github.com/espressif/qemu/releases/tag/esp-develop-9.2.2-20260417).
+Restore it locally, checking the pinned archive before extraction:
+
+```sh
+tool_root=build/esp32-c3-qemu
+archive=qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+release=https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417
+mkdir -p "$tool_root/tool"
+curl -fL --retry 2 "$release/$archive" -o "$tool_root/qemu.tar.xz"
+printf '%s  %s\n' \
+  547f03e04701a92cbb699f7f7d015adc1f5b5ef93cbb94c0dd9b7107e2d84e77 \
+  "$tool_root/qemu.tar.xz" | sha256sum -c -
+tar -xJf "$tool_root/qemu.tar.xz" -C "$tool_root/tool"
+"$tool_root/tool/qemu/bin/qemu-system-riscv32" --version
+```
+
+The executable SHA256 is
+`834699a726720f5273b79bb1e8b3f735f6e0540f17fdf466dfd20055605f2b4d`;
+its bundled `share/qemu/esp32c3-rom.bin` SHA256 is
+`0de1e65020e803bea0d7443dca149d61895e01fca3bb9c82d073234eebd73f99`.
+`ldd` should report no missing dependencies, including libgcrypt. Pass this
+executable as `--qemu` and the separate C6 wrapper as `--qemu-c6`. This only
+restores a verification tool: no global installation, emulator implementation
+or physical-device firmware changes are involved.
+
+A combined replay selects both tools explicitly. The two `unavailable` flags
+preserve package checks for the six C6 STORE1-dependent OSI cases and the two
+UART timeout cases; strict mode continues to detect their failures.
+
+```sh
+build/test-riscv --compiler build/flexscript-riscv \
+  --qemu "$tool_root/tool/qemu/bin/qemu-system-riscv32" \
+  --qemu-c6 build/esp32-c6-qemu-upstream/qemu-system-riscv32 \
+  --reference /path/to/pinned-idf-reference \
+  --legacy-compiler /path/to/pinned-idf-reference/legacy-riscv-tasks-compiler \
+  --c6-uart-timeout unavailable --c6-slowclk-store unavailable \
+  --work build/riscv-combined --report build/riscv-combined-report.json
+```
+
+The2026-10-19 replay records422 C3/493 C6 completed ROM probes, including
+expected traps and defect controls, in53 family reports. Supplemental execution
+covers64 unchanged C3 transfer/frame/callback packages. One C3 full-PHY wait
+and the eight C6 model-gap cases remain incomplete; actual PMU/analog/RF and
+physical peripheral acceptance stay open. See
+`build/esp32-c3-tool-20261019/report.json` and `reproduce.py` for exact tools,
+source hashes and the frozen compiler/bounds/PMU replay (`--full` replays the
+complete canonical suite).
 
 Individual execution-capable Python peers use `--execute-c6 --qemu-c6 PATH` for
 the same opt-in behavior. The shared ownership fixture skips the chip's reserved
@@ -1131,6 +1183,13 @@ primary-HAL oracle checks clock decoding and modeled handoff/restoration;
 real ELF packages verify IRAM placement, and optional C6 ROM checks verify
 signed refusal statuses. Actual clock switching and physical timing remain
 unverified.
+
+The clock model starts from a complete PMU stage, including all six force
+fields, and proves commit succeeds without a clock lease in both IRQ states.
+Busy-clock refusal must retain the complete stage and caller IRQ state. These
+positive controls prevent an unrelated incomplete-stage check from masking a
+missing ownership guard; all18 injected clock-policy defects are detected.
+This is model admission evidence, separate from a physical clock handoff.
 
 `esp32c6-radio-pll.flex` adds an explicit owned PLL power cycle beneath the
 CPU clock lease. After `esp_radio_c6_pmu_stage` and a successful
@@ -1386,10 +1445,92 @@ the next abort; it is not replayed. IRQs remain masked until exact recovery.
 cleanup failures distinct. `phase`, `step`, `recovery`, `command_step` and
 `issued` expose resumable progress.
 
+The final readonly status read observes the same deadline as other recovery
+steps. Check time before reading and again after the observation, even if the
+status matches. An observation at or after the deadline returns `-110`, keeps
+recovery step7 and the base lease, and leaves interrupts masked. A later abort
+can finish without replaying preparation or earlier PMU requests. The original
+preparation error remains separate from the latest cleanup error.
+
+Regression cases schedule matching reads just before, exactly at and after
+the deadline, including cycle-counter wrap, both IRQ states, delayed matches,
+already-expired reads and retries. The composed model exercises actual lower
+stages; C6 SRAM/XIP/radio firmware separately exercises the real recovery and
+IRQ instructions with an explicit clock/monitor boundary. These fixtures do
+not access the PMU monitor or prove silicon timing/acknowledgement.
+Evidence: `build/esp32-c6-recovery-deadline-20261019/report.json`.
+
+
 `esp_radio_c6_base_commit()` requires complete preparation and transfers the
 base/modem/PMU configuration to platform lifetime before PHY ownership.
 Competing lifecycle, hardware, PHY, PMU, analog and PLL operations refuse the
 held base lease. Committed state cannot be undone with staging abort.
+
+`esp_radio_c6_base_release(cycles)` releases a **committed** base lifetime.
+Call after vendor tasks/IRQs are quiescent and hardware-ready and PHY/clock
+references are zero, while the Wi-Fi domain owner is still held. Admission
+rejects other PMU/calibration/clock leases, active DMA/flash engines, foreign
+modem users, an incompatible shared32k selector and unrepresented live state.
+A separate committed PMU/modem without the enclosing base receipt is refused.
+An already released, otherwise quiescent owner can call release again.
+
+Commit retains the original PMU, force, analog-policy and modem snapshots.
+Release rearms those cleanup counters once and resumes the existing inverse
+journal, preserving completed calibration. The IRQ state saved for release is
+the **current caller's** state, rather than the earlier startup caller's state.
+A failure retains all three configured flags, `esp_radio_base_releasing=1`,
+the active base lease and the IRQ mask. Retry release, or continue the owned
+abort, until exact recovery succeeds. Counters are not rearmed on retry and
+issued inverse WT commands are not replayed. Only then are base/modem/PMU
+configured flags cleared and the saved caller IRQ state restored.
+
+`esp_radio_resources_ready()` remains usable for vendor quiescence while the
+configuration is committed. Final `esp_radio_resources_end()` and a fresh
+`esp_radio_resources_begin()` refuse while `esp_radio_base_configured` is set;
+cleanup cannot orphan the retained snapshots by dropping their radio owner.
+Owned allocations, task/timer lists and IRQ state stay intact on that refusal.
+The C6 hardware teardown now uses this receipt through its own target entry.
+Complete PHY startup and physical PMU/RF acceptance remain open.
+
+C3 and C6 entry functions live in `esp32c3-radio-hardware.flex` and
+`esp32c6-radio-hardware.flex`; shared radio callbacks remain in the RISC-V
+module. C6 teardown cannot run the C3 power/isolation writes. Its
+`esp_radio_c6_hardware_deinit(cycles)` accepts a committed base lifetime even
+when hardware-ready is zero, retires readiness only after admission, and
+resumes pending cleanup. The ordinary no-argument hardware entry supplies a
+400,000-cycle budget per operation. Hardware initialization still returns
+`-95` before RF startup.
+
+Wi-Fi final cleanup journals its original outer IRQ state and owning task.
+While C6 platform recovery is pending, the lifecycle stays busy, domain and
+native buffers stay owned, and IRQs stay masked. Only the owning task can
+resume `esp_wifi_station_deinit()` in that state. Retry skips vendor teardown,
+SDK quiescence waits, mutex resets and PHY-buffer cleanup already completed.
+Domain objects and native pointers are released before restoring the saved
+outer IRQ state. Direct lower recovery may finish first; the Wi-Fi journal
+still finishes its own resource release. Ordinary vendor failures and errors
+without a pending platform lease restore normal caller IRQ state.
+
+The composed verifier runs49 nominal committed releases,68 admission cases,
+10 failure/retry scenarios and48 fresh preparations per release entry, across
+both the public base API and C6 hardware teardown. Fifteen Wi-Fi scenarios
+exercise vendor/SDK boundary peers, pending ownership, retries and errors.
+It detects26 base defects and12 hardware/Wi-Fi integration defects. Native
+C6 SRAM/XIP/radio fixtures check admission and timed lifetime-tail boundaries;
+seven additional C6 ROM boots check real SDK heap/domain cleanup and IRQ
+state, including six deliberate Wi-Fi defects. The latter start with an
+already restored phase7 receipt and explicit final clock/monitor peers; they
+do not execute valid PMU transactions or vendor radio functions.
+
+The canonical C3/C6 suite and existing26-ROM-boot/1217-check Xtensa suite run
+from the frozen source closure. The separate Xtensa C-vendor Wi-Fi regression
+suite requires the unavailable Xtensa cross GCC; those peers are not rebuilt
+by this verification. No model or ROM result is physical PMU or RF proof.
+Evidence and full frozen replay: `build/esp32-c6-hardware-release-20261019/report.json`
+and `reproduce.py`. The previous selected-family frozen replay is retained in
+`build/esp32-c6-base-release-20261019`; its old optional full mode omitted vendor
+checksum manifests. The new closure includes those build-policy inputs and
+its full mode is executed as part of acceptance.
 
 The read-only status monitor supplies a postcondition, not a documented busy
 or acknowledgement bit. A request ignored while its target already matches
@@ -1398,17 +1539,23 @@ request completion, including delayed sampling and pending-request failures;
 it is not silicon acknowledgement proof. The primary C oracle checks256
 preinit vectors; the composed model runs all actual lower stages and detects
 13 injected defects. Native admission/guard firmware and a full pinned
-vendor/SDK-linked image are verified separately. The full combined image uses
-64,288 bytes of the unchanged64KiB IRAM partition. It boots to the existing
-clean `-95` refusal; valid WT MMIO, physical clocks and full PHY remain unproved.
+vendor/SDK-linked image are verified separately. The full combined consumer,
+including the explicit release path, uses64,032 bytes of the unchanged64KiB
+IRAM partition. It boots to the existing clean `-95` refusal; valid WT MMIO, physical clocks and full PHY remain unproved.
 The production hardware initializer retains its gate.
 
 ### Compact RV32 emission
 
 The backend emits RV32IMC, marking ELF `EF_RISCV_RVC` when emitting compressed
 instructions. Small constants/moves/adds, stack/frame word accesses and returns
-use legal C encodings; fixed-width address materialization, call/jump fixups
-and the32-entry IRQ vector remain fixed width. Vector alignment remains256
+use legal C encodings. Intra-function branches start with a two-byte `C.J`
+(−2048..2046 bytes), grow to a four-byte `JAL` (−1048576..1048574), and retain
+the eight-byte `AUIPC`/`JALR` sequence beyond that range. Layout repeats until
+all edges fit, including cascading growth; call/address relocations rewind
+before each repeat. Branch records hold their exact sites and forms. All
+displacements use the physical IRAM/IROM mapping. Fixed-width address
+materialization, call fixups, runtime-helper jumps and the32-entry IRQ vector
+retain their widths. Vector alignment remains256
 bytes and output sections remain4-byte aligned.
 
 The private frame base is the bottom of the allocated local region. Physical
@@ -1426,7 +1573,23 @@ fallbacks. `riscv-frame-reference.py` exercises large local/argument frames,
 branch and loop defaults across SRAM/XIP/radio profiles, with C6 ROM execution
 and explicit C3 package checks. Existing C ABI, context, IRQ and TLS probes
 check interoperability; these are compiler/firmware checks, not physical RF
-or timing measurements. The canonical RISC-V driver includes both new cohorts.
+or timing measurements. The canonical RISC-V driver also runs
+`riscv-branch-reference.py` and `riscv-branch-controls.py` when `--qemu-c6`
+is supplied; `--branch-baseline PATH` additionally replays a previous compiler.
+
+Branch verification covers all2048 compressed jump immediates and269 direct
+jump vectors against LLVM, plus10 invalid range/alignment inputs. Independent
+IR/decoded-machine-code checks cover short/medium/full-range forward and
+backward edges, taken and untaken high-word conditions, cascading growth,
+terminal FIR jumps and actual calls/callbacks. The with-baseline matrix passes
+86 C6 ROM boots and86 C3 package checks; six isolated implementation defects
+are detected. These package checks do not establish current C3 execution.
+
+The unchanged pinned C6 vendor consumer shrinks from64288 to61488 IRAM bytes
+(2800 bytes saved), reproducing the previous baseline image exactly and
+retaining result `-95` with cleanup0 onboth compiler versions. The hardware
+readiness gate still prevents full PHY startup. Evidence:
+`build/esp32-rv32-branches-20261019/report.json`.
 
 
 ### Atomic Wi-Fi clock and reset callbacks
@@ -1455,3 +1618,12 @@ It runs42 C6 ROM probes, including36 fail-stop guard cases, and retains6
 explicit C3 package checks. Native probes use a RAM register-update spy;
 actual clock/reset MMIO and physical RF are not inferred from those boots.
 The full vendor image still stops at the clean C6 `-95` hardware gate.
+
+The restored official C3 tool also executes the previously package-only RV32
+transfer/frame cohort:43 branch variants and15 frame variants across SRAM,
+XIP and radio profiles, using the exact earlier ELF/image pairs. All return
+zero; no image is rewritten for the replay. These supplemental results live in
+`build/esp32-c3-tool-20261019/C3-matrices/report.json`, with the command helper
+`replay-c3-matrices.py`. The canonical family reports retain their original
+package-only labels; this additional execution does not imply peripheral or
+physical-device acceptance.

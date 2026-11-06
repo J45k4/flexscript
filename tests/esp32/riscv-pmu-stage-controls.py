@@ -29,10 +29,12 @@ def main():
         shutil.copy2(ROOT / name, target)
     mutations = [
         ('domain-lease-ignored', 'esp32-radio-lifecycle-core.flex', 'esp_radio_resources_ready', 15),
-        ('hardware-lease-ignored', 'esp32-riscv-radio-hardware.flex', 'esp_radio_hardware_deinit', 16),
+        ('hardware-lease-ignored', 'esp32c3-radio-hardware.flex', 'esp_radio_hardware_deinit', 16),
         ('PHY-enable-lease-ignored', 'esp32-riscv-radio-phy.flex', 'esp_radio_phy_enable', 18),
         ('PHY-disable-lease-ignored', 'esp32-riscv-radio-phy.flex', 'esp_radio_phy_disable', 18),
         ('PHY-clock-lease-ignored', 'esp32-riscv-radio-hardware.flex', 'esp_radio_phy_clock', 18),
+        ('committed-lifetime-released', 'esp32-radio-lifecycle-core.flex', 'esp_radio_resources_end', 22),
+        ('committed-lifetime-reacquired', 'esp32-radio-lifecycle-core.flex', 'esp_radio_resources_begin', 23),
     ]
     cases = []
     for mutation in [None, *mutations]:
@@ -41,8 +43,13 @@ def main():
         shutil.copytree(source, tree)
         if mutation:
             _, module, function, expected = mutation
+            before = ' || esp_radio_pmu_active'
+            if name == 'committed-lifetime-released':
+                before = 'if esp_radio_base_configured {esp32_irq_restore(ps);return -16;}'
+            elif name == 'committed-lifetime-reacquired':
+                before = ' || esp_radio_base_configured'
             helper['change'](tree / 'lib/platform' / module, function,
-                            lambda body: helper['once'](body, ' || esp_radio_pmu_active', ''))
+                            lambda body: helper['once'](body, before, ''))
         else:
             expected = 0
         output = w / name / 'run'
@@ -59,7 +66,7 @@ def main():
         cases.append(dict(name=name, expected_result=expected, actual_result=case['result'],
                           C3_ROM_boot=True, image_sha256=case['image_sha256']))
         print('PASS:', name, 'C3 terminal result', expected, flush=True)
-    report = dict(pass_all=True, C3_ROM_boots=1, C3_deliberate_defect_boots=5,
+    report = dict(pass_all=True, C3_ROM_boots=1, C3_deliberate_defect_boots=len(mutations),
                   C6_CPU_execution=False, physical_hardware=False, cases=cases,
                   source_sha256=manifest, compiler_sha256=hashlib.sha256(a.compiler.read_bytes()).hexdigest())
     (w / 'report.json').write_text(json.dumps(report, indent=2) + '\n')

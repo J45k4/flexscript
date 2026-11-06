@@ -11,7 +11,7 @@ global esp_radio_timer_created=0;
 global esp_radio_soft_owned=0;
 fn esp_radio_owned(pointer) {return esp_sdk_heap_tag(pointer,esp_radio_owner);}
 fn esp_radio_resources_begin(owner) {let ps=esp32_irq_save();
-    if esp_radio_owner || esp_adc_busy || esp_radio_base_active || esp_radio_regi2c_active || esp_radio_pmu_active || !esp_sdk_current || esp32_load32(esp32_state()+16) {esp32_irq_restore(ps);return -16;}if owner!=1 && owner!=2 {esp32_irq_restore(ps);return -22;}
+    if esp_radio_owner || esp_adc_busy || esp_radio_base_active || esp_radio_base_configured || esp_radio_regi2c_active || esp_radio_pmu_active || !esp_sdk_current || esp32_load32(esp32_state()+16) {esp32_irq_restore(ps);return -16;}if owner!=1 && owner!=2 {esp32_irq_restore(ps);return -22;}
     if !esp_radio_irq_routes {esp_radio_irq_routes=alloc(esp_radio_source_count()*16);if esp_radio_irq_routes<=0 {esp_radio_irq_routes=0;esp32_irq_restore(ps);return -12;}}
     let i=0;while i<esp_radio_source_count() {store64(esp_radio_irq_routes+i*16,0);i=i+1;}
     esp_radio_irq_before=esp32_irq_enabled();esp_radio_soft_owned=0;esp_radio_timer_created=0;esp_radio_owner=owner;esp32_irq_restore(ps);return 0;
@@ -40,6 +40,7 @@ fn esp_radio_resources_ready() {let ps=esp32_irq_save();
     let t=esp_sdk_tasks;while t {if load64(t+584)==esp_radio_owner && load64(t+544)!=2 {esp32_irq_restore(ps);return -16;}t=load64(t+536);if t==esp_sdk_tasks {t=0;}}esp32_irq_restore(ps);return 0;
 }
 fn esp_radio_resources_end(handler) {let ps=esp32_irq_save();
+    if esp_radio_base_configured {esp32_irq_restore(ps);return -16;}
     if !esp_radio_owner {esp32_irq_restore(ps);return 0;}let r=esp_radio_resources_ready();if r {esp32_irq_restore(ps);return r;}
     // Vendor deinit has completed and all its tasks have exited. Remove only
     // domain-owned timer nodes, then unlink/reap TCBs before freeing objects.

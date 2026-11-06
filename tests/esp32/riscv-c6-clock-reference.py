@@ -220,6 +220,7 @@ int main(void){
                               image_sha256=hashlib.sha256(image.read_bytes()).hexdigest()))
     report = dict(pass_all=True, checks=checks, primary_clock_vectors=3186, IRQ_modes=2,
                   detected_defects=controls, packaging=packaging, physical_hardware=False,
+                  valid_PMU_commit_controls=2, PMU_clock_refusal_retains_complete_stage=True,
                   CPU_clock_handoff_execution_verified=False, signed_callback_status_ROM_boots=3 if args.qemu_c6 else 0, PLL_power_cycling=False,
                   legacy_software_calibration=False,
                   compiler_sha256=hashlib.sha256(compiler.read_bytes()).hexdigest())
