@@ -40,6 +40,8 @@ fn main(argc,argv) {
     h_add(names,"test-transforms");
     h_add(names,"test-ml");
     h_add(names,"test-pup");
+    h_add(names,"pup-codegen");
+    h_add(names,"test-pup-codegen");
     h_add(names,"mnist-infer");
     h_add(names,"test-lowering");
     h_add(names,"test-native-size");
