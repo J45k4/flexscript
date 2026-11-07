@@ -29,6 +29,7 @@ import "native-ir.flex";
 import "extensions.flex";
 import "transforms.flex";
 import "gpu-codeobject.flex";
+import "proof-verify.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
 global source = 0;
@@ -305,7 +306,8 @@ fn next() {
         if token <= 258 && c != 123 && c != 125 && c != 40 && c != 41
             && c != 59 && c != 44 && c != 61 && c != 43 && c != 45
             && c != 42 && c != 47 && c != 37 && c != 60 && c != 62
-            && c != 33 && c != 126 && c != 38 && c != 124 && c != 94 {
+            && c != 33 && c != 126 && c != 38 && c != 124 && c != 94
+            && c != 46 && c != 58 {
             fail("unexpected source byte");
         }
     }
@@ -1344,7 +1346,7 @@ fn skip_function() {
     return 0;
 }
 
-fn compile_modules() {return compile_module_range(0);}
+fn compile_modules() {pf_prepare();return compile_module_range(0);}
 fn compile_module_range(first) {
     if first==0 {lowering_count=0;}
     let prior=function_count;function_count=0;
@@ -1956,6 +1958,7 @@ fn up_sha_constants() {
 fn main(argc, argv) {
     source_path = "flexscript";
     up_environment=argv+(argc+1)*8;
+    if argc>=2 && up_text(load64(argv+8),"verify") {return proof_main(argc,argv);}
     if argc>=2 && up_text(load64(argv+8),"run") {return vm_main(argc,argv);}
     if argc >= 2 && up_text(load64(argv + 8), "upgrade") { return up_main(argc, argv); }
     if argc>=2 {
@@ -1971,7 +1974,7 @@ fn main(argc, argv) {
         }
         if equal(arg, length(arg), "--help", 6) {
             print(1,"Offline GPU output: --target hip --emit code-object --gpu-arch gfx... [--rocm-root PATH]\n");
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--native-literals writable|shared] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--native-literals writable|shared] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript verify <source.flex> [--budget=N] [--no-trusted]\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -2093,6 +2096,7 @@ fn main(argc, argv) {
     return 0;
 }
 fn compiler_initialize() {
+    pf_ready=0;pf_count=0;pf_gcount=0;
     let source_limit=16777216;if frontend_language {source_limit=33554432;}if frontend_language==1 {source_limit=67108864;}if frontend_language==3 {source_limit=268435456;}
     source_arena = alloc(source_limit);
     source = source_arena;

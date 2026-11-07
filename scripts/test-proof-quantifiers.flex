@@ -1,0 +1,66 @@
+import "lib/proof-harness.flex";
+fn suite(compiler) {
+    t_init(compiler);
+    ps_verify("ensures forall i in 0..4: i<4;fn all(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures exists i in -2..3: i==result;fn some(){return 2;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 0..4: i<3;fn bad(){return 0;}",1,"COUNTEREXAMPLE: postcondition");
+    ps_verify("ensures exists i in -2..3: i==3;fn bad(){return 0;}",1,"COUNTEREXAMPLE: postcondition");
+    ps_verify("ensures forall i in 4..4: 0;ensures !(exists i in 4..4: 1);fn empty(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 4..-4: 1/0;ensures !(exists i in 4..-4: 1/0);fn empty(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("requires n>=0 && n<=4;ensures forall i in 0..n: i<n;fn bound(n){return n;}",0,"Verified roots: 1/1");
+    ps_verify("requires start>=-8 && start<=8;requires count>=0 && count<=4;ensures forall i in start..start+count: i>=start && i<start+count;fn dynamic(start,count){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("requires n>0 && n<=4;ensures exists i in 0..n: i==n-1;fn witness(n){return n;}",0,"Verified roots: 1/1");
+    ps_verify("requires n>=0 && n<=4;ensures exists i in 0..n: i==n-1;fn empty(n){return n;}",1,"COUNTEREXAMPLE: postcondition");
+    ps_verify("ensures forall i in 0..3: exists j in i..3: i==j;fn nested(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 0..3: (forall i in i..3: i<3) && i<3;fn shadow(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("requires i==9;ensures (forall i in 0..3: i<3) && i==9;fn shadow(i){return i;}",0,"Verified roots: 1/1");
+    ps_verify("requires x==3;ensures forall i in 0..old(x): i<old(x) && old(i)==i;fn old_bound(x){x=0;return x;}",0,"Verified roots: 1/1");
+    ps_verify("requires x==3;ensures old(forall i in 0..x: i<x);fn snapshot(x){x=0;return x;}",0,"Verified roots: 1/1");
+    ps_verify("fn proof_values(){ghost let n=3;proof {let all=forall i in 0..n: i<n;assert all;}return 0;}",0,"Verified roots: 1/1");
+    ps_verify("requires n>=0 && n<=4;fn quant_loop(n){let x=0;invariant x>=0 && x<=n;invariant forall i in 0..x: i<n;decreases n-x;while x<n {x=x+1;}return x;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 0..2: i==0 || 1/i==1;fn safe(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 0..2: 1/i==1;fn unsafe(){return 0;}",1,"COUNTEREXAMPLE: arithmetic safety");
+    ps_verify("ensures exists i in 0..2: i==0 || 1/(i-1)==1;fn unsafe(){return 0;}",1,"COUNTEREXAMPLE: arithmetic safety");
+    ps_verify("ensures forall i in 0..2: i==0 && 1/(i-1)==0;fn unsafe(){return 0;}",1,"COUNTEREXAMPLE: postcondition");
+    ps_verify("ensures forall i in 0..2: i!=0 && 1/(i-1);fn unsafe(){return 0;}",1,"COUNTEREXAMPLE: arithmetic safety");
+    ps_verify("ensures (exists i in -2..3: i==x)==(x>=-2 && x<3);ensures (forall i in -2..3: i!=x)==!(x>=-2 && x<3);fn membership(x){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures exists i in 0..1: -7;fn truth(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures 1 || (forall i in 0..1000: 1/0);fn skipped(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("requires forall i in 1..3: i>0;ensures result==0;fn requirement(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("requires forall i in 0..3: i<2;fn vacuous(){return 0;}",1,"VACUOUS: requirements are unsatisfiable");
+    ps_verify("requires x==0;fn caller(x){return callee(x);}requires forall i in 0..2: x+i>0;fn callee(x){return x;}",1,"COUNTEREXAMPLE: callee requirement");
+    ps_verify("ensures forall i in 0..3: result>i;fn helper(){return 3;}ensures result>2;fn caller(){return helper();}",0,"Verified roots: 2/2");
+    ps_verify("global g=0; reads nothing;fn bad(){assert forall i in 0..2: g==i;return 0;}",1,"COUNTEREXAMPLE: read frame");
+    ps_verify("global g=0; reads nothing;ensures forall i in g..g: 1;fn bounds(){return 0;}",1,"COUNTEREXAMPLE: read frame");
+    ps_verify("global g=0; reads nothing;ensures forall i in 0..0: g;fn empty(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 0x7ffffffffffffffc..0x7fffffffffffffff: i>0;fn upper(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 0x8000000000000000..0x8000000000000003: i<0;fn lower(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 0x7fffffffffffffff..0x8000000000000000: 0;fn signed_empty(){return 0;}",0,"Verified roots: 1/1");
+    ps_verify("ensures forall i in 0..64: i<64;fn limit(){return 0;}",0,"Verified roots: 1/1");
+    let p=ps_verify("ensures forall i in 0..65: 1;fn limit(){return 0;}",1,"at most 64 values");
+    t_assert(!h_has(h_out(p),"COUNTEREXAMPLE:"),"capacity limit reported as a program bug");
+    ps_verify("ensures forall i in 0x8000000000000000..0x7fffffffffffffff: 1;fn wide(){return 0;}",1,"at most 64 values");
+    p=ps_verify("requires n>64;requires forall i in 0..n: 1;fn wide(n){return 0;}",1,"at most 64 values");
+    t_assert(!h_has(h_out(p),"VACUOUS:"),"truncated quantifier created false vacuity");
+    ps_bad("ensures forall in 0..1: 1;fn bad(){return 0;}","expected in after quantifier name");
+    ps_bad("ensures forall i 0..1: 1;fn bad(){return 0;}","expected in after quantifier name");
+    ps_bad("ensures forall result in 0..1: 1;fn bad(){return 0;}","expected quantifier bound name");
+    ps_bad("ensures exists old in 0..1: 1;fn bad(){return 0;}","expected quantifier bound name");
+    ps_bad("ensures (forall i in 0..1: 1) && i==0;fn bad(){return 0;}","undefined contract name");
+    ps_bad("ensures forall i in i..1: 1;fn bad(){return 0;}","undefined contract name");
+    ps_bad("fn bad(){assert (forall i in 0..1: 1);assert i==0;return 0;}","undefined name in verifier expression");
+    ps_bad("verify;fn bad(){return forall i in 0..1: 1;}","undefined name in verifier expression");
+    ps_bad("fn call(){return 0;}ensures forall i in 0..1: call();fn bad(){return 0;}","specification calls require a supported spec function");
+    ps_verify("verify;fn main(){let forall=1;let exists=2;assert forall+exists==3;return 0;}",0,"Verified roots: 1/1");
+    t_native("ensures forall i in 0..2: 0;fn main(){proof {assert exists i in 0..0: 1;}return 42;}",42,"");
+    h_check(h_run(h_args(t_compiler,t_fixture,0,0,0,0)),42,"");t_checks=t_checks+1;
+    let checksum=h_sha(t_binary);t_program("fn main(){return 42;}");t_compile();t_assert(h_equal(checksum,h_sha(t_binary)),"quantifiers changed executable bytes");
+    let text=h_buffer();let start= -3;let id=0;while start<=3 {let end= -3;while end<=3 {
+        let every=1;let some=0;let i=start;while i<end {every=every && i<0;some=some || i<0;i=i+1;}
+        h_text(text,h_cat3("ensures (forall i in ",h_int(start),h_cat3("..",h_int(end),h_cat3(": i<0)==",h_int(every),";"))));
+        h_text(text,h_cat3("ensures (exists i in ",h_int(start),h_cat3("..",h_int(end),h_cat3(": i<0)==",h_int(some),";"))));
+        h_text(text,h_cat3("fn range",h_int(id),"(){return 0;}\n"));id=id+1;end=end+1;
+    }start=start+1;}ps_verify(h_data(text),0,"Verified roots: 49/49");
+    return t_done();
+}
+fn main(argc,argv) {return t_entry(argc,argv);}

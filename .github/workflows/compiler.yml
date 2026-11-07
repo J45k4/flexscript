@@ -92,6 +92,25 @@ jobs:
           xvfb-run --auto-servernum --server-args='-screen 0 1280x960x24 -nolisten tcp' \
             build/tools/test-gui build/stage2 --gui --report build/gui-report.json
 
+      - name: Test all-Flexscript proof engines and exact word circuits
+        run: |
+          build/tools/test-proof
+          build/tools/test-proof-learning
+          build/tools/test-proof-words
+          build/tools/test-proof-properties
+          build/tools/test-proof-memory
+          build/tools/test-proof-regions build/stage2
+          build/tools/test-proof-lifetimes build/stage2
+          build/tools/test-proof-allocations build/stage2
+          build/tools/test-proof-source build/stage2
+          build/tools/test-proof-state build/stage2
+          build/tools/test-proof-loops build/stage2
+          build/tools/test-proof-modular build/stage2
+          build/tools/test-proof-ghost build/stage2
+          build/tools/test-proof-quantifiers build/stage2
+          build/tools/test-proof-functions build/stage2
+          build/tools/test-proof-trusted build/stage2
+
       - name: Install the WebAssembly test host
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
