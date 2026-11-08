@@ -103,9 +103,9 @@ fn ni_emit(start,end,arity) {
             native_spill_mask=ir_live_after(pc);
             let f=functions+arg*32;let count=load64(f+24);ni_depth=ni_depth-count;let kind=lowering_lookup(load64(f),load64(f+8),0);
             if kind {
-                if kind==127 {native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);}
+                if kind==127 || kind==129 {native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);}
                 if kind==122 && native_address_site>=0 {output_size=output_size-1;native_address_load(3);}else {lowering_native(kind);}
-                if kind==127 {native_reg_spill(0);}
+                if kind==127 || kind==129 {native_reg_spill(0);}
             }else {ni_call(load64(f),load64(f+8),count);}ni_acc_begin=at;
         }else if op==17 {native_spill_mask=ir_live_after(pc);ni_depth=ni_depth-ni_arity(op,arg);ni_builtin(arg);ni_acc_begin=at;}
         else if op==9 {epilogue();ni_acc_begin=output_size;}

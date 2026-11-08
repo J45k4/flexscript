@@ -270,9 +270,16 @@ arbitrary library loading or function-pointer calls.
 See [FFI](docs/ffi.md) and [VM permissions](docs/vm.md).
 
 The bare-metal target additionally provides `port_in8`, `port_out8`, their
-16/32-bit variants, `cpu_halt`, and `native_callback`. These are not general
-Linux or VM operations. See [bare metal](docs/baremetal.md) for their exact
-signatures and calling convention.
+16/32-bit variants, and `cpu_halt`. These are not general Linux or VM operations.
+See [bare metal](docs/baremetal.md) for their exact signatures.
+
+`native_callback(function_name)` produces a six-word System V AMD64 callback
+address for native x86-64 code, including Linux and bare metal. The named
+Flexscript function must take six arguments. This is not a VM or portable-target
+function pointer. The [Linux thread library](libs/thread/README.md) uses these
+callbacks to start shared-memory kernel threads and provides joining, native
+atomics, and futex-backed mutexes. Its initial support is native Linux x86-64;
+ordinary compilation of threading code does not establish concurrency safety.
 
 ## Entry points and execution models
 

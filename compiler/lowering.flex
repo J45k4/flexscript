@@ -1,9 +1,11 @@
+import "native-threads.flex";
 // Explicit symbol-to-operation bindings. Portable bodies remain the fallback.
 // Records: name, length, operation, target (0=all, 1=native x86-64, 2=GPU, 3=CPU C++).
 global lowering_entries=0;
 global lowering_count=0;
 global lowering_reference=0;
 fn lowering_operation(p,n) {
+    let thread_op=nt_operation(p,n);if thread_op {return thread_op;}
     if equal(p,n,"machine.call1",13) {return 127;}
     if equal(p,n,"f32x2.add",9){return 112;}if equal(p,n,"f32x2.sub",9){return 113;}if equal(p,n,"f32x2.mul",9){return 114;}
     if equal(p,n,"f32.add",7) {return 30;}
@@ -29,7 +31,7 @@ fn lowering_operation(p,n) {
     if equal(p,n,"lowering.active",15) {return 102;}
     fail("unknown lowering operation");return 0;
 }
-fn lowering_arity(op) {if op==125 || op==127 {return 2;}if op>=120 && op<=124 {if op==122 || op==123 {return 1;}return 3;}if op==110 {return 6;}if op==102 {return 0;}if op==34 || op==44 {return 1;}return 2;}
+fn lowering_arity(op) {if op>=128 && op<=137 {return nt_arity(op);}if op==125 || op==127 {return 2;}if op>=120 && op<=124 {if op==122 || op==123 {return 1;}return 3;}if op==110 {return 6;}if op==102 {return 0;}if op==34 || op==44 {return 1;}return 2;}
 fn lowering_declaration() {
     next();if token!=256 {fail("expected lowering function name");}
     let name=source+token_start;let size=token_size;
@@ -66,13 +68,14 @@ fn lowering_lookup(name,size,gpu) {
     if !gpu && (vm_mode || baremetal_target || lowering_reference) {return 0;}
     let i=0;while i<lowering_count {let r=lowering_entries+i*32;let target=load64(r+24);
         if (target==0 || (gpu && target==2) || (!gpu && target==1) || (!gpu && target==3 && cpu_cxx_target)) && equal(name,size,load64(r),load64(r+8)) {
-            let op=load64(r+16);if gpu && op>=100 {return 0;}if !cpu_cxx_target && op>=112 && op<=114 {return 0;}return op;
+            let op=load64(r+16);if gpu && op>=100 {return 0;}if cpu_cxx_target && op>=128 && op<=137 {return 0;}if !cpu_cxx_target && op>=112 && op<=114 {return 0;}return op;
         }i=i+1;
     }return 0;
 }
 // Arguments are already evaluated once, left to right, on the word stack.
 // SSE2 is baseline x86-64. No fast math, fusion, FTZ or DAZ.
 fn lowering_native(op) {
+    if op>=128 && op<=137 {return nt_emit(op);}
     if op==127 {
         // Caller spills volatile locals before entering this operation. The
         // machine function follows System V, including preserving RBP.

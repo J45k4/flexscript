@@ -173,6 +173,9 @@ jobs:
       - name: Test the default native IR pipeline and direct reference path
         run: FLEX_COMPILER=build/stage2 python3 scripts/test-native-pipeline.py
 
+      - name: Test native Linux threads, atomics and futex mutexes
+        run: python3 scripts/test-thread.py --compiler build/stage2
+
       - name: Test native callbacks, stack argument adapter, text and keyboard libraries
         run: |
           python3 scripts/test-native-callback.py --compiler build/stage2

@@ -721,9 +721,9 @@ fn call(name, size) {
             if count!=lowering_arity(op) {fail("wrong lowering function arity");}
             let site=calls+call_count*32;call_count=call_count+1;
             store64(site,name);store64(site+8,size);store64(site+16,-1);store64(site+24,count);
-            if op==127 {native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);}
+            if op==127 || op==129 {native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);}
             if op==122 && native_address_site>=0 {output_size=output_size-1;native_address_load(3);}else {lowering_native(op);}
-            if op==127 {native_reg_spill(0);}return 0;
+            if op==127 || op==129 {native_reg_spill(0);}return 0;
         }
         native_temp_epoch=native_temp_epoch+1;native_reg_spill(1);emit(232);
         let entry = calls + call_count * 32;
