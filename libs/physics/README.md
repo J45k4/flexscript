@@ -1,8 +1,11 @@
 # Flexscript physics
 
-An experimental rigid-body engine written in ordinary Flexscript. Native CPU,
-WebAssembly, HIP and directly encoded AMD RDNA use **the same solver source**.
-There is no MuJoCo binding, C++ physics implementation or Python runtime here.
+An experimental rigid-body engine written in ordinary Flexscript. Its default
+native CPU, WebAssembly, HIP and directly encoded AMD RDNA backends use **the same
+solver source**.
+The shared solver has no MuJoCo binding or Python runtime. An optional
+[native CPU backend](native/README.md) supplies qualified C/C++ kernels and a
+three- or six-process scheduler for native-only applications.
 
 `physics.flex` constructs a world on the host; `solver.flex` advances a world
 using only arithmetic and word memory operations. `kernels/rollout.flex` calls
@@ -151,8 +154,10 @@ calculation. Failure sets sticky world fault 3;
 there is no silent approximate contact or CPU fallback. This tolerance is
 intended for the current centimetre-scale geometry, not arbitrary scene scales.
 
-General convex meshes, articulated joints, soft bodies and MuJoCo's compliant
-contact model are not implemented. The small fixtures alone do not validate
+General convex meshes, articulated joints, continuum soft bodies and MuJoCo's
+compliant contact model are not implemented. An experimental host-side
+[flexible particle chain](soft-chain.md) adds limited spring-based bending; it
+is not integrated into the GPU solver or a full wristband simulation. The small fixtures alone do not validate
 dense piles or end-to-end robotic pickup.
 
 This library has no renderer, detector, browser server or application controller.
@@ -325,3 +330,19 @@ bodies remain available with `--lowering-mode reference`. See
 An isolated CPU module can import `cpu.flex` for the register contact solver
 and per-step prepared weld coefficients. The optional [optimizing CPU kernel
 backend](../../docs/cpu-kernels.md) uses the same word ABI and world layout.
+
+## Optional CPU world batches
+
+The native Linux [CPU batch adapter](cpu-batch.md) advances independent worlds
+in isolated worker processes using the existing solver. It provides bounded
+calls, failure isolation and transactional copyback. Each call starts fresh
+workers; measure enough work to amortize startup and copying. This adapter
+does not change single-world stepping or imply a training-speed improvement.
+
+## Optional single-world native CPU backend
+
+The [native CPU backend](native/README.md) packages strict FP contact SIMD,
+collision/parameter queues and three- or six-worker fused contact iterations. It exposes
+host polling/clock hooks and content-addressed build artifacts without robot or
+renderer dependencies. It is an explicit native backend with its own qualified
+contact model; the common scalar/Wasm/GPU paths remain unchanged.

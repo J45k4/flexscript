@@ -1,0 +1,16 @@
+{
+  "schema": "flexscript.native-physics-three.v1",
+  "source_sha256": {
+    "contact.cpp": "6b1a1757cdfa3a0fb58d15901dd85b4798ddd5bdad318e02045469a95ecbe90e",
+    "phases.c": "abfe98cc7401f68aa7d4dbe6efbb5bdc0418e5bb9cbda2645268fa7cc795bf78",
+    "vector.hpp": "a372ead5aa956dda74927ba0ad50eaf68af44ee41b02a21cf51ce7a5a20b5ba4",
+    "marshal_helpers.hpp": "1c4e2ad9c40b61e18925f9bb306912c451d3d0e81aa5a37013d49911c86078cb",
+    "prepare_helpers.hpp": "0ea1aec591edf84c147da1188761be21ae420cc9e33a8d0aa83fc57b434dc52d",
+    "solver.flex": "d91ed950b114f119b1adbaa65ec19a4ee91a4c1b46610dbda3e0a46e61c035be"
+  },
+  "libraries_sha256": {
+    "contact.so": "474bb3458a14a217712d7eb144382f5f5117aeb880a9557b3ac010dc0664bd57",
+    "phases.so": "05167c04fb32030dcaa53135e2777c52060bb2b9ab79f3dec8ce030c57d81ddf"
+  },
+  "scope": "Linux x86-64 AVX2, strict FP; original three-participant native CPU backend. Content-identical numerical libraries and application-equivalent hooks. No new speed claim."
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "flexscript.native-physics-six.v1",
+  "source_sha256": {
+    "contact.cpp": "fc7e21daa7d1c92bb0c8250408b90d7dbec47495670b72450220d3fa8521f460",
+    "phases.c": "a7e754d2b222907402aaab95d99457ef888cbfd9f82b5537620e5292d414083d",
+    "vector.hpp": "a372ead5aa956dda74927ba0ad50eaf68af44ee41b02a21cf51ce7a5a20b5ba4",
+    "marshal_helpers.hpp": "1c4e2ad9c40b61e18925f9bb306912c451d3d0e81aa5a37013d49911c86078cb",
+    "prepare_helpers.hpp": "38c1849f145052f65a865c8e6bf2127323da20a5b5a7fb333bbff7c5cbf07568",
+    "solver.flex": "d2dce2ba19dd5735d27e6536d663ed962009c9e68b2f6a66fd234b9ee3a695b3",
+    "collision.flex": "4fcc5bbfd1c391f9eda1bdc9211c6a4e4f26fd2e141f6b5fdc17a796b2593918"
+  },
+  "reference_assembly_sha256": "e33a19d692a8de09c9e004740985431b2969f91c81996f90de6b7d33610c4f10",
+  "copy_assembly_sha256": "1fbe2f47fe5102938460246b910f5d04f0697d07ef1db42f9b0de02120a02ef3",
+  "libraries_sha256": {
+    "contact.so": "104735f8aa0e48c705277f57e48e267da64fde839973a05d794472c93b357b56",
+    "phases.so": "790c02a47661e65af926b930332444c2419fc7b05b0a201eda5ea6cad19e9137"
+  },
+  "scope": "Linux x86-64 AVX2, Clang23 znver3 strict FP; six-participant CPU backend. No renderer, model, controller or application dependency. Same qualified version-1 world ABI. More CPU; no generic speed or realtime guarantee.",
+  "support_sha256": {
+    "libs/physics/physics.flex": "181462543998278940caa01f381af000b120ef841565ab233f9f43b07e0ff665",
+    "libs/physics/math.flex": "ef59283e14f7c818bacb88706bc1118813eb0e75ba2b88f609e9084ca5eab88b",
+    "libs/physics/layout.flex": "19ab63e6673e4c7e731286012f7c966e5ca71f8b671862bdbbcd4d1133994223",
+    "libs/physics/color.flex": "912a9c97c14376e11d5857963c4bd7eda4c7b4759c952f860c32b355ce310500",
+    "libs/physics/convex.flex": "666eae55e5f5383ab7817199c20b9b93e7220796a527e4eb77ccbd0a581ed813",
+    "libs/physics/epa.flex": "cfd6ea03eb8fd1fa656a81bbb76155f7aeb6f633f7b8a084cb65d18c5e658fe1",
+    "libs/physics/precise.flex": "c4a01ac685c2975e4c33df8b3295f1a93ebed7029fa6a705887e788b2a89cdeb"
+  }
+}
