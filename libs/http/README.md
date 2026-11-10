@@ -142,3 +142,6 @@ The auth-file route uses Collie's `https://chatgpt.com/backend-api/codex/respons
 transport. These are distinct authentication routes; a successful Codex test
 does not verify developer API-key access. See the
 [official OpenAI streaming documentation](https://developers.openai.com/api/docs/guides/streaming-responses).
+
+WebSocket connections use the separate [native WebSocket library](../websocket/README.md),
+which provides explicit upgrades and incremental client/server framing.

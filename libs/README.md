@@ -11,6 +11,8 @@ low-level adapters in `lib/` remain available and can be imported directly.
   and fast encoding, with standard-format interoperability.
 - [`http`](http/README.md): native HTTP/HTTPS requests, incremental streaming,
   deadlines and cancellation, with verified OpenSSL TLS and no libcurl.
+- [`websocket`](websocket/README.md): native RFC 6455 framing and upgrades, with
+  incremental client/server codecs and verified TCP/TLS/mTLS stream helpers.
 - [`image`](image/README.md): owned RGBA images, EXIF orientation, alpha-correct
   area/linear resizing and bounded previews, with direct PNG/JPEG/WebP adapters.
 - [`unicode`](unicode/README.md): strict UTF-8, paragraph bidirectional layout and
