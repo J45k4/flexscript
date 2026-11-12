@@ -70,7 +70,7 @@ fn flexdb_real_type() {return 4;}
 fn flexdb_word(v) {return load64(v+8);}
 fn flexdb_bytes(v) {let n=load64(v+16);if load64(v)==3 && n<0 {return -n-1;}return n;}
 fn fd_clone_value(a,v) {
-    let kind=load64(v);if kind==3 && load64(v+16)<0 {return fd_value(a,3,load64(v+8),load64(v+16));}if kind==2 || kind==3 {let n=load64(v+16);let p=fd_alloc(a,n+1);fd_copy(p,load64(v+8),n);store8(p+n,0);return fd_value(a,kind,p,n);}
+    let kind=load64(v);if kind==3 && load64(v+16)<0 {return fd_value(a,3,load64(v+8),load64(v+16));}if kind==2 || kind==3 || kind==5 {let n=load64(v+16);let p=fd_alloc(a,n+1);fd_copy(p,load64(v+8),n);store8(p+n,0);return fd_value(a,kind,p,n);}
     return fd_value(a,kind,load64(v+8),0);
 }
 fn flexdb_values(a) {let p=fd_alloc(a,88);store64(p,0);store64(p+8,64);store64(p+16,p+24);return p;}
@@ -79,10 +79,10 @@ fn flexdb_rowid(row) {return load64(row);}
 fn flexdb_cell(row,column) {if column<0 || column>=load64(row+8) {return 0;}return load64(row+16+column*8);}
 // One allocation owns the row, value descriptors and copied byte payloads.
 fn fd_row(a,id,values) {
-    let n=fd_size(values);let bytes=16+n*32;let i=0;while i<n {let v=fd_at(values,i);let kind=load64(v);if (kind==2 || kind==3) && load64(v+16)>=0 {bytes=bytes+((load64(v+16)+8)&(-8));}i=i+1;}
+    let n=fd_size(values);let bytes=16+n*32;let i=0;while i<n {let v=fd_at(values,i);let kind=load64(v);if (kind==2 || kind==3 || kind==5) && load64(v+16)>=0 {bytes=bytes+((load64(v+16)+8)&(-8));}i=i+1;}
     let r=fd_alloc(a,bytes);store64(r,id);store64(r+8,n);let payload=r+16+n*32;i=0;
     while i<n {let v=fd_at(values,i);let copy=r+16+n*8+i*24;let kind=load64(v);store64(r+16+i*8,copy);store64(copy,kind);
-        if kind==3 && load64(v+16)<0 {store64(copy+8,load64(v+8));store64(copy+16,load64(v+16));}else if kind==2 || kind==3 {let size=load64(v+16);fd_copy(payload,load64(v+8),size);store8(payload+size,0);store64(copy+8,payload);store64(copy+16,size);payload=payload+((size+8)&(-8));}
+        if kind==3 && load64(v+16)<0 {store64(copy+8,load64(v+8));store64(copy+16,load64(v+16));}else if kind==2 || kind==3 || kind==5 {let size=load64(v+16);fd_copy(payload,load64(v+8),size);store8(payload+size,0);store64(copy+8,payload);store64(copy+16,size);payload=payload+((size+8)&(-8));}
         else {store64(copy+8,load64(v+8));store64(copy+16,0);}i=i+1;
     }return r;
 }
@@ -94,7 +94,7 @@ fn fd_row_refs(db,id,values) {
 }
 fn fd_schema_value(db,v) {
     if !v {return fd_error(db,"schema converter failed");}let kind=load64(v);let bytes=load64(v+16);
-    if kind<0 || kind>4 || !fd_blob_value_ok(db,v,kind,bytes) {return fd_error(db,"row value does not match column type/nullability");}
+    if kind<0 || kind>5 || !fd_blob_value_ok(db,v,kind,bytes) {return fd_error(db,"row value does not match column type/nullability");}
     return fd_clone_value(db,v);
 }
 

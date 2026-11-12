@@ -36,6 +36,7 @@ source files are not modified.
 | `f64` | IEEE binary64 bit word, compatible with `lib/f64.flex` |
 | `text` | Zero-terminated text |
 | `blob` | Arbitrary bytes |
+| `json` | Validated, compact UTF-8 JSON; JSON null is distinct from SQL NULL |
 | `type?` | Nullable stored field |
 
 Fields may be separated by semicolons, commas or whitespace/newlines. `//`
@@ -228,3 +229,10 @@ prints adults using generated getters and compiled predicates:
 ./build/flex libs/db/examples/schema.flex -o build/flexdb-schema
 ./build/flexdb-schema build/schema.db
 ```
+
+JSON fields can migrate from text with `payload: json using converter;`, where
+the converter returns `flexdb_json(db, flexdb_word(old_value))`. Invalid JSON
+rejects reconciliation and rolls back the complete schema transaction. Generated
+non-null JSON value builders take JSON text; nullable builders take a typed value
+or SQL NULL. JSON field accessors return serialized JSON text; use
+`flexdb_cell(row, column)` with the JSON extraction/query APIs.

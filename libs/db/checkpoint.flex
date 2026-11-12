@@ -58,7 +58,7 @@ fn fd_cp_scalar_cache(t,col) {
                 let mask=load64(p);if count<64 && (mask>>count)!=0 {fd_corrupt(db,"invalid checkpoint null mask");return -1;}let at=8;let j=0;let value=0;
                 while j<count {let c=fd_at(columns,j);let kind=load64(c+8);let word=0;
                     if mask&(1<<j) {if !load64(c+16) {fd_corrupt(db,"invalid checkpoint row values");return -1;}}
-                    else {if at>bytes-8 {fd_corrupt(db,"invalid checkpoint row values");return -1;}word=load64(p+at);at=at+8;if kind==3 && word<0 {if !fd_blob_cp_ref(db,p+at,bytes-at,word) {return -1;}at=at+40;}else if kind==2 || kind==3 {if word<0 || word>1048576 || word>bytes-at {fd_corrupt(db,"invalid checkpoint row values");return -1;}at=at+word;}}
+                    else {if at>bytes-8 {fd_corrupt(db,"invalid checkpoint row values");return -1;}word=load64(p+at);at=at+8;if kind==3 && word<0 {if !fd_blob_cp_ref(db,p+at,bytes-at,word) {return -1;}at=at+40;}else if kind==2 || kind==3 || kind==5 {if word<0 || word>1048576 || word>bytes-at {fd_corrupt(db,"invalid checkpoint row values");return -1;}if kind==5 && !fdj_valid(p+at,word) {fd_corrupt(db,"invalid checkpoint JSON");return -1;}at=at+word;}}
                     if j==col {value=word;}j=j+1;
                 }if at!=bytes {fd_corrupt(db,"invalid checkpoint row values");return -1;}store64(data+i*16,value);store64(data+i*16+8,1);
             }
@@ -71,12 +71,12 @@ fn fd_cp_decode(db,id,columns,p,bytes) {
     while i<count {let c=fd_at(columns,i);let kind=load64(c+8);let word=0;let length=0;
         if mask&(1<<i) {if !load64(c+16) {return fd_corrupt(db,"invalid checkpoint row values");}kind=0;}
         else {if at>bytes-8 {return fd_corrupt(db,"invalid checkpoint row values");}word=load64(p+at);at=at+8;
-            if kind==3 && word<0 {length=word;word=fd_blob_cp_ref(db,p+at,bytes-at,length);if !word {return 0;}at=at+40;}else if kind==2 || kind==3 {length=word;if length<0 || length>1048576 || length>bytes-at {return fd_corrupt(db,"invalid checkpoint row values");}word=p+at;at=at+length;needed=needed+((length+8)&(-8));}}
+            if kind==3 && word<0 {length=word;word=fd_blob_cp_ref(db,p+at,bytes-at,length);if !word {return 0;}at=at+40;}else if kind==2 || kind==3 || kind==5 {length=word;if length<0 || length>1048576 || length>bytes-at {return fd_corrupt(db,"invalid checkpoint row values");}word=p+at;if kind==5 && !fdj_valid(word,length) {return fd_corrupt(db,"invalid checkpoint JSON");}at=at+length;needed=needed+((length+8)&(-8));}}
         let v=scratch+576+i*24;store64(v,kind);store64(v+8,word);store64(v+16,length);i=i+1;
     }if at!=bytes {return fd_corrupt(db,"invalid checkpoint row values");}
     let row=fd_alloc(db,needed);store64(row,id);store64(row+8,count);let payload=row+16+count*32;i=0;
     while i<count {let v=scratch+576+i*24;let copy=row+16+count*8+i*24;let kind=load64(v);store64(row+16+i*8,copy);store64(copy,kind);store64(copy+16,load64(v+16));
-        if kind==3 && load64(v+16)<0 {store64(copy+8,load64(v+8));}else if kind==2 || kind==3 {let length=load64(v+16);fd_copy(payload,load64(v+8),length);store8(payload+length,0);store64(copy+8,payload);payload=payload+((length+8)&(-8));}else {store64(copy+8,load64(v+8));}i=i+1;
+        if kind==3 && load64(v+16)<0 {store64(copy+8,load64(v+8));}else if kind==2 || kind==3 || kind==5 {let length=load64(v+16);fd_copy(payload,load64(v+8),length);store8(payload+length,0);store64(copy+8,payload);payload=payload+((length+8)&(-8));}else {store64(copy+8,load64(v+8));}i=i+1;
     }return row;
 }
 fn fd_table_row(t,index) {
@@ -95,9 +95,9 @@ fn fd_table_row(t,index) {
 }
 fn fd_cp_word(a,b,w) {if !fd_word(a,b,w) {return 0;}return 1;}
 fn fd_cp_row(a,b,row) {
-    let cells=load64(row+8);let size=8;let mask=0;let i=0;while i<cells {let v=load64(row+16+i*8);let kind=load64(v);if !kind {mask=mask|(1<<i);}else {size=size+8;if kind==2 || kind==3 {if flexdb_blob_external(v) {size=size+40;}else {size=size+load64(v+16);}}}i=i+1;}
+    let cells=load64(row+8);let size=8;let mask=0;let i=0;while i<cells {let v=load64(row+16+i*8);let kind=load64(v);if !kind {mask=mask|(1<<i);}else {size=size+8;if kind==2 || kind==3 || kind==5 {if flexdb_blob_external(v) {size=size+40;}else {size=size+load64(v+16);}}}i=i+1;}
     let used=load64(b);if !fd_reserve(a,b,used+size) {return 0;}let p=load64(b+16)+used;store64(p,mask);p=p+8;i=0;
-    while i<cells {let v=load64(row+16+i*8);let kind=load64(v);if flexdb_blob_external(v) {p=p+fd_blob_encode(p,v);}else if kind==2 || kind==3 {let bytes=load64(v+16);store64(p,bytes);fd_copy(p+8,load64(v+8),bytes);p=p+8+bytes;}else if kind {store64(p,load64(v+8));p=p+8;}i=i+1;}store64(b,used+size);return size;
+    while i<cells {let v=load64(row+16+i*8);let kind=load64(v);if flexdb_blob_external(v) {p=p+fd_blob_encode(p,v);}else if kind==2 || kind==3 || kind==5 {let bytes=load64(v+16);store64(p,bytes);fd_copy(p+8,load64(v+8),bytes);p=p+8+bytes;}else if kind {store64(p,load64(v+8));p=p+8;}i=i+1;}store64(b,used+size);return size;
 }
 // Reserve the complete checkpoint before emitting rows. Include all caches in
 // the bound; the writer still omits those that do not fit the 16 MiB limit.
@@ -108,7 +108,7 @@ fn fd_cp_capacity(db,meta) {
         // validate/hydrate remaining rows before trusted owned-row packing.
         if load64(t+64) {while j<fd_size(rows) {if !fd_at(rows,j) && !fd_table_row(t,j) {return 0;}j=j+1;}}
         let payload=-2;if fd_size(rows)>=128 {payload=fd_pack_size(t);}if payload==-1 {return 0;}
-        if payload>=0 {bytes=bytes+payload;}else {j=0;while j<fd_size(rows) {let row=fd_at(rows,j);if !row {return 0;}let count=load64(row+8);if count {bytes=bytes+8;let c=0;while c<count {let v=load64(row+16+c*8);let kind=load64(v);if kind {bytes=bytes+8;if kind==2 || kind==3 {if flexdb_blob_external(v) {bytes=bytes+40;}else {bytes=bytes+load64(v+16);}}}c=c+1;}}j=j+1;}}
+        if payload>=0 {bytes=bytes+payload;}else {j=0;while j<fd_size(rows) {let row=fd_at(rows,j);if !row {return 0;}let count=load64(row+8);if count {bytes=bytes+8;let c=0;while c<count {let v=load64(row+16+c*8);let kind=load64(v);if kind {bytes=bytes+8;if kind==2 || kind==3 || kind==5 {if flexdb_blob_external(v) {bytes=bytes+40;}else {bytes=bytes+load64(v+16);}}}c=c+1;}}j=j+1;}}
         let indexes=load64(t+120);if indexes {let k=0;while k<fd_size(indexes) {bytes=bytes+load64(fd_at(indexes,k)+56)*16;k=k+1;}}i=i+1;
     }if bytes>16777216 {bytes=16777216;}return bytes;
 }

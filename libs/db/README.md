@@ -499,3 +499,39 @@ maintenance, schema invalidation, checkpoint/compaction reuse, tail invalidation
 scan comparisons after varied updates, collision rechecks, build deadlines,
 LRU budgets, expiry and checksum corruption. Earlier extension edits to core
 readers/string comparison helpers must conservatively disable the access plan.
+
+## Native JSON
+
+`json` columns use distinct type tag 5 and store validated, compact UTF-8 JSON.
+Construct them with `flexdb_json(arena, text)`; malformed JSON returns zero.
+Objects, arrays and scalar documents are supported, including JSON `null`,
+which is distinct from SQL NULL (`flexdb_null`). Limits are 1 MiB per document
+and 64 nested containers. Invalid UTF-8, unpaired surrogates, control characters,
+invalid escapes/numbers and trailing tokens are rejected without aborting callers.
+
+```text
+database App { table Event { id: rowid; payload: json; extra: json?; } }
+let document = flexdb_json(q, "{\"user\":{\"name\":\"Mira\"},\"scores\":[7,9]}");
+let name = flexdb_json_text(q, document, "/user/name");
+let score = flexdb_json_int(q, document, "/scores/1");
+let matches = flexdb_where_json(q, events, payload_column, "/scores/1",
+                               flexdb_ge(), flexdb_int(q, 8));
+```
+
+Paths use RFC 6901 JSON Pointer: empty selects the complete document, `~1`
+means slash, and `~0` means tilde. Array indices are zero based without leading
+zeros. Pointers are limited to 4096 bytes. Missing paths and scalar-type
+mismatches yield SQL NULL; malformed pointers return zero. `flexdb_json_get`
+returns a typed JSON value, preserving JSON `null`; `_text` decodes JSON strings,
+and `_int` returns a checked signed 64-bit integer. Strings containing embedded
+NUL remain accessible with `_get` but cannot be returned as zero-terminated text.
+For duplicate object names, lookup selects the last member.
+
+Path filters accept integer/text comparisons or equality/inequality against JSON
+values. JSON equality compares compact representation: member order, numeric
+spelling and string escapes are preserved, rather than semantic normalization.
+JSON path filters scan rows; no JSON path index is implied. Integer/text native
+scan/index optimizations remain unchanged; tables containing JSON use safe
+fallback checkpoint packing/scanning. JSON survives transactions, rollback,
+schema reconciliation, checkpointing, compaction, backup and reopen. Existing
+FlexDB files remain readable; older SDKs reject the new JSON type tag.

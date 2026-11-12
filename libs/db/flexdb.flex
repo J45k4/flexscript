@@ -1,5 +1,6 @@
 // FlexDB: embedded relational storage, queried through ordinary function calls.
 import "memory.flex";
+import "json.flex";
 import "storage.flex";
 import "blob.flex";
 import "query.flex";
@@ -51,7 +52,7 @@ fn flexdb_commit(db) {
 fn flexdb_schema(db) {if !fd_ready(db) {return 0;}return fd_vec(db);}
 fn fd_name(name) {let n=fd_len(name);return n>0 && n<=255;}
 fn flexdb_column(db,schema,name,kind,nullable) {
-    if !fd_ready(db) {return -1;}if !fd_name(name) || kind<1 || kind>4 || (nullable!=0 && nullable!=1) || fd_size(schema)>=64 {fd_error(db,"invalid column definition");return -1;}
+    if !fd_ready(db) {return -1;}if !fd_name(name) || kind<1 || kind>5 || (nullable!=0 && nullable!=1) || fd_size(schema)>=64 {fd_error(db,"invalid column definition");return -1;}
     let i=0;while i<fd_size(schema) {if fd_same(load64(fd_at(schema,i)),name) {fd_error(db,"duplicate column name");return -1;}i=i+1;}
     let c=fd_alloc(db,24);store64(c,fd_text(db,name));store64(c+8,kind);store64(c+16,nullable);fd_push(db,schema,c);return fd_size(schema)-1;
 }
@@ -95,7 +96,7 @@ fn fd_check_values(t,values) {
 fn fd_check_columns(db,columns,values) {
     if fd_size(values)!=fd_size(columns) {return fd_error(db,"row does not match column count");}
     let i=0;while i<fd_size(values) {let v=fd_at(values,i);let c=fd_at(columns,i);if !v {return fd_error(db,"invalid value");}let kind=load64(v);
-        if (kind==0 && !load64(c+16)) || (kind!=0 && kind!=load64(c+8)) || ((kind==2 && (load64(v+16)<0 || load64(v+16)>1048576)) || (kind==3 && !fd_blob_value_ok(db,v,kind,load64(v+16)))) {return fd_error(db,"row value does not match column type/nullability");}i=i+1;}return 1;
+        if (kind==0 && !load64(c+16)) || (kind!=0 && kind!=load64(c+8)) || ((kind==2 && (load64(v+16)<0 || load64(v+16)>1048576)) || ((kind==3 || kind==5) && !fd_blob_value_ok(db,v,kind,load64(v+16)))) {return fd_error(db,"row value does not match column type/nullability");}i=i+1;}return 1;
 }
 fn fd_row_undo(db,rows,index) {let a=load64(db+72);let entry=fd_alloc(a,24);store64(entry,rows);store64(entry+8,index);store64(entry+16,fd_at(rows,index));fd_push(a,load64(db+112),entry);return 1;}
 // Consecutive inserts share a schema-typed batch header instead of repeating
@@ -107,9 +108,9 @@ fn fd_upsert(t,id,values,index) {
     let n=32+count*16;let mask=0;if index<0 {n=8;if !batch {n=n+32;}}
     let row_bytes=16+count*32;let i=0;
     while i<count {let v=fd_at(values,i);let c=fd_at(columns,i);if !v {return fd_error(db,"invalid value");}let kind=load64(v);
-        if (kind==0 && !load64(c+16)) || (kind!=0 && kind!=load64(c+8)) || ((kind==2 && (load64(v+16)<0 || load64(v+16)>1048576)) || (kind==3 && !fd_blob_value_ok(db,v,kind,load64(v+16)))) {return fd_error(db,"row value does not match column type/nullability");}
+        if (kind==0 && !load64(c+16)) || (kind!=0 && kind!=load64(c+8)) || ((kind==2 && (load64(v+16)<0 || load64(v+16)>1048576)) || ((kind==3 || kind==5) && !fd_blob_value_ok(db,v,kind,load64(v+16)))) {return fd_error(db,"row value does not match column type/nullability");}
         if index<0 {if kind==0 {mask=mask|(1<<i);}else {n=n+8;}}
-        if kind==3 && load64(v+16)<0 {n=n+40;}else if kind==2 || kind==3 {let size=load64(v+16);n=n+size;row_bytes=row_bytes+((size+8)&(-8));}i=i+1;
+        if kind==3 && load64(v+16)<0 {n=n+40;}else if kind==2 || kind==3 || kind==5 {let size=load64(v+16);n=n+size;row_bytes=row_bytes+((size+8)&(-8));}i=i+1;
     }
     if !fd_command(db,n) {return 0;}b=load64(db+80);let used=load64(b);let p=load64(b+16)+used;let row=fd_alloc(db,row_bytes);store64(row,id);store64(row+8,count);let payload=row+16+count*32;
     if index<0 {
@@ -118,7 +119,7 @@ fn fd_upsert(t,id,values,index) {
     }else {store64(p,2);store64(p+8,tid);store64(p+16,id);store64(p+24,count);p=p+32;}i=0;
     while i<count {let v=fd_at(values,i);let kind=load64(v);let copy=row+16+count*8+i*24;store64(row+16+i*8,copy);store64(copy,kind);
         if index>=0 {store64(p,kind);p=p+8;}
-        if kind==3 && load64(v+16)<0 {p=p+fd_blob_encode(p,v);store64(copy+8,load64(v+8));store64(copy+16,load64(v+16));}else if kind==2 || kind==3 {let bytes=load64(v+16);store64(p,bytes);fd_copy(p+8,load64(v+8),bytes);p=p+8+bytes;fd_copy(payload,load64(v+8),bytes);store8(payload+bytes,0);store64(copy+8,payload);store64(copy+16,bytes);payload=payload+((bytes+8)&(-8));}
+        if kind==3 && load64(v+16)<0 {p=p+fd_blob_encode(p,v);store64(copy+8,load64(v+8));store64(copy+16,load64(v+16));}else if kind==2 || kind==3 || kind==5 {let bytes=load64(v+16);store64(p,bytes);fd_copy(p+8,load64(v+8),bytes);p=p+8+bytes;fd_copy(payload,load64(v+8),bytes);store8(payload+bytes,0);store64(copy+8,payload);store64(copy+16,bytes);payload=payload+((bytes+8)&(-8));}
         else {let word=load64(v+8);if index>=0 || kind {store64(p,word);p=p+8;}store64(copy+8,word);store64(copy+16,0);}i=i+1;
     }
     let before=0;if index>=0 {before=fd_at(load64(t+24),index);}fd_auto_event(t,id,before,row);store64(b,used+n);if index<0 {fd_push(db,load64(t+24),row);store64(t+32,id+1);if !batch {fd_logged(db);batch=used+1;}store64(db+120,batch);}else {fd_row_undo(db,load64(t+24),index);fd_put(load64(t+24),index,row);fd_logged(db);}return id;
@@ -140,9 +141,9 @@ fn fd_decode_values(db,r,count,columns,mask) {
         let kind=0;let word=0;
         if columns {if !(mask&(1<<j)) {kind=load64(fd_at(columns,j)+8);word=fd_read_word(r);}}
         else {kind=fd_read_word(r);word=fd_read_word(r);}
-        if kind<0 || kind>4 || (kind==0 && word!=0) {store64(r+24,0);return 0;}
+        if kind<0 || kind>5 || (kind==0 && word!=0) {store64(r+24,0);return 0;}
         let v=r+576+j*24;store64(v,kind);store64(v+16,0);
-        if kind==3 && word<0 {if !load64(r+32) {store64(r+24,0);return 0;}let d=fd_blob_decode(db,r,word);if !d {store64(r+24,0);return 0;}store64(v+8,d);store64(v+16,word);}else if kind==2 || kind==3 {let at=load64(r+8);if word<0 || word>1048576 || word>load64(r+16)-at {store64(r+24,0);return 0;}store64(v+8,load64(r)+at);store64(v+16,word);store64(r+8,at+word);}
+        if kind==3 && word<0 {if !load64(r+32) {store64(r+24,0);return 0;}let d=fd_blob_decode(db,r,word);if !d {store64(r+24,0);return 0;}store64(v+8,d);store64(v+16,word);}else if kind==2 || kind==3 || kind==5 {let at=load64(r+8);if word<0 || word>1048576 || word>load64(r+16)-at {store64(r+24,0);return 0;}store64(v+8,load64(r)+at);store64(v+16,word);if kind==5 && !fdj_valid(load64(v+8),word) {store64(r+24,0);return 0;}store64(r+8,at+word);}
         else {store64(v+8,word);}fd_put(values,j,v);j=j+1;
     }return values;
 }

@@ -48,7 +48,7 @@ fn fds_table() {
         if fds_is("drop") {fds_next();let removed=fds_name();let node=alloc(16);store64(node,removed);store64(node+8,load64(table+32));store64(table+32,node);fds_expect(59,"FlexDB schema: drop FIELD requires ';'");}
         else {let field_name=fds_name();let prior=load64(table+8);while prior {if ext_equal(load64(prior),field_name) {fds_error("FlexDB schema: duplicate field name");}prior=load64(prior+32);}
         fds_expect(58,"FlexDB schema: expected ':' after field name");let kind=-1;
-        if fds_is("rowid") {kind=0;}else if fds_is("i64") {kind=1;}else if fds_is("text") {kind=2;}else if fds_is("blob") {kind=3;}else if fds_is("f64") {kind=4;}else {fds_error("FlexDB schema: expected rowid, i64, f64, text or blob");}
+        if fds_is("rowid") {kind=0;}else if fds_is("i64") {kind=1;}else if fds_is("text") {kind=2;}else if fds_is("blob") {kind=3;}else if fds_is("f64") {kind=4;}else if fds_is("json") {kind=5;}else {fds_error("FlexDB schema: expected rowid, i64, f64, text, blob or json");}
         fds_next();let nullable=0;if fds_char(63) {nullable=1;fds_next();}
         if kind==0 {if nullable || rowid {fds_error("FlexDB schema: rowid must be non-null and declared only once");}rowid=1;}
         else {if columns>=64 {fds_error("FlexDB schema: at most 64 stored columns per table");}columns=columns+1;}
@@ -82,7 +82,7 @@ fn fds_default(field) {
     if !value {ext_emit("0");}
     else if ext_equal(value,"null") {ext_emit("flexdb_null(db)");}
     else if kind==3 {ext_emit("fd_schema_value(db,(");ext_emit(value);ext_emit("))");}
-    else {ext_emit("flexdb_");if kind==1 {ext_emit("int");}else if kind==2 {ext_emit("text");}else {ext_emit("real");}ext_emit("(db,(");ext_emit(value);ext_emit("))");}return 0;
+    else {ext_emit("flexdb_");if kind==1 {ext_emit("int");}else if kind==2 {ext_emit("text");}else if kind==5 {ext_emit("json");}else {ext_emit("real");}ext_emit("(db,(");ext_emit(value);ext_emit("))");}return 0;
 }
 fn fds_emit_sync(table) {
     let name=load64(table);let fields=load64(table+8);
@@ -109,7 +109,7 @@ fn fds_emit_table(table) {
     fds_function(name,"matches");ext_emit("(table){if !fd_table_ready(table){return 0;}let columns=load64(table+16);if fd_size(columns)!=");ext_emit_number(load64(table+24));ext_emit("{return 0;}");f=fields;
     while f {if load64(f+8) {ext_emit("{let c=fd_at(columns,");ext_emit_number(load64(f+24));ext_emit(");if !fd_same(load64(c),\"");ext_emit(load64(f));ext_emit("\") || load64(c+8)!=");ext_emit_number(load64(f+8));ext_emit(" || load64(c+16)!=");ext_emit_number(load64(f+16));ext_emit("{return 0;}}");}f=load64(f+32);}ext_emit("return 1;}\n");
     fds_function(name,"values");ext_emit("(arena");f=fields;while f {if load64(f+8) {ext_emit(",");fds_argument(load64(f+24));if load64(f+8)==3 && !load64(f+16) {ext_emit(",");fds_argument(load64(f+24));ext_emit("_bytes");}}f=load64(f+32);}ext_emit("){let values=flexdb_values(arena);");f=fields;
-    while f {let kind=load64(f+8);if kind {ext_emit("if !flexdb_add(arena,values,");if load64(f+16) {fds_argument(load64(f+24));}else {ext_emit("flexdb_");if kind==1 {ext_emit("int");}else if kind==2 {ext_emit("text");}else if kind==3 {ext_emit("blob");}else {ext_emit("real");}ext_emit("(arena,");fds_argument(load64(f+24));if kind==3 {ext_emit(",");fds_argument(load64(f+24));ext_emit("_bytes");}ext_emit(")");}ext_emit("){return 0;}");}f=load64(f+32);}ext_emit("return values;}\n");
+    while f {let kind=load64(f+8);if kind {ext_emit("if !flexdb_add(arena,values,");if load64(f+16) {fds_argument(load64(f+24));}else {ext_emit("flexdb_");if kind==1 {ext_emit("int");}else if kind==2 {ext_emit("text");}else if kind==3 {ext_emit("blob");}else if kind==5 {ext_emit("json");}else {ext_emit("real");}ext_emit("(arena,");fds_argument(load64(f+24));if kind==3 {ext_emit(",");fds_argument(load64(f+24));ext_emit("_bytes");}ext_emit(")");}ext_emit("){return 0;}");}f=load64(f+32);}ext_emit("return values;}\n");
     f=fields;while f {
         let field_name=load64(f);fds_function(name,field_name);ext_emit("(row){return ");if !load64(f+8) {ext_emit("flexdb_rowid(row)");}else {if load64(f+8)==3 {ext_emit("flexdb_blob_data(flexdb_cell(row,");}else {ext_emit("flexdb_word(flexdb_cell(row,");}ext_emit_number(load64(f+24));ext_emit("))");}ext_emit(";}\n");
         if load64(f+8) {

@@ -33,7 +33,7 @@ fn fd_log_columns(db,columns) {
     fd_log_word(db,fd_size(columns));let i=0;while i<fd_size(columns) {let c=fd_at(columns,i);let name=load64(c);fd_log_word(db,fd_len(name));fd_log_bytes(db,name,fd_len(name));fd_log_word(db,load64(c+8));fd_log_word(db,load64(c+16));i=i+1;}return 1;
 }
 fn fd_log_value(db,v) {
-    let kind=load64(v);fd_log_word(db,kind);if flexdb_blob_external(v) {let b=load64(db+80);let at=load64(b);fd_blob_encode(load64(b+16)+at,v);store64(b,at+48);}else if kind==2 || kind==3 {fd_log_word(db,load64(v+16));fd_log_bytes(db,load64(v+8),load64(v+16));}else {fd_log_word(db,load64(v+8));}return 1;
+    let kind=load64(v);fd_log_word(db,kind);if flexdb_blob_external(v) {let b=load64(db+80);let at=load64(b);fd_blob_encode(load64(b+16)+at,v);store64(b,at+48);}else if kind==2 || kind==3 || kind==5 {fd_log_word(db,load64(v+16));fd_log_bytes(db,load64(v+8),load64(v+16));}else {fd_log_word(db,load64(v+8));}return 1;
 }
 fn fd_replace_schema(t,columns,rows) {
     if !fd_table_ready(t) || !fd_writing(load64(t)) {return 0;}let db=load64(t);

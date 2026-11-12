@@ -101,7 +101,7 @@ fn fd_blob_compact_plan(db,a) {
 fn fd_blob_compact_done(db,list,published) {let s=load64(db+232);if s {if published {let i=0;while i<fd_size(list) {let d=fd_at(list,i);store64(d+16,load64(d+96));i=i+1;}store64(s+56,load64(db+56));}store64(s+88,0);}return 1;}
 
 fn fd_blob_value_ok(db,v,kind,n) {
- if kind==2 {return n>=0 && n<=1048576;}if kind!=3 {return 1;}if n>=0 {return n<=67108863;}return n>=(-67108864) && load64(v+8) && load64(load64(v+8))==db;
+ if kind==2 {return n>=0 && n<=1048576;}if kind==5 {return n>=1 && n<=1048576 && fdj_valid(load64(v+8),n);}if kind!=3 {return 1;}if n>=0 {return n<=67108863;}return n>=(-67108864) && load64(v+8) && load64(load64(v+8))==db;
 }
 
 fn fd_blob_cp_ref(db,p,bytes,length) {
