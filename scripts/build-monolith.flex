@@ -7,5 +7,8 @@ fn main(argc,argv) {
     h_compile(compiler,"scripts/monolith-build.flex","build/monolith-builder");
     h_compile(compiler,"tests/monolith/integration.flex","build/test-monolith-integration");
     h_compile(compiler,"tests/monolith/browser.flex","build/test-monolith-browser");
-    h_print(1,"Built Monolith examples, schema builder, integration and browser tests.\n");return 0;
+    h_compile(compiler,"tests/monolith/cache-unit.flex","build/test-monolith-cache-unit");
+    h_compile(compiler,"tests/monolith/cache-web.flex","build/test-monolith-cache-web");
+    h_compile(compiler,"tests/monolith/cache-ui.flex","build/test-monolith-cache-ui");
+    h_print(1,"Built Monolith examples, schema builder, resource cache, integration and browser tests.\n");return 0;
 }

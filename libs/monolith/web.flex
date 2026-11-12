@@ -2,6 +2,7 @@
 // app_request, and app_tick. Request values live until the next poll iteration.
 import "support.flex";
 import "launch.flex";
+import "cache.flex";
 global web_name=0;
 global web_port=0;
 global web_slots=0;
@@ -18,27 +19,29 @@ global web_cookie=0;
 global web_fields=0;
 global web_field_count=0;
 global web_extra=0;
+global web_if_none_match=0;
 fn web_lower(c) {if c>=65 && c<=90 {return c+32;}return c;}
 fn web_header(a,b) {let n=m_len(a);if n!=m_len(b) {return 0;}let i=0;while i<n {if web_lower(load8(a+i))!=load8(b+i) {return 0;}i=i+1;}return 1;}
 fn web_token_char(c) {if (c>=65 && c<=90)||(c>=97 && c<=122)||(c>=48 && c<=57) {return 1;}let chars="!#$%&'*+-.^_`|~";let i=0;while load8(chars+i) {if c==load8(chars+i) {return 1;}i=i+1;}return 0;}
 fn web_status(code) {
-    if code==200 {return "200 OK";}if code==303 {return "303 See Other";}if code==400 {return "400 Bad Request";}if code==403 {return "403 Forbidden";}
+    if code==304 {return "304 Not Modified";}if code==200 {return "200 OK";}if code==303 {return "303 See Other";}if code==400 {return "400 Bad Request";}if code==403 {return "403 Forbidden";}
     if code==401 {return "401 Unauthorized";}if code==404 {return "404 Not Found";}if code==405 {return "405 Method Not Allowed";}if code==408 {return "408 Request Timeout";}
     if code==409 {return "409 Conflict";}if code==413 {return "413 Content Too Large";}if code==415 {return "415 Unsupported Media Type";}
     if code==422 {return "422 Unprocessable Content";}if code==429 {return "429 Too Many Requests";}if code==500 {return "500 Internal Server Error";}if code==431 {return "431 Request Header Fields Too Large";}return "503 Service Unavailable";
 }
 fn web_reply(fd,code,type,body,extra) {
     let b=m_buffer();m_text(b,"HTTP/1.1 ");m_text(b,web_status(code));m_text(b,"\r\nContent-Type: ");m_text(b,type);
-    m_text(b,"\r\nContent-Length: ");m_text(b,m_int(m_len(body)));
+    if code!=304 {m_text(b,"\r\nContent-Length: ");m_text(b,m_int(m_len(body)));}
     m_text(b,"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'\r\n");
-    m_text(b,web_extra);web_extra="";m_text(b,extra);m_text(b,"\r\n");if !m_eq(web_method,"HEAD") {m_text(b,body);}return m_send(fd,m_data(b),load64(b+8));
+    m_text(b,web_extra);web_extra="";m_text(b,extra);m_text(b,"\r\n");if code!=304 && !m_eq(web_method,"HEAD") {m_text(b,body);}return m_send(fd,m_data(b),load64(b+8));
 }
+fn web_resource(fd,resource,mode,seconds) {return mono_resource_reply(fd,web_method,web_if_none_match,resource,mode,seconds);}
 fn web_close(slot) {
     let fd=load64(slot);if fd>=0 {syscall(3,fd,0,0,0,0,0);}let p=load64(slot+8);if p {syscall(11,p,16384,0,0,0,0);}store64(slot,-1);store64(slot+8,0);return 0;
 }
 fn web_parse(slot) {
     let bytes=load64(slot+8);let size=load64(slot+16);let end=load64(slot+32);
-    web_method="";web_path="";web_host=0;web_origin=0;web_type=0;web_accept=0;web_length=0;web_cookie="";
+    web_method="";web_path="";web_host=0;web_origin=0;web_type=0;web_accept=0;web_length=0;web_cookie="";web_if_none_match=0;
     let line=0;while line+1<end && !(load8(bytes+line)==13 && load8(bytes+line+1)==10) {line=line+1;}
     let p=0;while p<line && web_token_char(load8(bytes+p)) {p=p+1;}if !p || p==line || load8(bytes+p)!=32 {return 400;}web_method=m_slice(bytes,p);
     let start=p+1;p=start;while p<line && load8(bytes+p)!=32 {let c=load8(bytes+p);if c<33 || c>126 {return 400;}p=p+1;}
@@ -58,6 +61,7 @@ fn web_parse(slot) {
         else if web_header(name,"content-type") {if web_type {return 400;}web_type=value;}
         else if web_header(name,"cookie") {if m_len(web_cookie) {return 400;}web_cookie=value;}
         else if web_header(name,"accept") {web_accept=value;}
+        else if web_header(name,"if-none-match") {web_if_none_match=mono_resource_condition(web_if_none_match,value);}
         else if web_header(name,"content-length") {lengths=lengths+1;if lengths>1 {return 400;}web_length=m_number(value);if web_length<0 {return 400;}if web_length>8192 {return 413;}}
         else if web_header(name,"transfer-encoding") {return 400;}
         p=finish+2;

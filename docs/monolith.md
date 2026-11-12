@@ -218,3 +218,90 @@ escaped and SQLite values are bound parameters. The keyed server currently
 allows 2,048 UI nodes, 64 connections, 32 SSE subscribers, 8-KiB headers, 4-KiB
 form bodies, and 64 fields with unique names. View dependency tracking is coarse:
 each successful action recomputes the shared tree, then diffs minimize patches.
+
+## Resource caching
+
+`monolith/cache.flex` provides immutable, process-owned binary resource
+snapshots. Both HTTP transports use the same implementation. The keyed
+`mono_run` server automatically snapshots its bundled JavaScript and configured
+stylesheet after `app_init`, emits content-versioned URLs in HTML, and serves
+those URLs with `public, max-age=31536000, immutable`. Unversioned `/client.js`
+and `/style.css` aliases use `public, no-cache` and ETag revalidation. Unknown
+versions return 404; they never receive newer bytes under an old immutable URL.
+HTML containing action tokens, SSE and ordinary replies remain `no-store`.
+
+For applications using `monolith/web.flex`, register server-owned files or byte
+buffers at startup and explicitly choose resource routes:
+
+```flexscript
+// In app_init, before the request loop:
+logo=mono_resource_file("assets/logo.png","image/png");
+m_assert(logo,mono_resource_error);
+// Or capture an exact byte range, including embedded NUL bytes:
+resource=mono_resource_bytes(data,size,"application/octet-stream");
+// When generating HTML:
+let url=mono_resource_url("/logo.png",logo);
+// In a GET/HEAD route, after any required authorization:
+web_resource(fd,logo,"immutable",31536000);
+```
+
+Only select `immutable` after matching the requested version to
+`mono_resource_version(resource)`. `web.flex` puts the query in `web_get("v")`;
+applications should return 404 for a mismatching version and use `revalidate`
+for a bare alias. `mono_resource_match(request_path,route,resource)` is available
+for transports retaining a complete request target: 0 means no match, 1 the bare
+alias, and 2 the exact versioned URL.
+
+`mono_resource_reply(fd,method,if_none_match,resource,mode,seconds)` is the
+transport-independent writer. `web_resource` supplies its current method and
+parsed `If-None-Match` value. Policies are:
+
+| Mode | Cache-Control | Conditional behavior |
+| --- | --- | --- |
+| `revalidate` | `public, no-cache` | Matching GET/HEAD returns 304 |
+| `immutable` | `public, max-age=N, immutable` | Matching GET/HEAD returns 304 |
+| `private` | `private, no-cache` | Matching GET/HEAD returns 304 after caller authorization |
+| `no-store` | `no-store` | Always sends a fresh 200 representation |
+
+Immutable ages must be 1-31536000 seconds. Responses have a strong SHA-256 ETag,
+a locale-independent HTTP Date, explicit MIME type and `nosniff`. Validators are
+`SHA256(MIME || NUL || SHA256(body))`, so changes in bytes or MIME type change the
+version. Weak `If-None-Match` comparisons, lists (including commas inside opaque
+tags), wildcard and duplicate header fields are handled. Invalid conditions do
+not produce a false match. HEAD preserves the representation length; 304 has no
+body or Content-Length. The helper accepts only GET/HEAD; other methods receive
+405. It does not implement ranges, compression, Last-Modified/If-Modified-Since
+or write preconditions.
+
+Defaults are 128 snapshots, 16 MiB of retained mapped pages and 4 MiB per
+resource. `mono_resource_limits(total_bytes,entries,file_bytes)` configures an
+empty cache (bounded to 64 MiB, 1024 entries and 8 MiB per resource). Failed
+admission returns 0 with `mono_resource_error`, preserving existing resources.
+The file loader accepts regular Linux files, limits growth while reading, and
+copies captured bytes into owned storage. It never maps a request URL to a host
+path. Register files through an application-owned allowlist.
+
+Snapshots survive request-arena resets and file changes/deletion. They do not
+poll or reread files per request. Restart or explicitly replace a snapshot to
+adopt new bytes. Accessors are `mono_resource_data`, `mono_resource_size`,
+`mono_resource_etag`, `mono_resource_version`, `mono_resource_count` and
+`mono_resource_retained_bytes`. `mono_resource_release` and
+`mono_resources_clear` free owned pages; callers must not retain freed handles.
+Registration/replacement must be serialized with request handling. Deployments
+that need old version URLs to stay available should retain those snapshots or
+serve previous immutable artifacts separately.
+
+The native helper uses Linux syscalls, OpenSSL 3 SHA-256 and libc's `gmtime_r`.
+Private resource authorization belongs before lookup/conditional handling, on
+every request. A validator is not an access token.
+
+Run the disposable protocol and optional headless browser checks:
+
+```sh
+python3 tests/monolith/cache.py --compiler build/flexscript
+python3 tests/monolith/cache.py --compiler build/flexscript --browser
+```
+
+The suite checks binary/empty data, memory ownership/bounds, conditional
+GET/HEAD, malformed and duplicate validators, authorization ordering, changes
+across restart, both transports and actual browser cache reuse/invalidation.

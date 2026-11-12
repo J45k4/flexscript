@@ -1,3 +1,4 @@
+import "../cache.flex";
 // Shared HTTP/SSE transport. Renderer supplies ui_html, ui_diff and assets.
 global sv_token=0;
 global sv_port=0;
@@ -20,13 +21,16 @@ global sv_fields=0;
 global sv_field_count=0;
 global mono_name=0;
 global mono_style=0;
+global sv_if_none_match=0;
+global mono_client_resource=0;
+global mono_style_resource=0;
 global sv_id=0;
 fn mono_token() {return sv_token;}
 fn sv_lower(c) {if c>=65 && c<=90 {return c+32;}return c;}
 fn sv_header(a,b) {let n=m_len(a);if n!=m_len(b) {return 0;}let i=0;while i<n {if sv_lower(load8(a+i))!=load8(b+i) {return 0;}i=i+1;}return 1;}
 fn sv_token_char(c) {if (c>=65 && c<=90)||(c>=97 && c<=122)||(c>=48 && c<=57) {return 1;}let chars="!#$%&'*+-.^_`|~";let i=0;while load8(chars+i) {if c==load8(chars+i) {return 1;}i=i+1;}return 0;}
 fn sv_status(code) {
-    if code==200 {return "200 OK";}if code==303 {return "303 See Other";}if code==400 {return "400 Bad Request";}if code==403 {return "403 Forbidden";}
+    if code==304 {return "304 Not Modified";}if code==200 {return "200 OK";}if code==303 {return "303 See Other";}if code==400 {return "400 Bad Request";}if code==403 {return "403 Forbidden";}
     if code==404 {return "404 Not Found";}if code==405 {return "405 Method Not Allowed";}if code==408 {return "408 Request Timeout";}
     if code==401 {return "401 Unauthorized";}if code==409 {return "409 Conflict";}if code==413 {return "413 Content Too Large";}if code==415 {return "415 Unsupported Media Type";}
     if code==422 {return "422 Unprocessable Content";}if code==429 {return "429 Too Many Requests";}if code==431 {return "431 Request Header Fields Too Large";}
@@ -34,10 +38,10 @@ fn sv_status(code) {
 }
 fn sv_reply(fd,code,type,body,extra) {
     let b=m_buffer();m_text(b,"HTTP/1.1 ");m_text(b,sv_status(code));m_text(b,"\r\nContent-Type: ");m_text(b,type);
-    m_text(b,"\r\nContent-Length: ");m_text(b,m_int(m_len(body)));
+    if code!=304 {m_text(b,"\r\nContent-Length: ");m_text(b,m_int(m_len(body)));}
     m_text(b,"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ");
     m_text(b,ui_image_policy());m_text(b,"form-action 'self'; base-uri 'none'; frame-ancestors 'none'\r\n");
-    m_text(b,extra);m_text(b,"\r\n");if !m_eq(sv_method,"HEAD") {m_text(b,body);}return m_send(fd,m_data(b),load64(b+8));
+    m_text(b,extra);m_text(b,"\r\n");if code!=304 && !m_eq(sv_method,"HEAD") {m_text(b,body);}return m_send(fd,m_data(b),load64(b+8));
 }
 fn sv_close(slot) {
     let fd=load64(slot);if fd>=0 {syscall(3,fd,0,0,0,0,0);}let p=load64(slot+8);if p {syscall(11,p,16384,0,0,0,0);}store64(slot,-1);store64(slot+8,0);return 0;
@@ -57,7 +61,7 @@ fn sv_broadcast(patch) {
 }
 fn sv_parse(slot) {
     let bytes=load64(slot+8);let size=load64(slot+16);let end=load64(slot+32);
-    sv_method="";sv_path="";sv_host=0;sv_origin=0;sv_type=0;sv_accept=0;sv_length=0;
+    sv_method="";sv_path="";sv_host=0;sv_origin=0;sv_type=0;sv_accept=0;sv_length=0;sv_if_none_match=0;
     let line=0;while line+1<end && !(load8(bytes+line)==13 && load8(bytes+line+1)==10) {line=line+1;}
     let p=0;while p<line && sv_token_char(load8(bytes+p)) {p=p+1;}if !p || p==line || load8(bytes+p)!=32 {return 400;}sv_method=m_slice(bytes,p);
     let start=p+1;p=start;while p<line && load8(bytes+p)!=32 {let c=load8(bytes+p);if c<33 || c>126 {return 400;}p=p+1;}
@@ -76,6 +80,7 @@ fn sv_parse(slot) {
         else if sv_header(name,"origin") {if sv_origin {return 400;}sv_origin=value;}
         else if sv_header(name,"content-type") {if sv_type {return 400;}sv_type=value;}
         else if sv_header(name,"accept") {sv_accept=value;}
+        else if sv_header(name,"if-none-match") {sv_if_none_match=mono_resource_condition(sv_if_none_match,value);}
         else if sv_header(name,"content-length") {lengths=lengths+1;if lengths>1 {return 400;}sv_length=m_number(value);if sv_length<0 {return 400;}if sv_length>4096 {return 413;}}
         else if sv_header(name,"transfer-encoding") {return 400;}
         p=finish+2;
@@ -117,14 +122,14 @@ fn sv_form(p,n) {
 }
 fn sv_html() {
     let b=m_buffer();m_text(b,"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"monolith-token\" content=\"");m_text(b,sv_token);
-    m_text(b,"\"><title>");m_escape(b,mono_name,0);m_text(b,"</title><link rel=\"stylesheet\" href=\"/style.css\"><script defer src=\"/client.js\"></script></head><body><div data-mkey=\"mount\">");ui_html(b,sv_root);m_text(b,"</div></body></html>");return m_data(b);
+    m_text(b,"\"><title>");m_escape(b,mono_name,0);m_text(b,"</title><link rel=\"stylesheet\" href=\"");m_text(b,mono_resource_url("/style.css",mono_style_resource));m_text(b,"\"><script defer src=\"");m_text(b,mono_resource_url("/client.js",mono_client_resource));m_text(b,"\"></script></head><body><div data-mkey=\"mount\">");ui_html(b,sv_root);m_text(b,"</div></body></html>");return m_data(b);
 }
 fn sv_dispatch(slot) {
     let fd=load64(slot);
     if m_eq(sv_method,"GET") || m_eq(sv_method,"HEAD") {
         if m_eq(sv_path,"/") {sv_reply(fd,200,"text/html; charset=utf-8",sv_html(),"");}
-        else if m_eq(sv_path,"/client.js") {sv_reply(fd,200,"text/javascript; charset=utf-8",mono_client_js(),"");}
-        else if m_eq(sv_path,"/style.css") {sv_reply(fd,200,"text/css; charset=utf-8",mono_style,"");}
+        else if mono_resource_match(sv_path,"/client.js",mono_client_resource) {let mode="revalidate";if mono_resource_match(sv_path,"/client.js",mono_client_resource)==2 {mode="immutable";}mono_resource_reply(fd,sv_method,sv_if_none_match,mono_client_resource,mode,31536000);}
+        else if mono_resource_match(sv_path,"/style.css",mono_style_resource) {let mode="revalidate";if mono_resource_match(sv_path,"/style.css",mono_style_resource)==2 {mode="immutable";}mono_resource_reply(fd,sv_method,sv_if_none_match,mono_style_resource,mode,31536000);}
         else if m_eq(sv_path,"/events") && m_eq(sv_method,"GET") {
             let subscribers=0;let i=0;while i<64 {if load64(sv_slots+i*64)>=0 && load64(sv_slots+i*64+48)==1 {subscribers=subscribers+1;}i=i+1;}
             if subscribers>=32 {sv_reply(fd,503,"text/plain; charset=utf-8","Too many live connections\n","");}
@@ -175,6 +180,7 @@ fn mono_run(argc,argv,name,default_port,default_path) {
     mono_name=name;mono_style=mono_style_css();
     let port=default_port;if argc>1 {port=m_number(load64(argv+8));}m_assert(port>=1 && port<=65535,"port must be 1..65535");sv_port=port;
     let path=default_path;if argc>2 {path=load64(argv+16);}let initialized=app_init(path);if initialized {return initialized;}
+    mono_client_resource=mono_resource_bytes(mono_client_js(),m_len(mono_client_js()),"text/javascript; charset=utf-8");mono_style_resource=mono_resource_bytes(mono_style,m_len(mono_style),"text/css; charset=utf-8");m_assert(mono_client_resource && mono_style_resource,"Cannot snapshot Monolith assets");
     let random=m_take(16);m_assert(syscall(318,random,16,0,0,0,0)==16,"cannot generate action token");sv_token=m_take(33);let hex="0123456789abcdef";let i=0;
     while i<16 {let c=load8(random+i);store8(sv_token+i*2,load8(hex+(c>>4)));store8(sv_token+i*2+1,load8(hex+(c&15)));i=i+1;}store8(sv_token+32,0);
     sv_slots=m_take(4096);sv_poll=m_take(520);i=0;while i<64 {let slot=sv_slots+i*64;let j=0;while j<64 {store64(slot+j,0);j=j+8;}store64(slot,-1);i=i+1;}
