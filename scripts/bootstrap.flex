@@ -14,6 +14,53 @@ fn bs_suite(compiler,out,name,seed,first,second) {
     h_timeout=timeout;
     return j_parse(h_read(h_join(out,h_cat(name,"-tests.json"))));
 }
+fn bs_first_word(line) {
+    let i=0;let n=h_len(line);
+    while i<n && (load8(line+i)==32 || load8(line+i)==9) {i=i+1;}
+    let start=i;
+    let scanning=1;
+    while scanning && i<n {
+        let c=load8(line+i);
+        if (c>=65 && c<=90) || (c>=97 && c<=122) || c==95 {i=i+1;}else {scanning=0;}
+    }
+    return h_slice(line+start,i-start);
+}
+fn bs_strip(source) {
+    // The published seeds predate the verifier annotation syntax. Contracts
+    // erase at compilation, so dropping their lines yields the same program
+    // for the seed-built stages; anything else the seeds cannot parse fails
+    // loudly instead of being silently altered.
+    let words=h_args("requires","ensures","reads","modifies","releases","trusted");
+    h_add(words,"terminates");h_add(words,"verify");
+    let out=h_buffer();
+    let n=h_len(source);
+    let i=0;
+    let dropping=0;
+    while i<n {
+        let start=i;
+        while i<n && load8(source+i)!=10 {i=i+1;}
+        let line=h_slice(source+start,i-start);
+        let kept=1;
+        if dropping {
+            kept=0;
+            if h_len(line) && load8(line+h_len(line)-1)==59 {dropping=0;}
+        }else {
+            let word=bs_first_word(line);
+            let k=0;
+            while k<h_count(words) {
+                if h_equal(word,h_at(words,k)) {
+                    kept=0;
+                    if !(h_len(line) && load8(line+h_len(line)-1)==59) {dropping=1;}
+                    k=h_count(words);
+                }
+                k=k+1;
+            }
+        }
+        if kept {h_text(out,line);h_text(out,"\n");}
+        if i<n {i=i+1;}
+    }
+    return h_data(out);
+}
 fn main(argc,argv) {
     h_environment(argc,argv);
     let seed=b_option(argc,argv,"--compiler",0);
@@ -26,7 +73,11 @@ fn main(argc,argv) {
     let manifest=j_dump(b_manifest());
     seed=h_real(seed);
     let core_source=h_join(out,"core.flex");
-    h_save(core_source,b_flatten(1));
+    // The published seeds cannot parse the verifier annotation syntax, so the
+    // bootstrap origin builds from the erased flattened source. The stages
+    // compile that same erased source, and the clean room re-derives it from
+    // the tree to keep the flattened form honest.
+    h_save(core_source,bs_strip(b_flatten(1)));
     // Normalize the historical seed before checking the current fixed point.
     let core=h_join(out,"core-seed");
     h_compile(seed,core_source,core);
@@ -45,6 +96,9 @@ fn main(argc,argv) {
     let i=1;
     while i<=3 {
         let binary=h_join(out,h_cat("stage",h_int(i)));
+        // The bridge core was built from the erased flattened source, which is
+        // annotation-capable once compiled, so the stages compile the real
+        // annotated tree exactly as the published-seed path always did.
         h_compile(compiler,"compiler/main.flex",binary);
         h_elf(binary,0);
         h_check(h_run(h_args(binary,"--version",0,0,0,0)),0,h_cat3("flexscript ",version,"\n"));
