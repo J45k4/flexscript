@@ -1,0 +1,70 @@
+// Native build driver: graph inventory -> optimized kernels -> device artifacts.
+import "tiled.flex";
+import "graph.flex";
+import "tensorcore.flex";
+global cg_extra=0;
+global cg_operations=0;
+global cg_packer=0;
+fn cg_default_options() {return j_parse("{\"vector\":1,\"staging\":4,\"streaming\":1,\"pipeline\":1,\"patchTiles\":0,\"packedMasks\":0,\"batchEpilogue\":1,\"unroll\":0,\"residualFusion\":0,\"joinViews\":1,\"sharedPlacement\":1,\"interiorStencil\":0,\"mathMode\":\"fp32\",\"convolution\":\"implicit\"}");}
+fn cg_run(compiler,target,source,destination) {let args=h_args(compiler,"--target",target,source,"-o",destination);let p=h_run(args);if h_status(p) {h_print(2,h_err(p));h_die(h_cat("kernel compilation failed: ",source));}return 0;}
+fn cg_target(backend) {if h_equal(backend,"sass") {return "sass-sm75";}if h_equal(backend,"cuda") {return "ptx";}return "hip";}
+fn cg_extension(backend) {if h_equal(backend,"sass") {return ".cubin";}if h_equal(backend,"cuda") {return ".ptx";}return ".hip";}
+fn cg_backends(backend) {let list=h_vec();if h_equal(backend,"all") {h_add(list,"sass");h_add(list,"cuda");h_add(list,"hip");}else {h_assert(h_equal(backend,"sass") || h_equal(backend,"cuda") || h_equal(backend,"hip"),"invalid backend");h_add(list,backend);}return list;}
+fn cg_compile_source(source,path,compiler,backends,emit_only) {
+    h_save(path,source);if emit_only {return 0;}let i=0;while i<h_count(backends) {let backend=h_at(backends,i);let at=h_len(path)-5;let destination=h_cat(h_slice(path,at),cg_extension(backend));cg_run(compiler,cg_target(backend),path,destination);i=i+1;}return 0;
+}
+fn cg_generic(root,output,compiler,backends,emit_only) {
+    let operations=h_vec();h_add(operations,"binary");h_add(operations,"activation");h_add(operations,"permute");h_add(operations,"join");h_add(operations,"resize");h_add(operations,"softmax");h_add(operations,"matmul");h_add(operations,"convolution");let report=j_object();let i=0;h_mkdir(output);
+    while i<h_count(operations) {let operation=h_at(operations,i);let body=h_cat3("gpu_store_u32(output+index*4,vk_",operation,"(index,input,gpu_launch_word(0),gpu_launch_word(1),gpu_launch_word(2),gpu_launch_word(3)))");if h_equal(operation,"softmax") {body="vk_softmax_row(index,input,output,gpu_launch_word(3))";}
+        let text=h_cat3("import ",j_dump(j_string(cg_operations)),h_cat3(";\nfn gpu_launch_word(index) {return 0;}\nfn kernel(index,input,output,count) {if index<count {",body,";}return 0;}\nfn main() {return 78;}\n"));let source=h_join(output,h_cat(operation,".flex"));h_save(source,text);let b=0;
+        while b<h_count(backends) {let backend=h_at(backends,b);let name=h_cat(operation,cg_extension(backend));let image=h_join(output,name);if !emit_only {let temporary=h_cat(image,".tmp");cg_run(compiler,cg_target(backend),source,temporary);h_assert(!syscall(82,temporary,image,0,0,0,0),"cannot install generic kernel");let entry=j_object();j_set(entry,"target",j_string(cg_target(backend)));j_set(entry,"sha256",j_string(h_sha(image)));j_set(report,name,entry);}b=b+1;}i=i+1;
+    }if !emit_only {j_save(h_join(output,"kernels.json"),report);}return 0;
+}
+fn cg_residual(body,first) {
+    let insertion=h_find(body,"gpu_store_u32(");let at=0;let found=0;while load8(body+at) && !found {if h_starts(body+at,"let row=") || (h_starts(body+at,"row=") && (!at || !cx_name(load8(body+at-1)))) {let end=h_find(body+at,";");if end>=0 && h_find(h_slice(body+at,end),"mr")>=0 {insertion=at;found=1;}}at=at+1;}h_assert(insertion>=0,"residual producer has no store");body=h_cat3(h_slice(body,insertion),"let residual=gpu_launch_word(7);",body+insertion);let out=h_buffer();at=0;
+    while load8(body+at) {if h_starts(body+at,"gpu_store_u32(") {let start=at;at=at+14;let address_start=at;let depth=0;while load8(body+at) && !(load8(body+at)==44 && !depth) {let c=load8(body+at);if c==40 {depth=depth+1;}if c==41 {depth=depth-1;}at=at+1;}h_assert(load8(body+at)==44,"invalid residual store");let address=h_slice(body+address_start,at-address_start);at=at+1;let value_start=at;let end=h_find(body+at,";");h_assert(end>0,"invalid residual epilogue");let value=h_slice(body+value_start,end-1);at=at+end+1;h_assert(h_find(address,"output")>=0,"unexpected epilogue output address");let other=h_cat3("gpu_load_u32(",cx_word_replace(address,"output","residual"),")");let operands=h_cat3(value,",",other);if first {operands=h_cat3(other,",",value);}h_text(out,h_cat3("gpu_store_u32(",address,h_cat3(",vk_add(",operands,"));")));}else {h_append(out,body+at,1);at=at+1;}}return h_data(out);
+}
+fn cg_hoist(body) {
+    let names=j_object();let order=h_vec();let out=h_buffer();let i=0;while load8(body+i) {let valid=0;let end=i+4;if h_starts(body+i,"let ") {while cx_name(load8(body+end)) {end=end+1;}valid=end>i+4 && load8(body+end)==61;}if valid {let name=h_slice(body+i+4,end-i-4);if !j_get(names,name) {j_set(names,name,j_int(1));h_add(order,name);}i=i+4;}else {h_append(out,body+i,1);i=i+1;}}
+    let prefix=h_buffer();i=0;while i<h_count(order) {h_text(prefix,h_cat3("let ",h_at(order,i),"=0;"));i=i+1;}h_text(prefix,"\n");h_text(prefix,h_data(out));return h_data(prefix);
+}
+fn cg_divisions(body) {
+    let numbers=h_vec();let i=0;while load8(body+i) {if load8(body+i)==113 && (!i || !cx_name(load8(body+i-1))) && load8(body+i+1)>=48 && load8(body+i+1)<=57 {let n=0;let j=i+1;while load8(body+j)>=48 && load8(body+j)<=57 {n=n*10+load8(body+j)-48;j=j+1;}if load8(body+j)==40 {let k=0;let exists=0;while k<h_count(numbers) {if h_at(numbers,k)==n {exists=1;}k=k+1;}if !exists {h_add(numbers,n);}}}i=i+1;}
+    i=1;while i<h_count(numbers) {let value=h_at(numbers,i);let j=i;while j>0 && h_at(numbers,j-1)>value {store64(numbers+8+j*8,h_at(numbers,j-1));j=j-1;}store64(numbers+8+j*8,value);i=i+1;}
+    let out=h_buffer();i=0;while i<h_count(numbers) {let d=h_at(numbers,i);h_text(out,h_cat3("fn q",h_int(d),h_cat3("(a) {let q=gpu_u32_mul_hi(a,",h_int((4294967296+d-1)/d),h_cat3(");return gpu_u32_sub(q,gpu_i32_gt(gpu_u32_mul(q,",h_int(d),"),a));}\n"))));i=i+1;}return h_data(out);
+}
+fn cg_header() {return "fn gpu_launch_word(index) {return 0;}\nfn gpu_thread_x() {return 0;}fn gpu_block_x() {return 0;}fn gpu_lane() {return 0;}\nfn gpu_shared_load_u32(offset) {return 0;}fn gpu_shared_store_u32(offset,value) {return 0;}\nfn gpu_shared_barrier() {return 0;}fn gpu_shuffle(value,lane,mask) {return value;}\nfn gpu_shared_load64(offset) {return 0;}\nfn gpu_warp_sum_f32(value) {return value;}\nfn gpu_f32_fma(a,b,c) {return vk_add(vk_mul(a,b),c);}\n";}
+fn cg_source(root,body,prepare) {
+    let source=h_buffer();h_text(source,h_cat3("import ",j_dump(j_string(cg_operations)),";\n"));if !prepare {h_text(source,cg_header());}h_text(source,cx_declarations());h_text(source,cg_divisions(body));if !prepare && cg_extra {h_text(source,cg_extra);}h_text(source,"fn kernel(index,input,output,count) {");if !prepare {h_text(source,"\n");}h_text(source,body);if !prepare {h_text(source,"\n");}h_text(source,"return 0;}\nfn main() {return 78;}\n");return h_data(source);
+}
+fn cg_validate_inventory(data,count) {
+    h_assert(count>0 && count<=8192,"graph node count outside 1..8192");let i=0;
+    while i<count {
+        let n=cg_node(data,i);let op=load64(n);let shapes=2;if (op>=3 && op<=7) || op==25 || op==29 {shapes=3;}let shape=0;while shape<shapes {let elements=1;let d=0;while d<4 {let dim=load64(n+64+shape*32+d*8);h_assert(dim>0 && dim<=16777216,"invalid graph dimension");h_assert(elements<=16777216/dim,"tensor element limit");elements=elements*dim;d=d+1;}shape=shape+1;}
+        h_assert((op>=3 && op<=7) || op==10 || op==12 || op==14 || (op>=24 && op<=29),"unsupported tensor operation");
+        if op==12 || op==14 {h_assert(cg_param(n,0)>0 && cg_param(n,0)<=31 && cg_param(n,1)>0 && cg_param(n,3)>0 && load64(n+104)%cg_param(n,3)==0 && load64(n+72)%cg_param(n,3)==0,"invalid convolution parameters");}
+        if op==25 || op==26 || op==28 {h_assert(cg_param(n,0)>=0 && cg_param(n,0)<4,"invalid tensor axis");}
+        if op==27 {h_assert(cg_param(n,0)>0,"invalid resize scale");}i=i+1;
+    }return 0;
+}
+fn cg_generate(root,inventory,output,compiler,backends,emit_only) {
+    let data=h_read(inventory);let bytes=h_file_size;h_assert(bytes%224==0,"truncated graph inventory");let count=bytes/224;cg_validate_inventory(data,count);let fingerprint=h_sha_bytes(data,bytes);h_mkdir(output);cg_graph(data,count,j_n(cg_options,"residualFusion"),j_n(cg_options,"sharedPlacement"),j_n(cg_options,"joinViews"));let entries=h_take(80+count*128);h_zero(entries,80+count*128);h_copy(entries,"PPLN0001",8);store64(entries+8,count);h_copy(entries+16,fingerprint,64);let schedule=j_array();let sources=j_object();let kernels=j_object();let views=0;let activations=0;let residuals=0;let placements=0;let fused=0;let i=0;
+    while i<count {
+        let node=cg_node(data,i);let entry=entries+80+i*128;store64(entry+64,cg_field(i,0));store64(entry+72,128);store64(entry+80,1);if cg_field(i,8) {store64(entry+64,i);store64(entry+96,1);}if cg_field(i,16) {activations=activations+1;}if cg_field(i,24) {residuals=residuals+1;}if cg_field(i,0)!=i {fused=fused+1;}
+        if load64(node)==26 && cg_field(i,40) {views=views+1;}if cg_field(i,40) {let resolved=cg_root(i);let target=load64(resolved);let offset=load64(resolved+8);h_assert(offset>=0 && offset+cg_product(node+64,0,4)*4<=cg_product(cg_node(data,target)+64,0,4)*4,"tensor placement exceeds destination");store64(entry+112,target+1);store64(entry+120,offset);placements=placements+1;}
+        if !cg_field(i,8) {
+            cg_values=j_object();let op=load64(node);let tiled=op==29 || (op==12 && load64(node+104)/cg_param(node,3)>1);let reduction=load64(node+120);if op==12 {reduction=load64(node+104)/cg_param(node,3)*cg_param(node,0)*cg_param(node,0);}
+            let tensorcore=tiled && h_equal(j_s(cg_options,"mathMode"),"fp32-tc") && reduction%8==0;cg_extra=0;let im2col=!tensorcore && h_equal(j_s(cg_options,"convolution"),"im2col") && op==12 && cg_param(node,0)>1 && tiled && cg_product(node+96,0,2)*cg_param(node,0)*cg_param(node,0)*cg_product(node+64,2,4)<=16777216;
+            let body=0;if tiled {body=ct_tiled(node,cg_field(i,16),im2col);}else {body=cg_element(node,cg_field(i,16));}if j_n(cg_options,"interiorStencil") && op==12 && load64(node+104)/cg_param(node,3)==1 && cg_param(node,0)==3 {body=cg_stencil(node,cg_field(i,16));}
+            if tensorcore {body=cc_generate(node,cg_field(i,16));cg_extra=cc_declarations();}
+            let work=cg_work;let threads=cg_threads;let shared=cg_shared;if cg_field(i,24) {body=cg_residual(body,cg_field(i,32));}body=cx_narrow(body);let source=cg_source(root,cg_hoist(body),0);let prep_source=0;if im2col {prep_source=cg_source(root,cx_narrow(cg_input_matrix(node)),1);}let identity=source;let length=h_len(source);if prep_source {let other=h_len(prep_source);identity=h_take(length+1+other);h_copy(identity,source,length);store8(identity+length,0);h_copy(identity+length+1,prep_source,other);length=length+1+other;}
+            let name=h_cat("k",h_slice(h_sha_bytes(identity,length),24));if !j_get(sources,name) {cg_compile_source(source,h_join(output,h_cat(name,".flex")),compiler,backends,emit_only);j_set(sources,name,j_int(1));}if prep_source {let prep_name=h_cat(name,"-input");if !j_get(sources,prep_name) {cg_compile_source(prep_source,h_join(output,h_cat(prep_name,".flex")),compiler,backends,emit_only);j_set(sources,prep_name,j_int(1));}}
+            h_copy(entry,name,h_len(name));store64(entry+72,threads);store64(entry+80,work);store64(entry+88,shared);let flags=0;if im2col {flags=4;}if tensorcore {flags=1;if op==12 && cg_param(node,0)==3 {flags=flags|2;}}if cg_field(i,24) {flags=flags|8|(cg_field(i,24)<<32);}store64(entry+104,flags);
+            let row=j_object();j_set(row,"index",j_int(i));j_set(row,"op",j_int(op));let shape=j_array();let j=0;while j<4 {j_push(shape,j_int(load64(node+64+j*8)));j=j+1;}j_set(row,"shape",shape);j_set(row,"kernel",j_string(name));j_set(row,"silu",j_bool(cg_field(i,16)));j_set(row,"tiled",j_bool(tiled));j_set(row,"threads",j_int(threads));j_set(row,"work",j_int(work));j_set(row,"shared",j_int(shared));j_push(schedule,row);j_set(kernels,name,j_int(1));
+        }i=i+1;
+    }
+    if h_equal(j_s(cg_options,"mathMode"),"fp32-tc") && !emit_only {i=0;while i<h_count(backends) {let backend=h_at(backends,i);if !h_equal(backend,"hip") {cg_run(compiler,cg_target(backend),cg_packer,h_join(output,h_cat("pack",cg_extension(backend))));}i=i+1;}}
+    let all=cg_backends("all");i=0;while i<h_count(all) {let stem=h_cat3("plan-",h_at(all,i),h_cat("-",fingerprint));syscall(87,h_join(output,h_cat(stem,".bin")),0,0,0,0,0);syscall(87,h_join(output,h_cat(stem,".json")),0,0,0,0,0);i=i+1;}
+    let report=j_object();j_set(report,"fingerprint",j_string(fingerprint));j_set(report,"mathMode",j_string(j_s(cg_options,"mathMode")));let tile=j_get(cg_options,"tile");if !tile {tile=j_node(0,0);}j_set(report,"tile",tile);j_set(report,"patchTiles",j_bool(j_n(cg_options,"patchTiles")));j_set(report,"unroll",j_int(j_n(cg_options,"unroll")));j_set(report,"unrollPolicy",j_string("largest-divisor"));j_set(report,"packedMasks",j_bool(j_n(cg_options,"packedMasks")));j_set(report,"staging",j_int(j_n(cg_options,"staging")));j_set(report,"vector",j_bool(j_n(cg_options,"vector")));j_set(report,"pipeline",j_bool(j_n(cg_options,"pipeline")));j_set(report,"nodes",j_int(count));j_set(report,"fused",j_int(activations));j_set(report,"residuals",j_int(residuals));j_set(report,"views",j_int(views));j_set(report,"joinedViews",j_int(cg_joined));j_set(report,"destinationJoins",j_int(cg_placed));j_set(report,"placements",j_int(placements));j_set(report,"kernels",j_int(h_count(j_value(sources))));j_set(report,"launches",j_int(j_count(schedule)));j_set(report,"schedule",schedule);
+    j_save(h_join(output,"plan.json"),report);h_save_bytes(h_join(output,h_cat3("plan-",fingerprint,".bin")),entries,80+count*128,420);h_print(1,h_cat3("Native Pup schedule: ",h_int(count),h_cat3(" nodes -> ",h_int(j_count(schedule))," launches\n")));return 0;
+}

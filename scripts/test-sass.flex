@@ -76,6 +76,8 @@ fn suite(compiler) {
     t_program(h_cat(packed,"store64(output+i*8,gpu_load_u64(p+8)^gpu_load_u32(p+4)^gpu_load_u16(p+2)^gpu_load_bf16(p+6)^gpu_load_stream_u64(p+16));return 0;}"));ss_compile();
     t_program(h_cat(packed,"let base=p-4095;store64(output+i*8,gpu_load_u64(base+4095));return 0;}"));ss_compile();
     t_program(h_cat(packed,"let base=p-4096;store64(output+i*8,gpu_load_u64(base+4096));return 0;}"));ss_compile();
+    t_program(h_cat(packed,"let base=p-65536;store64(output+i*8,gpu_load_u64(base+65536));return 0;}"));ss_compile();
+    t_program(h_cat(packed,"let base=p-8388607;store64(output+i*8,gpu_load_u64(base+8388607));return 0;}"));ss_compile();
     t_program(h_cat(packed,"let base=p+8;gpu_load_u64(p+8);store64(output+i*8,gpu_load_u64(base-8));return 0;}"));ss_compile();
     ss_case("store64(output+i*8,(!x)^(x||1)^(x&&7));return 0;");
     ss_case("store64(output+i*8,x/3+x%3);return 0;");
@@ -83,6 +85,11 @@ fn suite(compiler) {
     ss_case("store64(output+i*8,x/(-7)+x%(-7));return 0;");
     ss_case("store64(output+i*8,x/(load64(input+(i+1)*8)|1)+x%(load64(input+(i+1)*8)|1));return 0;");
     ss_case("store64(output+i*8,x/0x8000000000000000+x%0x8000000000000000);return 0;");
+    let index_ops=h_args("gpu_u32_add(a,b)","gpu_u32_sub(a,b)","gpu_u32_mul(a,b)","gpu_u32_mad(a,b,0x123456789abcdef0)","gpu_u32_mul_hi(a,b)","gpu_i32_lt(a,b)");
+    h_add(index_ops,"gpu_i32_le(a,b)");h_add(index_ops,"gpu_i32_gt(a,b)");h_add(index_ops,"gpu_i32_ge(a,b)");h_add(index_ops,"gpu_u32_eq(a,b)");h_add(index_ops,"gpu_u32_ne(a,b)");h_add(index_ops,"gpu_f16_pair_hi(a)");h_add(index_ops,"gpu_f16_pair_lo(a)");
+    h_add(index_ops,"gpu_u32_add(a,0xffffffff)");h_add(index_ops,"gpu_u32_sub(a,0xffffffff)");h_add(index_ops,"gpu_u32_mul(a,32)");h_add(index_ops,"gpu_u32_mul(a,0x100000002)");h_add(index_ops,"gpu_i32_lt(a,0x80000000)");h_add(index_ops,"gpu_i32_ge(a,-1)");h_add(index_ops,"gpu_u32_eq(a,0x100000000)");
+    i=0;while i<h_count(index_ops) {t_program(h_cat(packed,h_cat3("let a=load64(p);let b=load64(p+8);store64(output+i*8,",h_at(index_ops,i),");return 0;}")));ss_compile();i=i+1;}
+    t_program(h_cat(packed,"store64(output+i*8,gpu_load_u32(gpu_address_f32(input,i*2))^gpu_load_u64(gpu_address_f32(input,i*2)));return 0;}"));ss_compile();
     ss_case("let n=0;let total=0;while n<5 {if (x&1) && n!=2 {total=total+x;}else {total=total-7;}n=n+1;}store64(output+i*8,total);return 0;");
     t_program("fn mix(a,b,c){if a<0 {return -a;}return a*100+b*10+c;}fn kernel(i,input,output,count){store64(output+i*8,mix(load64(input+i*8),0||1,1&&2));return 0;}");ss_compile();
     t_program("fn later(x){return x*7;}fn nest(x){return later(x)+later(x+1);}fn kernel(i,input,output,count){if i&1 {store64(output+i*8,nest(i));}else {store64(output+i*8,nest(-i));}return 0;}");ss_compile();
@@ -113,7 +120,16 @@ fn suite(compiler) {
     ss_reject("global x=1;fn kernel(i,a,b,n){return x;}","globals or static data");
     ss_reject("fn kernel(i,a,b,n){return load8(\"x\");}","string literals");
     let source="fn kernel(i,a,b,n){";i=0;while i<120 {source=h_cat(source,h_cat3("let x",h_int(i),"=0;"));i=i+1;}
-    ss_reject(h_cat(source,"return 0;}"),"physical register budget");
+    t_program(h_cat(source,"store64(b+i*8,load64(a+i*8));return 0;}"));ss_compile();
+    source="fn kernel(i,a,b,n){";i=0;while i<120 {source=h_cat(source,h_cat3("let x",h_int(i),h_cat3("=load64(a+(i+",h_int(i),")*8);")));i=i+1;}
+    source=h_cat(source,"let sum=0;");i=0;while i<120 {source=h_cat(source,h_cat3("sum=sum+x",h_int(i),";"));i=i+1;}
+    ss_reject(h_cat(source,"store64(b+i*8,sum);return 0;}"),"physical register budget");
+    // Two phases use more than 64 language locals, with only one phase live.
+    // Backedges must preserve the total and the next iteration's inputs.
+    let phases="let total=0;let k=0;while k<3 {";let group=0;
+    while group<2 {i=group*40;while i<(group+1)*40 {phases=h_cat(phases,h_cat3("let x",h_int(i),h_cat3("=x+k+",h_int(i),";")));i=i+1;}
+        i=group*40;while i<(group+1)*40 {phases=h_cat(phases,h_cat3("total=total+x",h_int(i),";"));i=i+1;}group=group+1;}
+    ss_case(h_cat(phases,"k=k+1;}store64(output+i*8,total);return 0;"));
     let args=h_args(t_compiler,"--language","seta","--target","sass-sm75",t_fixture);h_add(args,"-o");h_add(args,t_binary);
     let p=h_run(args);h_check(p,1,0);t_assert(h_has(h_err(p),"require Flexscript or an external source frontend"),"unsupported SASS frontend rejected");
     return t_done();
