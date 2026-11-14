@@ -25,6 +25,7 @@ global vf_search=0;
 global vf_query_reason=0;
 global vf_entry_satisfiable=0;
 global vf_entry_reason=0;
+global vf_capacity_reported=0;
 global vf_global_inputs=0;
 global vf_reads=0;
 global vf_writes=0;
@@ -102,11 +103,19 @@ fn vf_eval(state,node,entry) {
         let op=load64(node+8);let left=vf_eval(state,load64(node+16),entry);let path=load64(state+24);
         if op==263 {store64(state+24,pw_and(vf_context,path,pw_truth(vf_context,left)));}
         if op==264 {store64(state+24,pw_and(vf_context,path,-pw_truth(vf_context,left)));}
-        let rhs_path=load64(state+24);let rhs_memory=load64(state+96);let right=vf_zero;if load64(state+24)!= -1 {right=vf_eval(state,load64(node+24),entry);}
+        let rhs_path=load64(state+24);let rhs_memory=load64(state+96);let rhs_globals=0;
+        if op==263 || op==264 {
+            rhs_globals=alloc(pf_gcount*8+8);if rhs_globals<0 {fail("cannot snapshot short-circuit globals");}let i=0;
+            while i<pf_gcount {store64(rhs_globals+i*8,load64(load64(state+48)+i*8));i=i+1;}
+        }
+        let right=vf_zero;if load64(state+24)!= -1 {right=vf_eval(state,load64(node+24),entry);}
         // Checked callee facts narrow the RHS path. Preserve them where the
         // RHS ran, and retain the bypass path for short-circuit evaluation.
         if op==263 || op==264 {
             store64(state+96,pb_join(vm_memory,rhs_path,load64(state+96),rhs_memory));
+            let i=0;while i<pf_gcount {let value=load64(load64(state+48)+i*8);
+                store64(load64(state+48)+i*8,pw_choose(vf_context,rhs_path,value,load64(rhs_globals+i*8)));i=i+1;
+            }syscall(11,rhs_globals,pf_gcount*8+8,0,0,0,0);
             if load64(state+24)==rhs_path {store64(state+24,path);}
             else {let bypass= -pw_truth(vf_context,left);if op==264 {bypass= -bypass;}store64(state+24,pw_or(vf_context,load64(state+24),pw_and(vf_context,path,bypass)));}
         }
@@ -127,11 +136,19 @@ fn vf_eval(state,node,entry) {
     vf_eval_depth=vf_eval_depth-1;return result;
 }
 fn vf_return(state,value) {
-    let f=load64(state);let previous=load64(state+32);store64(state+32,value);let clause=load64(f+64);
+    let f=load64(state);let first=load64(state+80)== -1;let previous=load64(state+32);store64(state+32,value);let clause=load64(f+64);
     while clause {if load64(clause)==2 {let condition=vf_eval(state,load64(clause+8),0);vf_obligation(state,clause,"postcondition",pw_truth(vf_context,condition));store64(state+24,pw_and(vf_context,load64(state+24),pw_truth(vf_context,condition)));vf_fact(state,load64(clause+8));}clause=load64(clause+48);}
-    store64(state+32,pw_choose(vf_context,load64(state+24),value,previous));let i=0;
-    while i<pf_gcount {let before=load64(load64(state+64)+i*8);store64(load64(state+64)+i*8,pw_choose(vf_context,load64(state+24),load64(load64(state+48)+i*8),before));i=i+1;}
-    store64(state+112,pb_join(vm_memory,load64(state+24),load64(state+96),load64(state+112)));
+    // Returned values are meaningful only on the accumulated return path.
+    // Its first member needs no merge with an unreachable entry-state value;
+    // subsequent returns still merge with all previously accumulated returns.
+    if first {
+        store64(state+32,value);let i=0;while i<pf_gcount {store64(load64(state+64)+i*8,load64(load64(state+48)+i*8));i=i+1;}
+        store64(state+112,load64(state+96));
+    }else {
+        store64(state+32,pw_choose(vf_context,load64(state+24),value,previous));let i=0;
+        while i<pf_gcount {let before=load64(load64(state+64)+i*8);store64(load64(state+64)+i*8,pw_choose(vf_context,load64(state+24),load64(load64(state+48)+i*8),before));i=i+1;}
+        store64(state+112,pb_join(vm_memory,load64(state+24),load64(state+96),load64(state+112)));
+    }
     store64(state+80,pw_or(vf_context,load64(state+80),load64(state+24)));store64(state+24,-1);return 0;
 }
 fn vf_execute(state,node) {
@@ -144,7 +161,12 @@ fn vf_execute(state,node) {
     else if kind==18 {let condition=vf_eval(state,load64(node+8),0);vf_obligation(state,node,"assertion",pw_truth(vf_context,condition));store64(state+24,pw_and(vf_context,load64(state+24),pw_truth(vf_context,condition)));vf_fact(state,load64(node+8));}
     else if kind==14 {
         let condition=pw_truth(vf_context,vf_eval(state,load64(node+8),0));let path=load64(state+24);
-        let yes=ps_clone(state,pw_and(vf_context,path,condition));let no=ps_clone(state,pw_and(vf_context,path,-condition));
+        let yes_path=pw_and(vf_context,path,condition);let no_path=pw_and(vf_context,path,-condition);
+        // If exact Boolean simplification excludes one arm, its placeholder
+        // state must not obscure values on the surviving continuation.
+        if yes_path== -1 {store64(state+24,no_path);vf_execute(state,load64(node+24));return 0;}
+        if no_path== -1 {store64(state+24,yes_path);vf_execute(state,load64(node+16));return 0;}
+        let yes=ps_clone(state,yes_path);let no=ps_clone(state,no_path);
         vf_execute(yes,load64(node+16));vf_execute(no,load64(node+24));let f=load64(state);let i=0;
         while i<load64(f+88) {store64(load64(state+8)+i*8,pw_choose(vf_context,condition,load64(load64(yes+8)+i*8),load64(load64(no+8)+i*8)));i=i+1;}
         i=0;while i<pf_gcount {
@@ -183,10 +205,16 @@ fn vf_call(f,args,path,level,site,parent,entry) {
         vf_entry_reason=vf_query_reason;vf_query_release();
     }pm_entry_rank(state);pm_check_edge(state,parent,site);
     if summarized {pm_summary(state,site);}else {vf_execute(state,load64(f+80));if load64(state+24)!= -1 {vf_return(state,vf_zero);}}
-    if parent {store64(parent+24,load64(state+80));let i=0;while i<pf_gcount && !ph_kind(f) {let before=load64(load64(parent+48)+i*8);
-        store64(load64(parent+48)+i*8,pw_choose(vf_context,path,load64(load64(state+64)+i*8),before));i=i+1;
+    // The caller continues on the callee's successful return path. Branches
+    // and logical operators explicitly merge globals on their bypass paths.
+    if parent {store64(parent+24,load64(state+80));let i=0;while i<pf_gcount && !ph_kind(f) {
+        store64(load64(parent+48)+i*8,load64(load64(state+64)+i*8));i=i+1;
     }}
-    if parent && !ph_kind(f) {store64(parent+96,pb_join(vm_memory,path,load64(state+112),load64(parent+96)));}
+    // The caller continues only on this call's successful return path. Keep
+    // its returned memory directly; conditional-expression and branch joins
+    // already restore bypass memory at their own merge points. An extra call
+    // guard here obscures callee byte postconditions under an unreachable arm.
+    if parent && !ph_kind(f) {store64(parent+96,load64(state+112));}
     let result=load64(state+32);ps_release(state);ph_restore_bindings(vq_values,bindings);if !summarized {store64(vf_active+index*8,0);}return result;
 }
 fn vf_text(bytes,size) {write_all(1,bytes,size);return 0;}
@@ -220,7 +248,26 @@ fn vf_query_order(condition,input_first) {
     vf_query_reason="solver or evidence check unresolved";if result==1 && vm_used {rm_model=pbm_replay(vm_memory,load64(vf_search+8),vf_budget);if !rm_model {vf_query_reason="concrete memory completion failed or exhausted its budget";return 0;}}
     if result==1 || result==2 {vf_query_reason=0;}return result;
 }
-fn vf_query_note() {if vf_query_reason {print(1,"  reason: ");print(1,vf_query_reason);print(1,"\n");}return 0;}
+fn vf_capacity_note() {
+    if vf_capacity_reported || (!load64(vf_context+72) && !load64(vm_memory+112)) {return 0;}vf_capacity_reported=1;
+    print(1,"  circuit capacity: gates=");print(1,up_number(load64(vf_context+8)));print(1,"/");print(1,up_number(load64(vf_context+16)));
+    print(1," words=");print(1,up_number(load64(vf_context+48)));print(1,"/");print(1,up_number(load64(vf_context+56)));print(1,"\n");
+    print(1,"  memory capacity: nodes=");print(1,up_number(load64(vm_memory+16)));print(1,"/");print(1,up_number(load64(vm_memory+24)));
+    print(1," probes=");print(1,up_number(load64(vm_memory+40)));print(1,"/");print(1,up_number(load64(vm_memory+48)));
+    print(1," lookups=");print(1,up_number(load64(vm_memory+64)));print(1,"/");print(1,up_number(load64(vm_memory+72)));
+    print(1," regions=");print(1,up_number(load64(vm_memory+88)));print(1,"/");print(1,up_number(load64(vm_memory+96)));print(1,"\n");return 0;
+}
+fn vf_query_note() {
+    if vf_query_reason {
+        print(1,"  reason: ");print(1,vf_query_reason);print(1,"\n");
+        if vf_search && vf_formula {
+            print(1,"  query: variables=");print(1,up_number(load64(vf_formula)));
+            print(1," clauses=");print(1,up_number(load64(vf_formula+8)));
+            print(1," search work=");print(1,up_number(load64(vf_search+64)));print(1,"\n");
+        }
+        vf_capacity_note();
+    }return 0;
+}
 // Allocation freshness proofs benefit from the general comparison-first
 // fallback. Requirement consistency still spends its budget on input choices.
 fn vf_query(condition) {return vf_query_weak(condition,condition);}
@@ -239,15 +286,16 @@ fn vf_query_weak(condition,weak) {
 fn vf_witness_query(condition) {return vf_query_order(condition,vm_used);}
 fn vf_root_check(f) {
     vq_instances=0;
+    vf_capacity_reported=0;
     vm_allocated=0;vm_choices=0;vm_choice_tail=0;vf_entry_satisfiable=0;vf_entry_reason=0;
     pm_models=0;pm_assuming=0;pm_missing=0;pm_missing_message=0;vl_models=0;vl_count=0;vl_missing_measure=0;vl_proof_missing=0;vf_root=f;vf_problem=0;vf_problem_node=0;vf_count=0;vf_eval_depth=0;
-    vf_context=pw_context(64,131072,65536);if !vf_context {fail("cannot allocate verification circuit");}vf_zero=pw_constant(vf_context,0);vm_used=0;vm_reads=0;vm_writes=0;vm_releases=0;vm_memory=pb_context(vf_context,4096,4096,16384,1024);if !vm_memory {fail("cannot allocate symbolic memory");}
+    vf_context=pw_context(64,2097152,65536);if !vf_context {fail("cannot allocate verification circuit");}vf_zero=pw_constant(vf_context,0);vm_used=0;vm_reads=0;vm_writes=0;vm_releases=0;vm_memory=pb_context(vf_context,4096,4096,16384,1024);if !vm_memory {fail("cannot allocate symbolic memory");}
     let i=0;while i<pf_count {store64(vf_active+i*8,0);store64(vf_dependencies+i*8,0);i=i+1;}
     vf_inputs=alloc(load64(f+56)*8+8);if vf_inputs<0 {fail("cannot allocate symbolic inputs");}
     i=0;while i<load64(f+56) {store64(vf_inputs+i*8,pw_input(vf_context));i=i+1;}i=0;while i<pf_gcount {store64(vf_global_inputs+i*8,pw_input(vf_context));store64(vf_reads+i*8,0);store64(vf_writes+i*8,0);i=i+1;}
     vf_call(f,vf_inputs,1,0,0,0,0);
     let success=1;print(1,"VERIFY ");vf_text(load64(f),load64(f+8));print(1,"\n");
-    if vf_problem || load64(vf_context+72) {print(1,"UNPROVED: ");if vf_problem {print(1,vf_problem);}else {print(1,"word-circuit capacity exceeded");}print(1," ");vf_location(vf_problem_node);print(1,"\n");success=0;}
+    if vf_problem || load64(vf_context+72) {print(1,"UNPROVED: ");if vf_problem {print(1,vf_problem);}else {print(1,"word-circuit capacity exceeded");}print(1," ");vf_location(vf_problem_node);print(1,"\n");vf_capacity_note();success=0;}
     else {
         let satisfiable=vf_entry_satisfiable;vf_query_reason=vf_entry_reason;
         if satisfiable==2 {store64(pm_vacuous+pm_index(f)*8,1);print(1,"UNPROVED: inconsistent requirements; checking proof dependencies\n");success=0;}

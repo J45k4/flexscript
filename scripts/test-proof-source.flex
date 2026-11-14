@@ -42,6 +42,9 @@ fn suite(compiler) {
     p=h_run(h_args(t_compiler,"verify",t_fixture,"--budget=1",0,0));h_check(p,1,0);
     t_assert(h_has(h_out(p),"UNPROVED: requirement satisfiability"),"budget exhaustion was not reported");
     t_assert(!h_has(h_out(p),"PROVED: supported"),"exhausted proof reported success");
+    p=ps_verify("verify;fn capacity(a,b,c,d,e,f,g,h,i){let x=a/b;let y=b/c;let z=c/d;let w=d/e;let u=e/f;let v=f/g;let t=g/h;return x+y+z+w+u+v+t+h/i;}",1,"circuit capacity: gates=131072/131072");
+    t_assert(h_has(h_out(p),"words=") && h_has(h_out(p),"memory capacity: nodes="),"missing capacity dimensions");
+    t_assert(!h_has(h_out(p),"PROVED: supported"),"capacity exhaustion reported success");
     p=h_run(h_args(t_compiler,"verify",t_fixture,"--budget=0",0,0));h_check(p,1,0);t_assert(h_has(h_err(p),"verification budget"),"zero budget accepted");
     p=h_run(h_args(t_compiler,"verify",t_fixture,"--budget=1000000001",0,0));h_check(p,1,0);t_assert(h_has(h_err(p),"verification budget"),"oversize budget accepted");
     p=h_run(h_args(t_compiler,"verify",t_fixture,"--budget=bad",0,0));h_check(p,1,0);t_assert(h_has(h_err(p),"verification budget"),"nonnumeric budget accepted");

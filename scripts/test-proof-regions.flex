@@ -5,6 +5,7 @@ fn suite(compiler) {
     ps_verify("requires writable_bytes(p,8);reads bytes(p,8);modifies bytes(p,8);ensures load64(p)==old(v);fn word(p,v){store64(p,v);return load64(p);}",0,"Verified roots: 1/1");
     ps_verify("requires writable_bytes(p,8);ensures result==old(v);fn wrong(p,v){store64(p,v+1);return load64(p);}",1,"COUNTEREXAMPLE: postcondition");
     ps_verify("requires readable_bytes(p,8);ensures result==old(load64(p));fn snapshot(p){return load64(p);}",0,"Verified roots: 1/1");
+    ps_verify("global base=0;global cursor=0;requires cursor>=8 && cursor<=524288;requires readable_bytes(base+(cursor-8),8);reads base,cursor,bytes(base+(cursor-8),8);modifies cursor;ensures result==old(load64(base+(cursor-8)));fn root(){return intermediate();}fn intermediate(){if cursor<=0{return 0;}return helper();}requires cursor>=8 && cursor<=524288;requires readable_bytes(base+(cursor-8),8);reads base,cursor,bytes(base+(cursor-8),8);modifies cursor;ensures cursor==old(cursor)-8;ensures result==old(load64(base+(cursor-8)));fn helper(){cursor=cursor-8;return load64(base+cursor);}",0,"Verified roots: 2/2");
     ps_verify("requires writable_bytes(p,8);ensures result==old(load64(p));fn snapshot(p){let v=load64(p);store64(p,99);return v;}",0,"Verified roots: 1/1");
     ps_verify("verify;fn null(){return load8(0);}",1,"COUNTEREXAMPLE: memory read safety");
     ps_verify("verify;fn null(){return store64(0,7);}",1,"COUNTEREXAMPLE: memory write safety");
@@ -28,6 +29,14 @@ fn suite(compiler) {
     ps_verify("requires writable_bytes(p,1);requires load8(p)==0;ensures load8(p)==(old(flag)!=0);fn short_and(p,flag){return flag && store8(p,1);}",0,"Verified roots: 1/1");
     ps_verify("requires writable_bytes(p,1);requires load8(p)==0;ensures load8(p)==(old(flag)==0);fn short_or(p,flag){return flag || store8(p,1);}",0,"Verified roots: 1/1");
     ps_verify("requires writable_bytes(p,1);requires load8(p)==0;ensures load8(p)==1;fn short_bad(p,flag){return flag && store8(p,1);}",1,"COUNTEREXAMPLE: postcondition");
+    // A call's returned heap is relevant on its return path; logical/branch
+    // merges must still preserve the heap on paths that bypass that call.
+    ps_verify("requires writable_bytes(p,1);requires load8(p)==0;ensures load8(p)==(old(flag)!=0);fn call_and(p,flag){return flag && write(p);}fn write(p){store8(p,1);return 1;}",0,"Verified roots: 1/1");
+    ps_verify("requires writable_bytes(p,1);requires load8(p)==0;ensures load8(p)==(old(flag)==0);fn call_or(p,flag){return flag || write(p);}fn write(p){store8(p,1);return 1;}",0,"Verified roots: 1/1");
+    ps_verify("requires writable_bytes(p,1);requires load8(p)==0;ensures load8(p)==(old(flag)!=0);fn summary_and(p,flag){return flag && write(p);}requires writable_bytes(p,1);modifies bytes(p,1);ensures load8(p)==1;ensures result==1;fn write(p){store8(p,1);return 1;}",0,"Verified roots: 2/2");
+    ps_verify("requires writable_bytes(p,1);requires load8(p)==0;ensures load8(p)==(old(flag)==0);fn summary_or(p,flag){return flag || write(p);}requires writable_bytes(p,1);modifies bytes(p,1);ensures load8(p)==1;ensures result==1;fn write(p){store8(p,1);return 1;}",0,"Verified roots: 2/2");
+    let bypass=ps_verify("requires writable_bytes(p,1);requires load8(p)==0;ensures load8(p)==1;fn bad_call_and(p,flag){return flag && write(p);}fn write(p){store8(p,1);return 1;}",1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(bypass),"concrete replay:"),"skipped heap call counterexample was not replayed");
     ps_verify("requires writable_bytes(p,1);ensures load8(p)==1;fn inline(p){return set(p);}fn set(p){return store8(p,1);}",0,"Verified roots: 1/1");
     ps_verify("requires writable_bytes(p,1);modifies nothing;fn inline(p){return set(p);}fn set(p){return store8(p,1);}",1,"COUNTEREXAMPLE: write frame in inline");
     ps_verify("requires writable_bytes(p,1);ensures load8(p)==42;fn caller(p){return set(p);}requires writable_bytes(p,1);modifies bytes(p,1);ensures load8(p)==42;fn set(p){return store8(p,42);}",0,"Verified roots: 2/2");

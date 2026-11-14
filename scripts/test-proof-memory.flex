@@ -37,6 +37,33 @@ fn bm_geometry() {
         bm_check((pb_disjoint(memory,pw_constant(c,p),pw_constant(c,n),pw_constant(c,q),pw_constant(c,m))==1)==expected,"region disjointness differs from native intervals");m=m+1;
     }q=q+1;}n=n+1;}p=p+1;}bm_close(memory);return 0;
 }
+fn bm_membership_oracle() {
+    let p=0;while p<16 {
+        let memory=bm_context(8);let c=load64(memory);let n=0;
+        while n<16 {let address=0;while address<16 {
+            let valid=p>0 && n>0;
+            let expected=valid && address>=p && address<p+n;
+            let point=pw_constant(c,address);let start=pw_constant(c,p);let length=pw_constant(c,n);
+            let actual=pb_member(memory,start,length,point);
+            bm_check((actual==1)==expected && (actual==1 || actual== -1),"membership differs from native interval matrix");
+            point=pw_add(c,pw_constant(c,address-1),pw_constant(c,1));
+            actual=pb_member(memory,start,length,point);
+            bm_check((actual==1)==expected && (actual==1 || actual== -1),"wrapped-offset membership differs from native intervals");
+            address=address+1;
+        }n=n+1;}bm_close(memory);p=p+1;
+    }
+    let words=h_take(64);store64(words,0);store64(words+8,1);store64(words+16,2);store64(words+24,8);
+    store64(words+32,0x7fffffffffffffff);store64(words+40,0x7ffffffffffffffe);store64(words+48,-1);store64(words+56,0x8000000000000000);
+    p=0;while p<8 {let memory=bm_context(64);let c=load64(memory);let start=load64(words+p*8);let ni=0;
+        while ni<8 {let length=load64(words+ni*8);let ai=0;while ai<8 {let address=load64(words+ai*8);
+            let valid=start>0 && length>0 && length<=0x7fffffffffffffff-start+1;
+            let expected=valid && address>=start && address<=start+length-1;
+            let actual=pb_member(memory,pw_constant(c,start),pw_constant(c,length),pw_constant(c,address));
+            bm_check((actual==1)==expected && (actual==1 || actual== -1),"64-bit boundary membership differs from native intervals");ai=ai+1;
+        }ni=ni+1;}bm_close(memory);p=p+1;
+    }
+    return 0;
+}
 fn bm_alias() {
     let memory=bm_context(64);let c=load64(memory);let root=load64(memory+176);let p=pw_input(c);let q=pw_input(c);let one=pw_constant(c,1);
     let a=pb_lookup(memory,root,p,0);let b=pb_lookup(memory,root,q,0);let same=pw_equal(c,p,q);
@@ -279,12 +306,23 @@ fn bm_limits() {
     c=pw_context(8,4096,1024);memory=pb_context(c,8,4,4,4);root=load64(memory+176);bm_check(!pb_fresh(memory,root,root+1,pw_constant(c,1),pw_constant(c,1)) && !pb_constraints(memory),"malformed freshness reference accepted");pb_release(memory);pw_release(c);
     c=pw_context(8,4096,1024);memory=pb_context(c,8,4,4,4);root=load64(memory+176);bm_check(!pb_node(memory,9,root,pw_constant(c,2),pw_constant(c,126),0,1,0) && !pb_constraints(memory),"malformed allocation-closure domain accepted");pb_release(memory);pw_release(c);return 0;
 }
+fn bm_distinct_cells() {
+    // A 32-byte metadata read must not spend gates comparing the contents of
+    // cells whose addresses are already definitely different. The former
+    // eager congruence construction exhausted this context before querying.
+    let c=pw_context(64,32768,4096);bm_check(c,"distinct-cell word context");
+    let memory=pb_context(c,16,128,256,16);bm_check(memory,"distinct-cell memory context");let root=load64(memory+176);
+    let grant=pb_permission(memory,root,pw_constant(c,4096),pw_constant(c,32),1);let safe=1;let out=h_take(16);let i=0;
+    while i<32 {bm_check(pb_load(memory,root,pw_constant(c,4096+i),1,out),"distinct-cell load capacity");safe=pw_and(c,safe,load64(out+8));i=i+1;}
+    bm_query(memory,grant,1,"distinct-cell writable model");bm_query(memory,pw_and(c,grant,-safe),2,"distinct-cell read permissions");
+    bm_check(!load64(c+72) && load64(c+8)<32768,"distinct cells exhausted a bounded circuit");bm_close(memory);return 0;
+}
 fn main(argc,argv) {
-    h_environment(argc,argv);bm_geometry();h_print(1,"PASS: memory geometry\n");bm_alias();h_print(1,"PASS: memory aliasing\n");bm_ranges();h_print(1,"PASS: memory ranges\n");
+    h_environment(argc,argv);bm_geometry();bm_membership_oracle();h_print(1,"PASS: memory geometry and membership oracle\n");bm_alias();h_print(1,"PASS: memory aliasing\n");bm_ranges();h_print(1,"PASS: memory ranges\n");
     bm_store();h_print(1,"PASS: byte stores\n");bm_word();h_print(1,"PASS: word stores\n");bm_frames();h_print(1,"PASS: memory frames\n");bm_lifetime();h_print(1,"PASS: lifetimes\n");bm_allocations();h_print(1,"PASS: allocations\n");
     bm_fresh_frames();h_print(1,"PASS: allocation frames\n");bm_offsets();h_print(1,"PASS: wrapped address offsets\n");
     bm_native_permissions();h_print(1,"PASS: native interval oracle\n");bm_address_identities();h_print(1,"PASS: address identities\n");bm_completion();h_print(1,"PASS: concrete memory completion and corruption checks\n");
     bm_heap_closure();h_print(1,"PASS: allocation closure and fresh storage\n");bm_fresh_predicates();h_print(1,"PASS: fresh interval predicates\n");
-    bm_heap_corruption();h_print(1,"PASS: abstract memory corruption rejection\n");bm_limits();
+    bm_heap_corruption();h_print(1,"PASS: abstract memory corruption rejection\n");bm_distinct_cells();h_print(1,"PASS: bounded distinct-cell observations\n");bm_limits();
     h_print(1,h_cat3("PASS: ",h_int(bm_checks)," memory-engine checks with independent SAT/UNSAT evidence\n"));return 0;
 }

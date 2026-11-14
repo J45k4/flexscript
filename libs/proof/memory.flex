@@ -84,9 +84,14 @@ fn pb_member(memory,p,n,address) {
         if pb_same(memory,p,load64(meta+16)) {return pw_and(c,valid,pw_unsigned_less(c,load64(meta+8),n));}
     }
     if pb_constant(memory,n,1) {return pw_and(c,valid,pb_address_equal(memory,address,p));}
-    let last=pw_subtract(c,pw_add(c,p,n),pw_constant(c,1));
-    let within=pw_and(c,-pw_unsigned_less(c,address,p),-pw_unsigned_less(c,last,address));
-    return pw_and(c,valid,pw_and(c,pw_truth(c,n),pw_or(c,pb_address_equal(memory,p,address),within)));
+    // For a valid nonwrapping region, unsigned(address-p)<n is exact for all
+    // word addresses. Separate constant offsets before subtraction so nested
+    // forms such as (p+index)+byte cancel their common symbolic base as well.
+    let base=pb_address_part(memory,address,0);let origin=pb_address_part(memory,p,0);
+    let distance=pw_subtract(c,base,origin);
+    let offset=pb_address_part(memory,address,1)-pb_address_part(memory,p,1);
+    if offset {distance=pw_add(c,distance,pw_constant(c,offset));}
+    return pw_and(c,valid,pw_unsigned_less(c,distance,n));
 }
 fn pb_disjoint(memory,p,n,q,m) {
     let c=load64(memory);let valid=pw_and(c,pb_valid(memory,p,n),pb_valid(memory,q,m));if !valid {return 0;}let one=pw_constant(c,1);
@@ -142,9 +147,14 @@ fn pb_probe(memory,array,address,parent) {
         pb_axiom(memory,pw_or(c,pw_signed_less(c,pb_zero(memory),address),pw_and(c,-live,pw_and(c,-read,-write))));
     }
     i=0;while i<count {let previous=table+i*48;if load64(previous)==array {
-        let same=pb_address_equal(memory,address,load64(previous+8));let equal=pw_equal(c,load64(row+16),load64(previous+16));
-        equal=pw_and(c,equal,-pw_xor(c,load64(row+24),load64(previous+24)));equal=pw_and(c,equal,-pw_xor(c,load64(row+32),load64(previous+32)));
-        equal=pw_and(c,equal,pw_equal(c,load64(row+40),load64(previous+40)));pb_axiom(memory,pw_or(c,-same,equal));
+        let same=pb_address_equal(memory,address,load64(previous+8));
+        // A definitely distinct address needs no congruence constraint. Avoid
+        // building unused byte/identity equalities before simplifying false
+        // implies equality; large contiguous reads otherwise exhaust gates.
+        if same!= -1 {let equal=pw_equal(c,load64(row+16),load64(previous+16));
+            equal=pw_and(c,equal,-pw_xor(c,load64(row+24),load64(previous+24)));equal=pw_and(c,equal,-pw_xor(c,load64(row+32),load64(previous+32)));
+            equal=pw_and(c,equal,pw_equal(c,load64(row+40),load64(previous+40)));pb_axiom(memory,pw_or(c,-same,equal));
+        }
     }i=i+1;}return row;
 }
 fn pb_lookup(memory,state,address,depth) {

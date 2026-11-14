@@ -6,7 +6,7 @@ import "cnf.flex";
 // sticky error, word metadata pointer, allocation size, four scratch literals (128 bytes).
 // Gate record: kind (0=input,1=and,2=xor,3=select,4=true), a,b,c.
 fn pw_context(width,gate_capacity,word_capacity) {
-    if width<1 || width>64 || (width&(width-1)) || gate_capacity<1 || gate_capacity>131072 || word_capacity<1 || word_capacity>65536 {return 0;}
+    if width<1 || width>64 || (width&(width-1)) || gate_capacity<1 || gate_capacity>2097152 || word_capacity<1 || word_capacity>65536 {return 0;}
     let buckets=2;while buckets<gate_capacity*2 {buckets=buckets*2;}
     let size=128+gate_capacity*32+buckets*8+width*word_capacity*8+word_capacity*24;let p=alloc(size);if p<0 {return 0;}
     store64(p,width);store64(p+8,1);store64(p+16,gate_capacity);store64(p+24,p+128);
@@ -57,7 +57,22 @@ fn pw_and(context,a,b) {
     }
     if a>b {let t=a;a=b;b=t;}return pw_gate(context,1,a,b,0);
 }
-fn pw_or(context,a,b) {let result=pw_and(context,-a,-b);if !result {return 0;}return -result;}
+fn pw_or(context,a,b) {
+    if !pw_valid_literal(context,a) || !pw_valid_literal(context,b) {return pw_bad(context);}
+    // Exact Boolean factoring: (s&a)|(s&b) == s&(a|b). Keep a common
+    // selector visible when a whole word is compared with one conditional arm.
+    if a>1 && b>1 {
+        let left=load64(context+24)+(a-1)*32;let right=load64(context+24)+(b-1)*32;
+        if load64(left)==1 && load64(right)==1 {
+            let x=load64(left+8);let y=load64(left+16);let u=load64(right+8);let v=load64(right+16);
+            if x==u {return pw_and(context,x,pw_or(context,y,v));}
+            if x==v {return pw_and(context,x,pw_or(context,y,u));}
+            if y==u {return pw_and(context,y,pw_or(context,x,v));}
+            if y==v {return pw_and(context,y,pw_or(context,x,u));}
+        }
+    }
+    let result=pw_and(context,-a,-b);if !result {return 0;}return -result;
+}
 fn pw_xor(context,a,b) {
     if !pw_valid_literal(context,a) || !pw_valid_literal(context,b) {return pw_bad(context);}
     if a==b {return -1;}if a== -b {return 1;}if a== -1 {return b;}if b== -1 {return a;}if a==1 {return -b;}if b==1 {return -a;}
@@ -66,6 +81,12 @@ fn pw_xor(context,a,b) {
     // splitting on every data bit. This is a Boolean identity, not a path fact.
     let selected=a;let other=b;let pass=0;
     while pass<2 {let row=load64(context+24)+(selected-1)*32;
+        if load64(row)==1 {
+            let x=load64(row+8);let y=load64(row+16);let reduced=0;
+            if x==other {reduced=pw_and(context,other,-y);}else if y==other {reduced=pw_and(context,other,-x);}
+            else if x== -other {reduced=pw_or(context,other,y);}else if y== -other {reduced=pw_or(context,other,x);}
+            if reduced {if invert {return -reduced;}return reduced;}
+        }
         if load64(row)==3 {let yes=load64(row+16);let no=load64(row+24);
             if yes==other || yes== -other || no==other || no== -other {
                 let result=pw_select(context,load64(row+8),pw_xor(context,yes,other),pw_xor(context,no,other));if invert {return -result;}return result;
@@ -86,7 +107,23 @@ fn pw_select(context,condition,yes,no) {
     if yes== -no {return -pw_xor(context,condition,yes);}
     if yes==1 {return pw_or(context,condition,no);}if no== -1 {return pw_and(context,condition,yes);}
     if yes== -1 {return pw_and(context,-condition,no);}if no==1 {return pw_or(context,-condition,yes);}
-    if condition<0 {condition= -condition;let t=yes;yes=no;no=t;}return pw_gate(context,3,condition,yes,no);
+    if condition<0 {condition= -condition;let t=yes;yes=no;no=t;}
+    // Flatten nested choices sharing the bypass value. Call/return state joins
+    // often select the same entry value twice. Retain one selection so exact
+    // equality with the successful arm does not split on every data bit.
+    let nested=yes;let other=no;let side=0;
+    while side<2 {let id=nested;if id<0 {id= -id;}let row=load64(context+24)+(id-1)*32;
+        if load64(row)==3 {let inner=load64(row+8);let a=load64(row+16);let b=load64(row+24);if nested<0 {a= -a;b= -b;}
+            if !side {
+                if other==b {return pw_select(context,pw_and(context,condition,inner),a,other);}
+                if other==a {return pw_select(context,pw_and(context,condition,-inner),b,other);}
+            }else {
+                if other==a {return pw_select(context,pw_or(context,condition,inner),other,b);}
+                if other==b {return pw_select(context,pw_or(context,condition,-inner),other,a);}
+            }
+        }nested=no;other=yes;side=side+1;
+    }
+    return pw_gate(context,3,condition,yes,no);
 }
 fn pw_word(context) {
     let count=load64(context+48);if load64(context+72) || count>=load64(context+56) {return pw_bad(context);}
@@ -97,7 +134,13 @@ fn pw_constant(context,value) {
     let word=pw_word(context);if !word {return 0;}pw_note(context,word,1,value,0);let i=0;while i<load64(context) {let lit= -1;if (value>>i)&1 {lit=1;}store64(word+i*8,lit);i=i+1;}return word;
 }
 fn pw_meta(context,word) {return load64(context+80)+(word-load64(context+64))/(load64(context)*8)*24;}
-fn pw_note(context,word,kind,a,b) {if word {let meta=pw_meta(context,word);store64(meta,kind);store64(meta+8,a);store64(meta+16,b);}return word;}
+fn pw_note(context,word,kind,a,b) {
+    // Cancellation may return a shared older operand. Preserve its description
+    // instead of recording an expression that refers to newer words (or itself).
+    // Arithmetic metadata must remain a DAG ordered by word allocation.
+    if (kind==43 || kind==45) && (a>=word || b>=word) {return word;}
+    if word {let meta=pw_meta(context,word);store64(meta,kind);store64(meta+8,a);store64(meta+16,b);}return word;
+}
 fn pw_input(context) {
     let word=pw_word(context);if !word {return 0;}let i=0;while i<load64(context) {store64(word+i*8,pw_gate(context,0,0,0,0));i=i+1;}return word;
 }
@@ -125,7 +168,8 @@ fn pw_add_carry(context,a,b,carry) {
         store64(word+i*8,pw_xor(context,xy,carry));carry=pw_or(context,pw_and(context,x,y),pw_and(context,xy,carry));i=i+1;
     }return word;
 }
-fn pw_add(context,a,b) {
+fn pw_add(context,a,b) {return pw_add_at(context,a,b,0);}
+fn pw_add_at(context,a,b,depth) {
     if !a || !b {return pw_bad(context);}let original_a=a;let original_b=b;
     // Collapse constant offsets modulo the word width, including (x-k)+k.
     // Metadata is only a description of the actual bits, never an assumption.
@@ -142,12 +186,35 @@ fn pw_add(context,a,b) {
         if !offset {return a;}b=pw_constant(context,offset);if !b {return 0;}
         return pw_note(context,pw_add_carry(context,a,b,-1),43,a,b);
     }
+    // Pull constant offsets out of either symbolic addend. In particular,
+    // frame + (index*stride + bias) then shares its frame+index*stride base
+    // with adjacent records. The bounded rewrite is exact modulo word width.
+    if depth<128 {
+        let meta=pw_meta(context,b);let kind=load64(meta);
+        if (kind==43 || kind==45) && load64(pw_meta(context,load64(meta+16)))==1 {
+            let offset=load64(pw_meta(context,load64(meta+16))+8);if kind==45 {offset= -offset;}
+            return pw_add(context,pw_add_at(context,a,load64(meta+8),depth+1),pw_constant(context,offset));
+        }
+        meta=pw_meta(context,a);kind=load64(meta);
+        if (kind==43 || kind==45) && load64(pw_meta(context,load64(meta+16)))==1 {
+            let offset=load64(pw_meta(context,load64(meta+16))+8);if kind==45 {offset= -offset;}
+            return pw_add(context,pw_add_at(context,load64(meta+8),b,depth+1),pw_constant(context,offset));
+        }
+    }
     return pw_note(context,pw_add_carry(context,a,b,-1),43,original_a,original_b);
 }
-fn pw_subtract(context,a,b) {
+fn pw_subtract(context,a,b) {return pw_subtract_at(context,a,b,0);}
+fn pw_subtract_at(context,a,b,depth) {
     if !a || !b {return pw_bad(context);}if a==b {return pw_constant(context,0);}
     let added=pw_meta(context,a);if load64(added)==43 {
         if load64(added+8)==b {return load64(added+16);}if load64(added+16)==b {return load64(added+8);}
+    }
+    // Reassociate symbolic sums modulo 2^width as well as constants. Range
+    // checks then share the same difference as their corresponding sum bound.
+    // Limit metadata descent; the direct circuit remains an exact fallback.
+    let right=pw_meta(context,b);if depth<128 && load64(right)==43 {
+        let left=pw_subtract_at(context,a,load64(right+8),depth+1);
+        return pw_note(context,pw_subtract_at(context,left,load64(right+16),depth+1),45,a,b);
     }
     let original=b;let meta=pw_meta(context,b);let offset=0;
     // Exact modulo-2^width identity: a-(b+k) == (a-b)-k. Reassociate
@@ -170,10 +237,44 @@ fn pw_unsigned_less(context,a,b) {
 }
 fn pw_signed_less(context,a,b) {
     if !a || !b {return pw_bad(context);}let sign=(load64(context)-1)*8;let x=load64(a+sign);let y=load64(b+sign);
-    return pw_select(context,pw_xor(context,x,y),x,pw_unsigned_less(context,a,b));
+    // Keep the compact comparator for plain/constant-offset words. Its gate
+    // shape is important for quantified small-range obligations. Symbolic
+    // range arithmetic benefits from sharing its normalized difference.
+    let arithmetic=0;let word=a;let side=0;
+    while side<2 {let meta=pw_meta(context,word);let kind=load64(meta);
+        if kind==45 && load64(pw_meta(context,load64(meta+16)))!=1 {arithmetic=1;}
+        if kind==43 && load64(pw_meta(context,load64(meta+8)))!=1 && load64(pw_meta(context,load64(meta+16)))!=1 {arithmetic=1;}
+        word=b;side=side+1;
+    }
+    if !arithmetic {return pw_select(context,pw_xor(context,x,y),x,pw_unsigned_less(context,a,b));}
+    // With equal operand signs the mathematical difference cannot overflow;
+    // with different signs the left sign alone decides signed ordering.
+    let difference=pw_subtract(context,a,b);if !difference {return 0;}
+    return pw_select(context,pw_xor(context,x,y),x,load64(difference+sign));
 }
 fn pw_multiply(context,a,b) {
-    if !a || !b {return pw_bad(context);}let result=pw_constant(context,0);let width=load64(context);let i=0;
+    if !a || !b {return pw_bad(context);}
+    if load64(pw_meta(context,a))==1 {let swap=a;a=b;b=swap;}
+    let multiplier=pw_meta(context,b);
+    if load64(multiplier)==1 {
+        let offset=0;let original=a;let meta=pw_meta(context,a);let scanning=1;
+        while scanning {let kind=load64(meta);
+            if (kind==43 || kind==45) && load64(pw_meta(context,load64(meta+16)))==1 {
+                let value=load64(pw_meta(context,load64(meta+16))+8);if kind==45 {value= -value;}
+                offset=offset+value;a=load64(meta+8);meta=pw_meta(context,a);
+            }else {scanning=0;}
+        }
+        // Exact distributivity modulo 2^width, including signed/wrapped
+        // constants: (x+offset)*stride == x*stride + offset*stride.
+        if a!=original {return pw_add(context,pw_multiply(context,a,b),pw_constant(context,offset*load64(multiplier+8)));}
+        let factor=load64(multiplier+8);let width=load64(context);if width<64 {factor=factor&((1<<width)-1);}
+        if !factor {return pw_constant(context,0);}
+        if !(factor&(factor-1)) {
+            let shift=0;while !(factor&(1<<shift)) {shift=shift+1;}
+            if !shift {return a;}return pw_shift(context,a,pw_constant(context,shift),0);
+        }
+    }
+    let result=pw_constant(context,0);let width=load64(context);let i=0;
     while i<width {let part=pw_word(context);if !part {return 0;}let j=0;
         while j<width {let lit= -1;if j>=i {lit=pw_and(context,load64(a+(j-i)*8),load64(b+i*8));}store64(part+j*8,lit);j=j+1;}
         result=pw_add(context,result,part);i=i+1;
@@ -193,6 +294,36 @@ fn pw_shift(context,a,amount,right) {
 fn pw_divrem(context,a,b,out) {
     store64(out,0);store64(out+8,0);store64(out+16,0);if !a || !b {return pw_bad(context);}
     let width=load64(context);let sign_a=load64(a+(width-1)*8);let sign_b=load64(b+(width-1)*8);
+    // For the positive dividend one, only divisors +1 and -1 have a nonzero
+    // quotient. Every other nonzero divisor leaves remainder one. Normalize
+    // constants first: at width one, raw 1 is MIN_INT, not positive one.
+    let dividend_meta=pw_meta(context,a);
+    if width>1 && load64(dividend_meta)==1 {
+        let dividend=load64(dividend_meta+8);if width<64 {dividend=(dividend<<(64-width))>>(64-width);}
+        if dividend==1 {
+            let one=pw_constant(context,1);let zero=pw_constant(context,0);let minus=pw_constant(context,-1);
+            let positive=pw_equal(context,b,one);let negative=pw_equal(context,b,minus);
+            let q=pw_choose(context,positive,one,pw_choose(context,negative,minus,zero));
+            let r=pw_choose(context,pw_or(context,positive,negative),zero,one);
+            store64(out,q);store64(out+8,r);store64(out+16,pw_truth(context,b));return !load64(context+72);
+        }
+    }
+    // Exact signed division by a positive constant power of two. Adding the
+    // low-bit bias only to negative dividends implements truncation toward
+    // zero, including MIN_INT. Normalize metadata to this circuit's width:
+    // e.g. constant 8 is negative at width 4 and must use general division.
+    let meta=pw_meta(context,b);
+    if load64(meta)==1 {
+        let divisor=load64(meta+8);if width<64 {divisor=(divisor<<(64-width))>>(64-width);}
+        if divisor>0 && !(divisor&(divisor-1)) {
+            let shift=0;let bits=divisor;while bits>1 {shift=shift+1;bits=bits>>1;}
+            let sign=pw_shift(context,a,pw_constant(context,width-1),1);
+            let bias=pw_bits(context,sign,pw_constant(context,divisor-1),38);
+            let q=pw_shift(context,pw_add(context,a,bias),pw_constant(context,shift),1);
+            let r=pw_subtract(context,a,pw_shift(context,q,pw_constant(context,shift),0));
+            store64(out,q);store64(out+8,r);store64(out+16,1);return !load64(context+72);
+        }
+    }
     let ua=pw_choose(context,sign_a,pw_negate(context,a),a);let ub=pw_choose(context,sign_b,pw_negate(context,b),b);
     let quotient=pw_word(context);let remainder=pw_constant(context,0);if !ua || !ub || !quotient || !remainder {return 0;}
     let i=width;while i>0 {i=i-1;let shifted=pw_word(context);if !shifted {return 0;}

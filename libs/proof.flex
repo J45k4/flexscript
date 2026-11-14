@@ -16,7 +16,8 @@ fn pv_decide_order(search,search_budget,check_budget,input_first) {
         // refutations often benefit from deciding comparison outputs first.
         let trial=remaining/4;if trial<1 {trial=1;}if trial>50000000 {trial=50000000;}
         if input_first {trial=remaining;}
-        let learned=pl_context(load64(search),16384,trial);if !learned {return 0;}store64(learned+144,1);result=pl_solve(learned);
+        let learned=pl_context(load64(search),16384,trial);if !learned {return 0;}
+        let mode=1;if input_first {mode=2;}store64(learned+144,mode);result=pl_solve(learned);
         if !result {let spent=load64(learned+64);store64(search+64,load64(search+64)+spent);remaining=remaining-spent;pl_release(learned);
             if remaining<=0 {return 0;}learned=pl_context(load64(search),16384,remaining);if !learned {return 0;}result=pl_solve(learned);
         }let accepted=0;

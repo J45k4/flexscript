@@ -29,6 +29,7 @@ fn main(argc,argv) {
     h_add(names,"test-proof-quantifiers");
     h_add(names,"test-proof-functions");
     h_add(names,"test-proof-trusted");
+    h_add(names,"test-proof-vm");
     h_add(names,"test-wasm");
     h_add(names,"test-esp32");
     h_add(names,"test-esp32-branches");

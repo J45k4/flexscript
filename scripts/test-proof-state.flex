@@ -21,6 +21,18 @@ fn suite(compiler) {
     ps_verify("global g=0; requires g==0; ensures g==(flag!=0); fn root(flag){return flag && set();} fn set(){g=1;return 1;}",0,"Verified roots: 1/1");
     ps_verify("global g=0; requires g==0; ensures g==(flag==0); fn root(flag){return flag || set();} fn set(){g=1;return 1;}",0,"Verified roots: 1/1");
     ps_verify("global g=0; requires g==0; ensures g==0; fn root(flag){return flag && set();} fn set(){g=1;return 1;}",1,"COUNTEREXAMPLE: postcondition");
+    // Successful call values are propagated directly. Short-circuit merges
+    // must preserve both skipped summaries and effects already made by the LHS.
+    ps_verify("global g=0;requires g==0;ensures (flag==0 && g==0)||(flag!=0 && g==2);fn root(flag){return flag && set();}modifies g;ensures g==2 && result==1;fn set(){g=2;return 1;}",0,"Verified roots: 2/2");
+    ps_verify("global g=0;requires g==0;ensures (flag!=0 && g==0)||(flag==0 && g==2);fn root(flag){return flag || set();}modifies g;ensures g==2 && result==1;fn set(){g=2;return 1;}",0,"Verified roots: 2/2");
+    p=ps_verify("global g=0;requires g==0;ensures g==2;fn root(flag){return flag && set();}modifies g;ensures g==2 && result==1;fn set(){g=2;return 1;}",1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(p),"concrete replay:"),"skipped global summary was not replayed");
+    ps_verify("global g=0;requires g==0;ensures (flag==0 && g==1)||(flag!=0 && g==2);ensures result==(flag!=0);fn root(flag){return left(flag) && right();}modifies g;ensures g==1 && result==flag;fn left(flag){g=1;return flag;}modifies g;ensures g==2 && result==1;fn right(){g=2;return 1;}",0,"Verified roots: 3/3");
+    ps_verify("global g=0;requires g==0;ensures (flag!=0 && g==1)||(flag==0 && g==2);ensures result==1;fn root(flag){return left(flag) || right();}modifies g;ensures g==1 && result==flag;fn left(flag){g=1;return flag;}modifies g;ensures g==2 && result==1;fn right(){g=2;return 1;}",0,"Verified roots: 3/3");
+    ps_verify("global g=0;requires g==0;ensures (flag!=0 && g==3)||(flag==0 && g==5);fn root(flag){return choose(flag) && set();}fn choose(flag){if flag{g=3;return 0;}g=4;return 1;}fn set(){g=5;return 1;}",0,"Verified roots: 1/1");
+    p=ps_verify("global g=0;requires g==0;ensures g==5;fn root(flag){return choose(flag) && set();}fn choose(flag){if flag{g=3;return 0;}g=4;return 1;}fn set(){g=5;return 1;}",1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(p),"concrete replay:"),"early-return global bypass was not replayed");
+    t_native("global g=0;fn choose(flag){if flag{g=3;return 0;}g=4;return 1;}fn set(){g=5;return 1;}fn root(flag){return choose(flag) && set();}fn main(){let a=root(1);if a!=0 || g!=3{return 1;}g=0;let b=root(0);if b!=1 || g!=5{return 2;}return 0;}",0,"");
     ps_verify("global g=0; requires g==0; ensures g==2 && result==12; fn order(){return pair(bump(),bump());} fn bump(){g=g+1;return g;} fn pair(a,b){return a*10+b;}",0,"Verified roots: 1/1");
     ps_verify("global g=0; requires g==0; ensures g==2 && result==1; fn order(){return g + bump() + g;} fn bump(){g=g+1;return 0;}",1,"COUNTEREXAMPLE: postcondition");
     ps_verify("global g=0; requires g==0; ensures g==1 && result==1; fn order(){return g + bump() + g;} fn bump(){g=g+1;return 0;}",0,"Verified roots: 1/1");
@@ -36,6 +48,9 @@ fn suite(compiler) {
     ps_verify("global g=0; requires g==5; ensures result==6; fn root(){return callee(bump());} fn bump(){g=g+1;return 0;} ensures result==old(g); fn callee(x){return g;}",0,"Verified roots: 2/2");
     ps_verify("global g=0; ensures result==old(g*x); fn snapshot(x){let before=g*x;g=99;x=0;return before;}",0,"Verified roots: 1/1");
     ps_verify("global g=0; modifies nothing; fn early(x){if x{return 0;}if !x{return 0;}g=1;return 0;}",0,"Verified roots: 1/1");
+    ps_verify("requires flag>=1 && flag<=1024;ensures result==7;fn guarded(flag){proof {assert flag!=0;}if flag{return 7;}return 1/0;}",0,"Verified roots: 1/1");
+    p=ps_verify("requires flag>=1 && flag<=1024;ensures result==7;fn guarded(flag){proof {assert flag==0;}if flag{return 7;}return 1/0;}",1,"COUNTEREXAMPLE: assertion");
+    t_assert(h_has(h_out(p),"concrete replay:"),"false branch fact was not replayed");
     p=ps_verify("global g=0; modifies nothing; fn outer(){return middle();} fn middle(){return leaf();} fn leaf(){g=1;return 0;}",1,"COUNTEREXAMPLE: write frame in outer");
     t_assert(h_has(h_out(p),"concrete replay: call outer call middle call leaf"),"missing transitive frame replay");
     ps_verify("global g=0; requires g==1; reads nothing; fn root(){return 0;}",1,"COUNTEREXAMPLE: read frame");

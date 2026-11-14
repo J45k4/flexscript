@@ -53,6 +53,26 @@ fn b_manifest() {
     }
     return result;
 }
+// Keep the first function's complete annotation block in the function section
+// when moving module globals to the front of a flattened bootstrap source.
+fn b_definition_start(content) {
+    let words=h_args("fn","spec","lemma","requires","ensures","verify");
+    h_add(words,"reads");h_add(words,"modifies");h_add(words,"releases");h_add(words,"decreases");h_add(words,"trusted");h_add(words,"terminates");
+    let at=0;let globals=0;
+    while load8(content+at) {let start=at;let token=at;
+        while load8(content+token)==32 || load8(content+token)==9 || load8(content+token)==13 {token=token+1;}
+        let end=token;let scanning=1;while scanning {let c=load8(content+end);
+            if (c>=65 && c<=90) || (c>=97 && c<=122) || c==95 {end=end+1;}else {scanning=0;}
+        }
+        let word=h_slice(content+token,end-token);let i=0;while i<h_count(words) {if h_equal(word,h_at(words,i)) {return start;}i=i+1;}
+        if h_equal(word,"global") && !globals {globals=start;}
+        while load8(content+at) && load8(content+at)!=10 {at=at+1;}if load8(content+at) {at=at+1;}
+    }
+    // A module may hold only state declarations; every byte then belongs to
+    // the flattened globals section.
+    if globals {return h_len(content);}
+    h_assert(0,"module has no function definitions");return 0;
+}
 fn b_visit(path) {
     path=h_real(path);
     let i=0;
@@ -89,12 +109,7 @@ fn b_visit(path) {
         }
     }
     let content=h_data(stripped);
-    let at=0;
-    if !h_starts(content,"fn ") {
-        at=h_find(content,"\nfn ");
-        h_assert(at>=0,"module has no function definitions");
-        at=at+1;
-    }
+    let at=b_definition_start(content);
     h_append(b_globals,content,at);
     h_text(b_globals,"\n");
     h_text(b_functions,content+at);

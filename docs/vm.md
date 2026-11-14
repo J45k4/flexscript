@@ -161,6 +161,99 @@ the guest heap quota excludes compiler and runtime storage. This experimental
 runtime has not been audited as a production security sandbox. Hostile agent
 code also needs process/filesystem isolation around the compiler and VM.
 
+## Formal verification: address, allocation and operand stack
+
+The [VM, JIT, and compiler proof ledger](vm-verification.md) tracks the full
+end-to-end objective, remaining implementation coverage, and trust assumptions.
+
+The first source-level confinement proofs cover `vm_address`, the helper that
+checks guest ranges and translates offsets into host pointers. The interpreter
+and JIT compiler import [the same implementation](../vm/address.flex) as the
+[proof roots](../vm/proofs/address.flex); the proofs do not use a copied model
+of the helper. Its implementation and state initializers were moved unchanged
+out of `vm/runtime.flex`.
+
+The production [bump allocator](../vm/allocation.flex) now also carries checked
+contracts, including a separately proved rounding helper. Its
+[restricted-budget root](../vm/proofs/allocation.flex) composes those contracts.
+
+```sh
+mkdir -p build
+flexscript compiler/main.flex -o build/flex-proof
+build/flex-proof verify vm/proofs/address.flex --no-trusted
+build/flex-proof verify vm/proofs/allocation.flex --no-trusted
+build/flex-proof verify vm/proofs/operand-stack.flex --no-trusted
+build/flex-proof verify vm/proofs/frame-state.flex --no-trusted
+build/flex-proof scripts/test-proof-vm.flex -o build/test-proof-vm
+build/test-proof-vm build/flex-proof
+```
+
+The two address roots establish:
+
+- From a clean restricted state, any nonzero result has `offset >= 16`,
+  `offset <= vm_heap_used`, `size >= 0`, and
+  `size <= vm_heap_used - offset`. Its value is exactly `vm_heap + offset`,
+  and the error flag remains zero. Rejection returns zero and sets error 3.
+- Every admissible range returns that exact translation without writing any
+  globals. This includes a zero-length range at the end of the used prefix,
+  and preserves any pre-existing error flag.
+
+Offsets and lengths are arbitrary signed 64-bit words, including negative
+values and values that would wrap an unchecked `offset + size`. Entry premises
+require restricted execution, a used prefix of 16 through 1,000,000,000 bytes
+(the CLI maximum), and a positive host heap base whose used span does not
+overflow signed address arithmetic. The safety root also requires an initially
+clear error flag. Composed allocator, initialization, and dispatch proofs must
+establish these entry premises at every call. The address proof also does not
+establish that the host heap is actually mapped or disjoint from runtime state.
+
+The regression suite requires checked, concretely replayed counterexamples for
+five temporary mutations: admitting the reserved prefix, admitting negative
+lengths, a one-byte overrun, checking a wrapping sum instead of remaining bytes,
+and rejecting a valid empty end range. These negative scenarios fix a small VM
+heap state while leaving offsets and lengths symbolic; the positive proofs
+leave heap state symbolic under the stated premises. The real source is never
+mutated by the suite. Four allocator mutations also check rounded-size quota
+enforcement, rounding direction, acceptance of valid requests, and failure-state
+preservation. The suite runs in compiler CI.
+
+`--no-trusted` excludes unchecked function contracts. This is an initial proof
+of the shared address helper under the verifier's source semantics; it does not
+verify the verifier, compiler, OS, complete interpreter, host-call
+policy, or generated JIT machine code. In particular, it does not yet prove
+that every memory-access path uses the helper or an equivalent checked path.
+
+Allocator proofs additionally establish cursor monotonicity and heap-limit bounds,
+alignment preservation, correct offset/native-pointer results, requested-length
+coverage, unchanged cursor on failure, error codes, and acceptance whenever the
+rounded request fits. The restricted combined budget proof assumes zero native
+usage. Heap mapping/initialization, fresh-byte contents and the broader mixed
+bump/native budget theorem remain open; see the ledger for their exact status.
+
+The [operand-stack proofs](../vm/proofs/operand-stack.flex) call the same shared
+[push/pop implementation](../vm/operand-stack.flex) as the runtime. They establish
+push success and full-stack rejection, derive a top-slot permission from complete
+stack-buffer ownership, and compose those cases for aligned cursors. A separately
+checked pop primitive and its depth-zero nonempty composition return the old top
+word and decrement the cursor by eight; the depth-zero empty case rejects without
+byte access. Framed underflow reads the saved floor, rejects at or below it, and
+requires no permission for stack bytes. Nonempty framed pop returns the old top
+word and decrements by eight under a readable saved floor in 0..cursor-8 and a
+readable top slot. Nine seeded implementation faults require checked, replayed
+counterexamples. These case profiles do not establish the complete operand-stack
+or interpreter invariant; callers and initialization must establish their premises.
+
+The [frame-return proofs](../vm/proofs/frame-state.flex) check the production
+[`vm_return`](../vm/frame-state.flex): empty-frame rejection, exact saved-field
+restoration, depth decrement, error preservation and main-return completion.
+They also preserve supplied metadata bounds, derive the required read grant from
+ownership of the complete frame buffer, and preserve the active caller's operand
+floor under a checked saved-floor chain premise. A composed profile checks these
+metadata and floor properties together. Five seeded production faults require
+checked, replayed counterexamples. Initialization and call entry still need to
+establish these mapping and saved-state premises; the full frame-prefix invariant
+and arbitrary execution theorem remain unproved.
+
 ## Nested VMs
 
 The same Flexscript implementation can execute inside its own interpreter:

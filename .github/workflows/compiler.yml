@@ -110,6 +110,7 @@ jobs:
           build/tools/test-proof-quantifiers build/stage2
           build/tools/test-proof-functions build/stage2
           build/tools/test-proof-trusted build/stage2
+          build/tools/test-proof-vm build/stage2
 
       - name: Install the WebAssembly test host
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2

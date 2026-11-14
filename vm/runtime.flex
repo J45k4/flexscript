@@ -1,30 +1,18 @@
+import "address.flex";
+import "allocation.flex";
+import "call-frame.flex";
 import "jit.flex";
 // Trusted execution uses native pointers/syscalls/FFI. Restricted execution
 // uses guest offsets and explicitly granted host capabilities.
 // Bytecode is compiler-owned: 16-byte records (opcode, operand).
 global vm_mode=0;
 global vm_string_size=0;
-global vm_restricted=0;
-global vm_heap=0;
-global vm_heap_limit=16777216;
-global vm_heap_used=16;
-global vm_native_used=0;
 global vm_native_records=0;
 global vm_native_count=0;
 global vm_native_capacity=0;
-global vm_stack=0;
-global vm_sp=0;
-global vm_local_memory=0;
-global vm_local_base=0;
-global vm_local_top=0;
-global vm_frames=0;
-global vm_depth=0;
-global vm_pc=0;
 global vm_acc=0;
-global vm_error=0;
 global vm_denied_syscall=-1;
 global vm_denied_ffi=0;
-global vm_finished=0;
 // Embedders may enable explicit safe-point suspension; normal CLI guests cannot.
 global vm_yield_enabled=0;
 global vm_yielded=0;
@@ -52,13 +40,6 @@ global vm_jit_compilations=0;
 global vm_jit_calls=0;
 global vm_word_buffer=0;
 fn vm_emit(op,value) {let at=output_size;emit64(op);emit64(value);return at;}
-fn vm_allocate(size) {
-    if !size {return -22;}
-    if size<0 || size>vm_heap_limit-vm_heap_used-vm_native_used {return -12;}
-    let rounded=((size+7)/8)*8;if rounded>vm_heap_limit-vm_heap_used-vm_native_used {return -12;}
-    let address=vm_heap_used;vm_heap_used=vm_heap_used+rounded;
-    if !vm_restricted {return vm_heap+address;}return address;
-}
 // Keep native mappings separate from the internal bump arena. Reclaiming a
 // mapping must not rewind the cursor holding strings and startup arguments.
 fn vm_native_reserve() {
@@ -118,16 +99,6 @@ fn vm_native_unmap(address,size) {
     }
     return result;
 }
-fn vm_address(offset,size) {
-    if !vm_restricted {
-        if !offset || size<0 {vm_error=3;return 0;}
-        return offset;
-    }
-    if offset<16 || offset>vm_heap_used || size<0 || size>vm_heap_used-offset {
-        vm_error=3;return 0;
-    }
-    return vm_heap+offset;
-}
 fn vm_string_literal() {
     let start=token_start+1;let end=token_start+token_size-1;
     let address=vm_allocate(end-start+1);if address<0 {fail("VM memory limit exceeded by strings");}
@@ -174,38 +145,6 @@ fn vm_resolve() {
         i=i+1;
     }
     ir_optimize();return 0;
-}
-fn vm_push(value) {
-    if vm_sp>=524288 {vm_error=4;return 0;}
-    store64(vm_stack+vm_sp,value);vm_sp=vm_sp+8;return 1;
-}
-fn vm_pop() {
-    let floor=0;if vm_depth {floor=load64(vm_frames+(vm_depth-1)*40+24);}
-    if vm_sp<=floor {vm_error=4;return 0;}
-    vm_sp=vm_sp-8;return load64(vm_stack+vm_sp);
-}
-fn vm_enter(index,return_pc) {
-    if index<0 || index>=function_count || vm_depth>=1024 {vm_error=4;return 0;}
-    let entry=functions+index*32;let pc=load64(entry+16);let count=load64(entry+24);
-    let slots=load64(output+pc+8);
-    if load64(output+pc)!=18 || slots<count || slots>4096 || vm_sp<count*8
-        || vm_local_top+slots*8>8388608 {vm_error=9;return 0;}
-    let frame=vm_frames+vm_depth*40;
-    store64(frame,return_pc);store64(frame+8,vm_local_base);store64(frame+16,vm_local_top);
-    store64(frame+24,vm_sp-count*8);store64(frame+32,index);
-    vm_local_base=vm_local_top;vm_local_top=vm_local_top+slots*8;
-    let i=0;
-    while i<slots {
-        let value=0;if i<count {value=load64(vm_stack+vm_sp-count*8+i*8);}
-        store64(vm_local_memory+vm_local_base+i*8,value);i=i+1;
-    }
-    vm_sp=vm_sp-count*8;vm_depth=vm_depth+1;vm_pc=pc+16;return 1;
-}
-fn vm_return() {
-    if !vm_depth {vm_error=9;return 0;}
-    vm_depth=vm_depth-1;let frame=vm_frames+vm_depth*40;
-    vm_pc=load64(frame);vm_local_base=load64(frame+8);vm_local_top=load64(frame+16);
-    vm_sp=load64(frame+24);if vm_pc==-1 {vm_finished=1;}return 0;
 }
 fn vm_binary(op,a,b) {
     if op==43 {return a+b;}if op==45 {return a-b;}if op==42 {return a*b;}
