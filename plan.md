@@ -204,25 +204,29 @@ remaining verifier/bootstrap trust clearly identified and reduced where possible
 
 ## Immediate next actions
 
-1. Slim the verifier's membership-query encoding: the position-addressed
-   permission lemma's query builds 12,637 SAT variables where the natural
-   circuit is a few hundred (one distance adder, two comparisons, the region
-   grant), and its transitivity through a rest-bound compound term still
-   exceeds the 192M search budget. Profiling and reducing
-   `pb_member`/region-query construction in `libs/proof/memory.flex`, plus
-   the constant-shift/transitivity comparison rules in
-   `libs/proof/word.flex`, are the two recorded engine targets. The full
-   position-addressed assembly needs no further design work; it is written
-   down with measured numbers in `vm/proofs/pending/call-entry.flex`.
-2. Prove the complete call-entry state transition from the shared caller
+1. Restore CI green: the proof-properties suite's `pp_metadata_aliases` first
+   query (committed in 7a453c1) asks the solver to refute
+   `pw_equal((x-z)-y,(x-y)-z)` — a subtraction associativity identity the
+   engine's canonicalizer cannot yet unify (the add gates are
+   operand-order-sensitive; `pw_subtract_at` reassociates `a-(b+c)` but not
+   shared-minuend chains). The preferred fix is canonical commutative operand
+   ordering in `pw_add_carry` plus a cycle-safe shared-minuend pull-out in
+   `pw_subtract_at`; the full proof-suite battery must re-run afterwards. The
+   failure predates the capacity raise (identical at 131072 gates). The
+   bootstrap origin itself is fixed (cf793a6: the erased flattened bridge core
+   feeds the published 0.0.1 seed, and the stages compile the real annotated
+   tree with that bridge — verified end-to-end against the published seed).
+2. Close the copy loop's remaining wall: slim the membership-query encoding
+   (`pb_member`/region machinery — the position-addressed lemma's query builds
+   12,637 variables where a few hundred suffice) so the final
+   position-addressed assembly fits the search budget; the design is complete
+   in `vm/proofs/pending/call-entry.flex`.
+3. Prove the complete call-entry state transition from the shared caller
    invariant (bounded aligned cursors, host-owned frame buffer, caller operand
    span, free local tail, compiler-owned metadata), then connect it to
    initialization and the existing stack/return proofs.
-3. Run the relevant proof suites, interpreter/JIT regressions, and self-host
-   checks on the resulting current worktree. Done 2026-11-13: proof gate 183
-   checks, interpreter/JIT regression 480 checks, and a two-stage self-host
-   fixed point (identical stage binaries). A globals-only module in the WIP
-   (`compiler/program-state.flex`) had broken the shared flattener
-   (`scripts/lib/build.flex`); the splitter now treats such modules as pure
-   globals, which unblocked the interpreter suite's nested-VM sandbox check.
-   A full three-stage bootstrap run remains owed before any commit.
+
+Progress recorded 2026-11-13/14: proof gate 183 checks, interpreter/JIT
+regression 480 checks, two-stage self-host fixed point, full three-stage
+bootstrap against the published 0.0.1 seed, commits 7a453c1 and cf793a6
+pushed to master.

@@ -92,20 +92,31 @@ import "../../call-frame.flex";
 // states (or per-loop query splitting) so the checker's own entry facts stay
 // decidable inside the loop root's formula.
 //
-// Final precise diagnosis (2026-11-13, last probes): even the standalone
-// position-addressed lemma caps. Its membership query builds 12,637
-// variables and 34,607 clauses where the natural circuit is a few hundred
-// (one 64-bit distance adder, two comparison circuits, the region grant).
-// Within it the containment assert `d0+8*k+8 <= d0+8*cnt` discharges, but the
-// transitivity through that shared compound term (`... <= span <= 524288`,
-// with span rest-bound to a single word) still exceeds the 192M search
-// budget. So the two concrete engine targets, in order of leverage: (1) slim
-// the membership query encoding in `pb_member`/the region machinery (the
-// 25x variable bloat is the root cause; every downstream derivation then
-// fits the budget), and (2) add the shift/transitivity comparison rules so
-// the remaining chain steps are propagation rather than search. All scratch
-// probes live in /tmp/opencode/vmscratch (probe-position.flex is the final
-// assembly; probe-direct.flex is the proved write-side sweep).
+// CI status (2026-11-14): the bootstrap fix (the erased flattened bridge core,
+// validated against the published 0.0.1 seed) landed as cf793a6 and the
+// bootstrap step passes. The remaining CI failure is the proof-properties
+// suite (committed in 7a453c1 from earlier sessions): pp_metadata_aliases'
+// first query asks the solver to prove the subtraction associativity identity
+// `(x-z)-y == (x-y)-z` by refuting `pw_equal(first,second)`; the query builds
+// 3238 gates and the search exhausts 200M/502M work unresolved. The engine's
+// canonicalizer reassociates `a-(b+c)` but not shared-minuend subtraction
+// chains, and the add gates are operand-order-sensitive, so the two
+// differently-associated forms never meet syntactically. Candidate fixes, in
+// order of preference: (1) canonical commutative operand ordering in the
+// adder (`pw_add_carry` sorting by word identity) plus a cycle-safe
+// shared-minuend pull-out in `pw_subtract_at`; (2) restructuring the property
+// to check the canonical form the engine does produce. Both need the full
+// proof-suite battery re-run afterwards. The failure predates the 2026-11-13
+// capacity raise (reproduced identically at 131072 gates).
+//
+// Separate standing diagnosis for the copy loop itself (unchanged): the
+// position-addressed membership lemma's query builds 12,637 variables where
+// the natural circuit is a few hundred (one distance adder, two comparisons,
+// the region grant), and the transitivity through a rest-bound compound term
+// exceeds the search budget even standalone. Slimming the membership-query
+// encoding in `pb_member`/the region machinery remains the highest-leverage
+// engine change for the call-entry loop; the position-addressed assembly is
+// final otherwise.
 
 // Malformed function header: only table/header metadata is read; frames,
 // stack and locals are untouched. Blocked by the whole-body circuit demand
