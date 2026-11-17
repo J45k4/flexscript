@@ -81,6 +81,15 @@ fn flexdb_blob_read(v,offset,out,n) {
  while !done && ok {let before=load64(c+16);store64(c+24,c+128);store64(c+32,65536);store64(c+40,0);let result=fd_codec_decode(decoder,c+24,c);let made=load64(c+40);if result<0 || total+made>load64(d+24) || (!made && before==load64(c+16) && result) {ok=0;}else {let lo=offset;if lo<total {lo=total;}let hi=offset+n;if hi>total+made {hi=total+made;}if hi>lo {fd_copy(out+lo-offset,c+128+lo-total,hi-lo);}total=total+made;if !result {done=1;if total!=load64(d+24) || load64(c+16)!=load64(d+32) {ok=0;}}}}
  fd_codec_decoder_close(decoder);syscall(11,c,65664,0,0,0,0);if !ok {fd_corrupt(db,"invalid compressed blob payload");return -1;}return n;
 }
+// Nonblocking Linux file-to-socket fast path for verified, committed raw blobs.
+// Returns bytes sent or a negative errno; -95 means the caller must use a
+// buffered reader (inline/compressed/staged data). The caller retains access
+// control, transport ownership and offset/progress across partial writes.
+fn flexdb_blob_sendfile(table,rowid,column,socket,offset,n,position) {
+ if !table || rowid<1 || column<0 || socket<0 || !position || offset<0 || n<0 {return -22;}let row=flexdb_get(table,rowid);if !row {return -22;}let v=flexdb_cell(row,column);if !v || load64(v)!=3 || offset>flexdb_bytes(v) || n>flexdb_bytes(v)-offset {return -22;}
+ if !flexdb_blob_external(v) {return -95;}let d=load64(v+8);let db=load64(d);if !fd_ready(db) || load64(fd_blob_state(db)+88) || load64(d+80) || load64(d+40)!=0 {return -95;}
+ if !load64(d+72) {let reader=flexdb_blob_reader_sequential(v);if !reader {return -5;}if !flexdb_blob_reader_close(reader) {return -5;}}let at=fd_blob_offset(d)+64+offset;store64(position,at);return syscall(40,socket,load64(db+24),position,n,0,0);
+}
 // Explicit materialization retains the byte pointer until database close, like
 // the existing value API. Prefer blob_read for bounded-memory archive access.
 fn flexdb_blob_data(v) {

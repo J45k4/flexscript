@@ -1,6 +1,7 @@
 // Small reusable HTTP/form/SSE runtime. Applications implement app_init,
 // app_request, and app_tick. Request values live until the next poll iteration.
 import "support.flex";
+import "multipart.flex";
 import "launch.flex";
 import "cache.flex";
 global web_name=0;
@@ -16,6 +17,7 @@ global web_type=0;
 global web_accept=0;
 global web_length=0;
 global web_cookie=0;
+global web_multipart=0;
 global web_fields=0;
 global web_field_count=0;
 global web_extra=0;
@@ -106,7 +108,7 @@ fn web_form_type(value) {
     if !value {return 0;}let n=0;while load8(value+n) && load8(value+n)!=59 {n=n+1;}while n>0 && (load8(value+n-1)==32 || load8(value+n-1)==9) {n=n-1;}return web_header(m_slice(value,n),"application/x-www-form-urlencoded");
 }
 fn web_dispatch(slot) {
-    let fd=load64(slot);web_extra="";web_fields=0;web_field_count=0;
+    let fd=load64(slot);web_extra="";web_fields=0;web_field_count=0;web_multipart=0;
     let query=0;let i=0;while load8(web_path+i) {if load8(web_path+i)==63 && !query {query=i;}i=i+1;}
     if query {let q=web_path+query+1;web_path=m_slice(web_path,query);if !web_form(q,m_len(q)) {web_reply(fd,400,"text/plain","Invalid query\n","");web_close(slot);return 0;}}
     if m_eq(web_method,"GET") && m_eq(web_path,"/events") {
@@ -118,10 +120,12 @@ fn web_dispatch(slot) {
             if m_send(fd,headers,m_len(headers)) && m_send(fd,event,m_len(event)) {syscall(11,load64(slot+8),16384,0,0,0,0);store64(slot+8,0);store64(slot+48,1);return 0;}
         }
     }else if m_eq(web_method,"POST") {
-        if !web_form_type(web_type) {web_reply(fd,415,"text/plain","Expected form data\n","");}
-        else if web_origin && !m_eq(web_origin,m_cat("http://",web_host)) {web_reply(fd,403,"text/plain","Origin rejected\n","");}
-        else if !web_form(load64(slot+8)+load64(slot+32),web_length) {web_reply(fd,400,"text/plain","Invalid form data\n","");}
-        else {app_request(fd);}
+        if web_origin && !m_eq(web_origin,m_cat("http://",web_host)) {web_reply(fd,403,"text/plain","Origin rejected\n","");}
+        else if web_form_type(web_type) {if !web_form(load64(slot+8)+load64(slot+32),web_length) {web_reply(fd,400,"text/plain","Invalid form data\n","");}else {app_request(fd);}}
+        else if mono_mp_prefix_type(web_type,"multipart/form-data") {
+            let body=load64(slot+8)+load64(slot+32);let check=mono_mp_open(web_type,body,web_length,64);let status=-1;if check {status=mono_mp_next(check);while status>0 {status=mono_mp_next(check);}}
+            if status<0 {web_reply(fd,400,"text/plain","Invalid multipart form data\n","");}else {web_multipart=mono_mp_open(web_type,body,web_length,64);app_request(fd);}
+        }else {web_reply(fd,415,"text/plain","Expected form data\n","");}
     }else if m_eq(web_method,"GET") || m_eq(web_method,"HEAD") {app_request(fd);}
     else {web_reply(fd,405,"text/plain","Method Not Allowed\n","Allow: GET, HEAD, POST\r\n");}
     web_close(slot);return 0;
