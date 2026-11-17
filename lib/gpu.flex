@@ -37,6 +37,8 @@ fn gpu_barrier(){return gpu_host_only();}
 // Block rendezvous with shared-memory ordering; global ordering is not required.
 fn gpu_shared_barrier(){return gpu_host_only();}
 fn gpu_warp_sync(mask){return gpu_host_only();}
+fn gpu_shared_load_u32(offset){return gpu_host_only();}
+fn gpu_shared_store_u32(offset,value){return gpu_host_only();}
 fn gpu_shared_load64(offset){return gpu_host_only();}
 fn gpu_shared_store64(offset,value){return gpu_host_only();}
 fn gpu_atomic_add64(pointer,value){return gpu_host_only();}
@@ -60,6 +62,23 @@ fn gpu_load_u16(p){return load8(p)|(load8(p+1)<<8);}
 fn gpu_load_u32(p){return load8(p)|(load8(p+1)<<8)|(load8(p+2)<<16)|(load8(p+3)<<24);}
 fn gpu_store_u32(p,v){store8(p,v);store8(p+1,v>>8);store8(p+2,v>>16);store8(p+3,v>>24);return v;}
 fn gpu_load_bf16(p){return (load8(p)|(load8(p+1)<<8))<<16;}
+// Bounded index operations explicitly truncate to a 32-bit word.
+fn gpu_address_f32(pointer,index){return pointer+(index&0xffffffff)*4;}
+fn gpu_u32_add(a,b){return (a+b)&0xffffffff;}
+fn gpu_u32_sub(a,b){return (a-b)&0xffffffff;}
+fn gpu_u32_mul(a,b){return (a*b)&0xffffffff;}
+fn gpu_u32_mad(a,b,c){return (a*b+c)&0xffffffff;}
+fn gpu_u32_mul_hi(a,b){return (((a&0xffffffff)*(b&0xffffffff))>>32)&0xffffffff;}
+fn gpu_i32_lt(a,b){return ((a^0x80000000)&0xffffffff)<((b^0x80000000)&0xffffffff);}
+fn gpu_i32_le(a,b){return !gpu_i32_lt(b,a);}
+fn gpu_i32_gt(a,b){return gpu_i32_lt(b,a);}
+fn gpu_i32_ge(a,b){return !gpu_i32_lt(a,b);}
+fn gpu_u32_eq(a,b){return (a&0xffffffff)==(b&0xffffffff);}
+fn gpu_u32_ne(a,b){return (a&0xffffffff)!=(b&0xffffffff);}
+
+fn gpu_f16_pair_hi(value){return (value&65535)|((value>>16)&0xffff0000);}
+fn gpu_f16_pair_lo(value){return ((value>>16)&65535)|((value>>32)&0xffff0000);}
+
 // Native SFU approximations, flush subnormal inputs/results. Explicitly distinct
 // from the correctly rounded divide/sqrt intrinsics; no CPU approximation.
 fn gpu_f32_exp2_approx(x){return gpu_host_only();}
@@ -109,6 +128,7 @@ fn gpu_f32_mul(a,b){return gpu_f32_pack(f64_mul(gpu_f32_unpack(a),gpu_f32_unpack
 fn gpu_f32_div(a,b){return gpu_f32_pack(f64_div(gpu_f32_unpack(a),gpu_f32_unpack(b)));}
 fn gpu_f32_sqrt(a){return gpu_f32_pack(f64_sqrt(gpu_f32_unpack(a)));}
 fn gpu_f32_fma(a,b,c){return gpu_host_only();}
+fn gpu_f32x2_fma(a,b,c){return gpu_host_only();}
 fn gpu_f32_from_i64(a){
     if a==0x8000000000000000 {return 0xdf000000;}
     let sign=0;if a<0 {sign=0x80000000;a=-a;}if !a {return sign;}

@@ -168,11 +168,10 @@ fn ptx_finish() {
     if p_advanced {p_text(".version 6.5\n.target sm_75\n");}else {p_text(".version 6.0\n.target sm_50\n");}
     p_text(".address_size 64\n\n");
     if p_advanced {p_text(".extern .shared .align 8 .b8 flex_shared[];\n");}
-    let i=0;while i<function_count {if load64(p_seen+i*8) {p_signature(i);p_text(";\n");}i=i+1;}
-    i=0;while i<function_count {if load64(p_seen+i*8) {p_function(i);}i=i+1;}
+    let i=0;
     p_text(".visible .entry flex_kernel(.param .u64 input, .param .u64 output, .param .u64 count");
     if p_launch_words {i=0;while i<8 {p_text(", .param .b64 launch");p_num(i);i=i+1;}}p_text(") {\n");
-    if p_launch_words {p_text(".reg .b64 %uw;\n");i=0;while i<8 {p_text(".param .b64 cu");p_num(i);p_text(";\nld.param.u64 %uw, [launch");p_num(i);p_text("];\nst.param.b64 [cu");p_num(i);p_text("], %uw;\n");i=i+1;}}
+    if p_launch_words {p_text(".reg .b64 %u<8>;\n");i=0;while i<8 {p_text("ld.param.u64 %u");p_num(i);p_text(", [launch");p_num(i);p_text("];\n");i=i+1;}}
     p_text(".reg .u32 %block, %width, %thread, %tmp;\n.reg .u64 %index, %offset, %linear, %volume, %in, %out, %count;\n.reg .pred %outside;\n");
     p_text(".param .b64 a0, a1, a2, a3, result;\nmov.u32 %block, %ctaid.x;\nmov.u32 %width, %ntid.x;\nmov.u32 %thread, %tid.x;\n");
     p_text("mov.u32 %tmp, %ctaid.z;\ncvt.u64.u32 %linear, %tmp;\nmov.u32 %tmp, %nctaid.y;\ncvt.u64.u32 %offset, %tmp;\nmul.lo.u64 %linear, %linear, %offset;\nmov.u32 %tmp, %ctaid.y;\ncvt.u64.u32 %offset, %tmp;\nadd.u64 %linear, %linear, %offset;\nmov.u32 %tmp, %nctaid.x;\ncvt.u64.u32 %offset, %tmp;\nmul.lo.u64 %linear, %linear, %offset;\ncvt.u64.u32 %offset, %block;\nadd.u64 %linear, %linear, %offset;\n");
@@ -180,5 +179,5 @@ fn ptx_finish() {
     p_text("mov.u32 %tmp, %tid.z;\ncvt.u64.u32 %index, %tmp;\nmov.u32 %tmp, %ntid.y;\ncvt.u64.u32 %offset, %tmp;\nmul.lo.u64 %index, %index, %offset;\nmov.u32 %tmp, %tid.y;\ncvt.u64.u32 %offset, %tmp;\nadd.u64 %index, %index, %offset;\ncvt.u64.u32 %offset, %width;\nmul.lo.u64 %index, %index, %offset;\ncvt.u64.u32 %offset, %thread;\nadd.u64 %index, %index, %offset;\nadd.u64 %index, %index, %linear;\n");
     p_text("ld.param.u64 %count, [count];\nsetp.ge.u64 %outside, %index, %count;\n@%outside ret;\n");
     p_text("ld.param.u64 %in, [input];\nld.param.u64 %out, [output];\nst.param.b64 [a0], %index;\nst.param.b64 [a1], %in;\nst.param.b64 [a2], %out;\nst.param.b64 [a3], %count;\n");
-    p_text("call.uni (result), flex_fn");p_num(kernel);p_text(", (a0, a1, a2, a3");if p_launch_words {i=0;while i<8 {p_text(", cu");p_num(i);i=i+1;}}p_text(");\nret;\n}\n");return 0;
+    pi_body(kernel);p_text("ret;\n}\n");return 0;
 }

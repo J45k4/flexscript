@@ -73,9 +73,9 @@ The primitive GPU frontend supports static inference. It does not yet implement
 Puppygrad's full language, `def`, loops, comparisons, integer tensors, exp/log,
 graph `grad`, training or dynamic shapes. Unsupported syntax is rejected with
 a located diagnostic. The existing eager `libs/ml` autodiff library remains
-available separately. Tiling, tensor-core selection, graph rewrites and formal
-equivalence proofs are future work; the independent primitive interpreter and
-GPU comparisons currently check lowering correctness.
+available separately. This primitive scheduler does not yet implement tiled
+contractions or formal equivalence proofs; the independent primitive interpreter
+and GPU comparisons currently check lowering correctness.
 
 ## Build and compile
 
@@ -314,3 +314,11 @@ Puppybot's `flex/vision/` supplies the first CPU/HIP backend and a real YOLO26n
 model, imported from an official checkpoint without Torch. Its small independent
 CPU/HIP fixture and full-model tinygrad comparisons live in Puppybot's
 `flex/tests/vision.py` and `flex/tests/yolo.py`.
+
+## Named-tensor inference specialization
+
+The complementary [static tensor GPU compiler](gpu/README.md) specializes named
+CNN/attention graph inventories, with shared-memory/register tiles, fusion,
+buffer placement and PTX/native SASS/HIP output. It is exposed as
+`libs/ml/pup/gpu.flex` and `scripts/pup-codegen.flex`, without an application
+runtime dependency. The primitive frontend above retains its existing ABI.

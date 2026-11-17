@@ -2,6 +2,7 @@ import "lib/build.flex";
 import "lib/harness.flex";
 import "../libs/ml/pup/tests/cases.flex";
 import "../libs/ml/pup/runtime.flex";
+import "../libs/ml/pup/gpu/tests/core.flex";
 global tp_gpu=0;
 global tp_runs=0;
 global tp_frontend=0;
@@ -114,7 +115,7 @@ fn tp_mnist() {
     return 0;
 }
 fn suite(compiler) {
-    t_init(compiler);h_timeout=120000;t_checks=t_checks+pgt_suite();
+    t_init(compiler);h_timeout=120000;cgt_suite(compiler);t_checks=t_checks+pgt_suite();
     let network=h_real("libs/ml/pup/tests/network.flex");h_compile(t_compiler,network,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),0,"");t_assert(1,"named CNN network metadata and source emission");
     let core=h_real("libs/ml/pup/tests/core.flex");h_compile(t_compiler,core,t_binary);h_check(h_run(h_args(t_binary,0,0,0,0,0)),0,"");t_assert(1,"native primitive reference");
     let modes=h_args("--interpret","--jit",0,0,0,0);let i=0;
