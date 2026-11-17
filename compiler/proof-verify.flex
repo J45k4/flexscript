@@ -289,7 +289,7 @@ fn vf_root_check(f) {
     vf_capacity_reported=0;
     vm_allocated=0;vm_choices=0;vm_choice_tail=0;vf_entry_satisfiable=0;vf_entry_reason=0;
     pm_models=0;pm_assuming=0;pm_missing=0;pm_missing_message=0;vl_models=0;vl_count=0;vl_missing_measure=0;vl_proof_missing=0;vf_root=f;vf_problem=0;vf_problem_node=0;vf_count=0;vf_eval_depth=0;
-    vf_context=pw_context(64,2097152,65536);if !vf_context {fail("cannot allocate verification circuit");}vf_zero=pw_constant(vf_context,0);vm_used=0;vm_reads=0;vm_writes=0;vm_releases=0;vm_memory=pb_context(vf_context,4096,4096,16384,1024);if !vm_memory {fail("cannot allocate symbolic memory");}
+    vf_context=pw_context(64,131072,65536);if !vf_context {fail("cannot allocate verification circuit");}vf_zero=pw_constant(vf_context,0);vm_used=0;vm_reads=0;vm_writes=0;vm_releases=0;vm_memory=pb_context(vf_context,4096,4096,16384,1024);if !vm_memory {fail("cannot allocate symbolic memory");}
     let i=0;while i<pf_count {store64(vf_active+i*8,0);store64(vf_dependencies+i*8,0);i=i+1;}
     vf_inputs=alloc(load64(f+56)*8+8);if vf_inputs<0 {fail("cannot allocate symbolic inputs");}
     i=0;while i<load64(f+56) {store64(vf_inputs+i*8,pw_input(vf_context));i=i+1;}i=0;while i<pf_gcount {store64(vf_global_inputs+i*8,pw_input(vf_context));store64(vf_reads+i*8,0);store64(vf_writes+i*8,0);i=i+1;}

@@ -119,6 +119,16 @@ values and active readers remain valid across compaction. The original reader
 retains mapped pages for repeated access. `flexdb_blob_release_pages(value)`
 explicitly drops resident file pages without invalidating value handles.
 See [blob storage and streaming](blobs.md) for ownership and validation details.
+
+On Linux, `flexdb_blob_sendfile(table, rowid, column, socket, offset, count,
+position_scratch)` sends a bounded range of a verified, committed, uncompressed
+external blob directly from the database file to a socket. The caller supplies
+a writable 8-byte scratch word, checks permissions and owns nonblocking partial
+write handling. It returns the number of bytes sent or a negative errno; `-95`
+means to use a buffered reader for inline, compressed or staged data. It looks
+up the current row for each call, so a removed row is never read from a stale
+file offset. It does not work through a user-space TLS stream.
+
 An experimental [native Zstd codec](../compress/README.md) can be selected with
 `flexdb_blob_native_zstd(db, 1)`; the faster C implementation remains the default.
 

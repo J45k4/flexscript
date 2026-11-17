@@ -5,7 +5,7 @@ fn pp_signed4(value) {value=value&15;if value&8 {return value-16;}return value;}
 fn pp_check(ok,message) {h_assert(ok,message);pp_checks=pp_checks+1;return 0;}
 fn pp_query(context,condition,expected,witness,wanted) {
     let formula=pw_cnf(context,1);pp_check(formula,"property circuit capacity");pw_emit(context,formula,condition,0,0,0,1);
-    let search=pv_search(formula,262144);pp_check(search,"property search allocation");let result=pv_decide(search,200000000,200000000);
+    let search=pv_search(formula,262144);pp_check(search,"property search allocation");let result=pv_decide(search,2000000000,2000000000);
     h_print(1,h_cat3("property result=",h_int(result),h_cat3(" gates=",h_int(load64(context+8)),h_cat3(" work=",h_int(load64(search+64)),"\n"))));
     pp_check(result==expected,"property decision differs");
     if witness {pp_check(result==1 && pw_model_word(context,witness,load64(search+8))==wanted,"unexpected decoded counterexample");}

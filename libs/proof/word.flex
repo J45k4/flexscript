@@ -6,7 +6,7 @@ import "cnf.flex";
 // sticky error, word metadata pointer, allocation size, four scratch literals (128 bytes).
 // Gate record: kind (0=input,1=and,2=xor,3=select,4=true), a,b,c.
 fn pw_context(width,gate_capacity,word_capacity) {
-    if width<1 || width>64 || (width&(width-1)) || gate_capacity<1 || gate_capacity>2097152 || word_capacity<1 || word_capacity>65536 {return 0;}
+    if width<1 || width>64 || (width&(width-1)) || gate_capacity<1 || gate_capacity>131072 || word_capacity<1 || word_capacity>65536 {return 0;}
     let buckets=2;while buckets<gate_capacity*2 {buckets=buckets*2;}
     let size=128+gate_capacity*32+buckets*8+width*word_capacity*8+word_capacity*24;let p=alloc(size);if p<0 {return 0;}
     store64(p,width);store64(p+8,1);store64(p+16,gate_capacity);store64(p+24,p+128);
