@@ -82,6 +82,7 @@ fn suite(compiler) {
         i=i+1;
     }
     t_native(h_data(b),42,"");
+    if !legacy_seed {t_native(h_cat("ensures result==42;\n",h_data(b)),42,"");}
     h_text(b,"fn beyond_limit(){}");
     h_add(limits,h_data(b));
     h_add(messages,"too many functions");

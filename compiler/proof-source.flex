@@ -215,7 +215,7 @@ fn pf_scan() {
             if tail {store64(tail+48,clause);}else {head=clause;}tail=clause;
         }else if is("spec") || is("lemma") {definition_kind=2;if is("lemma") {definition_kind=4;}definition_start=site;next();if !is("fn") {fail("spec or lemma must directly precede fn");}pf_has_helpers=1;}
         else if is("fn") {
-            if pf_count>=2048 {fail("too many verifier functions");}next();if token!=256 {fail("expected function name");}
+            if pf_count>=source_function_capacity {fail("too many verifier functions");}next();if token!=256 {fail("expected function name");}
             let f=pf_functions+pf_count*128;let clear=0;while clear<128 {store64(f+clear,0);clear=clear+8;}
             let name=source+token_start;let size=token_size;if reserved(name,size) || pf_function(name,size) || pf_global(name,size)>=0 {fail("invalid or duplicate function");}
             store64(f,name);store64(f+8,size);store64(f+16,pf_module);store64(f+24,site);store64(f+64,head);
@@ -248,7 +248,7 @@ fn pf_prepare() {
     while i<module_count && !found {select_module(i);pos=load64(modules+i*64+48);next();
         while token && !found {if token==256 && (is("requires") || is("ensures") || is("verify") || is("assert") || is("modifies") || is("reads") || is("releases") || is("trusted") || is("terminates") || is("invariant") || is("decreases") || is("ghost") || is("proof") || is("spec") || is("lemma")) {found=1;}next();}i=i+1;
     }if !found {return 0;}
-    pf_functions=alloc(2048*128);pf_globals=alloc(2048*32);pf_copies=alloc(256*8);pf_nodes=alloc(pf_node_capacity()*64);pf_spans=alloc(16384*24);pf_locals=alloc(4096*32);pf_ghost_slots=alloc(4096*8);
+    pf_functions=alloc(source_function_capacity*128);pf_globals=alloc(2048*32);pf_copies=alloc(256*8);pf_nodes=alloc(pf_node_capacity()*64);pf_spans=alloc(16384*24);pf_locals=alloc(4096*32);pf_ghost_slots=alloc(4096*8);
     if pf_functions<0 || pf_globals<0 || pf_copies<0 || pf_nodes<0 || pf_spans<0 || pf_locals<0 || pf_ghost_slots<0 {fail("cannot allocate verifier syntax");}
     pf_count=0;pf_gcount=0;pf_used=0;pf_span_count=0;pf_lowerings=0;pf_has_helpers=0;i=0;
     while i<module_count {let m=modules+i*64;let copy=alloc(load64(m+16)+1);if copy<0 {fail("cannot retain verifier source");}net_copy(copy,load64(m+8),load64(m+16));store64(pf_copies+i*8,copy);i=i+1;}
