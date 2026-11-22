@@ -42,6 +42,7 @@ global token = 0;
 global token_size = 0;
 global token_value = 0;
 global global_count = 0;
+global source_function_capacity = 4096;
 global locals = 0;
 global local_count = 0;
 global slots = 0;
@@ -833,7 +834,9 @@ fn global_definition() {
 
 fn function_definition() {
     let definition_start=token_start;
-    if function_count >= 2048 + frontend_fir_functions { fail("too many functions"); }
+    let limit=source_function_capacity;
+    if frontend_fir_functions {limit=2048+frontend_fir_functions;}
+    if function_count >= limit { fail("too many functions"); }
     next();
     if token != 256 { fail("expected function name"); }
     let name = source + token_start;
@@ -1986,7 +1989,7 @@ fn compiler_initialize() {
     modules = alloc(256 * 64);
     module_urls = alloc(256 * 8);
     input_stat = alloc(144);
-    tx_sites=alloc(2048*24);tx_literal_flags=alloc(2048*8);tx_requests=alloc(16*48);tx_inputs=alloc(8192*16);
+    tx_sites=alloc(source_function_capacity*24);tx_literal_flags=alloc(source_function_capacity*8);tx_requests=alloc(16*48);tx_inputs=alloc(8192*16);
     if source < 0 || output < 0 || globals < 0 || functions < 0 || locals < 0
         || lowering_entries<0 || calls < 0 || modules < 0 || module_urls < 0 || input_stat < 0 || ffi_entries<0 || ffi_fixups<0
         || tx_sites<0 || tx_literal_flags<0 || tx_requests<0 || tx_inputs<0 { fail("memory allocation failed"); }

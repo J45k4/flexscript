@@ -390,7 +390,7 @@ replacement; source/output aliases and output symlinks are rejected.
 
 For the ordinary 0.0.6 `.flex` frontend, combined source must be smaller than
 16 MiB. Limits include 256 source modules, an active import chain of 64 modules,
-2,048 globals, 2,048 functions, 4,096 local slots per function, 65,536 call sites
+2,048 globals, 4,096 functions, 4,096 local slots per function, 65,536 call sites
 and nesting depth 128 for expressions, blocks and conditional chains. Native
 ELF output is bounded at 64 MiB. These are implementation bounds; frontend FIR,
 VM memory, shader and GPU backends have their own documented capacities.

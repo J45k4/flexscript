@@ -3,7 +3,8 @@ fn suite(compiler) {
     t_init(compiler);
     let version=h_out(h_check(h_run(h_args(t_compiler,"--version",0,0,0,0)),0,0));
     let current=h_trim(h_read("VERSION"));
-    t_assert(h_equal(version,"flexscript 0.0.1\n") || h_equal(version,h_cat3("flexscript ",current,"\n")),"compiler version");
+    let legacy_seed=h_equal(version,"flexscript 0.0.1\n");
+    t_assert(legacy_seed || h_equal(version,h_cat3("flexscript ",current,"\n")),"compiler version");
     let help=h_check(h_run(h_args(t_compiler,"--help",0,0,0,0)),0,0);
     // Additional target notes may precede usage (including in PR merge builds).
     // Keep the usage contract checked for both the frozen seed and new stages.
@@ -73,12 +74,15 @@ fn suite(compiler) {
     h_add(limits,h_data(b));
     h_add(messages,"too many locals");
     b=h_buffer();
-    h_text(b,"fn main(){return 0;}");
+    let function_limit=4096;if legacy_seed {function_limit=2048;}
+    h_text(b,h_cat3("fn main(){return f",h_int(function_limit-2),"();}"));
     i=0;
-    while i<2048 {
-        h_text(b,h_cat3("fn f",h_int(i),"(){}"));
+    while i<function_limit-1 {
+        h_text(b,h_cat3("fn f",h_int(i),"(){return 42;}"));
         i=i+1;
     }
+    t_native(h_data(b),42,"");
+    h_text(b,"fn beyond_limit(){}");
     h_add(limits,h_data(b));
     h_add(messages,"too many functions");
     h_add(limits,h_cat3("fn main(){",h_repeat("f();",65537),"} fn f(){}"));
