@@ -1,5 +1,11 @@
 import "frame-state.flex";
 import "../compiler/program-state.flex";
+import "call-locals.flex";
+
+// An instruction consists of two words. Check the size before subtraction.
+fn vm_instruction_outside(pc,size) {
+    return size<16 || pc<0 || pc>size-16 || (pc&15)!=0;
+}
 
 fn vm_call_capacity(count,slots) {
     if count<0 || slots<count || slots>4096 || vm_sp<count*8
@@ -15,18 +21,26 @@ fn vm_call_capacity(count,slots) {
 
 fn vm_enter(index,return_pc) {
     if index<0 || index>=function_count || vm_depth>=1024 {vm_error=4;return 0;}
-    let entry=functions+index*32;let pc=load64(entry+16);let count=load64(entry+24);
-    let slots=load64(output+pc+8);
+    let entry=functions+index*32;let pc=load64(entry+16);
+    if vm_instruction_outside(pc,output_size) {vm_error=9;return 0;}
     if load64(output+pc)!=18 {vm_error=9;return 0;}
-    if !vm_call_capacity(count,slots) {return 0;}
+    let count=load64(entry+24);let slots=load64(output+pc+8);
+    let available=vm_call_capacity(count,slots);
+    if !available {return 0;}
+    return vm_enter_accepted(index,return_pc,pc,count,slots);
+}
+
+fn vm_install_call_frame(index,return_pc,count,slots) {
     let frame=vm_frames+vm_depth*40;
     store64(frame,return_pc);store64(frame+8,vm_local_base);store64(frame+16,vm_local_top);
     store64(frame+24,vm_sp-count*8);store64(frame+32,index);
     vm_local_base=vm_local_top;vm_local_top=vm_local_top+slots*8;
-    let i=0;
-    while i<slots {
-        let value=0;if i<count {value=load64(vm_stack+vm_sp-count*8+i*8);}
-        store64(vm_local_memory+vm_local_base+i*8,value);i=i+1;
-    }
+    return 0;
+}
+
+// The call guards have checked the instruction and operand/local capacity.
+fn vm_enter_accepted(index,return_pc,pc,count,slots) {
+    vm_install_call_frame(index,return_pc,count,slots);
+    vm_copy_call_locals(vm_stack+(vm_sp-count*8),vm_local_memory+vm_local_base,count,slots);
     vm_sp=vm_sp-count*8;vm_depth=vm_depth+1;vm_pc=pc+16;return 1;
 }

@@ -1,18 +1,51 @@
 import "../../call-frame.flex";
 
-// OPEN: the remaining call-entry paths. The passing gate carries only
-// enter_rejects_bad_index (vm/proofs/call-entry.flex). These roots are checked
-// against the production vm_enter and currently stop for documented engine
-// reasons; each entry records the exact blocker so the next attempt starts
-// from evidence, not guesswork.
+// OPEN: preserve the VM state invariant between call entry and return, including
+// compiler metadata ownership, active-floor permissions, and the observer
+// grants for exact copied arguments.
+// The VM gate checks accepted effects, cursors, all five new saved frame words,
+// copied entry arguments and zeroed unused slots under selected-span premises.
+// Production vm_install_call_frame supplies the frame-write summary used to
+// prove the arbitrary observed argument reaches the corresponding local slot.
+// Separate complete entry profiles preserve all windows in the live caller
+// frame prefix, extend the ordered operand floor, and derive selected call
+// spans from their backing allocations.
+// Immediate entry and return compose with the backing-buffer proof and the
+// selected metadata and active-floor premises.
+// The VM gate also checks complete
+// capacity rejection under valid metadata and bounded state premises, including
+// its precise error-only write frame.
+// Earlier proof experiments follow.
+// Malformed-header rejection moved to vm/proofs/call-entry.flex after moving
+// opcode validation before arity and slot reads and recognizing conditions
+// nested in the verifier's path conjunction. At that checkpoint the remaining
+// root reached the 131072-gate limit while composing the whole accepted path.
+// A diagnostic build that omitted eager probe congruence got past the
+// metadata premises but still ran out of circuit capacity in vm_enter's
+// local-copy loop. The production verifier retains congruence. Lazy alias
+// refinement would need confirmed SAT replay and checked refutations.
+// The extracted production vm_copy_call_locals now has a checked contract for
+// memory safety, effect bounds and termination under explicit span premises.
+// The gate also checks the exact production prefix through vm_call_capacity:
+// under its metadata and cursor premises it returns the capacity decision on
+// the loaded arity and slot count, with only the error flag writable.
+// The VM gate checks the full production loop's exact output under the
+// helper contract. Every arbitrary argument slot equals its source word at
+// entry, and every arbitrary remaining slot contains zero. The caller's
+// establishment of the helper premises and composition with the earlier
+// frame and metadata proofs remain open. The experiments below record the
+// earlier development of the loop contract.
+// Previous measurements and candidate loop designs are retained below.
 //
 // Findings that constrain every formulation (reproduced in /tmp scratch runs
 // on 2026-11-13, engine gate capacity 524288):
 // - The verifier inlines the whole production body's circuit for every root,
 //   so any root whose path passes the header check pays for the argument-copy
 //   loop's circuit even when that loop is unreachable on the checked path.
-// - Memory regions must have CONSTANT lengths; symbolic lengths do not
-//   establish membership (subregion relations go unresolved).
+// - Symbolic-length parent regions initially left subregion queries unresolved.
+//   The same-snapshot containment rule now proves variable-length code-buffer
+//   permissions in vm/proofs/call-entry.flex. The roots below still hit the
+//   circuit limit while relating metadata observations, before the loop.
 // - Address cancellation works for a shared single-symbolic base, not for a
 //   shared two-term base (vm_stack+vm_sp+... vs vm_stack+vm_sp).
 // - Address 0 is uninstantiable: any region containing it makes the
@@ -118,52 +151,9 @@ import "../../call-frame.flex";
 // engine change for the call-entry loop; the position-addressed assembly is
 // final otherwise.
 
-// Malformed function header: only table/header metadata is read; frames,
-// stack and locals are untouched. Blocked by the whole-body circuit demand
-// above; feasible once the loop summary exists.
-requires index >= 0 && index < function_count && function_count >= 0;
-requires vm_depth >= 0 && vm_depth <= 1023;
-requires vm_error == 0;
-requires readable_bytes(functions+index*32,32);
-requires pc == load64(functions+index*32+16);
-requires pc >= 0 && pc+16 <= output_size && (pc & 15) == 0 && output_size >= 16;
-requires readable_bytes(output+pc,16);
-requires load64(output+pc) != 18;
-reads vm_depth,vm_error,vm_pc,function_count,functions,output,output_size,bytes(functions+index*32,32),bytes(output+pc,16);
-modifies vm_error;
-ensures result == 0 && vm_error == 9;
-ensures vm_depth == old(vm_depth);
-ensures vm_pc == old(vm_pc);
-fn enter_rejects_opcode(index,return_pc,pc) {return vm_enter(index,return_pc);}
-
-// Capacity rejection with valid metadata: before any frame write.
-requires index >= 0 && index < function_count && function_count >= 0;
-requires vm_depth >= 1 && vm_depth <= 1023;
-requires vm_error == 0;
-requires readable_bytes(functions+index*32,32);
-requires pc == load64(functions+index*32+16);
-requires pc >= 0 && pc+16 <= output_size && (pc & 15) == 0 && output_size >= 16;
-requires readable_bytes(output+pc,16);
-requires load64(output+pc) == 18;
-requires count == load64(functions+index*32+24);
-requires slots == load64(output+pc+8);
-requires vm_sp >= 0 && vm_sp <= 524288;
-requires vm_local_top >= 0 && vm_local_top <= 8388608;
-requires readable_bytes(vm_frames,40960);
-requires load64(vm_frames+(vm_depth-1)*40+24) >= 0 && load64(vm_frames+(vm_depth-1)*40+24) <= vm_sp;
-requires !(count >= 0 && count <= slots && slots <= 4096 && count*8 <= vm_sp-load64(vm_frames+(vm_depth-1)*40+24) && vm_local_top+slots*8 <= 8388608);
-reads vm_depth,vm_error,vm_sp,vm_local_top,function_count,functions,output,output_size,vm_frames,bytes(functions+index*32,32),bytes(output+pc,16),bytes(vm_frames,40960);
-modifies vm_error;
-ensures result == 0 && vm_error == 9;
-ensures vm_depth == old(vm_depth);
-ensures vm_sp == old(vm_sp);
-ensures vm_local_base == old(vm_local_base);
-ensures vm_local_top == old(vm_local_top);
-fn enter_rejects_capacity(index,return_pc,pc,count,slots) {return vm_enter(index,return_pc);}
-
 // Acceptance state transition (framed): the composed entry theorem the plan's
-// step 3 asks for. The postcondition set below is the design; the root is
-// blocked by the copy-loop circuit demand. The caller invariant stated here
+// step 3 asks for. The postcondition set below is the design; the composed
+// root still exceeds the circuit budget. The caller invariant stated here
 // is the shared invariant initialization and the interpreter must establish
 // and preserve: bounded aligned cursors, the host-owned frame buffer, the
 // caller's operand span, the free local tail, and compiler-owned metadata.
@@ -172,7 +162,7 @@ requires vm_depth >= 1 && vm_depth <= 1023;
 requires vm_error == 0;
 requires readable_bytes(functions+index*32,32);
 requires pc == load64(functions+index*32+16);
-requires pc >= 0 && pc+16 <= output_size && (pc & 15) == 0 && output_size >= 16;
+requires output_size >= 16 && pc >= 0 && pc <= output_size-16 && (pc & 15) == 0;
 requires readable_bytes(output+pc,16);
 requires load64(output+pc) == 18;
 requires count == load64(functions+index*32+24);

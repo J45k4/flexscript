@@ -1,0 +1,220 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "web-elliptic-part",
+      "type": "part",
+      "name": "Web elliptic arc",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Elliptic profile",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "web-profile-arc-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "web-profile-arc",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "web-profile-arc-width",
+                  "type": "width",
+                  "entityId": "web-profile-arc",
+                  "value": 40
+                },
+                {
+                  "id": "web-profile-arc-height",
+                  "type": "height",
+                  "entityId": "web-profile-arc",
+                  "value": 10
+                },
+                {
+                  "id": "web-profile-arc-rotation",
+                  "type": "rotation",
+                  "entityId": "web-profile-arc",
+                  "value": 30
+                },
+                {
+                  "id": "web-profile-arc-sweep",
+                  "type": "arcSweep",
+                  "entityId": "web-profile-arc",
+                  "value": 180
+                },
+                {
+                  "id": "web-guide-arc-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "web-guide-arc",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 55,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "web-guide-arc-width",
+                  "type": "width",
+                  "entityId": "web-guide-arc",
+                  "value": 20
+                },
+                {
+                  "id": "web-guide-arc-height",
+                  "type": "height",
+                  "entityId": "web-guide-arc",
+                  "value": 10
+                },
+                {
+                  "id": "web-guide-arc-rotation",
+                  "type": "rotation",
+                  "entityId": "web-guide-arc",
+                  "value": -20
+                },
+                {
+                  "id": "web-guide-arc-sweep",
+                  "type": "arcSweep",
+                  "entityId": "web-guide-arc",
+                  "value": -90
+                },
+                {
+                  "id": "closing-chord-first",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "closing-chord",
+                    "point": "p0"
+                  },
+                  "position": {
+                    "x": -17.320508075688775,
+                    "y": -9.999999999999998
+                  }
+                },
+                {
+                  "id": "closing-chord-last",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "closing-chord",
+                    "point": "p1"
+                  },
+                  "position": {
+                    "x": 17.320508075688775,
+                    "y": 9.999999999999998
+                  }
+                }
+              ]
+            },
+            {
+              "id": "web-profile-arc",
+              "type": "sketchArc",
+              "sketchId": "native-sketch-1",
+              "arc": {
+                "id": "web-profile-arc",
+                "type": "ellipticArc",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 40,
+                "height": 10,
+                "rotation": 30,
+                "startAngle": 0,
+                "sweep": 3.141592653589793,
+                "segments": 128
+              }
+            },
+            {
+              "id": "closing-chord",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "p0": {
+                "x": -17.320508075688775,
+                "y": -9.999999999999998
+              },
+              "p1": {
+                "x": 17.320508075688775,
+                "y": 9.999999999999998
+              }
+            },
+            {
+              "id": "web-guide-arc",
+              "type": "sketchArc",
+              "sketchId": "native-sketch-1",
+              "arc": {
+                "id": "web-guide-arc",
+                "type": "ellipticArc",
+                "center": {
+                  "x": 55,
+                  "y": 0
+                },
+                "width": 20,
+                "height": 10,
+                "rotation": -20,
+                "startAngle": 0,
+                "sweep": -1.5707963267948966,
+                "segments": 64,
+                "construction": true
+              }
+            },
+            {
+              "id": "web-elliptic-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "web-elliptic-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "web-elliptic-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

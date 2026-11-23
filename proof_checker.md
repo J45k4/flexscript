@@ -58,7 +58,7 @@ for accepting a proof.
 Verification entry point:
 
 ```sh
-flexscript verify file.flex [--budget=N] [--no-trusted]
+flexscript verify file.flex [--budget=N] [--circuit-gates=N] [--circuit-words=N] [--defer-memory-aliases] [--no-trusted]
 ```
 
 This command checks the verification roots in the resolved program and reports
@@ -68,10 +68,17 @@ was requested. A result that depends on a trusted contract must be visibly
 conditional. `--no-trusted` makes CI reject any checked root that uses a trusted
 contract, including transitive uses. Unused trusted declarations are permitted;
 conditional results are still reported, followed by a policy rejection and an
-unsuccessful exit. Options may occur in either order and cannot be repeated.
+unsuccessful exit. Options may occur in any order and cannot be repeated.
 `--budget=N` selects 1 through 1,000,000,000 work units for each solver query
 and each evidence check (default 200,000,000); `k` and `m` suffixes multiply
 by 1,024 and 1,048,576. Exhaustion remains unproved, with an unsuccessful exit.
+`--circuit-gates=N` sets the per-root Boolean circuit capacity from 1 through
+524,287 gates. The default is 131,072. A larger circuit can represent more
+symbolic operations within one root. Solver work and evidence still have their
+own limits. Circuit exhaustion reports an unresolved proof.
+`--circuit-words=N` independently sets the number of symbolic word records per
+root from 1 through 131,072. The default is 65,536. Larger memory and frame
+proofs can exhaust the word table while Boolean gates remain available.
 
 ## Contract placement and scope
 
@@ -458,6 +465,13 @@ subject to the root's requirements. Overlapping requirements describe the same
 memory, never automatically separate objects. Read-only regions may alias
 writable regions when their actual permission state permits it. An explicit
 `disjoint_bytes` requirement is necessary when an algorithm needs separation.
+The checker can derive disjointness of fixed-length regions from separate
+symbolic-length backing spans when it establishes both containments.
+It can also derive permissions for contained regions at a symbolic offset
+from a shared base, including when both lengths are symbolic. The containment
+check uses the actual addresses and lengths in the same memory snapshot.
+Freshness carries to a contained range when both predicates use that same
+memory snapshot and compare it with the same entry snapshot.
 
 `alloc(n)` is an atomic modeled allocation operation: a nonpositive request
 returns a negative error; a positive request may either fail with a negative
@@ -479,6 +493,10 @@ Proof-only functions still cannot allocate.
 
 Byte writes and `modifies bytes(p, n)` affect contents, not permissions or
 lifetimes. Checked callees infer lifetime effects from modeled operations.
+For a read covered by a separation predicate, the symbolic lookup can use
+the snapshot before a content write when the predicate holds. If separation
+is conditional, the lookup keeps the written snapshot on the other arm.
+The lookup does not alter the heap used by subsequent operations.
 Trusted callees preserve allocation identities and permissions unless a separate
 `releases bytes(p, n);` frame explicitly permits revocation in an entry-state
 region. Repeated release clauses form a union; `releases nothing` excludes
@@ -576,6 +594,14 @@ engine still requires a proven range of at most 64 elements, so checking this
 example with that engine additionally requires a suitable length bound. Memory
 regions themselves are not limited to 64 bytes: the engine reasons about the
 addresses actually observed and must preserve alias consistency at all of them.
+
+With `--defer-memory-aliases`, the source verifier defers equality constraints
+between symbolic probes of the same memory map. A checked refutation of the weaker query proves the original
+obligation. A satisfying assignment must pass concrete memory completion. When
+equal-address probes disagree, the verifier adds their congruence axiom and
+retries within the search budget and a bounded number of rounds. A candidate
+without a checked completion or refutation remains unresolved. Concrete source
+replay is still required for a program counterexample.
 
 ## External effects and trusted contracts
 
@@ -715,9 +741,13 @@ status. Verification does not establish correctness of the specification itself.
   against current permissions and every enclosing frame. Entry snapshots retain
   contents and permission metadata; per-call snapshots follow argument
   evaluation. Branches, short-circuit expressions, early returns, and inlined
-  calls merge or propagate memory explicitly. Modular calls havoc declared
-  byte regions and assume separately checked postconditions; trusted calls
-  remain visibly conditional. Specification reads in a trusted contract also
+  calls merge or propagate memory explicitly. Short-circuit joins retain
+  their shared incoming path so later loads can reuse facts established
+  before the expression. A span proven disjoint on the
+  current path lets a read use the earlier snapshot across byte writes and
+  content-only summaries. Modular calls havoc declared byte regions and assume
+  separately checked postconditions. Trusted calls remain visibly conditional.
+  Specification reads in a trusted contract also
   obey enclosing read frames.
 - Inductive loops replace potentially modified contents and potentially revoked
   permissions or lifetimes independently, preserving entry snapshots. Explicit
@@ -737,6 +767,19 @@ status. Verification does not establish correctness of the specification itself.
   release; postconditions may state the exact outcome. Content changes still
   require `modifies`. Old snapshots and regions outside the release frame retain
   their permissions and contents, except for separately declared content writes.
+- For a nonempty constant-length access to a single explicit byte region with
+  no allocation effects, frame checking reduces to interval containment. A
+  valid frame is a nonwrapping interval, so all bytes of the access belong to
+  it exactly when the starting offset and last byte fit. Frame unions and
+  accesses that may use fresh storage retain bytewise checks for fixed sizes.
+  Containment in any valid region of the frame also suffices for an entire
+  effect. The verifier tries this condition for spans sharing an address
+  base, including spans that add different symbolic offsets to that base.
+  It checks that the offset is nonnegative and that the length fits in
+  the remaining interval, and retains the existing checks for effects covered
+  jointly by several regions or by fresh storage. The rule is part of the
+  memory encoding. The regressions check symbolic span membership,
+  multi-region summaries, and a replayed one-byte overrun.
 - [Source lifetime regressions](scripts/test-proof-lifetimes.flex) cover aliases,
   use after release, permission weakening, old snapshots, frame unions, recursive
   calls, mixed content/lifetime effects, and inductive loop invalidation. Trusted
@@ -870,8 +913,10 @@ status. Verification does not establish correctness of the specification itself.
 - Queries retain only their transitive Boolean dependency cone. The property
   regressions exhaust all 256 pairs of four-bit inputs for sliced addition
   queries, including checked refutations and model decoding with unused circuits.
-  Word addition and subtraction also reassociate constant offsets using wrapping arithmetic;
-  4,096 four-bit input/offset combinations check this against native arithmetic,
+  Word addition and subtraction reassociate constant offsets using wrapping
+  arithmetic. Equal shifts on both sides of a difference cancel, as does an
+  addition that compensates for a shift on the subtrahend.
+  A suite of 4,096 four-bit input/offset combinations checks these operations against native arithmetic,
   including cancellation and Boolean-valued offsets, each with a checked positive
   model and negative refutation. Boolean conjunction absorption is separately
   checked against a complete three-input truth table.

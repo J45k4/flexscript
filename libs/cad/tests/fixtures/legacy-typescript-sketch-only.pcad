@@ -1,0 +1,361 @@
+{
+  "version": 4,
+  "revision": 7,
+  "items": [
+    {
+      "id": "legacy-editable-part",
+      "type": "part",
+      "name": "Legacy editable part",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "Editable profile",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "line",
+                "id": "plate/sketch/0/0",
+                "p0": {
+                  "x": -10,
+                  "y": -6
+                },
+                "p1": {
+                  "x": 10,
+                  "y": -6
+                }
+              },
+              {
+                "type": "line",
+                "id": "plate/sketch/0/1",
+                "p0": {
+                  "x": 10,
+                  "y": -6
+                },
+                "p1": {
+                  "x": 10,
+                  "y": 6
+                }
+              },
+              {
+                "type": "line",
+                "id": "plate/sketch/0/2",
+                "p0": {
+                  "x": 10,
+                  "y": 6
+                },
+                "p1": {
+                  "x": -10,
+                  "y": 6
+                }
+              },
+              {
+                "type": "line",
+                "id": "plate/sketch/0/3",
+                "p0": {
+                  "x": -10,
+                  "y": 6
+                },
+                "p1": {
+                  "x": -10,
+                  "y": -6
+                }
+              },
+              {
+                "type": "circle",
+                "center": {
+                  "x": -3,
+                  "y": -1
+                },
+                "radius": 2,
+                "segments": 16,
+                "id": "plate/sketch/1"
+              },
+              {
+                "id": "plate/sketch/probe",
+                "type": "point",
+                "construction": true,
+                "center": {
+                  "x": -1,
+                  "y": -1
+                }
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": -10,
+                "y": -6
+              },
+              {
+                "x": 10,
+                "y": -6
+              },
+              {
+                "x": 10,
+                "y": 6
+              },
+              {
+                "x": -10,
+                "y": 6
+              },
+              {
+                "x": -1.152240934977427,
+                "y": -1.7653668647301808
+              },
+              {
+                "x": -1.5857864376269053,
+                "y": -2.4142135623730954
+              },
+              {
+                "x": -2.23463313526982,
+                "y": -2.847759065022573
+              },
+              {
+                "x": -3.0000000000000004,
+                "y": -3
+              },
+              {
+                "x": -3.7653668647301806,
+                "y": -2.847759065022573
+              },
+              {
+                "x": -4.414213562373096,
+                "y": -2.414213562373095
+              },
+              {
+                "x": -4.847759065022574,
+                "y": -1.7653668647301792
+              },
+              {
+                "x": -5,
+                "y": -0.9999999999999998
+              },
+              {
+                "x": -4.847759065022574,
+                "y": -0.23463313526982021
+              },
+              {
+                "x": -4.414213562373095,
+                "y": 0.41421356237309515
+              },
+              {
+                "x": -3.7653668647301792,
+                "y": 0.8477590650225735
+              },
+              {
+                "x": -3,
+                "y": 1
+              },
+              {
+                "x": -2.2346331352698203,
+                "y": 0.8477590650225735
+              },
+              {
+                "x": -1.5857864376269049,
+                "y": 0.4142135623730949
+              },
+              {
+                "x": -1.1522409349774265,
+                "y": -0.23463313526982044
+              },
+              {
+                "x": -1,
+                "y": -1
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-2",
+                "vertexIndices": [
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": [
+                  "plate/sketch-loop-2"
+                ]
+              }
+            ],
+            "relations": [
+              {
+                "id": "edge-join-1",
+                "type": "coincident",
+                "a": {
+                  "entityId": "plate/sketch/0/0",
+                  "point": "p1"
+                },
+                "b": {
+                  "entityId": "plate/sketch/0/1",
+                  "point": "p0"
+                }
+              },
+              {
+                "id": "direction-1",
+                "type": "horizontal",
+                "entityId": "plate/sketch/0/0"
+              },
+              {
+                "id": "edge-join-2",
+                "type": "coincident",
+                "a": {
+                  "entityId": "plate/sketch/0/1",
+                  "point": "p1"
+                },
+                "b": {
+                  "entityId": "plate/sketch/0/2",
+                  "point": "p0"
+                }
+              },
+              {
+                "id": "direction-2",
+                "type": "vertical",
+                "entityId": "plate/sketch/0/1"
+              },
+              {
+                "id": "edge-join-3",
+                "type": "coincident",
+                "a": {
+                  "entityId": "plate/sketch/0/2",
+                  "point": "p1"
+                },
+                "b": {
+                  "entityId": "plate/sketch/0/3",
+                  "point": "p0"
+                }
+              },
+              {
+                "id": "direction-3",
+                "type": "horizontal",
+                "entityId": "plate/sketch/0/2"
+              },
+              {
+                "id": "edge-join-4",
+                "type": "coincident",
+                "a": {
+                  "entityId": "plate/sketch/0/3",
+                  "point": "p1"
+                },
+                "b": {
+                  "entityId": "plate/sketch/0/0",
+                  "point": "p0"
+                }
+              },
+              {
+                "id": "direction-4",
+                "type": "vertical",
+                "entityId": "plate/sketch/0/3"
+              },
+              {
+                "id": "base-anchor",
+                "type": "fixed",
+                "anchor": {
+                  "entityId": "plate/sketch/0/0",
+                  "point": "p0"
+                },
+                "position": {
+                  "x": -10,
+                  "y": -6
+                }
+              },
+              {
+                "id": "width-drive",
+                "type": "length",
+                "entityId": "plate/sketch/0/0",
+                "value": 20,
+                "labelPosition": {
+                  "x": 0,
+                  "y": -9
+                }
+              },
+              {
+                "id": "height-drive",
+                "type": "length",
+                "entityId": "plate/sketch/0/1",
+                "value": 12
+              },
+              {
+                "id": "bore-anchor",
+                "type": "fixed",
+                "anchor": {
+                  "entityId": "plate/sketch/1",
+                  "point": "center"
+                },
+                "position": {
+                  "x": -3,
+                  "y": -1
+                }
+              },
+              {
+                "id": "bore-drive",
+                "type": "radius",
+                "entityId": "plate/sketch/1",
+                "value": 2
+              },
+              {
+                "id": "probe-touch",
+                "type": "pointOnCurve",
+                "a": {
+                  "entityId": "plate/sketch/probe",
+                  "point": "center"
+                },
+                "b": "plate/sketch/1"
+              },
+              {
+                "id": "probe-level",
+                "type": "distance",
+                "a": {
+                  "entityId": "plate/sketch/1",
+                  "point": "center"
+                },
+                "b": {
+                  "entityId": "plate/sketch/probe",
+                  "point": "center"
+                },
+                "axis": "y",
+                "value": 0
+              }
+            ]
+          }
+        ],
+        "solidSteps": []
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

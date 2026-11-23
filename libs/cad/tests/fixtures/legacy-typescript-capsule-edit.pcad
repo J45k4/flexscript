@@ -1,0 +1,947 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "legacy-capsule-driving-width",
+      "type": "part",
+      "name": "legacy-capsule-driving-width",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "slot/sketch",
+            "name": "slot",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "capsule",
+                "from": {
+                  "x": 8.75,
+                  "y": 4.25
+                },
+                "to": {
+                  "x": -5.5,
+                  "y": -9.25
+                },
+                "width": 6.5,
+                "arcSegments": 7,
+                "id": "slot/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": -7.735170105710045,
+                "y": -6.890653777306063
+              },
+              {
+                "x": -8.537500640686241,
+                "y": -8.094106467778857
+              },
+              {
+                "x": -8.738216921273867,
+                "y": -9.526498048411913
+              },
+              {
+                "x": -8.297564626478906,
+                "y": -10.904125799530963
+              },
+              {
+                "x": -7.302820347531238,
+                "y": -11.954133649531277
+              },
+              {
+                "x": -5.951005388614426,
+                "y": -12.468554666219102
+              },
+              {
+                "x": -4.509863281264423,
+                "y": -12.345501458279667
+              },
+              {
+                "x": -3.2648298942899556,
+                "y": -11.609346222693937
+              },
+              {
+                "x": 10.985170105710043,
+                "y": 1.8906537773060634
+              },
+              {
+                "x": 11.787500640686241,
+                "y": 3.0941064677788566
+              },
+              {
+                "x": 11.988216921273867,
+                "y": 4.526498048411913
+              },
+              {
+                "x": 11.547564626478906,
+                "y": 5.904125799530963
+              },
+              {
+                "x": 10.552820347531238,
+                "y": 6.954133649531277
+              },
+              {
+                "x": 9.201005388614426,
+                "y": 7.4685546662191005
+              },
+              {
+                "x": 7.7598632812644235,
+                "y": 7.345501458279667
+              },
+              {
+                "x": 6.514829894289956,
+                "y": 6.609346222693937
+              }
+            ],
+            "loops": [
+              {
+                "id": "slot/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "slot/sketch-profile-1",
+                "outerLoopId": "slot/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ],
+            "variables": [
+              {
+                "name": "stock",
+                "kind": "length",
+                "expression": "6.5 mm"
+              }
+            ],
+            "relations": [
+              {
+                "id": "slot-width",
+                "type": "width",
+                "entityId": "slot/sketch/0",
+                "value": 6.5,
+                "expression": "#stock",
+                "labelPosition": {
+                  "x": 1,
+                  "y": 7
+                }
+              },
+              {
+                "id": "fixed-cap",
+                "type": "fixed",
+                "anchor": {
+                  "entityId": "slot/sketch/0",
+                  "point": "to"
+                },
+                "position": {
+                  "x": -5.5,
+                  "y": -9.25
+                }
+              },
+              {
+                "id": "slot-span",
+                "type": "distance",
+                "a": {
+                  "entityId": "slot/sketch/0",
+                  "point": "from"
+                },
+                "b": {
+                  "entityId": "slot/sketch/0",
+                  "point": "to"
+                },
+                "value": 19.6293784924536,
+                "reference": true
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "slot",
+            "name": "slot",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "slot/sketch",
+              "profileId": "slot/sketch-profile-1"
+            },
+            "depth": 8
+          },
+          {
+            "type": "sketch",
+            "id": "boss/sketch",
+            "name": "boss",
+            "dirty": false,
+            "target": {
+              "type": "face",
+              "face": {
+                "type": "extrudeFace",
+                "extrudeId": "slot",
+                "faceId": "slot-solid-face-18"
+              }
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 1,
+                  "y": -2
+                },
+                "width": 2,
+                "height": 2,
+                "rotation": 0,
+                "id": "boss/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 2,
+                "y": -1
+              },
+              {
+                "x": 0,
+                "y": -1
+              },
+              {
+                "x": 0,
+                "y": -3
+              },
+              {
+                "x": 2,
+                "y": -3
+              }
+            ],
+            "loops": [
+              {
+                "id": "boss/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "boss/sketch-profile-1",
+                "outerLoopId": "boss/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "boss",
+            "name": "boss",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "boss/sketch",
+              "profileId": "boss/sketch-profile-1"
+            },
+            "depth": 2
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "slot",
+            "type": "extrusion",
+            "featureId": "slot",
+            "operation": "join"
+          },
+          {
+            "id": "boss",
+            "type": "extrusion",
+            "featureId": "boss",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-capsule-reference-width",
+      "type": "part",
+      "name": "legacy-capsule-reference-width",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "slot/sketch",
+            "name": "slot",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "capsule",
+                "from": {
+                  "x": 8.75,
+                  "y": 4.25
+                },
+                "to": {
+                  "x": -5.5,
+                  "y": -9.25
+                },
+                "width": 6.5,
+                "arcSegments": 7,
+                "id": "slot/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": -7.735170105710045,
+                "y": -6.890653777306063
+              },
+              {
+                "x": -8.537500640686241,
+                "y": -8.094106467778857
+              },
+              {
+                "x": -8.738216921273867,
+                "y": -9.526498048411913
+              },
+              {
+                "x": -8.297564626478906,
+                "y": -10.904125799530963
+              },
+              {
+                "x": -7.302820347531238,
+                "y": -11.954133649531277
+              },
+              {
+                "x": -5.951005388614426,
+                "y": -12.468554666219102
+              },
+              {
+                "x": -4.509863281264423,
+                "y": -12.345501458279667
+              },
+              {
+                "x": -3.2648298942899556,
+                "y": -11.609346222693937
+              },
+              {
+                "x": 10.985170105710043,
+                "y": 1.8906537773060634
+              },
+              {
+                "x": 11.787500640686241,
+                "y": 3.0941064677788566
+              },
+              {
+                "x": 11.988216921273867,
+                "y": 4.526498048411913
+              },
+              {
+                "x": 11.547564626478906,
+                "y": 5.904125799530963
+              },
+              {
+                "x": 10.552820347531238,
+                "y": 6.954133649531277
+              },
+              {
+                "x": 9.201005388614426,
+                "y": 7.4685546662191005
+              },
+              {
+                "x": 7.7598632812644235,
+                "y": 7.345501458279667
+              },
+              {
+                "x": 6.514829894289956,
+                "y": 6.609346222693937
+              }
+            ],
+            "loops": [
+              {
+                "id": "slot/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "slot/sketch-profile-1",
+                "outerLoopId": "slot/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ],
+            "relations": [
+              {
+                "id": "slot-width",
+                "type": "width",
+                "entityId": "slot/sketch/0",
+                "value": 6.5,
+                "reference": true,
+                "labelPosition": {
+                  "x": 1,
+                  "y": 7
+                }
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "slot",
+            "name": "slot",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "slot/sketch",
+              "profileId": "slot/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "slot",
+            "type": "extrusion",
+            "featureId": "slot",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-capsule-driving-distance",
+      "type": "part",
+      "name": "legacy-capsule-driving-distance",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "slot/sketch",
+            "name": "slot",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "capsule",
+                "from": {
+                  "x": 8.75,
+                  "y": 4.25
+                },
+                "to": {
+                  "x": -5.5,
+                  "y": -9.25
+                },
+                "width": 6.5,
+                "arcSegments": 7,
+                "id": "slot/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": -7.735170105710045,
+                "y": -6.890653777306063
+              },
+              {
+                "x": -8.537500640686241,
+                "y": -8.094106467778857
+              },
+              {
+                "x": -8.738216921273867,
+                "y": -9.526498048411913
+              },
+              {
+                "x": -8.297564626478906,
+                "y": -10.904125799530963
+              },
+              {
+                "x": -7.302820347531238,
+                "y": -11.954133649531277
+              },
+              {
+                "x": -5.951005388614426,
+                "y": -12.468554666219102
+              },
+              {
+                "x": -4.509863281264423,
+                "y": -12.345501458279667
+              },
+              {
+                "x": -3.2648298942899556,
+                "y": -11.609346222693937
+              },
+              {
+                "x": 10.985170105710043,
+                "y": 1.8906537773060634
+              },
+              {
+                "x": 11.787500640686241,
+                "y": 3.0941064677788566
+              },
+              {
+                "x": 11.988216921273867,
+                "y": 4.526498048411913
+              },
+              {
+                "x": 11.547564626478906,
+                "y": 5.904125799530963
+              },
+              {
+                "x": 10.552820347531238,
+                "y": 6.954133649531277
+              },
+              {
+                "x": 9.201005388614426,
+                "y": 7.4685546662191005
+              },
+              {
+                "x": 7.7598632812644235,
+                "y": 7.345501458279667
+              },
+              {
+                "x": 6.514829894289956,
+                "y": 6.609346222693937
+              }
+            ],
+            "loops": [
+              {
+                "id": "slot/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "slot/sketch-profile-1",
+                "outerLoopId": "slot/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ],
+            "relations": [
+              {
+                "id": "slot-span",
+                "type": "distance",
+                "a": {
+                  "entityId": "slot/sketch/0",
+                  "point": "from"
+                },
+                "b": {
+                  "entityId": "slot/sketch/0",
+                  "point": "to"
+                },
+                "value": 19.6293784924536
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "slot",
+            "name": "slot",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "slot/sketch",
+              "profileId": "slot/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "slot",
+            "type": "extrusion",
+            "featureId": "slot",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-capsule-pattern-source",
+      "type": "part",
+      "name": "legacy-capsule-pattern-source",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "slot/sketch",
+            "name": "slot",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 76,
+                "height": 44,
+                "rotation": 0,
+                "id": "slot/sketch/0"
+              },
+              {
+                "type": "capsule",
+                "from": {
+                  "x": -11,
+                  "y": -0.25
+                },
+                "to": {
+                  "x": -22,
+                  "y": -5.25
+                },
+                "width": 6.5,
+                "arcSegments": 7,
+                "id": "slot-hole"
+              },
+              {
+                "type": "capsule",
+                "from": {
+                  "x": 21,
+                  "y": -0.25
+                },
+                "to": {
+                  "x": 10,
+                  "y": -5.25
+                },
+                "width": 6.5,
+                "arcSegments": 7,
+                "id": "pattern-copy-1"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 38,
+                "y": 22
+              },
+              {
+                "x": -38,
+                "y": 22
+              },
+              {
+                "x": -38,
+                "y": -22
+              },
+              {
+                "x": 38,
+                "y": -22
+              },
+              {
+                "x": -12.344859568978848,
+                "y": 2.7086910517534655
+              },
+              {
+                "x": -10.927948666922154,
+                "y": 2.9992012257479073
+              },
+              {
+                "x": -9.525308415033138,
+                "y": 2.6461672481450247
+              },
+              {
+                "x": -8.41474891745221,
+                "y": 1.7195118278866666
+              },
+              {
+                "x": -7.816230102793691,
+                "y": 0.40277043563792414
+              },
+              {
+                "x": -7.84829596265225,
+                "y": -1.0432601470929277
+              },
+              {
+                "x": -8.504595460220937,
+                "y": -2.3321758289947674
+              },
+              {
+                "x": -9.655140431021152,
+                "y": -3.208691051753465
+              },
+              {
+                "x": -20.655140431021152,
+                "y": -8.208691051753465
+              },
+              {
+                "x": -22.072051333077845,
+                "y": -8.499201225747907
+              },
+              {
+                "x": -23.474691584966862,
+                "y": -8.146167248145025
+              },
+              {
+                "x": -24.58525108254779,
+                "y": -7.219511827886667
+              },
+              {
+                "x": -25.18376989720631,
+                "y": -5.902770435637924
+              },
+              {
+                "x": -25.15170403734775,
+                "y": -4.456739852907073
+              },
+              {
+                "x": -24.495404539779063,
+                "y": -3.167824171005233
+              },
+              {
+                "x": -23.344859568978848,
+                "y": -2.291308948246535
+              },
+              {
+                "x": 19.655140431021152,
+                "y": 2.7086910517534655
+              },
+              {
+                "x": 21.072051333077848,
+                "y": 2.9992012257479073
+              },
+              {
+                "x": 22.474691584966862,
+                "y": 2.6461672481450247
+              },
+              {
+                "x": 23.58525108254779,
+                "y": 1.7195118278866666
+              },
+              {
+                "x": 24.18376989720631,
+                "y": 0.40277043563792414
+              },
+              {
+                "x": 24.15170403734775,
+                "y": -1.0432601470929277
+              },
+              {
+                "x": 23.495404539779063,
+                "y": -2.3321758289947674
+              },
+              {
+                "x": 22.344859568978848,
+                "y": -3.208691051753465
+              },
+              {
+                "x": 11.344859568978848,
+                "y": -8.208691051753465
+              },
+              {
+                "x": 9.927948666922154,
+                "y": -8.499201225747907
+              },
+              {
+                "x": 8.525308415033138,
+                "y": -8.146167248145025
+              },
+              {
+                "x": 7.41474891745221,
+                "y": -7.219511827886667
+              },
+              {
+                "x": 6.816230102793691,
+                "y": -5.902770435637924
+              },
+              {
+                "x": 6.84829596265225,
+                "y": -4.456739852907073
+              },
+              {
+                "x": 7.504595460220937,
+                "y": -3.167824171005233
+              },
+              {
+                "x": 8.655140431021152,
+                "y": -2.291308948246535
+              }
+            ],
+            "loops": [
+              {
+                "id": "slot/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              {
+                "id": "slot/sketch-loop-2",
+                "vertexIndices": [
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19
+                ]
+              },
+              {
+                "id": "slot/sketch-loop-3",
+                "vertexIndices": [
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26,
+                  27,
+                  28,
+                  29,
+                  30,
+                  31,
+                  32,
+                  33,
+                  34,
+                  35
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "slot/sketch-profile-1",
+                "outerLoopId": "slot/sketch-loop-1",
+                "holeLoopIds": [
+                  "slot/sketch-loop-2",
+                  "slot/sketch-loop-3"
+                ]
+              }
+            ],
+            "variables": [
+              {
+                "name": "stock",
+                "kind": "length",
+                "expression": "6.5 mm"
+              }
+            ],
+            "relations": [
+              {
+                "id": "linear-pattern-1",
+                "type": "linearPattern",
+                "sources": [
+                  "slot-hole"
+                ],
+                "instances": [
+                  [
+                    "pattern-copy-1"
+                  ]
+                ],
+                "step": {
+                  "x": 32,
+                  "y": 0
+                },
+                "columns": 2,
+                "rowStep": {
+                  "x": 0,
+                  "y": 20
+                }
+              },
+              {
+                "id": "slot-width",
+                "type": "width",
+                "entityId": "slot-hole",
+                "value": 6.5,
+                "expression": "#stock",
+                "labelPosition": {
+                  "x": 1,
+                  "y": 7
+                }
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "slot",
+            "name": "slot",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "slot/sketch",
+              "profileId": "slot/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "slot",
+            "type": "extrusion",
+            "featureId": "slot",
+            "operation": "join"
+          }
+        ]
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

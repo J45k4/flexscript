@@ -1,6 +1,10 @@
 import "lib/proof-harness.flex";
 fn suite(compiler) {
     t_init(compiler);let p=0;
+    ps_verify("ensures result==x-y; fn shifted_distance(x,y){return (x+16)-(y+16);}",0,"Verified roots: 1/1");
+    ps_verify("ensures result==x-y; fn shifted_rank(x,y){return x-(y+1)+1;}",0,"Verified roots: 1/1");
+    p=ps_verify("requires x==0x7fffffffffffffff; requires y==0x7ffffffffffffffe; ensures result==0; fn wrapped_shift(x,y){return (x+16)-(y+16);}",1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(p),"concrete replay:"),"wrapped subtraction counterexample did not replay");
     ps_verify("requires n>=0; ensures result==old(n); fn count_to(n){let i=0; invariant i>=0 && i<=n; decreases n-i; while i<n{i=i+1;}return i;}",0,"termination by checked loop measures");
     ps_verify("requires x>=0; ensures result==0; fn down(x){invariant x>=0; decreases x; while x>0{x=x-1;}return x;}",0,"Verified roots: 1/1");
     ps_verify("verify; fn no_loop(){while 0{}return 1;}",0,"termination by finite acyclic execution");

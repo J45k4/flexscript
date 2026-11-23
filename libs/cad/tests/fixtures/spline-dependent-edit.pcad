@@ -1,0 +1,281 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "dependent-spline",
+      "type": "part",
+      "name": "Dependent spline edit",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "spline-guide"
+                },
+                {
+                  "id": "normal-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 5
+                },
+                {
+                  "id": "contact-between",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "follower-between",
+                    "point": "center"
+                  },
+                  "b": "spline-guide"
+                },
+                {
+                  "id": "contact-at-split",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "follower-at-split",
+                    "point": "center"
+                  },
+                  "b": "spline-guide"
+                },
+                {
+                  "id": "contact-right",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "follower-right",
+                    "point": "center"
+                  },
+                  "b": "spline-guide"
+                },
+                {
+                  "id": "fixed-source-first",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point0"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "fixed-source-last",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point3"
+                  },
+                  "position": {
+                    "x": 30,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "body-fixed",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 45,
+                    "y": 20
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 4
+                }
+              ]
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "spline-guide",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "spline-guide",
+                "type": "spline",
+                "mode": "control",
+                "points": [
+                  {
+                    "x": 0,
+                    "y": 0
+                  },
+                  {
+                    "x": 10,
+                    "y": 20
+                  },
+                  {
+                    "x": 20,
+                    "y": 20
+                  },
+                  {
+                    "x": 30,
+                    "y": 0
+                  }
+                ],
+                "construction": true
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 24,
+                "y": 9.599999999999998
+              },
+              "p1": {
+                "x": 27.84110639798688,
+                "y": 12.800921998322396
+              }
+            },
+            {
+              "id": "follower-between",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "follower-between",
+                "type": "point",
+                "center": {
+                  "x": 12,
+                  "y": 14.4
+                }
+              }
+            },
+            {
+              "id": "follower-at-split",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "follower-at-split",
+                "type": "point",
+                "center": {
+                  "x": 15,
+                  "y": 15
+                }
+              }
+            },
+            {
+              "id": "follower-right",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "follower-right",
+                "type": "point",
+                "center": {
+                  "x": 25.5,
+                  "y": 7.65
+                }
+              }
+            },
+            {
+              "id": "cut-left",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 6,
+                "y": 8
+              },
+              "p1": {
+                "x": 6,
+                "y": 12
+              }
+            },
+            {
+              "id": "cut-right",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 18,
+                "y": 13
+              },
+              "p1": {
+                "x": 18,
+                "y": 17
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 45,
+                  "y": 20
+                },
+                "radius": 4,
+                "segments": 32
+              }
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

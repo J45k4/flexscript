@@ -1,0 +1,34 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [0],
+  "items": [{
+    "id": "native-part-1", "type": "part", "name": "Finite arc contact",
+    "data": {
+      "features": [],
+      "cad": {
+        "rootNodeIds": ["plane-top", "plane-front", "plane-right", "native-sketch-1"],
+        "nodes": [
+          {"id": "plane-top", "type": "referencePlane", "name": "Top", "plane": "XY"},
+          {"id": "plane-front", "type": "referencePlane", "name": "Front", "plane": "XZ"},
+          {"id": "plane-right", "type": "referencePlane", "name": "Right", "plane": "YZ"},
+          {
+            "id": "native-sketch-1", "type": "sketch", "name": "Arc contact", "targetId": "plane-top", "dimensions": [], "variables": [],
+            "relations": [
+              {"id": "probe-on-sweep-from-web", "type": "pointOnCurve", "a": {"entityId": "probe", "point": "center"}, "b": "sweep-guide"},
+              {"id": "guide-center", "type": "fixed", "anchor": {"entityId": "sweep-guide", "point": "center"}, "position": {"x": 0, "y": 0}},
+              {"id": "guide-radius", "type": "radius", "entityId": "sweep-guide", "value": 20},
+              {"id": "guide-sweep", "type": "arcSweep", "entityId": "sweep-guide", "value": -90},
+              {"id": "body-center", "type": "fixed", "anchor": {"entityId": "body-profile", "point": "center"}, "position": {"x": 45, "y": 0}},
+              {"id": "body-diameter", "type": "diameter", "entityId": "body-profile", "value": 10}
+            ]
+          },
+          {"id": "sweep-guide", "type": "sketchArc", "sketchId": "native-sketch-1", "arc": {"id": "sweep-guide", "type": "arc", "center": {"x": 0, "y": 0}, "radius": 20, "startAngle": 0, "sweep": -1.570796326795, "segments": 64, "construction": true}},
+          {"id": "probe", "type": "sketchPrimitive", "sketchId": "native-sketch-1", "primitive": {"id": "probe", "type": "point", "center": {"x": 10, "y": -17.320508}, "construction": true}},
+          {"id": "body-profile", "type": "sketchPrimitive", "sketchId": "native-sketch-1", "primitive": {"id": "body-profile", "type": "circle", "center": {"x": 45, "y": 0}, "radius": 5, "segments": 64}}
+        ]
+      },
+      "tree": {"orderedNodeIds": ["native-sketch-1"], "dirtySketchIds": []}
+    }
+  }]
+}

@@ -6,7 +6,7 @@ import "cnf.flex";
 // sticky error, word metadata pointer, allocation size, four scratch literals (128 bytes).
 // Gate record: kind (0=input,1=and,2=xor,3=select,4=true), a,b,c.
 fn pw_context(width,gate_capacity,word_capacity) {
-    if width<1 || width>64 || (width&(width-1)) || gate_capacity<1 || gate_capacity>131072 || word_capacity<1 || word_capacity>65536 {return 0;}
+    if width<1 || width>64 || (width&(width-1)) || gate_capacity<1 || gate_capacity>524287 || word_capacity<1 || word_capacity>131072 {return 0;}
     let buckets=2;while buckets<gate_capacity*2 {buckets=buckets*2;}
     let size=128+gate_capacity*32+buckets*8+width*word_capacity*8+word_capacity*24;let p=alloc(size);if p<0 {return 0;}
     store64(p,width);store64(p+8,1);store64(p+16,gate_capacity);store64(p+24,p+128);
@@ -180,7 +180,19 @@ fn pw_add_at(context,a,b,depth) {
             let kind=load64(meta);
             if (kind==43 || kind==45) && load64(pw_meta(context,load64(meta+16)))==1 {
                 let value=load64(pw_meta(context,load64(meta+16))+8);if kind==45 {value= -value;}offset=offset+value;a=load64(meta+8);meta=pw_meta(context,a);
-            }else {scanning=0;}
+            }else {
+                scanning=0;
+                if kind==45 {
+                    let right=pw_meta(context,load64(meta+16));
+                    if load64(right)==43 {
+                        let bias=pw_meta(context,load64(right+16));
+                        // (a-(b+k))+k is a-b at the same word width.
+                        if load64(bias)==1 && offset==load64(bias+8) {
+                            return pw_subtract(context,load64(meta+8),load64(right+8));
+                        }
+                    }
+                }
+            }
         }
         let mask= -1;if load64(context)<64 {mask=(1<<load64(context))-1;}offset=offset&mask;
         if !offset {return a;}b=pw_constant(context,offset);if !b {return 0;}
@@ -212,9 +224,36 @@ fn pw_subtract_at(context,a,b,depth) {
     // Reassociate symbolic sums modulo 2^width as well as constants. Range
     // checks then share the same difference as their corresponding sum bound.
     // Limit metadata descent; the direct circuit remains an exact fallback.
-    let right=pw_meta(context,b);if depth<128 && load64(right)==43 {
+    let right=pw_meta(context,b);
+    if depth<128 && load64(added)==43 && load64(right)==43 {
+        let left_offset=pw_meta(context,load64(added+16));
+        let right_offset=pw_meta(context,load64(right+16));
+        // A shared constant offset cancels from a modular difference.
+        if load64(left_offset)==1 && load64(right_offset)==1 && load64(left_offset+8)==load64(right_offset+8) {
+            return pw_subtract_at(context,load64(added+8),load64(right+8),depth+1);
+        }
+    }
+    if depth<128 && load64(right)==43 {
         let left=pw_subtract_at(context,a,load64(right+8),depth+1);
         return pw_note(context,pw_subtract_at(context,left,load64(right+16),depth+1),45,a,b);
+    }
+    // Reuse a previously built (x-z)-y when constructing (x-y)-z.
+    // Their words are equal modulo 2^width. Reuse retains the first circuit's
+    // gate shape and metadata instead of globally reassociating differences
+    // used by memory bounds or loop measures. A bounded metadata scan has an
+    // exact raw-subtractor fallback; returned words already precede this call.
+    if load64(added)==45 && load64(pw_meta(context,b))!=1 {
+        let prior=load64(added+16);let base=load64(added+8);
+        if load64(pw_meta(context,prior))!=1 {
+            let index=load64(context+48);let stop=index-128;if stop<0 {stop=0;}
+            while index>stop {index=index-1;
+                let candidate=load64(context+64)+index*load64(context)*8;let meta=pw_meta(context,candidate);
+                if load64(meta)==45 && load64(meta+16)==prior {
+                    let left=pw_meta(context,load64(meta+8));
+                    if load64(left)==45 && load64(left+8)==base && load64(left+16)==b {return candidate;}
+                }
+            }
+        }
     }
     let original=b;let meta=pw_meta(context,b);let offset=0;
     // Exact modulo-2^width identity: a-(b+k) == (a-b)-k. Reassociate
@@ -228,12 +267,60 @@ fn pw_subtract_at(context,a,b,depth) {
 }
 fn pw_negate(context,a) {return pw_add_carry(context,pw_not(context,a),pw_constant(context,0),1);}
 fn pw_equal(context,a,b) {
-    if !a || !b {return pw_bad(context);}let result=1;let i=0;
+    if !a || !b {return pw_bad(context);}
+    // A shared addend cancels in modular equality, including at wraparound.
+    // Keep the original bit comparison for terms without a shared addend.
+    let remaining=16;
+    while a!=b && remaining>0 {
+        let left=pw_meta(context,a);let right=pw_meta(context,b);
+        if load64(left)==43 && load64(right)==43 {
+            let x=load64(left+8);let y=load64(left+16);
+            let u=load64(right+8);let v=load64(right+16);
+            if x==u {a=y;b=v;}
+            else if x==v {a=y;b=u;}
+            else if y==u {a=x;b=v;}
+            else if y==v {a=x;b=u;}
+            else {remaining=0;}
+        }else {remaining=0;}
+        remaining=remaining-1;
+    }
+    if a==b {return 1;}
+    let result=1;let i=0;
     while i<load64(context) {result=pw_and(context,result,-pw_xor(context,load64(a+i*8),load64(b+i*8)));i=i+1;}return result;
 }
 fn pw_unsigned_less(context,a,b) {
     if !a || !b {return pw_bad(context);}let result= -1;let i=0;
     while i<load64(context) {let x=load64(a+i*8);let y=load64(b+i*8);result=pw_select(context,pw_xor(context,x,y),-x,result);i=i+1;}return result;
+}
+// Follow conjunctions and facts common to both arms of a disjunction.
+// Return -1 for an implied condition, -2 for its negation, or the
+// remaining search allowance when neither implication was established.
+fn pw_path_conjunct(context,path,condition,remaining,depth) {
+    if path==condition {return -1;}
+    if path== -condition {return -2;}
+    if !remaining {return 0;}
+    remaining=remaining-1;
+    if depth>=192 {return remaining;}
+    let target=condition;if target<0 {target= -target;}
+    let id=path;if id<0 {id= -id;}
+    // A gate's children always precede it.
+    if id<=1 || id<target {return remaining;}
+    let gate=load64(context+24)+(id-1)*32;
+    if load64(gate)!=1 {return remaining;}
+    if path<0 {
+        // A negative AND literal is a disjunction of its negated children.
+        let first_budget=remaining/2;
+        let other_budget=remaining-first_budget;
+        let first=pw_path_conjunct(context,-load64(gate+16),condition,first_budget,depth+1);
+        if first>=0 {return other_budget+first;}
+        let second=pw_path_conjunct(context,-load64(gate+8),condition,other_budget,depth+1);
+        if first==second {return first;}
+        if second>=0 {return second;}
+        return 0;
+    }
+    remaining=pw_path_conjunct(context,load64(gate+16),condition,remaining,depth+1);
+    if remaining<=0 {return remaining;}
+    return pw_path_conjunct(context,load64(gate+8),condition,remaining,depth+1);
 }
 fn pw_signed_less(context,a,b) {
     if !a || !b {return pw_bad(context);}let sign=(load64(context)-1)*8;let x=load64(a+sign);let y=load64(b+sign);

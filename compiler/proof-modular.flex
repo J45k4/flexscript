@@ -103,7 +103,7 @@ fn pm_summary(state,site) {
     // Consequently a summary assumes both, rather than demanding safety for
     // every arbitrary return state before the contract has constrained it.
     let saved=pm_assuming;pm_assuming=1;let clause=load64(f+64);
-    while clause {if load64(clause)==2 {let condition=pw_truth(vf_context,vf_eval(state,load64(clause+8),0));store64(state+24,pw_and(vf_context,load64(state+24),condition));vf_fact(state,load64(clause+8));}clause=load64(clause+48);}
+    while clause {if load64(clause)==2 {let condition=pw_truth(vf_context,vf_eval(state,load64(clause+8),0));store64(state+24,pw_and(vf_context,load64(state+24),condition));vf_fact(state,load64(clause+8),0);}clause=load64(clause+48);}
     pm_assuming=saved;pt_consistent(state,site,entry_path);store64(record+8,ps_clone(state,load64(state+24)));i=0;
     while i<pf_gcount {store64(load64(state+64)+i*8,load64(load64(state+48)+i*8));i=i+1;}
     store64(state+112,load64(state+96));store64(state+80,load64(state+24));store64(state+24,-1);return 0;

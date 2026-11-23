@@ -1,0 +1,310 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "normal-circle-part",
+      "type": "part",
+      "name": "Circular Normal",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Round normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "round-guide"
+                },
+                {
+                  "id": "line-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 5
+                },
+                {
+                  "id": "round-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "round-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "round-radius",
+                  "type": "radius",
+                  "entityId": "round-guide",
+                  "value": 20
+                }
+              ]
+            },
+            {
+              "id": "round-guide",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "round-guide",
+                "type": "circle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "radius": 20,
+                "segments": 32
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 0,
+                "y": 20
+              },
+              "p1": {
+                "x": 0,
+                "y": 25
+              }
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "normal-circular-arc-part",
+      "type": "part",
+      "name": "Circular arc Normal",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Round normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "round-guide"
+                },
+                {
+                  "id": "line-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 12
+                },
+                {
+                  "id": "round-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "round-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "round-radius",
+                  "type": "radius",
+                  "entityId": "round-guide",
+                  "value": 20
+                },
+                {
+                  "id": "round-sweep",
+                  "type": "arcSweep",
+                  "entityId": "round-guide",
+                  "value": -90
+                },
+                {
+                  "id": "normal-midpoint",
+                  "type": "midpoint",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "round-guide"
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 45,
+                    "y": 4
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "round-guide",
+              "type": "sketchArc",
+              "sketchId": "native-sketch-1",
+              "arc": {
+                "id": "round-guide",
+                "type": "arc",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "radius": 20,
+                "startAngle": 0,
+                "sweep": -1.5707963267948966,
+                "segments": 64,
+                "construction": true
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 14.142135623730951,
+                "y": -14.14213562373095
+              },
+              "p1": {
+                "x": 22.627416997969522,
+                "y": -22.62741699796952
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 45,
+                  "y": 4
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,1285 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "legacy-direct-ellipse",
+      "type": "part",
+      "name": "legacy-direct-ellipse",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "body/sketch",
+            "name": "body",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "ellipse",
+                "center": {
+                  "x": 0.35,
+                  "y": -1.125
+                },
+                "width": 24.5,
+                "height": 13.7500001,
+                "rotation": 26.5650512,
+                "segments": 31,
+                "id": "body/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 11.306733087557268,
+                "y": 4.353366549257886
+              },
+              {
+                "x": 10.463536997381372,
+                "y": 5.479046303301912
+              },
+              {
+                "x": 9.206291514242537,
+                "y": 6.334355625746263
+              },
+              {
+                "x": 7.586468415940548,
+                "y": 6.884278052435493
+              },
+              {
+                "x": 5.670383450441016,
+                "y": 7.1062996946078005
+              },
+              {
+                "x": 3.5364813613619144,
+                "y": 6.991330960146216
+              },
+              {
+                "x": 1.2721243509529963,
+                "y": 6.54407868254785
+              },
+              {
+                "x": -1.0299845387289497,
+                "y": 5.782853422607491
+              },
+              {
+                "x": -3.275596699254033,
+                "y": 4.738819831907268
+              },
+              {
+                "x": -5.3727765049221325,
+                "y": 3.4547207683191843
+              },
+              {
+                "x": -7.2356651680810335,
+                "y": 1.9831273983817699
+              },
+              {
+                "x": -8.78799580798088,
+                "y": 0.3842869275651486
+              },
+              {
+                "x": -9.966215825833077,
+                "y": -1.2763439273996804
+              },
+              {
+                "x": -10.722088755671773,
+                "y": -2.930778744194608
+              },
+              {
+                "x": -11.024669070938074,
+                "y": -4.511284767032214
+              },
+              {
+                "x": -10.861569097973307,
+                "y": -5.9531558936359525
+              },
+              {
+                "x": -10.239466168834076,
+                "y": -7.197361750670011
+              },
+              {
+                "x": -9.18382925053333,
+                "y": -8.192964404159428
+              },
+              {
+                "x": -7.737876242538384,
+                "y": -8.899203764491997
+              },
+              {
+                "x": -5.960804630888806,
+                "y": -9.287166309276111
+              },
+              {
+                "x": -3.925367936162575,
+                "y": -9.340968806344641
+              },
+              {
+                "x": -1.7148971757954512,
+                "y": -9.058408575146073
+              },
+              {
+                "x": 0.5801107175638474,
+                "y": -8.451053664745103
+              },
+              {
+                "x": 2.8656978511092284,
+                "y": -7.543769256534709
+              },
+              {
+                "x": 5.048292019048261,
+                "y": -6.373699680788413
+              },
+              {
+                "x": 7.038537559701576,
+                "y": -4.988747723414619
+              },
+              {
+                "x": 8.754953586790911,
+                "y": -3.44561348027315
+              },
+              {
+                "x": 10.127269826496915,
+                "y": -1.8074730485887898
+              },
+              {
+                "x": 11.09930349072571,
+                "y": -0.141392090108027
+              },
+              {
+                "x": 11.63125940705466,
+                "y": 1.4844198449727357
+              },
+              {
+                "x": 11.701359237767099,
+                "y": 3.0034018250064967
+              }
+            ],
+            "loops": [
+              {
+                "id": "body/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26,
+                  27,
+                  28,
+                  29,
+                  30
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "body/sketch-profile-1",
+                "outerLoopId": "body/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ],
+            "relations": [
+              {
+                "id": "body/sketch/0-height",
+                "type": "height",
+                "entityId": "body/sketch/0",
+                "value": 13.7500001
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "body",
+            "name": "body",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "body/sketch",
+              "profileId": "body/sketch-profile-1"
+            },
+            "depth": 8
+          },
+          {
+            "type": "sketch",
+            "id": "boss/sketch",
+            "name": "boss",
+            "dirty": false,
+            "target": {
+              "type": "face",
+              "face": {
+                "type": "extrudeFace",
+                "extrudeId": "body",
+                "faceId": "body-solid-face-33"
+              }
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 3,
+                "height": 2,
+                "rotation": 0,
+                "id": "boss/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 1.5,
+                "y": 1
+              },
+              {
+                "x": -1.5,
+                "y": 1
+              },
+              {
+                "x": -1.5,
+                "y": -1
+              },
+              {
+                "x": 1.5,
+                "y": -1
+              }
+            ],
+            "loops": [
+              {
+                "id": "boss/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "boss/sketch-profile-1",
+                "outerLoopId": "boss/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "boss",
+            "name": "boss",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "boss/sketch",
+              "profileId": "boss/sketch-profile-1"
+            },
+            "depth": 3
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "body",
+            "type": "extrusion",
+            "featureId": "body",
+            "operation": "join"
+          },
+          {
+            "id": "boss",
+            "type": "extrusion",
+            "featureId": "boss",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-direct-capsule",
+      "type": "part",
+      "name": "legacy-direct-capsule",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "body/sketch",
+            "name": "body",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "capsule",
+                "from": {
+                  "x": 8.75,
+                  "y": 4.25
+                },
+                "to": {
+                  "x": -5.5,
+                  "y": -9.25
+                },
+                "width": 6.5,
+                "arcSegments": 7,
+                "id": "body/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": -7.735170105710045,
+                "y": -6.890653777306063
+              },
+              {
+                "x": -8.537500640686241,
+                "y": -8.094106467778857
+              },
+              {
+                "x": -8.738216921273867,
+                "y": -9.526498048411913
+              },
+              {
+                "x": -8.297564626478906,
+                "y": -10.904125799530963
+              },
+              {
+                "x": -7.302820347531238,
+                "y": -11.954133649531277
+              },
+              {
+                "x": -5.951005388614426,
+                "y": -12.468554666219102
+              },
+              {
+                "x": -4.509863281264423,
+                "y": -12.345501458279667
+              },
+              {
+                "x": -3.2648298942899556,
+                "y": -11.609346222693937
+              },
+              {
+                "x": 10.985170105710043,
+                "y": 1.8906537773060634
+              },
+              {
+                "x": 11.787500640686241,
+                "y": 3.0941064677788566
+              },
+              {
+                "x": 11.988216921273867,
+                "y": 4.526498048411913
+              },
+              {
+                "x": 11.547564626478906,
+                "y": 5.904125799530963
+              },
+              {
+                "x": 10.552820347531238,
+                "y": 6.954133649531277
+              },
+              {
+                "x": 9.201005388614426,
+                "y": 7.4685546662191005
+              },
+              {
+                "x": 7.7598632812644235,
+                "y": 7.345501458279667
+              },
+              {
+                "x": 6.514829894289956,
+                "y": 6.609346222693937
+              }
+            ],
+            "loops": [
+              {
+                "id": "body/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "body/sketch-profile-1",
+                "outerLoopId": "body/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "body",
+            "name": "body",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "body/sketch",
+              "profileId": "body/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "body",
+            "type": "extrusion",
+            "featureId": "body",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-direct-polygon",
+      "type": "part",
+      "name": "legacy-direct-polygon",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "body/sketch",
+            "name": "body",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "polygon",
+                "center": {
+                  "x": -2.25,
+                  "y": 1.125
+                },
+                "radius": 6.5,
+                "sides": 7,
+                "rotation": 13.2500001,
+                "id": "body/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 4.07696517739272,
+                "y": 2.6148025520383293
+              },
+              {
+                "x": 0.5300237269749122,
+                "y": 7.000497262143564
+              },
+              {
+                "x": -5.110332292004386,
+                "y": 6.961822695552516
+              },
+              {
+                "x": -8.596799754958816,
+                "y": 2.527901589725631
+              },
+              {
+                "x": -7.303997551308277,
+                "y": -2.962433027141844
+              },
+              {
+                "x": -2.2054321087606277,
+                "y": -5.374847206132655
+              },
+              {
+                "x": 2.8595728026644727,
+                "y": -2.8927438661855396
+              }
+            ],
+            "loops": [
+              {
+                "id": "body/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "body/sketch-profile-1",
+                "outerLoopId": "body/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ],
+            "relations": [
+              {
+                "id": "body/sketch/0-radius",
+                "type": "radius",
+                "entityId": "body/sketch/0",
+                "value": 6.5
+              },
+              {
+                "id": "body/sketch/0-rotation",
+                "type": "rotation",
+                "entityId": "body/sketch/0",
+                "value": 13.2500001
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "body",
+            "name": "body",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "body/sketch",
+              "profileId": "body/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "body",
+            "type": "extrusion",
+            "featureId": "body",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-direct-patterned-polygon",
+      "type": "part",
+      "name": "legacy-direct-patterned-polygon",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "plate",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 90,
+                "height": 52,
+                "rotation": 0,
+                "id": "plate/sketch/0"
+              },
+              {
+                "type": "polygon",
+                "center": {
+                  "x": -12,
+                  "y": 0
+                },
+                "radius": 4.25,
+                "sides": 7,
+                "rotation": -13.25,
+                "id": "polygon-hole"
+              },
+              {
+                "type": "polygon",
+                "center": {
+                  "x": 16.5,
+                  "y": 0
+                },
+                "radius": 4.25,
+                "sides": 7,
+                "rotation": -13.25,
+                "id": "pattern-copy-1"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 45,
+                "y": 26
+              },
+              {
+                "x": -45,
+                "y": 26
+              },
+              {
+                "x": -45,
+                "y": -26
+              },
+              {
+                "x": 45,
+                "y": -26
+              },
+              {
+                "x": -10.182292171811422,
+                "y": -3.841671283613678
+              },
+              {
+                "x": -13.870217261188175,
+                "y": -3.816384073433097
+              },
+              {
+                "x": -16.149830607410575,
+                "y": -0.9172818159095782
+              },
+              {
+                "x": -15.30453686513528,
+                "y": 2.6725523581329327
+              },
+              {
+                "x": -11.970859463145576,
+                "y": 4.249900096368365
+              },
+              {
+                "x": -8.659125479765876,
+                "y": 2.6269863798753157
+              },
+              {
+                "x": -7.863138151543094,
+                "y": -0.9741016614202601
+              },
+              {
+                "x": 18.317707828188578,
+                "y": -3.841671283613678
+              },
+              {
+                "x": 14.629782738811825,
+                "y": -3.816384073433097
+              },
+              {
+                "x": 12.350169392589425,
+                "y": -0.9172818159095782
+              },
+              {
+                "x": 13.19546313486472,
+                "y": 2.6725523581329327
+              },
+              {
+                "x": 16.529140536854424,
+                "y": 4.249900096368365
+              },
+              {
+                "x": 19.840874520234124,
+                "y": 2.6269863798753157
+              },
+              {
+                "x": 20.636861848456906,
+                "y": -0.9741016614202601
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-2",
+                "vertexIndices": [
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-3",
+                "vertexIndices": [
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": [
+                  "plate/sketch-loop-2",
+                  "plate/sketch-loop-3"
+                ]
+              }
+            ],
+            "relations": [
+              {
+                "id": "linear-pattern-1",
+                "type": "linearPattern",
+                "sources": [
+                  "polygon-hole"
+                ],
+                "instances": [
+                  [
+                    "pattern-copy-1"
+                  ]
+                ],
+                "step": {
+                  "x": 28.5,
+                  "y": 0
+                },
+                "columns": 2,
+                "rowStep": {
+                  "x": 0,
+                  "y": 20
+                }
+              },
+              {
+                "id": "polygon-hole-radius",
+                "type": "radius",
+                "entityId": "polygon-hole",
+                "value": 4.25
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "plate",
+            "name": "plate",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "plate/sketch",
+              "profileId": "plate/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "plate",
+            "type": "extrusion",
+            "featureId": "plate",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-direct-polygon-attached",
+      "type": "part",
+      "name": "legacy-direct-polygon-attached",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "body/sketch",
+            "name": "body",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "polygon",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "radius": 8,
+                "sides": 7,
+                "rotation": 13.25,
+                "id": "body/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 7.787034067683588,
+                "y": 1.8336031273793132
+              },
+              {
+                "x": 3.421567676590264,
+                "y": 7.231381239743394
+              },
+              {
+                "x": -3.5204089622365644,
+                "y": 7.183781785285831
+              },
+              {
+                "x": -7.8114458492434355,
+                "y": 1.7266481240650904
+              },
+              {
+                "x": -6.220304687313469,
+                "y": -5.030686791779636
+              },
+              {
+                "x": 0.05485277525538349,
+                "y": -7.999811946105157
+              },
+              {
+                "x": 6.28870497926423,
+                "y": -4.944915538588832
+              }
+            ],
+            "loops": [
+              {
+                "id": "body/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "body/sketch-profile-1",
+                "outerLoopId": "body/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "body",
+            "name": "body",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "body/sketch",
+              "profileId": "body/sketch-profile-1"
+            },
+            "depth": 8
+          },
+          {
+            "type": "sketch",
+            "id": "boss/sketch",
+            "name": "boss",
+            "dirty": false,
+            "target": {
+              "type": "face",
+              "face": {
+                "type": "extrudeFace",
+                "extrudeId": "body",
+                "faceId": "body-solid-face-9"
+              }
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 3,
+                "height": 2,
+                "rotation": 0,
+                "id": "boss/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 1.5,
+                "y": 1
+              },
+              {
+                "x": -1.5,
+                "y": 1
+              },
+              {
+                "x": -1.5,
+                "y": -1
+              },
+              {
+                "x": 1.5,
+                "y": -1
+              }
+            ],
+            "loops": [
+              {
+                "id": "boss/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "boss/sketch-profile-1",
+                "outerLoopId": "boss/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "boss",
+            "name": "boss",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "boss/sketch",
+              "profileId": "boss/sketch-profile-1"
+            },
+            "depth": 3
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "body",
+            "type": "extrusion",
+            "featureId": "body",
+            "operation": "join"
+          },
+          {
+            "id": "boss",
+            "type": "extrusion",
+            "featureId": "boss",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-direct-polygon-indexed",
+      "type": "part",
+      "name": "legacy-direct-polygon-indexed",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "body/sketch",
+            "name": "body",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "polygon",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "radius": 8,
+                "sides": 7,
+                "rotation": 13.25,
+                "id": "body/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 7.787034067683588,
+                "y": 1.8336031273793132
+              },
+              {
+                "x": 3.421567676590264,
+                "y": 7.231381239743394
+              },
+              {
+                "x": -3.5204089622365644,
+                "y": 7.183781785285831
+              },
+              {
+                "x": -7.8114458492434355,
+                "y": 1.7266481240650904
+              },
+              {
+                "x": -6.220304687313469,
+                "y": -5.030686791779636
+              },
+              {
+                "x": 0.05485277525538349,
+                "y": -7.999811946105157
+              },
+              {
+                "x": 6.28870497926423,
+                "y": -4.944915538588832
+              }
+            ],
+            "loops": [
+              {
+                "id": "body/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "body/sketch-profile-1",
+                "outerLoopId": "body/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "body",
+            "name": "body",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "body/sketch",
+              "profileId": "body/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "body",
+            "type": "extrusion",
+            "featureId": "body",
+            "operation": "join",
+            "finishes": [
+              {
+                "kind": "chamfer",
+                "radius": 0.45,
+                "vertices": [
+                  1
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-direct-polygon-side",
+      "type": "part",
+      "name": "legacy-direct-polygon-side",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "body/sketch",
+            "name": "body",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "polygon",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "radius": 7.0710678118654755,
+                "sides": 4,
+                "rotation": 45,
+                "id": "body/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 5.000000000000001,
+                "y": 5
+              },
+              {
+                "x": -5,
+                "y": 5.000000000000001
+              },
+              {
+                "x": -5.000000000000001,
+                "y": -5
+              },
+              {
+                "x": 4.999999999999999,
+                "y": -5.000000000000001
+              }
+            ],
+            "loops": [
+              {
+                "id": "body/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "body/sketch-profile-1",
+                "outerLoopId": "body/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ],
+            "relations": [
+              {
+                "id": "body/sketch/0-radius",
+                "type": "radius",
+                "entityId": "body/sketch/0",
+                "value": 7.0710678118654755
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "body",
+            "name": "body",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "body/sketch",
+              "profileId": "body/sketch-profile-1"
+            },
+            "depth": 8
+          },
+          {
+            "type": "sketch",
+            "id": "side/sketch",
+            "name": "side",
+            "dirty": false,
+            "target": {
+              "type": "face",
+              "face": {
+                "type": "extrudeFace",
+                "extrudeId": "body",
+                "faceId": "body-solid-face-1"
+              }
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 3,
+                  "y": 4
+                },
+                "width": 2,
+                "height": 2,
+                "rotation": 0,
+                "id": "side/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 4,
+                "y": 5
+              },
+              {
+                "x": 2,
+                "y": 5
+              },
+              {
+                "x": 2,
+                "y": 3
+              },
+              {
+                "x": 4,
+                "y": 3
+              }
+            ],
+            "loops": [
+              {
+                "id": "side/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "side/sketch-profile-1",
+                "outerLoopId": "side/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "side",
+            "name": "side",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "side/sketch",
+              "profileId": "side/sketch-profile-1"
+            },
+            "depth": 1
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "body",
+            "type": "extrusion",
+            "featureId": "body",
+            "operation": "join"
+          },
+          {
+            "id": "side",
+            "type": "extrusion",
+            "featureId": "side",
+            "operation": "join"
+          }
+        ]
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

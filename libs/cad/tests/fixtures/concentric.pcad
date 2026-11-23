@@ -1,0 +1,49 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [0],
+  "items": [
+    {
+      "id": "concentric-part",
+      "type": "part",
+      "name": "Concentric seat",
+      "data": {
+        "features": [],
+        "cad": {
+          "rootNodeIds": ["plane-top", "plane-front", "plane-right", "seat-sketch"],
+          "nodes": [
+            {"id": "plane-top", "type": "referencePlane", "name": "Top", "plane": "XY"},
+            {"id": "plane-front", "type": "referencePlane", "name": "Front", "plane": "XZ"},
+            {"id": "plane-right", "type": "referencePlane", "name": "Right", "plane": "YZ"},
+            {
+              "id": "seat-sketch", "type": "sketch", "name": "Seat", "targetId": "plane-top",
+              "dimensions": [], "variables": [],
+              "relations": [
+                {"id": "imported-coaxial-seat", "type": "concentric", "a": "outer-bore", "b": "ellipse-seat"},
+                {"id": "datum-origin", "type": "fixed", "anchor": {"entityId": "station-datum", "point": "center"}, "position": {"x": 0, "y": 0}},
+                {"id": "station-center-x", "type": "distance", "axis": "x", "a": {"entityId": "station-datum", "point": "center"}, "b": {"entityId": "outer-bore", "point": "center"}, "value": 10},
+                {"id": "outer-diameter", "type": "diameter", "entityId": "outer-bore", "value": 30},
+                {"id": "seat-width", "type": "width", "entityId": "ellipse-seat", "value": 12},
+                {"id": "seat-height", "type": "height", "entityId": "ellipse-seat", "value": 6},
+                {"id": "seat-angle", "type": "rotation", "entityId": "ellipse-seat", "value": 30}
+              ]
+            },
+            {
+              "id": "outer-bore", "type": "sketchPrimitive", "sketchId": "seat-sketch",
+              "primitive": {"type": "circle", "id": "outer-bore", "center": {"x": 10, "y": 0}, "radius": 15, "segments": 64}
+            },
+            {
+              "id": "ellipse-seat", "type": "sketchPrimitive", "sketchId": "seat-sketch",
+              "primitive": {"type": "ellipse", "id": "ellipse-seat", "center": {"x": 10, "y": 0}, "width": 12, "height": 6, "rotation": 30, "segments": 64}
+            },
+            {
+              "id": "station-datum", "type": "sketchPrimitive", "sketchId": "seat-sketch",
+              "primitive": {"type": "point", "id": "station-datum", "center": {"x": 0, "y": 0}, "construction": true}
+            }
+          ]
+        },
+        "tree": {"orderedNodeIds": ["seat-sketch"], "dirtySketchIds": []}
+      }
+    }
+  ]
+}

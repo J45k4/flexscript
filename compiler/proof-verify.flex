@@ -19,7 +19,12 @@ global vf_assumptions=1;
 global vf_inputs=0;
 global vf_eval_depth=0;
 global vf_budget=200000000;
+global vf_circuit_gates=131072;
+global vf_circuit_words=65536;
 global vf_no_trusted=0;
+global vf_defer_memory_aliases=0;
+global vf_probe_conflicts=0;
+global vf_probe_conflict_capacity=128;
 global vf_formula=0;
 global vf_search=0;
 global vf_query_reason=0;
@@ -73,14 +78,25 @@ fn vf_effect(state,node,global_index,write) {
 // Under an already recorded predicate, equalities with literals can replace
 // current values. The path still constrains the original word; old snapshots
 // are immutable. This is logical substitution, never an executable write.
-fn vf_fact(state,node) {
+fn vf_fact(state,node,local_equalities) {
     if load64(node)!=3 {return 0;}let op=load64(node+8);let left=load64(node+16);let right=load64(node+24);
-    if op==263 {vf_fact(state,left);vf_fact(state,right);return 0;}
+    if op==263 {vf_fact(state,left,local_equalities);vf_fact(state,right,local_equalities);return 0;}
     if op!=259 {return 0;}
     if pm_assuming {
         if load64(left)!=2 && load64(left)!=5 {let swap=left;left=right;right=swap;}
         if load64(left)==2 || load64(left)==5 {let value=vf_eval(state,right,0);
             if load64(left)==5 {store64(state+32,value);}else {let slot=load64(left+24);if slot>=0 {store64(load64(state+8)+slot*8,value);}else {store64(load64(state+48)+(-slot-2)*8,value);}}return 0;
+        }
+    }
+    // Canonicalize equalities to parameters in loop-free bodies. Loop
+    // profiles use stable symbolic bindings to connect their observations
+    // and invariants across iterations and the loop exit.
+    if local_equalities && !(load64(load64(state)+104)&32) && load64(left)==2 && load64(right)==2 {
+        let left_slot=load64(left+24);let right_slot=load64(right+24);
+        if left_slot>=0 && right_slot>=0 && right_slot<load64(load64(state)+56) {
+            let values=load64(state+8);
+            store64(values+left_slot*8,load64(values+right_slot*8));
+            return 0;
         }
     }
     if load64(left)==1 {let swap=left;left=right;right=swap;}
@@ -117,7 +133,12 @@ fn vf_eval(state,node,entry) {
                 store64(load64(state+48)+i*8,pw_choose(vf_context,rhs_path,value,load64(rhs_globals+i*8)));i=i+1;
             }syscall(11,rhs_globals,pf_gcount*8+8,0,0,0,0);
             if load64(state+24)==rhs_path {store64(state+24,path);}
-            else {let bypass= -pw_truth(vf_context,left);if op==264 {bypass= -bypass;}store64(state+24,pw_or(vf_context,load64(state+24),pw_and(vf_context,path,bypass)));}
+            else {
+                let bypass= -pw_truth(vf_context,left);if op==264 {bypass= -bypass;}
+                // The RHS returns under the incoming path. Keep that shared
+                // path visible to later lookups for facts such as disjointness.
+                store64(state+24,pw_and(vf_context,path,pw_or(vf_context,load64(state+24),bypass)));
+            }
         }
         let out=alloc(16);if out<0 {fail("cannot allocate symbolic operation");}
         if !pw_binary(vf_context,op,left,right,out) {result=vf_unproved(node,"word-circuit capacity exceeded");}
@@ -137,7 +158,7 @@ fn vf_eval(state,node,entry) {
 }
 fn vf_return(state,value) {
     let f=load64(state);let first=load64(state+80)== -1;let previous=load64(state+32);store64(state+32,value);let clause=load64(f+64);
-    while clause {if load64(clause)==2 {let condition=vf_eval(state,load64(clause+8),0);vf_obligation(state,clause,"postcondition",pw_truth(vf_context,condition));store64(state+24,pw_and(vf_context,load64(state+24),pw_truth(vf_context,condition)));vf_fact(state,load64(clause+8));}clause=load64(clause+48);}
+    while clause {if load64(clause)==2 {let condition=vf_eval(state,load64(clause+8),0);vf_obligation(state,clause,"postcondition",pw_truth(vf_context,condition));store64(state+24,pw_and(vf_context,load64(state+24),pw_truth(vf_context,condition)));vf_fact(state,load64(clause+8),0);}clause=load64(clause+48);}
     // Returned values are meaningful only on the accumulated return path.
     // Its first member needs no merge with an unreachable entry-state value;
     // subsequent returns still merge with all previously accumulated returns.
@@ -158,10 +179,15 @@ fn vf_execute(state,node) {
         if slot<0 {let index= -slot-2;vf_effect(state,node,index,1);store64(load64(state+48)+index*8,value);}else {store64(load64(state+8)+slot*8,value);}
     }else if kind==13 {vf_return(state,vf_eval(state,load64(node+8),0));}
     else if kind==17 {vf_eval(state,load64(node+8),0);}
-    else if kind==18 {let condition=vf_eval(state,load64(node+8),0);vf_obligation(state,node,"assertion",pw_truth(vf_context,condition));store64(state+24,pw_and(vf_context,load64(state+24),pw_truth(vf_context,condition)));vf_fact(state,load64(node+8));}
+    else if kind==18 {let condition=vf_eval(state,load64(node+8),0);vf_obligation(state,node,"assertion",pw_truth(vf_context,condition));store64(state+24,pw_and(vf_context,load64(state+24),pw_truth(vf_context,condition)));vf_fact(state,load64(node+8),1);}
     else if kind==14 {
         let condition=pw_truth(vf_context,vf_eval(state,load64(node+8),0));let path=load64(state+24);
         let yes_path=pw_and(vf_context,path,condition);let no_path=pw_and(vf_context,path,-condition);
+        if condition && condition!=1 && condition!= -1 && yes_path!= -1 && no_path!= -1 {
+            let known=pw_path_conjunct(vf_context,path,condition,160,0);
+            if known== -1 {yes_path=path;no_path= -1;}
+            if known== -2 {no_path=path;yes_path= -1;}
+        }
         // If exact Boolean simplification excludes one arm, its placeholder
         // state must not obscure values on the surviving continuation.
         if yes_path== -1 {store64(state+24,no_path);vf_execute(state,load64(node+24));return 0;}
@@ -173,7 +199,11 @@ fn vf_execute(state,node) {
             store64(load64(state+48)+i*8,pw_choose(vf_context,condition,load64(load64(yes+48)+i*8),load64(load64(no+48)+i*8)));
             store64(load64(state+64)+i*8,pw_choose(vf_context,condition,load64(load64(yes+64)+i*8),load64(load64(no+64)+i*8)));i=i+1;
         }
-        store64(state+32,pw_choose(vf_context,condition,load64(yes+32),load64(no+32)));store64(state+24,pw_or(vf_context,load64(yes+24),load64(no+24)));store64(state+80,pw_or(vf_context,load64(yes+80),load64(no+80)));
+        store64(state+32,pw_choose(vf_context,condition,load64(yes+32),load64(no+32)));
+        // Both arms start under path. Keep that shared assumption visible
+        // when the continuation searches for facts established before the fork.
+        store64(state+24,pw_and(vf_context,path,pw_or(vf_context,load64(yes+24),load64(no+24))));
+        store64(state+80,pw_or(vf_context,load64(yes+80),load64(no+80)));
         store64(state+96,pb_join(vm_memory,condition,load64(yes+96),load64(no+96)));store64(state+112,pb_join(vm_memory,condition,load64(yes+112),load64(no+112)));
         ps_release(yes);ps_release(no);
     }else if kind==15 {vl_loop(state,node);}
@@ -190,7 +220,7 @@ fn vf_call(f,args,path,level,site,parent,entry) {
     let state=ps_state(f,args,globals,path,level,parent,vf_zero);vm_entry(state,parent,entry);store64(state+80,-1);let clause=load64(f+64);
     while clause {
         if load64(clause)==1 {let requirement=pw_truth(vf_context,vf_eval(state,load64(clause+8),0));
-            if parent {vf_obligation(state,site,"callee requirement",requirement);}store64(state+24,pw_and(vf_context,load64(state+24),requirement));vf_fact(state,load64(clause+8));
+            if parent {vf_obligation(state,site,"callee requirement",requirement);}store64(state+24,pw_and(vf_context,load64(state+24),requirement));vf_fact(state,load64(clause+8),!summarized);
         }clause=load64(clause+48);
     }
     vm_prepare(state);
@@ -243,10 +273,40 @@ fn vf_query_release() {
     if vf_formula {syscall(11,vf_formula,64+load64(vf_formula+24)*16+load64(vf_formula+32)*8,0,0,0,0);vf_formula=0;}return 0;
 }
 fn vf_query_order(condition,input_first) {
-    vf_query_reason="query construction or capacity limit";vf_query_release();let axioms=pb_constraints(vm_memory);if !axioms {return 0;}vf_formula=pw_cnf_query(vf_context,pw_and(vf_context,condition,axioms));if !vf_formula {return 0;}
-    vf_search=pv_search(vf_formula,262144);if !vf_search {return 0;}let result=0;if input_first {result=pv_decide_inputs(vf_search,vf_budget,vf_budget);}else {result=pv_decide(vf_search,vf_budget,vf_budget);}
-    vf_query_reason="solver or evidence check unresolved";if result==1 && vm_used {rm_model=pbm_replay(vm_memory,load64(vf_search+8),vf_budget);if !rm_model {vf_query_reason="concrete memory completion failed or exhausted its budget";return 0;}}
-    if result==1 || result==2 {vf_query_reason=0;}return result;
+    let budget=vf_budget;let rounds=0;
+    while budget>0 && rounds<32 {
+        vf_query_reason="query construction or capacity limit";vf_query_release();
+        let axioms=pb_constraints(vm_memory);if !axioms {return 0;}
+        vf_formula=pw_cnf_query(vf_context,pw_and(vf_context,condition,axioms));if !vf_formula {return 0;}
+        vf_search=pv_search(vf_formula,262144);if !vf_search {return 0;}
+        let result=0;
+        if input_first {result=pv_decide_inputs(vf_search,budget,budget);}
+        else {result=pv_decide(vf_search,budget,budget);}
+        vf_query_reason="solver or evidence check unresolved";
+        if result<1 {return result;}
+        if result==2 || !vm_used {vf_query_reason=0;return result;}
+
+        // Refuting the weaker query is sufficient. A satisfying assignment
+        // still needs a complete concrete memory model. If aliases disagree,
+        // add the corresponding universally valid constraints and retry.
+        if vf_defer_memory_aliases {
+            rm_model=pbm_complete(vm_memory,load64(vf_search+8),budget,vf_probe_conflicts,vf_probe_conflict_capacity);
+        }else {rm_model=pbm_replay(vm_memory,load64(vf_search+8),budget);}
+        if rm_model {vf_query_reason=0;return 1;}
+        let count=0;if vf_defer_memory_aliases {count=load64(vf_probe_conflicts);}
+        if !count {vf_query_reason="concrete memory completion failed or exhausted its budget";return 0;}
+        vf_query_reason="memory alias refinement exhausted its budget";
+        budget=budget-load64(vf_search+64);rounds=rounds+1;
+        if budget<=0 || rounds>=32 {return 0;}
+        let table=load64(vm_memory+32);let i=0;
+        while i<count {
+            let pair=vf_probe_conflicts+8+i*16;
+            let row=table+load64(pair)*48;let other=table+load64(pair+8)*48;
+            if !pb_probe_congruence(vm_memory,row,other) {return 0;}
+            i=i+1;
+        }
+    }
+    return 0;
 }
 fn vf_capacity_note() {
     if vf_capacity_reported || (!load64(vf_context+72) && !load64(vm_memory+112)) {return 0;}vf_capacity_reported=1;
@@ -289,7 +349,8 @@ fn vf_root_check(f) {
     vf_capacity_reported=0;
     vm_allocated=0;vm_choices=0;vm_choice_tail=0;vf_entry_satisfiable=0;vf_entry_reason=0;
     pm_models=0;pm_assuming=0;pm_missing=0;pm_missing_message=0;vl_models=0;vl_count=0;vl_missing_measure=0;vl_proof_missing=0;vf_root=f;vf_problem=0;vf_problem_node=0;vf_count=0;vf_eval_depth=0;
-    vf_context=pw_context(64,131072,65536);if !vf_context {fail("cannot allocate verification circuit");}vf_zero=pw_constant(vf_context,0);vm_used=0;vm_reads=0;vm_writes=0;vm_releases=0;vm_memory=pb_context(vf_context,4096,4096,16384,1024);if !vm_memory {fail("cannot allocate symbolic memory");}
+    vf_context=pw_context(64,vf_circuit_gates,vf_circuit_words);if !vf_context {fail("cannot allocate verification circuit");}vf_zero=pw_constant(vf_context,0);vm_used=0;vm_reads=0;vm_writes=0;vm_releases=0;vm_memory=pb_context(vf_context,4096,4096,16384,1024);if !vm_memory {fail("cannot allocate symbolic memory");}
+    if vf_defer_memory_aliases {pb_defer_probe_congruence(vm_memory);}
     let i=0;while i<pf_count {store64(vf_active+i*8,0);store64(vf_dependencies+i*8,0);i=i+1;}
     vf_inputs=alloc(load64(f+56)*8+8);if vf_inputs<0 {fail("cannot allocate symbolic inputs");}
     i=0;while i<load64(f+56) {store64(vf_inputs+i*8,pw_input(vf_context));i=i+1;}i=0;while i<pf_gcount {store64(vf_global_inputs+i*8,pw_input(vf_context));store64(vf_reads+i*8,0);store64(vf_writes+i*8,0);i=i+1;}
@@ -318,14 +379,26 @@ fn vf_root_check(f) {
     syscall(11,vf_inputs,load64(f+56)*8+8,0,0,0,0);vf_query_release();vl_release_models();pm_release_models();vm_release();pw_release(vf_context);return success;
 }
 fn proof_main(argc,argv) {
-    if argc<3 || argc>5 {print(2,"Usage: flexscript verify source.flex [--budget=N] [--no-trusted]\n");return 1;}
-    let option_index=3;let budget_seen=0;vf_no_trusted=0;
+    if argc<3 || argc>8 {print(2,"Usage: flexscript verify source.flex [--budget=N] [--circuit-gates=N] [--circuit-words=N] [--defer-memory-aliases] [--no-trusted]\n");return 1;}
+    let option_index=3;let budget_seen=0;let gates_seen=0;let words_seen=0;vf_no_trusted=0;vf_defer_memory_aliases=0;
     while option_index<argc {let option=load64(argv+option_index*8);
         if up_text(option,"--no-trusted") {if vf_no_trusted {print(2,"duplicate --no-trusted option\n");return 1;}vf_no_trusted=1;}
+        else if up_text(option,"--defer-memory-aliases") {
+            if vf_defer_memory_aliases {print(2,"duplicate --defer-memory-aliases option\n");return 1;}
+            vf_defer_memory_aliases=1;
+        }
         else if vm_prefix(option,"--budget=") {
             if budget_seen {print(2,"duplicate --budget option\n");return 1;}budget_seen=1;
             vf_budget=vm_number_limit(option+9,1000000000);if vf_budget<1 {print(2,"verification budget must be 1..1000000000 work units\n");return 1;}
-        }else {print(2,"expected --budget=N or --no-trusted\n");return 1;}option_index=option_index+1;
+        }else if vm_prefix(option,"--circuit-gates=") {
+            if gates_seen {print(2,"duplicate --circuit-gates option\n");return 1;}gates_seen=1;
+            vf_circuit_gates=vm_number_limit(option+16,524287);
+            if vf_circuit_gates<1 {print(2,"verification circuit gate limit must be 1..524287\n");return 1;}
+        }else if vm_prefix(option,"--circuit-words=") {
+            if words_seen {print(2,"duplicate --circuit-words option\n");return 1;}words_seen=1;
+            vf_circuit_words=vm_number_limit(option+16,131072);
+            if vf_circuit_words<1 {print(2,"verification circuit word limit must be 1..131072\n");return 1;}
+        }else {print(2,"expected --budget=N, --circuit-gates=N, --circuit-words=N, --defer-memory-aliases, or --no-trusted\n");return 1;}option_index=option_index+1;
     }
     pf_verifying=1;compiler_initialize();source_path=load64(argv+16);load_module(source_path);
     if tx_count {print(1,"UNPROVED: program extensions require post-expansion proof binding\n");return 1;}pf_prepare();
@@ -343,6 +416,7 @@ fn proof_main(argc,argv) {
     vf_global_inputs=alloc((pf_gcount+1)*8);vf_reads=alloc((pf_gcount+1)*8);vf_writes=alloc((pf_gcount+1)*8);
     if vf_global_inputs<0 || vf_reads<0 || vf_writes<0 {fail("cannot allocate global verification state");}
     vf_obligations=alloc(16384*56);vf_active=alloc(pf_count*8+8);vf_dependencies=alloc(pf_count*8+8);
-    if vf_obligations<0 || vf_active<0 || vf_dependencies<0 {fail("cannot allocate verification state");}
+    if vf_defer_memory_aliases {vf_probe_conflicts=alloc(8+vf_probe_conflict_capacity*16);}
+    if vf_obligations<0 || vf_active<0 || vf_dependencies<0 || vf_probe_conflicts<0 {fail("cannot allocate verification state");}
     return pm_run();
 }

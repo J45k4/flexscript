@@ -1,4 +1,5 @@
 import "../call-frame.flex";
+import "call-floor-order.flex";
 
 // A call may consume only operands above the active caller's floor. These
 // states have valid bounded metadata but insufficient arguments in that frame.
@@ -27,23 +28,6 @@ requires count >= 0 && count <= 4096;
 requires count*8 > cursor-floor;
 ensures cursor < count*8 || cursor-count*8 < floor;
 lemma fn call_argument_underflow_order(cursor,floor,count) {}
-
-// The available-argument span directly yields the saved-cursor invariant that
-// call entry needs: the new floor stays nonnegative and at or above the caller
-// floor. The saved cursor is bound to a word and the available-span sum is
-// stated in both operand orders so the checker compares the exact bounded
-// difference instead of re-searching the compound expression.
-requires cursor >= 0 && cursor <= 524288;
-requires floor >= 0 && floor <= cursor;
-requires count >= 0 && count <= 4096;
-requires count*8 <= cursor-floor;
-ensures count*8 <= cursor && cursor-count*8 >= floor;
-lemma fn call_argument_accept_order(cursor,floor,count) {
-    let rest=cursor-count*8;
-    assert count*8+floor <= cursor;
-    assert floor+count*8 <= cursor;
-    assert rest >= floor;
-}
 
 // Both directions of the capacity/saved-cursor bridge, composed from the two
 // checked order lemmas. Call entry applies this to the proved capacity

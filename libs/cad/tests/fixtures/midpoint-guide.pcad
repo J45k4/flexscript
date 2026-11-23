@@ -1,0 +1,33 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [0],
+  "items": [{
+    "id": "native-part-1", "type": "part", "name": "Midpoint guide",
+    "data": {
+      "features": [],
+      "cad": {
+        "rootNodeIds": ["plane-top", "plane-front", "plane-right", "native-sketch-1"],
+        "nodes": [
+          {"id": "plane-top", "type": "referencePlane", "name": "Top", "plane": "XY"},
+          {"id": "plane-front", "type": "referencePlane", "name": "Front", "plane": "XZ"},
+          {"id": "plane-right", "type": "referencePlane", "name": "Right", "plane": "YZ"},
+          {
+            "id": "native-sketch-1", "type": "sketch", "name": "Midpoint", "targetId": "plane-top", "dimensions": [], "variables": [],
+            "relations": [
+              {"id": "named-guide-midpoint", "type": "midpoint", "a": {"entityId": "center-mark", "point": "center"}, "b": "layout-guide"},
+              {"id": "origin", "type": "fixed", "anchor": {"entityId": "layout-guide", "point": "p0"}, "position": {"x": 0, "y": 0}},
+              {"id": "guide-level", "type": "horizontal", "entityId": "layout-guide"},
+              {"id": "guide-span", "type": "length", "entityId": "layout-guide", "value": 20},
+              {"id": "bore-diameter", "type": "diameter", "entityId": "bore", "value": 10}
+            ]
+          },
+          {"id": "layout-guide", "type": "sketchLine", "sketchId": "native-sketch-1", "construction": true, "p0": {"x": 0, "y": 0}, "p1": {"x": 20, "y": 0}},
+          {"id": "center-mark", "type": "sketchPrimitive", "sketchId": "native-sketch-1", "primitive": {"id": "center-mark", "type": "point", "center": {"x": 10, "y": 0}, "construction": true}},
+          {"id": "bore", "type": "sketchPrimitive", "sketchId": "native-sketch-1", "primitive": {"id": "bore", "type": "circle", "center": {"x": 35, "y": 0}, "radius": 5, "segments": 64}}
+        ]
+      },
+      "tree": {"orderedNodeIds": ["native-sketch-1"], "dirtySketchIds": []}
+    }
+  }]
+}

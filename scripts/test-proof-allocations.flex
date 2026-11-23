@@ -7,6 +7,11 @@ fn suite(compiler) {
     ps_verify("ensures result<0 || writable_bytes(result,1);fn allocate(){return alloc(1);}",0,"Verified roots: 1/1");
     ps_verify("reads nothing;modifies nothing;ensures result<0 || load8(result)==0;fn zeroed(){return alloc(1);}",0,"Verified roots: 1/1");
     ps_verify("requires n>0 && n<=8;ensures result<0 || writable_bytes(result,old(n));fn allocate(n){return alloc(n);}",0,"Verified roots: 1/1");
+    let prefix="requires smaller>=5 && smaller<=extent && extent<=1048576;modifies nothing;ensures result<0 || fresh_bytes(result,smaller);fn allocate_prefix(smaller,extent){let p=alloc(extent);if p>0{proof{assert extent-smaller>=0;assert fresh_bytes(p,extent);assert fresh_bytes(p,smaller);}}return p;}";
+    ps_verify_option(prefix,0,"Verified roots: 1/1; trusted external assumptions: none","--no-trusted");
+    let different_entry="requires extent>=4 && extent<=8;verify;fn caller(extent){let p=alloc(extent);if p<0{return 0;}proof{assert fresh_bytes(p,extent);}return already_live(p);}fn already_live(p){proof{assert fresh_bytes(p,2);}return 0;}";
+    let replay=ps_verify_option(different_entry,1,"Verified roots: 0/2","--no-trusted");
+    t_assert(h_has(h_out(replay),"concrete replay: call caller alloc@"),"freshness from the caller entry must not satisfy a callee check");
     ps_verify("reads nothing;modifies nothing;ensures result==0;fn own(){let p=alloc(8);if p<0{return 0;}assert load64(p)==0;store64(p,42);assert load64(p)==42;return 0;}",0,"Verified roots: 1/1");
     ps_verify("requires readable_bytes(q,1);ensures readable_bytes(q,1);ensures load8(q)==old(load8(q));ensures result<0 || disjoint_bytes(result,1,q,1);fn existing(q){return alloc(1);}",0,"Verified roots: 1/1");
     ps_verify("requires readable_bytes(q,1);ensures load8(q)==old(load8(q));fn existing(q){let p=alloc(1);if p>0{store8(p,42);}return p;}",0,"Verified roots: 1/1");

@@ -1,0 +1,1 @@
+{"version":4,"revision":1,"items":[{"id":"flowergirl-loft","type":"part","name":"flowergirl loft","data":{"features":[],"solidSteps":[{"id":"loft-1","type":"loft","operation":"join","loft":{"bottomRadius":85,"topRadius":112.5,"height":100,"segments":144},"translation":{"x":0,"y":0,"z":0}}]}}],"selectedPath":[0]}

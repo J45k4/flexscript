@@ -1,0 +1,970 @@
+{
+  "format": "puppycorp.pcad",
+  "schema_version": 1,
+  "units": "mm",
+  "clearance_experiments": [
+    {
+      "id": "boards",
+      "name": "Board separation",
+      "analysis": "solid-clearance",
+      "a": "controller",
+      "b": "sensor",
+      "minimum_mm": 5
+    },
+    {
+      "id": "lid-clearance",
+      "name": "Lid to controller during opening",
+      "analysis": "solid-clearance",
+      "a": "lid",
+      "b": "controller",
+      "minimum_mm": 2,
+      "motion": { "mate_id": "hinge", "start": 0, "end": 90, "samples": 5 }
+    }
+  ],
+  "drawings": [
+    {
+      "id": "enclosure-plan",
+      "name": "Sensor enclosure base",
+      "axis": "top",
+      "target": "base",
+      "scale": 1,
+      "dimensions": [
+        {"id":"width","name":"Enclosure width","kind":"width","precision":2},
+        {"id":"spacing","name":"Board seat spacing","kind":"horizontal","precision":2,"tolerance_mm":0.15,
+          "from":{"occurrence":"base","datum":"controller-seat"},
+          "to":{"occurrence":"base","datum":"sensor-seat"}}
+      ]
+    },
+    {
+      "id": "enclosure-section",
+      "name": "Sensor enclosure section",
+      "axis": "front",
+      "target": "",
+      "scale": 1,
+      "section_mm": -11,
+      "dimensions": []
+    },
+    {
+      "id": "hinge-detail",
+      "name": "Base hinge detail",
+      "detail": {
+        "parent_sheet": "enclosure-plan",
+        "center": {"occurrence": "base", "datum": "hinge-axis"},
+        "width_mm": 14,
+        "height_mm": 12,
+        "magnification": 5
+      },
+      "dimensions": []
+    },
+    {
+      "id": "assembly-exploded",
+      "name": "Sensor unit exploded assembly",
+      "axis": "iso",
+      "target": "",
+      "scale": 0,
+      "visibility": "visible",
+      "exploded_offsets": [
+        {"occurrence": "lid", "offset_mm": [0, 0, 72]},
+        {"occurrence": "controller", "offset_mm": [0, 0, 40]},
+        {"occurrence": "sensor", "offset_mm": [0, 0, 40]},
+        {"occurrence": "post-a", "offset_mm": [0, 0, 18]},
+        {"occurrence": "post-b", "offset_mm": [0, 0, 18]}
+      ],
+      "balloons": [
+        {"id": "base-balloon", "item_id": "instance/base"},
+        {"id": "lid-balloon", "item_id": "instance/lid"},
+        {"id": "controller-balloon", "item_id": "pcb/controller"},
+        {"id": "sensor-balloon", "item_id": "pcb/sensor"},
+        {"id": "support-a-balloon", "item_id": "instance/post-a"},
+        {"id": "support-b-balloon", "item_id": "instance/post-b"}
+      ],
+      "dimensions": []
+    }
+  ],
+  "nodes": [
+    {
+      "id": "shell",
+      "type": "box",
+      "size": [
+        102,
+        42,
+        13
+      ]
+    },
+    {
+      "id": "cavity",
+      "type": "box",
+      "size_bindings": {"x": {"node": "shell", "axis": "x", "offset_mm": -4}},
+      "size": [
+        98,
+        38,
+        12
+      ],
+      "position": [
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "id": "base-shape",
+      "type": "subtract",
+      "a": "shell",
+      "b": "cavity"
+    },
+    {
+      "id": "lid-shape",
+      "type": "box",
+      "size_bindings": {"x": {"node": "cavity", "axis": "x", "offset_mm": 4}},
+      "size": [
+        102,
+        42,
+        2
+      ]
+    },
+    {
+      "id": "post-shape",
+      "type": "box",
+      "size": [
+        5,
+        5,
+        3
+      ],
+      "position": [
+        -2.5,
+        -2.5,
+        0
+      ]
+    },
+    {
+      "id": "controller-shape",
+      "type": "pcb-board",
+      "board_id": "controller-board"
+    },
+    {
+      "id": "sensor-shape",
+      "type": "pcb-board",
+      "board_id": "sensor-board"
+    }
+  ],
+  "parts": [
+    {
+      "id": "base",
+      "node": "base-shape",
+      "name": "Enclosure base",
+      "color": "#718186",
+      "datums": [
+        {
+          "id": "hinge-axis",
+          "name": "Base hinge axis",
+          "position": [
+            0,
+            0,
+            13
+          ],
+          "rotation": [
+            0,
+            90,
+            0
+          ]
+        },
+        {
+          "id": "controller-seat",
+          "name": "Controller mount",
+          "position": [
+            10,
+            11,
+            5
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sensor-seat",
+          "name": "Sensor mount",
+          "position_bindings": {"x": {"node": "shell", "axis": "x", "offset_mm": -44}},
+          "position": [
+            58,
+            11,
+            5
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lid",
+      "node": "lid-shape",
+      "name": "Enclosure lid",
+      "color": "#879b9b",
+      "datums": [
+        {
+          "id": "hinge-axis",
+          "name": "Lid hinge axis",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            90,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "post",
+      "node": "post-shape",
+      "name": "Mounting support",
+      "color": "#718186"
+    },
+    {
+      "id": "controller-pcb",
+      "node": "controller-shape",
+      "name": "Controller PCB",
+      "color": "#2c7f56"
+    },
+    {
+      "id": "sensor-pcb",
+      "node": "sensor-shape",
+      "name": "Sensor PCB",
+      "color": "#2c7f56"
+    }
+  ],
+  "electrical": {
+    "connector_definitions": [
+      {"id": "reference-socket", "revision": 1, "name": "Sensor reference 2-position socket", "value": "2-position socket", "manufacturer": "", "part_number": "", "viewing_direction": "mating-face", "pins": [{"id": "power", "number": "1"}, {"id": "spare", "number": "2"}], "contacts": [{"id": "one", "name": "1", "pin_id": "power"}, {"id": "two", "name": "2", "pin_id": "spare"}]},
+      {"id": "reference-plug", "revision": 1, "name": "Sensor reference 2-position plug", "value": "2-position plug", "manufacturer": "", "part_number": "", "viewing_direction": "wire-side", "pins": [{"id": "power", "number": "1"}, {"id": "spare", "number": "2"}], "contacts": [{"id": "one", "name": "1", "pin_id": "power"}, {"id": "two", "name": "2", "pin_id": "spare"}]}
+    ],
+    "components": [
+      {
+        "id": "controller",
+        "reference": "U1",
+        "value": "Controller output",
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ],
+        "terminals": [
+          {
+            "id": "t1",
+            "name": "1",
+            "pin_id": "power"
+          },
+          {
+            "id": "t2",
+            "name": "2",
+            "pin_id": "spare"
+          }
+        ]
+      },
+      {
+        "id": "socket_a",
+        "reference": "J1",
+        "value": "Controller socket",
+        "connector": {"definition_id": "reference-socket", "revision": 1, "pins": [{"pin_id": "power", "definition_pin_id": "power"}, {"pin_id": "spare", "definition_pin_id": "spare"}], "contacts": [{"terminal_id": "t1", "definition_contact_id": "one"}, {"terminal_id": "t2", "definition_contact_id": "two"}]},
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ],
+        "terminals": [
+          {
+            "id": "t1",
+            "name": "1",
+            "pin_id": "power"
+          },
+          {
+            "id": "t2",
+            "name": "2",
+            "pin_id": "spare"
+          }
+        ]
+      },
+      {
+        "id": "plug_a",
+        "reference": "P1",
+        "value": "Harness plug A",
+        "connector": {"definition_id": "reference-plug", "revision": 1, "pins": [{"pin_id": "power", "definition_pin_id": "power"}, {"pin_id": "spare", "definition_pin_id": "spare"}], "contacts": [{"terminal_id": "t1", "definition_contact_id": "one"}, {"terminal_id": "t2", "definition_contact_id": "two"}]},
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ],
+        "terminals": [
+          {
+            "id": "t1",
+            "name": "1",
+            "pin_id": "power"
+          },
+          {
+            "id": "t2",
+            "name": "2",
+            "pin_id": "spare"
+          }
+        ]
+      },
+      {
+        "id": "plug_b",
+        "reference": "P2",
+        "value": "Harness plug B",
+        "connector": {"definition_id": "reference-plug", "revision": 1, "pins": [{"pin_id": "power", "definition_pin_id": "power"}, {"pin_id": "spare", "definition_pin_id": "spare"}], "contacts": [{"terminal_id": "t1", "definition_contact_id": "one"}, {"terminal_id": "t2", "definition_contact_id": "two"}]},
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ],
+        "terminals": [
+          {
+            "id": "t1",
+            "name": "1",
+            "pin_id": "power"
+          },
+          {
+            "id": "t2",
+            "name": "2",
+            "pin_id": "spare"
+          }
+        ]
+      },
+      {
+        "id": "socket_b",
+        "reference": "J2",
+        "value": "Sensor socket",
+        "connector": {"definition_id": "reference-socket", "revision": 1, "pins": [{"pin_id": "power", "definition_pin_id": "power"}, {"pin_id": "spare", "definition_pin_id": "spare"}], "contacts": [{"terminal_id": "t1", "definition_contact_id": "one"}, {"terminal_id": "t2", "definition_contact_id": "two"}]},
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ],
+        "terminals": [
+          {
+            "id": "t1",
+            "name": "1",
+            "pin_id": "power"
+          },
+          {
+            "id": "t2",
+            "name": "2",
+            "pin_id": "spare"
+          }
+        ]
+      },
+      {
+        "id": "sensor",
+        "reference": "U2",
+        "value": "Sensor input",
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ],
+        "terminals": [
+          {
+            "id": "t1",
+            "name": "1",
+            "pin_id": "power"
+          },
+          {
+            "id": "t2",
+            "name": "2",
+            "pin_id": "spare"
+          }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "id": "supply",
+        "name": "VCC",
+        "endpoints": [
+          {
+            "component_id": "controller",
+            "pin_id": "power"
+          },
+          {
+            "component_id": "socket_a",
+            "pin_id": "power"
+          },
+          {
+            "component_id": "plug_a",
+            "pin_id": "power"
+          },
+          {
+            "component_id": "plug_b",
+            "pin_id": "power"
+          },
+          {
+            "component_id": "socket_b",
+            "pin_id": "power"
+          },
+          {
+            "component_id": "sensor",
+            "pin_id": "power"
+          }
+        ]
+      }
+    ],
+    "sheets": [
+      {
+        "id": "sensor-system",
+        "name": "Sensor supply",
+        "mode": "editable",
+        "placements": [
+          {
+            "id": "sym-controller",
+            "component_id": "controller",
+            "x": 80,
+            "y": 120
+          },
+          {
+            "id": "sym-socket_a",
+            "component_id": "socket_a",
+            "x": 360,
+            "y": 120
+          },
+          {
+            "id": "sym-plug_a",
+            "component_id": "plug_a",
+            "x": 640,
+            "y": 120
+          },
+          {
+            "id": "sym-plug_b",
+            "component_id": "plug_b",
+            "x": 640,
+            "y": 320
+          },
+          {
+            "id": "sym-socket_b",
+            "component_id": "socket_b",
+            "x": 360,
+            "y": 320
+          },
+          {
+            "id": "sym-sensor",
+            "component_id": "sensor",
+            "x": 80,
+            "y": 320
+          }
+        ],
+        "connections": [
+          {
+            "id": "supply-1",
+            "ends": [
+              {
+                "symbol_id": "sym-controller",
+                "pin_id": "power"
+              },
+              {
+                "symbol_id": "sym-socket_a",
+                "pin_id": "power"
+              }
+            ],
+            "bends": []
+          },
+          {
+            "id": "supply-2",
+            "ends": [
+              {
+                "symbol_id": "sym-socket_a",
+                "pin_id": "power"
+              },
+              {
+                "symbol_id": "sym-plug_a",
+                "pin_id": "power"
+              }
+            ],
+            "bends": []
+          },
+          {
+            "id": "supply-3",
+            "ends": [
+              {
+                "symbol_id": "sym-plug_a",
+                "pin_id": "power"
+              },
+              {
+                "symbol_id": "sym-plug_b",
+                "pin_id": "power"
+              }
+            ],
+            "bends": []
+          },
+          {
+            "id": "supply-4",
+            "ends": [
+              {
+                "symbol_id": "sym-plug_b",
+                "pin_id": "power"
+              },
+              {
+                "symbol_id": "sym-socket_b",
+                "pin_id": "power"
+              }
+            ],
+            "bends": []
+          },
+          {
+            "id": "supply-5",
+            "ends": [
+              {
+                "symbol_id": "sym-socket_b",
+                "pin_id": "power"
+              },
+              {
+                "symbol_id": "sym-sensor",
+                "pin_id": "power"
+              }
+            ],
+            "bends": []
+          }
+        ],
+        "notes": [
+          {
+            "id": "sheet-supply-path",
+            "at": [
+              80,
+              48
+            ],
+            "text": "Controller to sensor supply"
+          },
+          {
+            "id": "sheet-supply-label",
+            "at": [
+              130,
+              84
+            ],
+            "anchor": {
+              "symbol_id": "sym-controller",
+              "pin_id": "power"
+            }
+          }
+        ]
+      }
+    ],
+    "boards": [
+      {
+        "id": "controller-board",
+        "name": "Controller board",
+        "size": [
+          40,
+          25
+        ],
+        "thickness": 1.6,
+        "clearance": 0.25,
+        "holes": [
+          {
+            "id": "seat",
+            "at": [
+              4,
+              4
+            ],
+            "diameter": 2
+          }
+        ],
+        "placements": [
+          {
+            "component_id": "controller",
+            "footprint": "HEADER_1X02_P2_54",
+            "at": [
+              10,
+              10
+            ],
+            "rotation": 90,
+            "pad_pins": [
+              "power",
+              "spare"
+            ]
+          },
+          {
+            "component_id": "socket_a",
+            "footprint": "HEADER_1X02_P2_54",
+            "at": [
+              24,
+              10
+            ],
+            "rotation": 90,
+            "pad_pins": [
+              "power",
+              "spare"
+            ]
+          }
+        ],
+        "tracks": [
+          {
+            "id": "controller-track",
+            "net_id": "supply",
+            "layer": "F.Cu",
+            "start": [
+              10,
+              10
+            ],
+            "end": [
+              24,
+              10
+            ],
+            "width": 0.4
+          }
+        ],
+        "vias": []
+      },
+      {
+        "id": "sensor-board",
+        "name": "Sensor board",
+        "size": [
+          40,
+          25
+        ],
+        "thickness": 1.6,
+        "clearance": 0.25,
+        "holes": [
+          {
+            "id": "seat",
+            "at": [
+              4,
+              4
+            ],
+            "diameter": 2
+          }
+        ],
+        "placements": [
+          {
+            "component_id": "socket_b",
+            "footprint": "HEADER_1X02_P2_54",
+            "at": [
+              10,
+              10
+            ],
+            "rotation": 90,
+            "pad_pins": [
+              "power",
+              "spare"
+            ]
+          },
+          {
+            "component_id": "sensor",
+            "footprint": "HEADER_1X02_P2_54",
+            "at": [
+              24,
+              10
+            ],
+            "rotation": 90,
+            "pad_pins": [
+              "power",
+              "spare"
+            ]
+          }
+        ],
+        "tracks": [
+          {
+            "id": "sensor-front",
+            "net_id": "supply",
+            "layer": "F.Cu",
+            "start": [
+              10,
+              10
+            ],
+            "end": [
+              17,
+              10
+            ],
+            "width": 0.4
+          },
+          {
+            "id": "sensor-back",
+            "net_id": "supply",
+            "layer": "B.Cu",
+            "start": [
+              17,
+              10
+            ],
+            "end": [
+              24,
+              10
+            ],
+            "width": 0.4
+          }
+        ],
+        "vias": [
+          {
+            "id": "sensor-via",
+            "net_id": "supply",
+            "at": [
+              17,
+              10
+            ],
+            "diameter": 1.6,
+            "drill": 0.8
+          }
+        ]
+      }
+    ],
+    "required_traces": [
+      {
+        "id": "sensor-supply",
+        "net_id": "supply",
+        "ends": [
+          {"kind": "terminal", "component_id": "controller", "terminal_id": "t1"},
+          {"kind": "terminal", "component_id": "sensor", "terminal_id": "t1"}
+        ]
+      }
+    ],
+    "harness": {
+      "documentation": {"mode": "manufacturing"},
+      "wires": [
+        {
+          "id": "supply-wire",
+          "name": "W1",
+          "net_id": "supply",
+          "ends": [
+            {
+              "kind": "terminal",
+              "component_id": "plug_a",
+              "terminal_id": "t1"
+            },
+            {
+              "kind": "terminal",
+              "component_id": "plug_b",
+              "terminal_id": "t1"
+            }
+          ],
+          "cable_id": "harness",
+          "color": "red",
+          "length_mm": 200,
+          "construction": {"specification": "26 AWG stranded copper, PVC insulation", "cut_reason": "200 mm reference harness blank with service slack", "terminations": [{"endpoint_key": "t:plug_a:t1", "contact_key": "reference-plug@1:one", "method": "crimp", "strip_mm": 2.5}, {"endpoint_key": "t:plug_b:t1", "contact_key": "reference-plug@1:one", "method": "crimp", "strip_mm": 2.5}]},
+          "route": {
+            "anchors": [
+              {
+                "instance_id": "controller",
+                "mating_id": "controller-mating"
+              },
+              {
+                "instance_id": "sensor",
+                "mating_id": "sensor-mating"
+              }
+            ],
+            "guides": [
+              {
+                "id": "center-guide",
+                "instance_id": "base",
+                "datum_id": "sensor-seat",
+                "position": [-11, 15, 4]
+              }
+            ],
+            "bend_radius_mm": 2,
+            "allowance_mm": 12,
+            "diameter_mm": 1.4,
+            "clearance_mm": 0.25
+          }
+        }
+      ],
+      "splices": [],
+      "cables": [
+        {
+          "id": "harness",
+          "name": "Sensor harness"
+        }
+      ],
+      "matings": [
+        {
+          "id": "controller-mating",
+          "name": "Controller mating",
+          "a_component_id": "socket_a",
+          "b_component_id": "plug_a",
+          "connected": true,
+          "pairs": [
+            {
+              "a_terminal_id": "t1",
+              "b_terminal_id": "t1"
+            },
+            {
+              "a_terminal_id": "t2",
+              "b_terminal_id": "t2"
+            }
+          ]
+        },
+        {
+          "id": "sensor-mating",
+          "name": "Sensor mating",
+          "a_component_id": "socket_b",
+          "b_component_id": "plug_b",
+          "connected": true,
+          "pairs": [
+            {
+              "a_terminal_id": "t1",
+              "b_terminal_id": "t1"
+            },
+            {
+              "a_terminal_id": "t2",
+              "b_terminal_id": "t2"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "assembly": {
+    "instances": [
+      {
+        "id": "base",
+        "part": "base",
+        "name": "Enclosure base"
+      },
+      {
+        "id": "lid",
+        "part": "lid",
+        "name": "Enclosure lid"
+      },
+      {
+        "id": "controller",
+        "part": "controller-pcb",
+        "name": "Controller board"
+      },
+      {
+        "id": "sensor",
+        "part": "sensor-pcb",
+        "name": "Sensor board"
+      },
+      {
+        "id": "post-a",
+        "part": "post",
+        "name": "Controller mounting support"
+      },
+      {
+        "id": "post-b",
+        "part": "post",
+        "name": "Sensor mounting support"
+      }
+    ],
+    "mates": [
+      {
+        "id": "ground",
+        "type": "fixed",
+        "parent": "world",
+        "child": "base"
+      },
+      {
+        "id": "hinge",
+        "type": "revolute",
+        "parent": "base",
+        "child": "lid",
+        "parent_datum": "hinge-axis",
+        "child_datum": "hinge-axis",
+        "limits": [
+          0,
+          90
+        ],
+        "value": 45
+      },
+      {
+        "id": "mount-controller",
+        "type": "fixed",
+        "parent": "base",
+        "child": "controller",
+        "parent_datum": "controller-seat",
+        "child_datum": "mount:seat"
+      },
+      {
+        "id": "mount-sensor",
+        "type": "fixed",
+        "parent": "base",
+        "child": "sensor",
+        "parent_datum": "sensor-seat",
+        "child_datum": "mount:seat"
+      },
+      {
+        "id": "support-controller",
+        "type": "fixed",
+        "parent": "base",
+        "child": "post-a",
+        "parent_datum": "controller-seat",
+        "parent_frame": {
+          "position": [
+            0,
+            0,
+            -3
+          ]
+        }
+      },
+      {
+        "id": "support-sensor",
+        "type": "fixed",
+        "parent": "base",
+        "child": "post-b",
+        "parent_datum": "sensor-seat",
+        "parent_frame": {
+          "position": [
+            0,
+            0,
+            -3
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "version": 4,
+  "revision": 2,
+  "items": [
+    {
+      "id": "selected-corner-chamfer",
+      "type": "part",
+      "name": "selected corner chamfer",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "plate",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "line",
+                "id": "plate/sketch/0/0",
+                "p0": {
+                  "x": 10,
+                  "y": 6
+                },
+                "p1": {
+                  "x": 10,
+                  "y": -6
+                }
+              },
+              {
+                "type": "line",
+                "id": "plate/sketch/0/1",
+                "p0": {
+                  "x": 10,
+                  "y": -6
+                },
+                "p1": {
+                  "x": -10,
+                  "y": -6
+                }
+              },
+              {
+                "type": "line",
+                "id": "plate/sketch/0/2",
+                "p0": {
+                  "x": -10,
+                  "y": -6
+                },
+                "p1": {
+                  "x": -10,
+                  "y": 6
+                }
+              },
+              {
+                "type": "line",
+                "id": "plate/sketch/0/3",
+                "p0": {
+                  "x": -10,
+                  "y": 6
+                },
+                "p1": {
+                  "x": 10,
+                  "y": 6
+                }
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": -10,
+                "y": 6
+              },
+              {
+                "x": -10,
+                "y": -6
+              },
+              {
+                "x": 10,
+                "y": -6
+              },
+              {
+                "x": 10,
+                "y": 6
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "plate",
+            "name": "plate",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "plate/sketch",
+              "profileId": "plate/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "plate",
+            "type": "extrusion",
+            "featureId": "plate",
+            "operation": "join",
+            "finishes": [
+              {
+                "kind": "chamfer",
+                "radius": 3,
+                "vertices": [
+                  3
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

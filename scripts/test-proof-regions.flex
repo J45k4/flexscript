@@ -5,6 +5,8 @@ fn suite(compiler) {
     ps_verify("requires writable_bytes(p,8);reads bytes(p,8);modifies bytes(p,8);ensures load64(p)==old(v);fn word(p,v){store64(p,v);return load64(p);}",0,"Verified roots: 1/1");
     ps_verify("requires writable_bytes(p,8);ensures result==old(v);fn wrong(p,v){store64(p,v+1);return load64(p);}",1,"COUNTEREXAMPLE: postcondition");
     ps_verify("requires readable_bytes(p,8);ensures result==old(load64(p));fn snapshot(p){return load64(p);}",0,"Verified roots: 1/1");
+    let shifted="requires size>=16 && size<=268435456;requires length>=16 && length<=131072 && length<=size;requires offset>=0 && offset<=size-length;requires readable_bytes(base,size);ensures readable_bytes(base+offset,length);lemma fn dynamic_shifted_range(base,size,offset,length) {}";
+    ps_verify_option(shifted,0,"Verified roots: 1/1","--no-trusted");
     ps_verify("global base=0;global cursor=0;requires cursor>=8 && cursor<=524288;requires readable_bytes(base+(cursor-8),8);reads base,cursor,bytes(base+(cursor-8),8);modifies cursor;ensures result==old(load64(base+(cursor-8)));fn root(){return intermediate();}fn intermediate(){if cursor<=0{return 0;}return helper();}requires cursor>=8 && cursor<=524288;requires readable_bytes(base+(cursor-8),8);reads base,cursor,bytes(base+(cursor-8),8);modifies cursor;ensures cursor==old(cursor)-8;ensures result==old(load64(base+(cursor-8)));fn helper(){cursor=cursor-8;return load64(base+cursor);}",0,"Verified roots: 2/2");
     ps_verify("requires writable_bytes(p,8);ensures result==old(load64(p));fn snapshot(p){let v=load64(p);store64(p,99);return v;}",0,"Verified roots: 1/1");
     ps_verify("verify;fn null(){return load8(0);}",1,"COUNTEREXAMPLE: memory read safety");
@@ -16,12 +18,56 @@ fn suite(compiler) {
     ps_verify("requires writable_bytes(p,1);requires p==q;ensures load8(q)==42;fn alias(p,q){store8(p,42);return 0;}",0,"Verified roots: 1/1");
     ps_verify("requires writable_bytes(p,1);requires readable_bytes(q,1);ensures load8(q)==old(load8(q));fn alias(p,q){store8(p,42);return 0;}",1,"COUNTEREXAMPLE: postcondition");
     ps_verify("requires writable_bytes(p,1);requires readable_bytes(q,1);requires disjoint_bytes(p,1,q,1);ensures load8(q)==old(load8(q));fn separate(p,q){store8(p,42);return 0;}",0,"Verified roots: 1/1");
+    ps_verify("requires writable_bytes(p,24);requires readable_bytes(q,24);requires disjoint_bytes(p,24,q,24);modifies bytes(p,24);ensures result==old(load64(q+8));fn separate_words(p,q,v){store64(p+8,v);return load64(q+8);}",0,"Verified roots: 1/1");
+    ps_verify("requires writable_bytes(p,8);requires readable_bytes(q,8);requires p==0x7ffffffffffffff8;requires disjoint_bytes(p,8,q,8);modifies bytes(p,8);ensures result==old(load64(q));fn last_word(p,q,v){store64(p,v);return load64(q);}",0,"Verified roots: 1/1");
+    let branch="requires choose==0 || choose==1;requires writable_bytes(p,8);requires readable_bytes(q,8);requires choose==0 || disjoint_bytes(p,8,q,8);requires choose!=0 || p==q;modifies bytes(p,8);ensures choose==0 || result==old(load64(q));ensures choose!=0 || result==v;fn path_specific_span(p,q,v,choose){if choose{proof{assert disjoint_bytes(p,8,q,8);}store64(p,v);return load64(q);}store64(p,v);return load64(q);}";
+    ps_verify(branch,0,"Verified roots: 1/1");
+    let overlap=ps_verify(h_replace(branch,"ensures choose!=0 || result==v;","ensures choose!=0 || result==old(load64(q));"),1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(overlap),"concrete replay:"),"overlapping branch write did not replay");
+    let conditional="requires choose==0 || choose==1;requires writable_bytes(p,8);requires readable_bytes(q,8);requires choose==0 || disjoint_bytes(p,8,q,8);requires choose!=0 || p==q;requires load64(q)==1 && v==2;modifies bytes(p,8);ensures choose==0 || result==old(load64(q));ensures choose!=0 || result==v;fn conditional_snapshot(p,q,v,choose){write_word(p,v);return load64(q);}";
+    let write_word="requires writable_bytes(p,8);modifies bytes(p,8);ensures load64(p)==v;fn write_word(p,v){store64(p,v);return 0;}";
+    ps_verify(h_cat(conditional,write_word),0,"Verified roots: 2/2");
+    let guarded_overlap=ps_verify(h_cat(h_replace(conditional,"ensures choose!=0 || result==v;",
+        "ensures choose!=0 || result==old(load64(q));"),write_word),1,"COUNTEREXAMPLE: postcondition in conditional_snapshot");
+    t_assert(h_has(h_out(guarded_overlap),"concrete replay:"),"conditionally separated read skipped an overlapping write");
     ps_verify("requires writable_bytes(p,1);modifies nothing;fn restore(p){let v=load8(p);store8(p,1);store8(p,v);return 0;}",1,"COUNTEREXAMPLE: write frame");
     ps_verify("requires writable_bytes(p,1);reads nothing;modifies bytes(p,1);fn write(p){return store8(p,42);}",0,"Verified roots: 1/1");
     ps_verify("requires readable_bytes(p,1);reads nothing;fn read(p){return load8(p);}",1,"COUNTEREXAMPLE: read frame");
     ps_verify("requires readable_bytes(p,1);reads nothing;ensures load8(p)==old(load8(p));fn specification(p){return 0;}",1,"COUNTEREXAMPLE: read frame");
     ps_verify("requires writable_bytes(p,8);reads bytes(p,4),bytes(p+4,4);modifies bytes(p,4);modifies bytes(p+4,4);ensures result==old(v);fn union(p,v){store64(p,v);return load64(p);}",0,"Verified roots: 1/1");
     ps_verify("requires writable_bytes(p,8);modifies bytes(p,7);fn outside(p){return store64(p,1);}",1,"COUNTEREXAMPLE: write frame");
+    let tail_write="requires writable_bytes(q,16);modifies bytes(q,16);ensures result==0;fn write_tail(q){store64(q,1);store64(q+8,2);return 0;}\n";
+    let tail_bounds="requires size>=16 && size<=268435456;requires offset>=0 && offset<=size-16;requires writable_bytes(p,size);requires writable_bytes(p+offset,16);";
+    let tail_body="ensures result==0;fn tail_in_frame(p,size,offset){return write_tail(p+offset);}\n";
+    ps_verify(h_cat(tail_write,h_cat3(tail_bounds,"modifies bytes(p,size);",tail_body)),0,"Verified roots: 2/2");
+    let short_tail=h_cat(tail_write,"requires p==4096 && size==32 && offset==16;");
+    short_tail=h_cat(short_tail,h_cat3(tail_bounds,"modifies bytes(p,size-1);",tail_body));
+    let missed=ps_verify(short_tail,1,"COUNTEREXAMPLE: write frame in tail_in_frame");
+    t_assert(h_has(h_out(missed),"concrete replay:"),"an off-by-one write frame did not replay");
+    let multi_bounds=h_cat3(tail_bounds,"requires writable_bytes(other,1);",
+        "requires disjoint_bytes(p,size,other,1);");
+    let multi_body=h_replace(tail_body,"p,size,offset)","p,size,offset,other)");
+    let union_case="requires writable_bytes(p,16);modifies bytes(p,8),bytes(p+8,8);ensures result==0;fn tail_in_union(p){return write_tail(p);}";
+    let multi=h_cat3(tail_write,h_cat3(multi_bounds,"modifies bytes(p,size),bytes(other,1);",multi_body),union_case);
+    ps_verify_option(multi,0,"Verified roots: 3/3","--no-trusted");
+    let multi_short=h_cat(tail_write,"requires p==4096 && size==32 && offset==16 && other==8192;");
+    multi_short=h_cat(multi_short,h_cat3(multi_bounds,"modifies bytes(p,size-1),bytes(other,1);",multi_body));
+    missed=ps_verify_option(multi_short,1,"COUNTEREXAMPLE: write frame in tail_in_frame","--no-trusted");
+    t_assert(h_has(h_out(missed),"concrete replay:"),"a shortened frame in a multi-region summary did not replay");
+    let prefix_bounds="requires capacity>=32 && capacity<=268435456;requires size>=32 && size<=capacity;requires writable_bytes(code,capacity);requires disjoint_bytes(code,capacity,source,source_size);";
+    let prefix_grant="ensures writable_bytes(code,size);";
+    let prefix_separation="ensures disjoint_bytes(code,size,source,source_size);";
+    let prefix=h_cat3(prefix_bounds,h_cat(prefix_grant,prefix_separation),"lemma fn output_prefix(code,capacity,size,source,source_size) {}");
+    ps_verify_option(prefix,0,"Verified roots: 1/1","--no-trusted");
+    ps_verify_option(h_replace(prefix,prefix_separation,"ensures disjoint_bytes(source,source_size,code,size);"),
+        0,"Verified roots: 1/1","--no-trusted");
+    let prefix_case=h_cat("requires code==4096 && capacity==64 && size==64 && source==4160 && source_size==1;",prefix);
+    let wide_grant=ps_verify_option(h_replace(prefix_case,prefix_grant,"ensures writable_bytes(code,size+1);"),
+        1,"COUNTEREXAMPLE: postcondition in output_prefix","--no-trusted");
+    t_assert(h_has(h_out(wide_grant),"concrete replay:"),"write permission beyond the prefix did not replay");
+    let wide_span=ps_verify_option(h_replace(prefix_case,prefix_separation,"ensures disjoint_bytes(code,size+1,source,source_size);"),
+        1,"COUNTEREXAMPLE: postcondition in output_prefix","--no-trusted");
+    t_assert(h_has(h_out(wide_span),"concrete replay:"),"overlap after a prefix extension did not replay");
     ps_verify("requires writable_bytes(p,2);modifies bytes(p,1);fn entry_bounds(p){p=p+1;return store8(p,1);}",1,"COUNTEREXAMPLE: write frame");
     ps_verify("requires writable_bytes(p,1);modifies nothing;requires flag==0;fn dead(p,flag){if flag{store8(p,1);}return 0;}",0,"Verified roots: 1/1");
     ps_verify("requires writable_bytes(p,1);ensures load8(p)==(old(flag)!=0);fn branch(p,flag){if flag{store8(p,1);}else{store8(p,0);}return 0;}",0,"Verified roots: 1/1");

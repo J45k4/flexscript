@@ -1,0 +1,36 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "type": "part",
+      "id": "native-part-1",
+      "name": "Equal lines and independent datum",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {"type": "referencePlane", "id": "plane-top", "name": "Top", "plane": "XY"},
+            {
+              "type": "sketch", "id": "native-sketch-1", "name": "Sketch 1", "targetId": "plane-top",
+              "relations": [
+                {"type": "horizontal", "id": "horizontal", "entityId": "native-entity-1"},
+                {"type": "fixed", "id": "start", "anchor": {"entityId": "native-entity-1", "point": "p0"}, "position": {"x": 0, "y": 0}},
+                {"type": "fixed", "id": "datum", "anchor": {"entityId": "native-entity-3", "point": "center"}, "position": {"x": 0, "y": 30}},
+                {"type": "coincident", "id": "at-datum", "a": {"entityId": "native-entity-3", "point": "center"}, "b": {"entityId": "native-entity-2", "point": "p0"}},
+                {"type": "perpendicular", "id": "upright", "a": "native-entity-1", "b": "native-entity-2"}
+              ],
+              "dimensions": [], "variables": []
+            },
+            {"type": "sketchLine", "id": "native-entity-1", "sketchId": "native-sketch-1", "p0": {"x": 0, "y": 0}, "p1": {"x": 20, "y": 0}},
+            {"type": "sketchLine", "id": "native-entity-2", "sketchId": "native-sketch-1", "p0": {"x": 0, "y": 30}, "p1": {"x": 0, "y": 40}},
+            {"type": "sketchPrimitive", "id": "native-entity-3", "sketchId": "native-sketch-1", "primitive": {"type": "point", "id": "native-entity-3", "center": {"x": 0, "y": 30}, "construction": true}}
+          ],
+          "rootNodeIds": ["plane-top", "native-sketch-1"]
+        },
+        "tree": {"orderedNodeIds": ["native-sketch-1"], "dirtySketchIds": []}
+      }
+    }
+  ],
+  "selectedPath": [0]
+}

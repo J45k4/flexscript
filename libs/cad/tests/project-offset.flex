@@ -1,0 +1,78 @@
+import "cad/project-offset-author.flex";
+import "cad/project-access.flex";
+import "cad/sketch-dimension.flex";
+fn node(p,id) {return pc_find(pc_nodes(cad_project_part(p)),id);}
+fn corner(p,id,end,x,y) {
+    let at=pc_uv(j_get(node(p,id),end));
+    return load64(at)==x && load64(at+8)==y;
+}
+fn main() {
+    let p=cad_project_open(m_read_file("libs/cad/tests/fixtures/offset.pcad"));let sk="native-sketch-1";
+    let info=cad_project_line_sketch(p,sk);m_assert(info,cg_error);
+    m_assert(j_integer(info,"degrees_of_freedom")==13 && cg_j_count(j_get(info,"offsets"))==3,"Offset constraint rank and dimensions");
+    p=cad_project_set_offset_distance(p,sk,"offset-chain-1","-3.5 mm");m_assert(p,cg_error);
+    m_assert(corner(p,"native-entity-3","p1",43500000,-3500000) && corner(p,"native-entity-4","p0",43500000,-3500000),"Joined miter changed sides");
+    m_assert(corner(p,"native-entity-1","p1",40000000,0),"Source corner stayed fixed");
+    p=cad_project_set_offset_distance(p,sk,"offset-distance-2","6 mm");m_assert(p,cg_error);
+    m_assert(corner(p,"native-entity-8","p0",0,-14000000),"Signed parallel line");
+    p=cad_project_set_offset_distance(p,sk,"offset-distance-1","6");m_assert(p,cg_error);
+    m_assert(pc_circle_measure(node(p,"native-entity-6"),"radius")==16000000,"Offset circle grew");
+    p=cad_project_set_circle_dimension(p,sk,"native-entity-5","radius","11");m_assert(p,cg_error);
+    m_assert(pc_circle_measure(node(p,"native-entity-6"),"radius")==17000000,"Dependent radius followed the source");
+    let original=j_encode(p);
+    m_assert(!cad_project_set_offset_distance(p,sk,"offset-chain-1","40"),"Collapsed corner rejected");
+    m_assert(!cad_project_set_offset_distance(p,sk,"offset-distance-1","-11"),"Collapsed circle rejected");
+    m_assert(!cad_project_set_offset_distance(p,sk,"offset-distance-2","0"),"Zero offset rejected");
+    m_assert(m_eq(original,j_encode(p)),"Rejected offsets preserve the document");
+    p=cad_project_open(original);m_assert(cad_project_line_sketch(p,sk),cg_error);
+    let fresh=cad_project_new("Offset chain");
+    let a=cg_v(0,0,0);let b=cg_v(30000000,0,0);let c=cg_v(30000000,20000000,0);let d=cg_v(0,20000000,0);
+    cad_project_add_primitive(fresh,sk,"line",a,b);cad_project_add_primitive(fresh,sk,"line",c,b);
+    cad_project_add_primitive(fresh,sk,"line",c,d);cad_project_add_primitive(fresh,sk,"line",a,d);
+    fresh=cad_project_add_offset(fresh,sk,"native-entity-2","5");m_assert(fresh,cg_error);
+    let chain=pc_first(j_get(node(fresh,sk),"relations"));m_assert(j_integer(chain,"side")==-1 && j_value(j_get(chain,"closed")),"CCW outward ring");
+    m_assert(corner(fresh,"native-entity-5","p0",-5000000,-5000000) && corner(fresh,"native-entity-6","p1",35000000,25000000),"Miter orientation follows the chain");
+    let saved=j_encode(fresh);m_assert(!cad_project_add_offset(fresh,sk,"native-entity-1","-11"),"Inverted chain rejected");
+    m_assert(m_eq(saved,j_encode(fresh)),"Failed creation preserves the original sketch");
+    // Reusing a generated line offsets that line alone. Original connectivity is unchanged.
+    fresh=cad_project_add_offset(fresh,sk,"native-entity-5","-2");m_assert(fresh,cg_error);
+    m_assert(corner(fresh,"native-entity-9","p1",35000000,-7000000),"Individual copy of a follower");
+    fresh=cad_project_set_offset_distance(fresh,sk,"offset-chain-1","6");m_assert(fresh,cg_error);
+    m_assert(corner(fresh,"native-entity-9","p1",36000000,-8000000),"Chained follower updates after editing upstream");
+    let close=cad_project_new("Submicron joint");cad_project_add_primitive(close,sk,"line",a,b);
+    cad_project_add_primitive(close,sk,"line",cg_v(30000600,0,0),c);
+    close=cad_project_add_offset(close,sk,"native-entity-2","2");m_assert(close,cg_error);
+    m_assert(corner(close,"native-entity-2","p0",30000000,0) && corner(close,"native-entity-3","p1",28000000,2000000),"Nearby ends acquire a persistent coincidence");
+    let fork=cad_project_new("Branch");cad_project_add_primitive(fork,sk,"line",a,b);cad_project_add_primitive(fork,sk,"line",c,b);
+    cad_project_add_primitive(fork,sk,"line",b,d);fork=cad_project_add_offset(fork,sk,"native-entity-1","-2");m_assert(fork,cg_error);
+    m_assert(corner(fork,"native-entity-4","p0",0,-2000000) && !node(fork,"native-entity-5"),"Fork terminates a chain");
+    let curved=cad_project_new("Arc offset");let pts=cg_array();
+    cg_push(pts,cg_v(10000000,0,0));cg_push(pts,cg_v(0,10000000,0));cg_push(pts,cg_v(-10000000,0,0));
+    let arc=cad_project_add_curve(curved,sk,"arc",pts);m_assert(arc,cg_error);
+    curved=cad_project_add_offset(curved,sk,j_string(arc,"id"),"1.5");m_assert(curved,cg_error);
+    curved=cad_project_set_curve_dimension(curved,sk,"native-entity-1","arcSweep","-90");m_assert(curved,cg_error);
+    m_assert(pc_circle_measure(node(curved,"native-entity-2"),"radius")==11500000 && pc_circle_measure(node(curved,"native-entity-2"),"arcSweep")==-90000000,"Offset arc follows signed sweep");
+    let rect=cad_project_new("Resized frame");cad_project_add_primitive(rect,sk,"rectangle",a,c);
+    rect=cad_project_add_offset(rect,sk,"native-entity-1","5");m_assert(rect,cg_error);
+    rect=cad_project_add_extrusion(rect,sk,1,10000000,"newBody");m_assert(rect,cg_error);
+    m_assert(cad_project_dimension(rect,"native-entity-1","width",j_number(40)),cg_error);
+    m_assert(corner(rect,"native-entity-1","p0",-5000000,0) && corner(rect,"native-entity-2","p0",-10000000,-5000000),"Driving width moves the outer frame");
+    let rep=cad_project_inspect_source(j_encode(rect));m_assert(!j_get(rep,"readOnly"),"Rectangular frame reopens editable");
+    saved=j_encode(rect);m_assert(!cad_project_dimension(rect,"native-entity-2","height",j_number(40)),"Derived rectangle cannot drive its source");
+    rect=cad_project_set_offset_distance(rect,sk,"offset-distance-1","-5");m_assert(rect,cg_error);saved=j_encode(rect);
+    m_assert(!cad_project_dimension(rect,"native-entity-1","height",j_number(9)) && m_eq(j_encode(rect),saved),"Collapsed frame preserves source, copy and relation");
+    let profile=cad_project_new("Profiles");let n=pc_nodes(cad_project_part(profile));
+    let poly=j_parse("{\"type\":\"polygon\",\"sides\":6,\"radius\":10,\"rotation\":15,\"center\":{\"x\":0,\"y\":0}}");
+    cg_j_text(poly,"id","hex");let shape=j_object();cg_j_text(shape,"type","sketchPrimitive");cg_j_text(shape,"id","hex");cg_j_text(shape,"sketchId",sk);j_add(shape,"primitive",poly);j_add(n,0,shape);
+    profile=cad_project_add_offset(profile,sk,"hex","3");m_assert(profile,cg_error);
+    let copied=pc_curve_geometry(node(profile,"native-entity-1"));m_assert(pc_pose_number(j_get(copied,"radius"))==13464102 && j_integer(copied,"rotation")==15,"Polygon offsets the sides by the requested distance");
+    let box=j_parse("{\"type\":\"rectangle\",\"width\":30,\"height\":18,\"rotation\":35,\"center\":{\"x\":0,\"y\":0}}");
+    cg_j_text(box,"id","rotated");shape=j_object();cg_j_text(shape,"type","sketchPrimitive");cg_j_text(shape,"id","rotated");cg_j_text(shape,"sketchId",sk);j_add(shape,"primitive",box);j_add(pc_nodes(cad_project_part(profile)),0,shape);
+    profile=cad_project_add_offset(profile,sk,"rotated","-2");m_assert(profile,cg_error);
+    copied=pc_curve_geometry(node(profile,"native-entity-2"));m_assert(pc_pose_number(j_get(copied,"width"))==26000000 && pc_pose_number(j_get(copied,"height"))==14000000 && j_integer(copied,"rotation")==35,"Rotated box keeps its frame");
+    let slot=j_parse("{\"type\":\"capsule\",\"width\":20,\"from\":{\"x\":0,\"y\":0},\"to\":{\"x\":30,\"y\":0},\"arcSegments\":12}");
+    cg_j_text(slot,"id","slot");shape=j_object();cg_j_text(shape,"type","sketchPrimitive");cg_j_text(shape,"id","slot");cg_j_text(shape,"sketchId",sk);j_add(shape,"primitive",slot);j_add(pc_nodes(cad_project_part(profile)),0,shape);
+    profile=cad_project_add_offset(profile,sk,"slot","-3");m_assert(profile,cg_error);
+    copied=pc_curve_geometry(node(profile,"native-entity-3"));m_assert(pc_pose_number(j_get(copied,"width"))==14000000 && j_integer(j_get(copied,"to"),"x")==30,"Slot keeps cap centers");
+    return 0;
+}

@@ -1,0 +1,334 @@
+{
+  "format": "puppycorp.pcad",
+  "schema_version": 1,
+  "units": "mm",
+  "nodes": [
+    {
+      "id": "controller-shape",
+      "type": "pcb-board",
+      "board_id": "controller-board"
+    },
+    {
+      "id": "sensor-shape",
+      "type": "pcb-board",
+      "board_id": "sensor-board"
+    }
+  ],
+  "parts": [
+    {
+      "id": "controller-pcb",
+      "node": "controller-shape",
+      "name": "Controller PCB",
+      "color": "#2c7f56"
+    },
+    {
+      "id": "sensor-pcb",
+      "node": "sensor-shape",
+      "name": "Sensor PCB",
+      "color": "#2c7f56"
+    }
+  ],
+  "assembly": {
+    "instances": [
+      {
+        "id": "controller",
+        "part": "controller-pcb",
+        "name": "Controller board"
+      },
+      {
+        "id": "sensor",
+        "part": "sensor-pcb",
+        "name": "Sensor board"
+      }
+    ],
+    "mates": [
+      {
+        "id": "mount-controller",
+        "type": "fixed",
+        "parent": "world",
+        "child": "controller",
+        "parent_frame": {
+          "position": [
+            6,
+            8,
+            7
+          ]
+        }
+      },
+      {
+        "id": "mount-sensor",
+        "type": "fixed",
+        "parent": "world",
+        "child": "sensor",
+        "parent_frame": {
+          "position": [
+            54,
+            8,
+            7
+          ]
+        }
+      }
+    ]
+  },
+  "electrical": {
+    "components": [
+      {
+        "id": "controller",
+        "reference": "U1",
+        "value": "Controller output",
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ]
+      },
+      {
+        "id": "socket_a",
+        "reference": "J1",
+        "value": "Controller socket",
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ]
+      },
+      {
+        "id": "socket_b",
+        "reference": "J2",
+        "value": "Sensor socket",
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ]
+      },
+      {
+        "id": "sensor",
+        "reference": "U2",
+        "value": "Sensor input",
+        "pins": [
+          {
+            "id": "power",
+            "number": "1",
+            "name": "Supply",
+            "role": "passive"
+          },
+          {
+            "id": "spare",
+            "number": "2",
+            "name": "Spare",
+            "no_connect": true
+          }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "id": "supply",
+        "name": "VCC",
+        "endpoints": [
+          {
+            "component_id": "controller",
+            "pin_id": "power"
+          },
+          {
+            "component_id": "socket_a",
+            "pin_id": "power"
+          },
+          {
+            "component_id": "socket_b",
+            "pin_id": "power"
+          },
+          {
+            "component_id": "sensor",
+            "pin_id": "power"
+          }
+        ]
+      }
+    ],
+    "boards": [
+      {
+        "id": "controller-board",
+        "name": "Controller board",
+        "size": [
+          40,
+          25
+        ],
+        "thickness": 1.6,
+        "clearance": 0.25,
+        "holes": [
+          {
+            "id": "seat",
+            "at": [
+              4,
+              4
+            ],
+            "diameter": 2
+          }
+        ],
+        "placements": [
+          {
+            "component_id": "controller",
+            "footprint": "HEADER_1X02_P2_54",
+            "at": [
+              10,
+              10
+            ],
+            "rotation": 90,
+            "pad_pins": [
+              "power",
+              "spare"
+            ]
+          },
+          {
+            "component_id": "socket_a",
+            "footprint": "HEADER_1X02_P2_54",
+            "at": [
+              24,
+              10
+            ],
+            "rotation": 90,
+            "pad_pins": [
+              "power",
+              "spare"
+            ]
+          }
+        ],
+        "tracks": [
+          {
+            "id": "controller-track",
+            "net_id": "supply",
+            "layer": "F.Cu",
+            "start": [
+              10,
+              10
+            ],
+            "end": [
+              24,
+              10
+            ],
+            "width": 0.4
+          }
+        ],
+        "vias": []
+      },
+      {
+        "id": "sensor-board",
+        "name": "Sensor board",
+        "size": [
+          40,
+          25
+        ],
+        "thickness": 1.6,
+        "clearance": 0.25,
+        "holes": [
+          {
+            "id": "seat",
+            "at": [
+              4,
+              4
+            ],
+            "diameter": 2
+          }
+        ],
+        "placements": [
+          {
+            "component_id": "socket_b",
+            "footprint": "HEADER_1X02_P2_54",
+            "at": [
+              10,
+              10
+            ],
+            "rotation": 90,
+            "pad_pins": [
+              "power",
+              "spare"
+            ]
+          },
+          {
+            "component_id": "sensor",
+            "footprint": "HEADER_1X02_P2_54",
+            "at": [
+              24,
+              10
+            ],
+            "rotation": 90,
+            "pad_pins": [
+              "power",
+              "spare"
+            ]
+          }
+        ],
+        "tracks": [
+          {
+            "id": "sensor-front",
+            "net_id": "supply",
+            "layer": "F.Cu",
+            "start": [
+              10,
+              10
+            ],
+            "end": [
+              17,
+              10
+            ],
+            "width": 0.4
+          },
+          {
+            "id": "sensor-back",
+            "net_id": "supply",
+            "layer": "B.Cu",
+            "start": [
+              17,
+              10
+            ],
+            "end": [
+              24,
+              10
+            ],
+            "width": 0.4
+          }
+        ],
+        "vias": [
+          {
+            "id": "sensor-via",
+            "net_id": "supply",
+            "at": [
+              17,
+              10
+            ],
+            "diameter": 1.6,
+            "drill": 0.8
+          }
+        ]
+      }
+    ]
+  }
+}

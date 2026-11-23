@@ -1,6 +1,9 @@
 import "harness.flex";
 fn ps_verify(source,status,message) {
-    t_program(source);let before=h_sha(t_fixture);let p=h_run(h_args(t_compiler,"verify",t_fixture,0,0,0));
+    return ps_verify_option(source,status,message,0);
+}
+fn ps_verify_option(source,status,message,option) {
+    t_program(source);let before=h_sha(t_fixture);let p=h_run(h_args(t_compiler,"verify",t_fixture,option,0,0));
     if h_status(p)!=status {h_print(2,h_out(p));h_print(2,source);}
     h_check(p,status,0);t_assert(h_has(h_out(p),message),h_cat3(message,": ",h_out(p)));
     t_assert(h_equal(h_sha(t_fixture),before),"verification changed source");

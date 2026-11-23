@@ -137,12 +137,30 @@ fn pp_metadata_aliases() {
     pp_check(pw_multiply(c,pair,one)==pair,"unit multiplication must retain the shared sum");
     pp_check(load64(saved)==43 && load64(saved+8)==x && load64(saved+16)==y,"unit multiplication overwrote expression metadata");
     let first=pw_subtract(c,pw_subtract(c,x,z),y);
+    let first_meta=pw_meta(c,first);let first_kind=load64(first_meta);let first_left=load64(first_meta+8);let first_right=load64(first_meta+16);
     let second=pw_subtract(c,pw_subtract(c,x,y),z);
+    pp_check(load64(first_meta)==first_kind && load64(first_meta+8)==first_left && load64(first_meta+16)==first_right,"equivalent subtraction reuse overwrote shared metadata");
     pp_query(c,-pw_equal(c,first,second),2,0,0);
+    pp_query(c,-pw_equal(c,first,pw_subtract(c,x,pw_add(c,y,z))),2,0,0);
+    pp_query(c,-pw_equal(c,first,pw_subtract(c,x,z)),1,0,0);
     pp_query(c,-pw_equal(c,pw_subtract(c,increment,one),y),2,0,0);
     let index=0;while index<load64(c+48) {let word=load64(c+64)+index*64*8;let meta=pw_meta(c,word);let kind=load64(meta);
         if kind==43 || kind==45 {pp_check(load64(meta+8)<word && load64(meta+16)<word,"arithmetic metadata contains a forward reference");}index=index+1;
     }
+    pw_release(c);return 0;
+}
+fn pp_shared_addend_equality() {
+    let c=pw_context(4,4096,512);
+    let base=pw_input(c);let left=pw_input(c);let right=pw_input(c);
+    // Compare with the raw ripple adder for every four-bit assignment,
+    // including sums that wrap. The raw results have no arithmetic metadata.
+    let raw=pw_equal(c,pw_add_carry(c,base,left,-1),pw_add_carry(c,base,right,-1));
+    let base_left=pw_add(c,base,left);let left_base=pw_add(c,left,base);
+    let base_right=pw_add(c,base,right);let right_base=pw_add(c,right,base);
+    pp_query(c,pw_xor(c,raw,pw_equal(c,base_left,base_right)),2,0,0);
+    pp_query(c,pw_xor(c,raw,pw_equal(c,base_left,right_base)),2,0,0);
+    pp_query(c,pw_xor(c,raw,pw_equal(c,left_base,base_right)),2,0,0);
+    pp_query(c,pw_xor(c,raw,pw_equal(c,left_base,right_base)),2,0,0);
     pw_release(c);return 0;
 }
 fn pp_word_arm_masks() {
@@ -223,4 +241,4 @@ fn pp_absorption() {
         pp_query(c,pw_and(c,bound,-correct),2,0,0);pp_query(c,pw_and(c,bound,correct),1,0,0);syscall(11,expected,192,0,0,0,0);bits=bits+1;
     }syscall(11,values,192,0,0,0,0);pw_release(c);return 0;
 }
-fn main(argc,argv) {h_environment(argc,argv);pp_field();pp_overflow();pp_clamp();pp_slice();pp_select_truth();pp_offsets();pp_metadata_aliases();pp_word_arm_masks();pp_nested_select_truth();pp_nested_word_arms();pp_absorption();h_print(1,h_cat3("PASS: ",h_int(pp_checks)," universal word-property checks\n"));return 0;}
+fn main(argc,argv) {h_environment(argc,argv);pp_field();pp_overflow();pp_clamp();pp_slice();pp_select_truth();pp_offsets();pp_metadata_aliases();pp_shared_addend_equality();pp_word_arm_masks();pp_nested_select_truth();pp_nested_word_arms();pp_absorption();h_print(1,h_cat3("PASS: ",h_int(pp_checks)," universal word-property checks\n"));return 0;}

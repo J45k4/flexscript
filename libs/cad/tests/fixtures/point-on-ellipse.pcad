@@ -1,0 +1,317 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "ellipse-guide-part",
+      "type": "part",
+      "name": "Point on ellipse",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Point on curve",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "ellipse-guide-contact",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "probe",
+                    "point": "center"
+                  },
+                  "b": "ellipse-guide"
+                },
+                {
+                  "id": "ellipse-guide-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "ellipse-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 3,
+                    "y": 2
+                  }
+                },
+                {
+                  "id": "ellipse-guide-width",
+                  "type": "width",
+                  "entityId": "ellipse-guide",
+                  "value": 40
+                },
+                {
+                  "id": "ellipse-guide-height",
+                  "type": "height",
+                  "entityId": "ellipse-guide",
+                  "value": 12
+                },
+                {
+                  "id": "ellipse-guide-rotation",
+                  "type": "rotation",
+                  "entityId": "ellipse-guide",
+                  "value": 32
+                }
+              ]
+            },
+            {
+              "id": "ellipse-guide",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "ellipse-guide",
+                "type": "ellipse",
+                "center": {
+                  "x": 3,
+                  "y": 2
+                },
+                "width": 40,
+                "height": 12,
+                "rotation": 32,
+                "segments": 128
+              }
+            },
+            {
+              "id": "probe",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "probe",
+                "type": "point",
+                "center": {
+                  "x": 8.726939692879977,
+                  "y": 11.70577981174701
+                },
+                "construction": true
+              }
+            },
+            {
+              "id": "proof-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "proof-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "proof-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "swept-guide-part",
+      "type": "part",
+      "name": "Point on elliptic arc",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Point on curve",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "swept-guide-contact",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "probe",
+                    "point": "center"
+                  },
+                  "b": "swept-guide"
+                },
+                {
+                  "id": "swept-guide-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "swept-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 2,
+                    "y": -3
+                  }
+                },
+                {
+                  "id": "swept-guide-width",
+                  "type": "width",
+                  "entityId": "swept-guide",
+                  "value": 40
+                },
+                {
+                  "id": "swept-guide-height",
+                  "type": "height",
+                  "entityId": "swept-guide",
+                  "value": 14
+                },
+                {
+                  "id": "swept-guide-rotation",
+                  "type": "rotation",
+                  "entityId": "swept-guide",
+                  "value": -25
+                },
+                {
+                  "id": "swept-guide-sweep",
+                  "type": "arcSweep",
+                  "entityId": "swept-guide",
+                  "value": -120
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 42,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "swept-guide",
+              "type": "sketchArc",
+              "sketchId": "native-sketch-1",
+              "arc": {
+                "id": "swept-guide",
+                "type": "ellipticArc",
+                "center": {
+                  "x": 2,
+                  "y": -3
+                },
+                "width": 40,
+                "height": 14,
+                "rotation": -25,
+                "startAngle": 0.5235987755982988,
+                "sweep": -2.0943951023931953,
+                "segments": 64,
+                "construction": true
+              }
+            },
+            {
+              "id": "probe",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "probe",
+                "type": "point",
+                "center": {
+                  "x": 3.8338690644589497,
+                  "y": -11.315615785391454
+                },
+                "construction": true
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 42,
+                  "y": 0
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "proof-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "proof-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "proof-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

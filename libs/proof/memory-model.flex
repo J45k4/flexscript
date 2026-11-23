@@ -167,7 +167,28 @@ fn pbm_check(model) {
 fn pbm_release(model) {
     if !model {return 0;}if load64(model+40) {syscall(11,load64(model+40),load64(model+48),0,0,0,0);}return syscall(11,model,load64(model+96),0,0,0,0);
 }
-fn pbm_replay(memory,assignment,budget) {
+// Report conflicting decoded observations in the same abstract map. The
+// pairs are hints for constructing valid congruence axioms in the encoder.
+fn pbm_probe_conflicts(model,pairs,capacity) {
+    let count=0;let table=load64(model+104);let i=0;
+    while i<load64(model+112) && count<capacity {
+        let row=table+i*48;let j=0;
+        while j<i && count<capacity {
+            if !pbm_tick(model) {return count;}
+            let other=table+j*48;
+            if load64(row)==load64(other) && load64(row+8)==load64(other+8) &&
+                (load64(row+16)!=load64(other+16) || load64(row+24)!=load64(other+24) ||
+                 load64(row+32)!=load64(other+32) || load64(row+40)!=load64(other+40)) {
+                store64(pairs+count*16,i);store64(pairs+count*16+8,j);count=count+1;
+            }
+            j=j+1;
+        }
+        i=i+1;
+    }
+    return count;
+}
+fn pbm_complete(memory,assignment,budget,conflicts,capacity) {
+    if conflicts {store64(conflicts,0);}
     if !memory || !assignment || budget<=0 || load64(memory+112) {return 0;}let c=load64(memory);if load64(c+72) {return 0;}
     let gates=load64(c+8)+1;let probes=load64(memory+40);let nodes=load64(memory+16);let regions=load64(memory+88);
     let size=160+gates*8+16384*8+probes*48+nodes*64+regions*40;let model=alloc(size);if model<0 {return 0;}let i=0;while i<160 {store64(model+i,0);i=i+8;}
@@ -175,5 +196,9 @@ fn pbm_replay(memory,assignment,budget) {
     store64(model+72,load64(c));let mask= -1;if load64(c)<64 {mask=(1<<load64(c))-1;}store64(model+80,mask);store64(model+88,1<<(load64(c)-1));store64(model+96,size);
     store64(model+104,load64(model+16)+16384*8);store64(model+112,probes);store64(model+120,load64(model+104)+probes*48);store64(model+128,nodes);
     store64(model+136,load64(model+120)+nodes*64);store64(model+144,regions);
-    if !pbm_gates(model,assignment) || !pbm_decode(model) || !pbm_cells(model) || !pbm_check(model) {pbm_release(model);return 0;}return model;
+    if !pbm_gates(model,assignment) || !pbm_decode(model) {pbm_release(model);return 0;}
+    if pbm_cells(model) && pbm_check(model) {return model;}
+    if conflicts {store64(conflicts,pbm_probe_conflicts(model,conflicts+8,capacity));}
+    pbm_release(model);return 0;
 }
+fn pbm_replay(memory,assignment,budget) {return pbm_complete(memory,assignment,budget,0,0);}

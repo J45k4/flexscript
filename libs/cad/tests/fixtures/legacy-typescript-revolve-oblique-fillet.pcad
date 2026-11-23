@@ -1,0 +1,59 @@
+{
+  "version": 4,
+  "revision": 2,
+  "items": [
+    {
+      "id": "revolve-oblique-fillet",
+      "type": "part",
+      "name": "revolve oblique fillet",
+      "data": {
+        "features": [],
+        "solidSteps": [
+          {
+            "outline": [
+              {
+                "x": 3,
+                "y": 0
+              },
+              {
+                "x": 12,
+                "y": 0
+              },
+              {
+                "x": 10,
+                "y": 9
+              },
+              {
+                "x": 3,
+                "y": 9
+              }
+            ],
+            "angle": 270,
+            "segments": 24,
+            "translation": {
+              "x": 4,
+              "y": -7,
+              "z": 3
+            },
+            "id": "seat",
+            "type": "revolve",
+            "operation": "join",
+            "finishes": [
+              {
+                "kind": "fillet",
+                "radius": 1.2,
+                "vertices": [
+                  1
+                ],
+                "segments": 7
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

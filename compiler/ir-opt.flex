@@ -1,6 +1,7 @@
 import "ir-effects.flex";
 import "ir-effect-targets.flex";
 import "ir-cse.flex";
+import "ir-layout.flex";
 // Shared optimizations on resolved accumulator/stack word IR. No target
 // instruction encodings or register assumptions belong in these passes.
 global ir_opt_enabled=1;
@@ -9,9 +10,6 @@ global ir_opt_after=0;
 global ir_opt_folds=0;
 global ir_opt_branches=0;
 global ir_opt_dead=0;
-global io_code=0;
-global io_flags=0;
-global io_map=0;
 global io_work=0;
 global io_arena=0;
 global io_capacity=0;
@@ -23,8 +21,6 @@ fn ir_opt_select(value) {
 fn io_live(pc) {return load8(io_flags+pc/16)&1;}
 fn io_drop(pc) {store8(io_flags+pc/16,load8(io_flags+pc/16)&254);return 0;}
 fn io_boundary(pc) {store8(io_flags+pc/16,load8(io_flags+pc/16)|2);return 0;}
-fn io_op(pc) {return load64(io_code+pc);}
-fn io_arg(pc) {return load64(io_code+pc+8);}
 fn io_set(pc,op,arg) {store64(io_code+pc,op);store64(io_code+pc+8,arg);return 0;}
 fn io_comparison(op) {return op==259 || op==260 || op==60 || op==62 || op==261 || op==262;}
 fn io_fold(start,end) {
@@ -51,7 +47,7 @@ fn io_fold(start,end) {
                 if io_op(first)==1 && io_op(c)==2 && io_op(a)==1 {
                     let left=io_arg(first);let right=value;let binary_op=io_arg(b);
                     // Preserve division traps and wrapping/signed word semantics.
-                    if (binary_op!=47 && binary_op!=37) || (right && !(left==0x8000000000000000 && right==(-1))) {
+                    if word_binary_can_fold(binary_op,left,right) {
                         io_set(first,1,word_binary_result(binary_op,left,right));io_drop(c);io_drop(a);io_drop(b);
                         depth=depth-3;changed=1;ir_opt_folds=ir_opt_folds+1;
                     }
@@ -91,6 +87,31 @@ fn io_reach(start,end) {
         pc=pc+16;
     }return 0;
 }
+fn io_relocate_guarded_call(count,i,calls_used) {
+    let size=count*16;
+    let c=calls+i*32;
+    let at=load64(c+16)-8;
+    if at<0 || at>size-16 || (at&15) {return -1;}
+    if io_live(at) {
+        store64(c+16,load64(io_map+at/2)+8);
+        net_copy(calls+calls_used*32,c,32);
+        return calls_used+1;
+    }
+    return calls_used;
+}
+
+fn io_relocate_guarded_calls(count) {
+    let calls_used=0;
+    let i=0;
+    while i<call_count {
+        let updated=io_relocate_guarded_call(count,i,calls_used);
+        if updated<0 {return -1;}
+        calls_used=updated;
+        i=i+1;
+    }
+    return calls_used;
+}
+
 fn ir_optimize() {
     ie_ready=0;
     ir_opt_before=output_size/16;ir_opt_after=ir_opt_before;ir_opt_folds=0;ir_opt_branches=0;ir_opt_dead=0;ir_opt_cse=0;
@@ -120,7 +141,7 @@ fn ir_optimize() {
         // until this backend carries explicit reconvergence metadata.
         if hp_machine!=2 {io_thread(start,end);}io_reach(start,end);i=i+1;
     }
-    let bytes=0;pc=0;while pc<size {store64(io_map+pc/2,bytes);if io_live(pc) {bytes=bytes+16;}pc=pc+16;}store64(io_map+size/2,bytes);
+    let bytes=io_build_layout(count);
     // Reuse writable output, but never overwrite a serialized FIR input blob.
     if frontend_blob && output>=frontend_blob && output<frontend_blob+frontend_blob_size {
         output=alloc(size);if output<0 {fail("cannot allocate optimized FIR instructions");}
@@ -128,14 +149,12 @@ fn ir_optimize() {
     // Only io_code is rewritten until every old PC has a mapping. Function
     // names and the serialized frontend representation remain untouched.
     pc=0;while pc<size {
-        if io_live(pc) {let op=io_op(pc);let arg=io_arg(pc);if op>=10 && op<=12 {arg=load64(io_map+arg/2);}
-            let at=load64(io_map+pc/2);store64(output+at,op);store64(output+at+8,arg);}
+        if io_live(pc) {io_write_compacted_instruction(pc,io_compacted_offset(pc));}
         pc=pc+16;
     }
-    i=0;while i<function_count {let f=functions+i*32;store64(f+16,load64(io_map+load64(f+16)/2));i=i+1;}
-    let calls_used=0;i=0;while i<call_count {let c=calls+i*32;let at=load64(c+16)-8;
-        if io_live(at) {store64(c+16,load64(io_map+at/2)+8);net_copy(calls+calls_used*32,c,32);calls_used=calls_used+1;}i=i+1;
-    }
+    i=0;while i<function_count {let f=functions+i*32;io_relocate_function(f,load64(f+16));i=i+1;}
+    let calls_used=io_relocate_guarded_calls(count);
+    if calls_used<0 {fail("invalid call record in IR optimizer");}
     call_count=calls_used;output_size=bytes;ir_opt_after=bytes/16;
     return 0;
 }

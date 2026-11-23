@@ -1,0 +1,471 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "pierced-top-cap",
+      "type": "part",
+      "name": "pierced-top-cap",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "base-sketch",
+              "type": "sketch",
+              "name": "Pierced base profile",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "base-outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "base-sketch",
+              "p0": {
+                "x": 30,
+                "y": 24
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "circle-aperture",
+              "type": "sketchPrimitive",
+              "sketchId": "base-sketch",
+              "primitive": {
+                "id": "circle-aperture",
+                "type": "circle",
+                "center": {
+                  "x": 8,
+                  "y": 6
+                },
+                "radius": 3,
+                "segments": 16
+              }
+            },
+            {
+              "id": "wall-aperture",
+              "type": "sketchCornerRectangle",
+              "sketchId": "base-sketch",
+              "p0": {
+                "x": 17,
+                "y": 8
+              },
+              "p1": {
+                "x": 24,
+                "y": 15
+              }
+            },
+            {
+              "id": "base",
+              "type": "extrude",
+              "name": "Pierced base",
+              "sketchId": "base-sketch",
+              "profileId": "base-sketch-profile-1",
+              "operation": "newBody",
+              "depth": 6
+            },
+            {
+              "id": "face-base-base-solid-face-26",
+              "type": "face",
+              "sourceId": "base",
+              "faceId": "base-solid-face-26"
+            },
+            {
+              "id": "mounted",
+              "type": "sketch",
+              "name": "Mounted profile",
+              "targetId": "face-base-base-solid-face-26",
+              "dimensions": []
+            },
+            {
+              "id": "boss-outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "mounted",
+              "p0": {
+                "x": 6,
+                "y": 13
+              },
+              "p1": {
+                "x": 16,
+                "y": 20
+              }
+            },
+            {
+              "id": "boss",
+              "type": "extrude",
+              "name": "Mounted boss",
+              "sketchId": "mounted",
+              "profileId": "mounted-profile-1",
+              "operation": "join",
+              "depth": 4
+            },
+            {
+              "id": "edge-boss-boss-solid-edge-2",
+              "type": "edge",
+              "sourceId": "boss",
+              "edgeId": "boss-solid-edge-2"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Pierced support bevel",
+              "edgeId": "edge-boss-boss-solid-edge-2",
+              "d1": 0.5,
+              "d2": 1.25
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "base",
+            "boss",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "base-sketch",
+            "base",
+            "mounted",
+            "boss",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "pierced-bottom-cap",
+      "type": "part",
+      "name": "pierced-bottom-cap",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "base-sketch",
+              "type": "sketch",
+              "name": "Pierced base profile",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "base-outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "base-sketch",
+              "p0": {
+                "x": 30,
+                "y": 24
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "circle-aperture",
+              "type": "sketchPrimitive",
+              "sketchId": "base-sketch",
+              "primitive": {
+                "id": "circle-aperture",
+                "type": "circle",
+                "center": {
+                  "x": 8,
+                  "y": 6
+                },
+                "radius": 3,
+                "segments": 16
+              }
+            },
+            {
+              "id": "wall-aperture",
+              "type": "sketchCornerRectangle",
+              "sketchId": "base-sketch",
+              "p0": {
+                "x": 17,
+                "y": 8
+              },
+              "p1": {
+                "x": 24,
+                "y": 15
+              }
+            },
+            {
+              "id": "base",
+              "type": "extrude",
+              "name": "Pierced base",
+              "sketchId": "base-sketch",
+              "profileId": "base-sketch-profile-1",
+              "operation": "newBody",
+              "depth": 6
+            },
+            {
+              "id": "face-base-base-solid-face-25",
+              "type": "face",
+              "sourceId": "base",
+              "faceId": "base-solid-face-25"
+            },
+            {
+              "id": "mounted",
+              "type": "sketch",
+              "name": "Mounted profile",
+              "targetId": "face-base-base-solid-face-25",
+              "dimensions": []
+            },
+            {
+              "id": "boss-outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "mounted",
+              "p0": {
+                "x": 6,
+                "y": 13
+              },
+              "p1": {
+                "x": 16,
+                "y": 20
+              }
+            },
+            {
+              "id": "boss",
+              "type": "extrude",
+              "name": "Mounted boss",
+              "sketchId": "mounted",
+              "profileId": "mounted-profile-1",
+              "operation": "join",
+              "depth": 4
+            },
+            {
+              "id": "edge-boss-boss-solid-edge-2",
+              "type": "edge",
+              "sourceId": "boss",
+              "edgeId": "boss-solid-edge-2"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Pierced support bevel",
+              "edgeId": "edge-boss-boss-solid-edge-2",
+              "d1": 0.5,
+              "d2": 1.25
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "base",
+            "boss",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "base-sketch",
+            "base",
+            "mounted",
+            "boss",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "pierced-aperture-side",
+      "type": "part",
+      "name": "pierced-aperture-side",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "base-sketch",
+              "type": "sketch",
+              "name": "Pierced base profile",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "base-outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "base-sketch",
+              "p0": {
+                "x": 30,
+                "y": 24
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "circle-aperture",
+              "type": "sketchPrimitive",
+              "sketchId": "base-sketch",
+              "primitive": {
+                "id": "circle-aperture",
+                "type": "circle",
+                "center": {
+                  "x": 8,
+                  "y": 6
+                },
+                "radius": 3,
+                "segments": 16
+              }
+            },
+            {
+              "id": "wall-aperture",
+              "type": "sketchCornerRectangle",
+              "sketchId": "base-sketch",
+              "p0": {
+                "x": 17,
+                "y": 8
+              },
+              "p1": {
+                "x": 24,
+                "y": 15
+              }
+            },
+            {
+              "id": "base",
+              "type": "extrude",
+              "name": "Pierced base",
+              "sketchId": "base-sketch",
+              "profileId": "base-sketch-profile-1",
+              "operation": "newBody",
+              "depth": 6
+            },
+            {
+              "id": "face-base-base-solid-face-21",
+              "type": "face",
+              "sourceId": "base",
+              "faceId": "base-solid-face-21"
+            },
+            {
+              "id": "mounted",
+              "type": "sketch",
+              "name": "Mounted profile",
+              "targetId": "face-base-base-solid-face-21",
+              "dimensions": []
+            },
+            {
+              "id": "boss-outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "mounted",
+              "p0": {
+                "x": 1,
+                "y": 1
+              },
+              "p1": {
+                "x": 5,
+                "y": 4
+              }
+            },
+            {
+              "id": "boss",
+              "type": "extrude",
+              "name": "Mounted boss",
+              "sketchId": "mounted",
+              "profileId": "mounted-profile-1",
+              "operation": "join",
+              "depth": 2.5
+            },
+            {
+              "id": "edge-boss-boss-solid-edge-2",
+              "type": "edge",
+              "sourceId": "boss",
+              "edgeId": "boss-solid-edge-2"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Pierced support bevel",
+              "edgeId": "edge-boss-boss-solid-edge-2",
+              "d1": 0.5,
+              "d2": 1.25
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "base",
+            "boss",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "base-sketch",
+            "base",
+            "mounted",
+            "boss",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

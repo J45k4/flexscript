@@ -12,11 +12,17 @@ global vm_allocated=0;
 global vm_choices=0;
 global vm_choice_tail=0;
 global vm_allocations=0;
+global vm_disjoint_spans=0;
+global vm_disjoint_count=0;
 global rm_model=0;
 global rm_allocations=0;
 global rm_identity=0;
 fn vm_take(size) {let p=alloc(size+16);if p<0 {fail("cannot allocate memory proof state");}store64(p,vm_allocations);store64(p+8,size+16);vm_allocations=p;return p+16;}
-fn vm_release() {while vm_allocations {let p=vm_allocations;vm_allocations=load64(p);syscall(11,p,load64(p+8),0,0,0,0);}if vm_memory {pb_release(vm_memory);vm_memory=0;}return 0;}
+fn vm_release() {
+    vm_disjoint_spans=0;vm_disjoint_count=0;
+    while vm_allocations {let p=vm_allocations;vm_allocations=load64(p);syscall(11,p,load64(p+8),0,0,0,0);}
+    if vm_memory {pb_release(vm_memory);vm_memory=0;}return 0;
+}
 fn rm_take(size) {let p=alloc(size+16);if p<0 {vr_stopped=1;return 0;}store64(p,rm_allocations);store64(p+8,size+16);rm_allocations=p;return p+16;}
 fn rm_release() {while rm_allocations {let p=rm_allocations;rm_allocations=load64(p);syscall(11,p,load64(p+8),0,0,0,0);}if rm_model {pbm_release(rm_model);rm_model=0;}return 0;}
 fn vm_primitive(node) {
@@ -47,13 +53,42 @@ fn vm_frame_allows(state,frame,snapshot,address) {
     let identity=load64(current+40);let fresh=pw_and(vf_context,pw_truth(vf_context,identity),-pw_equal(vf_context,identity,load64(old+40)));
     return pw_or(vf_context,allowed,fresh);
 }
+// Containment in any one frame suffices. The caller also checks pointwise
+// effects so adjacent regions and fresh allocations can jointly cover a span.
+fn vm_frame_span_inside(frame,p,n) {
+    let allowed= -1;
+    while frame {
+        let base=load64(frame);
+        let size=load64(frame+8);
+        if pb_span_shares_base(vm_memory,base,p) {
+            let contained=pb_span_contains(vm_memory,base,size,p,n);
+            allowed=pw_or(vf_context,allowed,pw_and(vf_context,pb_valid(vm_memory,base,size),contained));
+        }
+        frame=load64(frame+16);
+    }
+    return allowed;
+}
 fn vm_check_access(state,event) {
     let info=load64(state+120);let write=load64(event+16);let frame=load64(info+8);let declared=load64(load64(state)+96);let kind="read frame";
     if write==1 {frame=load64(info+16);declared=load64(load64(state)+112);kind="write frame";}
     if write==2 {frame=load64(info+32);declared=pm_clause(load64(state),9);kind="release frame";}if !declared {return 0;}
     let saved=load64(state+24);store64(state+24,load64(event+24));let p=load64(event);let n=load64(event+8);let bytes=load64(event+40);let safe=1;
-    if bytes {let i=0;while i<bytes {safe=pw_and(vf_context,safe,vm_frame_allows(state,frame,load64(event+56),pw_add(vf_context,p,pw_constant(vf_context,i))));i=i+1;}}
-    else {let address=pw_input(vf_context);safe=pw_or(vf_context,-pb_member(vm_memory,p,n,address),vm_frame_allows(state,frame,load64(event+56),address));}
+    if bytes && frame && !load64(frame+16) && !vm_allocated {
+        let base=load64(frame);let size=load64(frame+8);
+        // For one valid entry span, containment checks the same byte set as
+        // individual memberships of this contiguous, nonempty access.
+        safe=pw_and(vf_context,pb_valid(vm_memory,base,size),pb_span_contains(vm_memory,base,size,p,n));
+    } else if bytes {
+        let i=0;
+        while i<bytes {
+            safe=pw_and(vf_context,safe,vm_frame_allows(state,frame,load64(event+56),pw_add(vf_context,p,pw_constant(vf_context,i))));
+            i=i+1;
+        }
+    } else {
+        let address=pw_input(vf_context);
+        safe=pw_or(vf_context,-pb_member(vm_memory,p,n,address),vm_frame_allows(state,frame,load64(event+56),address));
+    }
+    safe=pw_or(vf_context,safe,vm_frame_span_inside(frame,p,n));
     vf_obligation(state,load64(event+32),kind,safe);store64(state+24,saved);return 0;
 }
 fn vm_effect(state,node,p,n,write,bytes,snapshot) {
@@ -88,6 +123,140 @@ fn vm_prepare(state) {
     }}clause=load64(clause+48);}
     store64(info,1);let event=load64(info+24);while event {vm_check_access(state,event);event=load64(event+48);}store64(info+24,0);return 0;
 }
+fn vm_disjoint_subspan(outer,inner) {
+    let left=load64(outer);let left_size=load64(outer+8);
+    let right=load64(outer+16);let right_size=load64(outer+24);
+    let p=load64(inner);let n=load64(inner+8);let q=load64(inner+16);let m=load64(inner+24);
+    if !pb_span_shares_base(vm_memory,left,p) || !pb_span_shares_base(vm_memory,right,q) {
+        if !pb_span_shares_base(vm_memory,left,q) || !pb_span_shares_base(vm_memory,right,p) {return 0;}
+        p=load64(inner+16);n=load64(inner+24);q=load64(inner);m=load64(inner+8);
+    }
+    let a=pb_span_contains(vm_memory,left,left_size,p,n);
+    let b=pb_span_contains(vm_memory,right,right_size,q,m);
+    // A true outer predicate supplies two valid, disjoint spans. Containment
+    // preserves that separation, including at the end of the address space.
+    let antecedent=pw_and(vf_context,load64(outer+32),pw_and(vf_context,a,b));
+    return pb_axiom(vm_memory,pw_or(vf_context,-antecedent,load64(inner+32)));
+}
+
+fn vm_disjoint_span(args) {
+    let p=load64(args);let n=load64(args+8);let q=load64(args+16);let m=load64(args+24);
+    let predicate=pb_disjoint(vm_memory,p,n,q,m);
+    if !predicate || predicate== -1 || load64(vf_context+72) {return predicate;}
+    // Cache a bounded number of source predicates. Allocation checks in the
+    // memory model continue to use the raw disjointness circuit.
+    if !vm_disjoint_spans {vm_disjoint_spans=vm_take(32*48);}
+    let fixed_left=load64(pw_meta(vf_context,n))==1;
+    let fixed_right=load64(pw_meta(vf_context,m))==1;
+    // Prefer fixed buffers as outer spans and mixed spans as inner words.
+    let outer_priority=1;
+    if fixed_left || fixed_right {outer_priority=0;}
+    if fixed_left && fixed_right {outer_priority=2;}
+    let prior=vm_disjoint_count;
+    let i=0;
+    while i<prior {
+        let peer=vm_disjoint_spans+i*48;
+        if load64(peer)==p && load64(peer+8)==n && load64(peer+16)==q && load64(peer+24)==m {return predicate;}
+        i=i+1;
+    }
+    if i==32 {return predicate;}
+    let row=vm_disjoint_spans+i*48;
+    store64(row,p);store64(row+8,n);store64(row+16,q);store64(row+24,m);
+    store64(row+32,predicate);store64(row+40,outer_priority);
+    vm_disjoint_count=i+1;
+    i=0;
+    while i<prior && !load64(vf_context+72) {
+        let peer=vm_disjoint_spans+i*48;
+        // A fixed word can narrow one of two variable spans. The other span
+        // may retain its variable length. The implication checks containment
+        // of both actual spans before it uses the outer separation.
+        let peer_priority=load64(peer+40);
+        // Fixed slices can also be contained within a pair with symbolic
+        // lengths. The guarded implication checks both actual containments.
+        if outer_priority>peer_priority {
+            vm_disjoint_subspan(row,peer);
+            if outer_priority==2 {vm_disjoint_subspan(peer,row);}
+        }else if outer_priority<peer_priority {
+            vm_disjoint_subspan(peer,row);
+            if peer_priority==2 {vm_disjoint_subspan(row,peer);}
+        }else if outer_priority!=2 {
+            // A symbolic prefix can retain both bases and shorten a span.
+            // The subspan implication checks containment in either order.
+            let same_bases=pb_same(vm_memory,load64(peer),p) && pb_same(vm_memory,load64(peer+16),q);
+            let swapped_bases=pb_same(vm_memory,load64(peer),q) && pb_same(vm_memory,load64(peer+16),p);
+            if same_bases || swapped_bases {
+                vm_disjoint_subspan(row,peer);
+                vm_disjoint_subspan(peer,row);
+            }
+        }
+        i=i+1;
+    }
+    return predicate;
+}
+
+fn vm_word_inside_span(address,bytes,base,length) {
+    let meta=pw_meta(vf_context,length);
+    if load64(meta)!=1 || load64(meta+8)<bytes {return 0;}
+    let origin=pb_address_part(vm_memory,base,0);
+    let target=pb_address_part(vm_memory,address,0);
+    let offset=pb_address_part(vm_memory,address,1)-pb_address_part(vm_memory,base,1);
+    if !pb_same(vm_memory,origin,target) {
+        let start=pw_meta(vf_context,origin);
+        let end=pw_meta(vf_context,target);
+        if load64(start)!=1 || load64(end)!=1 {return 0;}
+        offset=offset+load64(end+8)-load64(start+8);
+    }
+    return offset>=0 && offset<=load64(meta+8)-bytes;
+}
+
+fn vm_write_separation(snapshot,path,address,bytes) {
+    let pointer=load64(snapshot+16);let length=load64(snapshot+24);
+    let byte_store=load64(snapshot)==1 && pb_constant(vm_memory,length,1);
+    let candidate= -1;
+    let i=0;
+    while i<vm_disjoint_count {
+        let pair=vm_disjoint_spans+i*48;
+        let first=pb_same(vm_memory,pointer,load64(pair)) && pb_same(vm_memory,length,load64(pair+8));
+        let second=pb_same(vm_memory,pointer,load64(pair+16)) && pb_same(vm_memory,length,load64(pair+24));
+        if byte_store {
+            first=first || vm_word_inside_span(pointer,1,load64(pair),load64(pair+8));
+            second=second || vm_word_inside_span(pointer,1,load64(pair+16),load64(pair+24));
+        }
+        let keeps=first && vm_word_inside_span(address,bytes,load64(pair+16),load64(pair+24));
+        keeps=keeps || (second && vm_word_inside_span(address,bytes,load64(pair),load64(pair+8)));
+        if keeps {
+            let separate=load64(pair+32);
+            // Keep separation facts discoverable below the bit-level
+            // postconditions added by long chains of call summaries.
+            if separate==1 || pw_path_conjunct(vf_context,path,separate,4096,0)== -1 {return 1;}
+            candidate=pw_or(vf_context,candidate,separate);
+        }
+        i=i+1;
+    }
+    return candidate;
+}
+
+// Byte writes and content-only summaries preserve permissions and lifetime.
+// A matching separation predicate covers every byte of this read. If it is
+// already known, start at the parent. Otherwise keep the original snapshot
+// on the possibly overlapping arm. Neither selection changes the stored heap.
+fn vm_load_snapshot(snapshot,path,address,bytes) {
+    if load64(vf_context+72) || !pb_state_valid(vm_memory,snapshot) || !pb_word_valid(vm_memory,address) {return snapshot;}
+    let steps=0;
+    // A small record can span more than four stores at byte granularity.
+    while (load64(snapshot)==1 || load64(snapshot)==2) && steps<64 {
+        let separate=vm_write_separation(snapshot,path,address,bytes);
+        let parent=load64(snapshot+8);
+        if separate!=1 {
+            if separate== -1 || !separate {return snapshot;}
+            return pb_join(vm_memory,separate,parent,snapshot);
+        }
+        snapshot=parent;
+        steps=steps+1;
+    }
+    return snapshot;
+}
+
 fn vm_eval(state,node,entry,kind) {
     vm_used=1;
     let args=vm_take(32);let part=load64(node+24);let i=0;while part {store64(args+i*8,vf_eval(state,part,entry));i=i+1;part=load64(part+48);}
@@ -99,14 +268,19 @@ fn vm_eval(state,node,entry,kind) {
         if vm_choice_tail {store64(vm_choice_tail+24,choice);}else {vm_choices=choice;}vm_choice_tail=choice;
     }
     else if kind==6 || kind==7 {result=pw_boolean(vf_context,pb_permission(vm_memory,snapshot,p,load64(args+8),kind==7));}
-    else if kind==8 {result=pw_boolean(vf_context,pb_disjoint(vm_memory,p,load64(args+8),load64(args+16),load64(args+24)));}
+    else if kind==8 {result=pw_boolean(vf_context,vm_disjoint_span(args));}
     else if kind==9 {result=pw_boolean(vf_context,pb_fresh(vm_memory,snapshot,load64(state+104),p,load64(args+8)));}
     else {let bytes=1;if kind==2 || kind==4 {bytes=8;}let write=kind>=3;let out=vm_take(16);
         vm_effect(state,node,p,pw_constant(vf_context,bytes),write,bytes,snapshot);
         // This snapshot belongs to this execution path. Branch/return joins
         // supply guards when it is merged back into another state.
         let ok=0;if write {ok=pb_store(vm_memory,snapshot,p,load64(args+8),bytes,1,out);result=load64(args+8);if ok {store64(state+96,load64(out));}}
-        else {ok=pb_load(vm_memory,snapshot,p,bytes,out);if ok {result=load64(out);}}
+        else {
+            let path=load64(state+24);
+            let read_snapshot=vm_load_snapshot(snapshot,path,p,bytes);
+            ok=pb_load_on_path(vm_memory,read_snapshot,p,bytes,path,out);
+            if ok {result=load64(out);}
+        }
         if !ok {return vf_unproved(node,"memory circuit capacity exceeded");}let label="memory read safety";if write {label="memory write safety";}vf_obligation(state,node,label,load64(out+8));
         // Only safe accesses have a normal continuation. Their separate safety
         // obligations remain mandatory before this path can count as proved.

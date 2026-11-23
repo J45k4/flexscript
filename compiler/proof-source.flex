@@ -31,8 +31,9 @@ global pf_has_helpers=0;
 // Node: kind,a,b,c,byte offset,module,next,extra. Function: name,size,module,
 // fn offset,body offset,end,parameters,arity,contracts,flags,body AST,slots,
 // read frame (96), assertion marker (104), write frame (112), frame flags (120).
+fn pf_node_capacity() {return 262144;}
 fn pf_node(kind,a,b,c,site) {
-    if pf_used>=131072 {fail("proof syntax capacity exceeded");}let p=pf_nodes+pf_used*64;pf_used=pf_used+1;
+    if pf_used>=pf_node_capacity() {fail("proof syntax capacity exceeded");}let p=pf_nodes+pf_used*64;pf_used=pf_used+1;
     store64(p,kind);store64(p+8,a);store64(p+16,b);store64(p+24,c);store64(p+32,site);store64(p+40,pf_module);store64(p+48,0);store64(p+56,0);return p;
 }
 fn pf_span(start,end) {
@@ -93,6 +94,7 @@ fn pf_expression(minimum) {
     pf_expr_depth=pf_expr_depth-1;return left;
 }
 fn pf_loop() {
+    store64(pf_current+104,load64(pf_current+104)|32);
     let head=0;let tail=0;let measure=0;
     while pf_proof_keyword("invariant") || pf_proof_keyword("decreases") {
         let site=token_start;let kind=19;if is("decreases") {kind=20;if measure {fail("duplicate loop decreases clause");}measure=1;}
@@ -246,7 +248,7 @@ fn pf_prepare() {
     while i<module_count && !found {select_module(i);pos=load64(modules+i*64+48);next();
         while token && !found {if token==256 && (is("requires") || is("ensures") || is("verify") || is("assert") || is("modifies") || is("reads") || is("releases") || is("trusted") || is("terminates") || is("invariant") || is("decreases") || is("ghost") || is("proof") || is("spec") || is("lemma")) {found=1;}next();}i=i+1;
     }if !found {return 0;}
-    pf_functions=alloc(2048*128);pf_globals=alloc(2048*32);pf_copies=alloc(256*8);pf_nodes=alloc(131072*64);pf_spans=alloc(16384*24);pf_locals=alloc(4096*32);pf_ghost_slots=alloc(4096*8);
+    pf_functions=alloc(2048*128);pf_globals=alloc(2048*32);pf_copies=alloc(256*8);pf_nodes=alloc(pf_node_capacity()*64);pf_spans=alloc(16384*24);pf_locals=alloc(4096*32);pf_ghost_slots=alloc(4096*8);
     if pf_functions<0 || pf_globals<0 || pf_copies<0 || pf_nodes<0 || pf_spans<0 || pf_locals<0 || pf_ghost_slots<0 {fail("cannot allocate verifier syntax");}
     pf_count=0;pf_gcount=0;pf_used=0;pf_span_count=0;pf_lowerings=0;pf_has_helpers=0;i=0;
     while i<module_count {let m=modules+i*64;let copy=alloc(load64(m+16)+1);if copy<0 {fail("cannot retain verifier source");}net_copy(copy,load64(m+8),load64(m+16));store64(pf_copies+i*8,copy);i=i+1;}

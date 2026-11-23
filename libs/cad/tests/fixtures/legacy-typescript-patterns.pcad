@@ -1,0 +1,1403 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "legacy-grid-pattern-cap",
+      "type": "part",
+      "name": "legacy-grid-pattern-cap",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "plate",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 80,
+                "height": 60,
+                "rotation": 0,
+                "id": "plate/sketch/0"
+              },
+              {
+                "id": "grid-hole",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -20,
+                  "y": -12
+                },
+                "p1": {
+                  "x": -14,
+                  "y": -6
+                }
+              },
+              {
+                "id": "pattern-copy-1",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -6,
+                  "y": -12
+                },
+                "p1": {
+                  "x": 0,
+                  "y": -6
+                }
+              },
+              {
+                "id": "pattern-copy-2",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": 8,
+                  "y": -12
+                },
+                "p1": {
+                  "x": 14,
+                  "y": -6
+                }
+              },
+              {
+                "id": "pattern-copy-3",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -16,
+                  "y": 4
+                },
+                "p1": {
+                  "x": -10,
+                  "y": 10
+                }
+              },
+              {
+                "id": "pattern-copy-4",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -2,
+                  "y": 4
+                },
+                "p1": {
+                  "x": 4,
+                  "y": 10
+                }
+              },
+              {
+                "id": "pattern-copy-5",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": 12,
+                  "y": 4
+                },
+                "p1": {
+                  "x": 18,
+                  "y": 10
+                }
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 40,
+                "y": 30
+              },
+              {
+                "x": -40,
+                "y": 30
+              },
+              {
+                "x": -40,
+                "y": -30
+              },
+              {
+                "x": 40,
+                "y": -30
+              },
+              {
+                "x": -20,
+                "y": -6
+              },
+              {
+                "x": -14,
+                "y": -6
+              },
+              {
+                "x": -14,
+                "y": -12
+              },
+              {
+                "x": -20,
+                "y": -12
+              },
+              {
+                "x": -6,
+                "y": -6
+              },
+              {
+                "x": 0,
+                "y": -6
+              },
+              {
+                "x": 0,
+                "y": -12
+              },
+              {
+                "x": -6,
+                "y": -12
+              },
+              {
+                "x": 8,
+                "y": -6
+              },
+              {
+                "x": 14,
+                "y": -6
+              },
+              {
+                "x": 14,
+                "y": -12
+              },
+              {
+                "x": 8,
+                "y": -12
+              },
+              {
+                "x": -16,
+                "y": 10
+              },
+              {
+                "x": -10,
+                "y": 10
+              },
+              {
+                "x": -10,
+                "y": 4
+              },
+              {
+                "x": -16,
+                "y": 4
+              },
+              {
+                "x": -2,
+                "y": 10
+              },
+              {
+                "x": 4,
+                "y": 10
+              },
+              {
+                "x": 4,
+                "y": 4
+              },
+              {
+                "x": -2,
+                "y": 4
+              },
+              {
+                "x": 12,
+                "y": 10
+              },
+              {
+                "x": 18,
+                "y": 10
+              },
+              {
+                "x": 18,
+                "y": 4
+              },
+              {
+                "x": 12,
+                "y": 4
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-2",
+                "vertexIndices": [
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-3",
+                "vertexIndices": [
+                  8,
+                  9,
+                  10,
+                  11
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-4",
+                "vertexIndices": [
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-5",
+                "vertexIndices": [
+                  16,
+                  17,
+                  18,
+                  19
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-6",
+                "vertexIndices": [
+                  20,
+                  21,
+                  22,
+                  23
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-7",
+                "vertexIndices": [
+                  24,
+                  25,
+                  26,
+                  27
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": [
+                  "plate/sketch-loop-2",
+                  "plate/sketch-loop-3",
+                  "plate/sketch-loop-4",
+                  "plate/sketch-loop-5",
+                  "plate/sketch-loop-6",
+                  "plate/sketch-loop-7"
+                ]
+              }
+            ],
+            "relations": [
+              {
+                "id": "linear-pattern-1",
+                "type": "linearPattern",
+                "sources": [
+                  "grid-hole"
+                ],
+                "instances": [
+                  [
+                    "pattern-copy-1"
+                  ],
+                  [
+                    "pattern-copy-2"
+                  ],
+                  [
+                    "pattern-copy-3"
+                  ],
+                  [
+                    "pattern-copy-4"
+                  ],
+                  [
+                    "pattern-copy-5"
+                  ]
+                ],
+                "step": {
+                  "x": 14,
+                  "y": 0
+                },
+                "columns": 3,
+                "rowStep": {
+                  "x": 4,
+                  "y": 16
+                }
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "plate",
+            "name": "plate",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "plate/sketch",
+              "profileId": "plate/sketch-profile-1"
+            },
+            "depth": 8
+          },
+          {
+            "type": "sketch",
+            "id": "boss/sketch",
+            "name": "boss",
+            "dirty": false,
+            "target": {
+              "type": "face",
+              "face": {
+                "type": "extrudeFace",
+                "extrudeId": "plate",
+                "faceId": "plate-solid-face-30"
+              }
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 29,
+                  "y": 0
+                },
+                "width": 4,
+                "height": 4,
+                "rotation": 0,
+                "id": "boss/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 31,
+                "y": 2
+              },
+              {
+                "x": 27,
+                "y": 2
+              },
+              {
+                "x": 27,
+                "y": -2
+              },
+              {
+                "x": 31,
+                "y": -2
+              }
+            ],
+            "loops": [
+              {
+                "id": "boss/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "boss/sketch-profile-1",
+                "outerLoopId": "boss/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "boss",
+            "name": "boss",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "boss/sketch",
+              "profileId": "boss/sketch-profile-1"
+            },
+            "depth": 3
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "plate",
+            "type": "extrusion",
+            "featureId": "plate",
+            "operation": "join"
+          },
+          {
+            "id": "boss",
+            "type": "extrusion",
+            "featureId": "boss",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-circular-pattern-anchor",
+      "type": "part",
+      "name": "legacy-circular-pattern-anchor",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "plate",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 80,
+                "height": 60,
+                "rotation": 0,
+                "id": "plate/sketch/0"
+              },
+              {
+                "id": "ring-hole",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": 12,
+                  "y": -2
+                },
+                "p1": {
+                  "x": 18,
+                  "y": 2
+                }
+              },
+              {
+                "id": "ring-center",
+                "type": "point",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                }
+              },
+              {
+                "id": "circular-copy-1",
+                "type": "rectangle",
+                "center": {
+                  "x": 9.18485099360515e-16,
+                  "y": 15
+                },
+                "width": 6,
+                "height": 4,
+                "rotation": 90
+              },
+              {
+                "id": "circular-copy-2",
+                "type": "rectangle",
+                "center": {
+                  "x": -15,
+                  "y": 1.83697019872103e-15
+                },
+                "width": 6,
+                "height": 4,
+                "rotation": 180
+              },
+              {
+                "id": "circular-copy-3",
+                "type": "rectangle",
+                "center": {
+                  "x": -2.7554552980815444e-15,
+                  "y": -15
+                },
+                "width": 6,
+                "height": 4,
+                "rotation": 270
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 40,
+                "y": 30
+              },
+              {
+                "x": -40,
+                "y": 30
+              },
+              {
+                "x": -40,
+                "y": -30
+              },
+              {
+                "x": 40,
+                "y": -30
+              },
+              {
+                "x": 12,
+                "y": 2
+              },
+              {
+                "x": 18,
+                "y": 2
+              },
+              {
+                "x": 18,
+                "y": -2
+              },
+              {
+                "x": 12,
+                "y": -2
+              },
+              {
+                "x": 2.000000000000001,
+                "y": 18
+              },
+              {
+                "x": 2.000000000000001,
+                "y": 12
+              },
+              {
+                "x": -1.9999999999999991,
+                "y": 12
+              },
+              {
+                "x": -1.999999999999999,
+                "y": 18
+              },
+              {
+                "x": -18,
+                "y": 2.000000000000002
+              },
+              {
+                "x": -12,
+                "y": 2.0000000000000013
+              },
+              {
+                "x": -12,
+                "y": -1.9999999999999987
+              },
+              {
+                "x": -18,
+                "y": -1.9999999999999978
+              },
+              {
+                "x": -2.000000000000003,
+                "y": -18
+              },
+              {
+                "x": -2.000000000000002,
+                "y": -12
+              },
+              {
+                "x": 1.9999999999999978,
+                "y": -12
+              },
+              {
+                "x": 1.999999999999997,
+                "y": -18
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-2",
+                "vertexIndices": [
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-3",
+                "vertexIndices": [
+                  8,
+                  9,
+                  10,
+                  11
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-4",
+                "vertexIndices": [
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-5",
+                "vertexIndices": [
+                  16,
+                  17,
+                  18,
+                  19
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": [
+                  "plate/sketch-loop-2",
+                  "plate/sketch-loop-3",
+                  "plate/sketch-loop-4",
+                  "plate/sketch-loop-5"
+                ]
+              }
+            ],
+            "relations": [
+              {
+                "id": "circular-pattern-1",
+                "type": "circularPattern",
+                "sources": [
+                  "ring-hole"
+                ],
+                "instances": [
+                  [
+                    "circular-copy-1"
+                  ],
+                  [
+                    "circular-copy-2"
+                  ],
+                  [
+                    "circular-copy-3"
+                  ]
+                ],
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "angle": 360,
+                "centerAnchor": {
+                  "entityId": "ring-center",
+                  "point": "center"
+                }
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "plate",
+            "name": "plate",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "plate/sketch",
+              "profileId": "plate/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "plate",
+            "type": "extrusion",
+            "featureId": "plate",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-author-grid-pattern",
+      "type": "part",
+      "name": "legacy-author-grid-pattern",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "plate",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 80,
+                "height": 60,
+                "rotation": 0,
+                "id": "plate/sketch/0"
+              },
+              {
+                "id": "grid-hole",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -20,
+                  "y": -12
+                },
+                "p1": {
+                  "x": -14,
+                  "y": -6
+                }
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 40,
+                "y": 30
+              },
+              {
+                "x": -40,
+                "y": 30
+              },
+              {
+                "x": -40,
+                "y": -30
+              },
+              {
+                "x": 40,
+                "y": -30
+              },
+              {
+                "x": -20,
+                "y": -6
+              },
+              {
+                "x": -14,
+                "y": -6
+              },
+              {
+                "x": -14,
+                "y": -12
+              },
+              {
+                "x": -20,
+                "y": -12
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-2",
+                "vertexIndices": [
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": [
+                  "plate/sketch-loop-2"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "plate",
+            "name": "plate",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "plate/sketch",
+              "profileId": "plate/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "plate",
+            "type": "extrusion",
+            "featureId": "plate",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-consumed-pattern-copy",
+      "type": "part",
+      "name": "legacy-consumed-pattern-copy",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "plate",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "id": "grid-hole",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -20,
+                  "y": -12
+                },
+                "p1": {
+                  "x": -14,
+                  "y": -6
+                }
+              },
+              {
+                "id": "pattern-copy-1",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -6,
+                  "y": -12
+                },
+                "p1": {
+                  "x": 0,
+                  "y": -6
+                }
+              },
+              {
+                "id": "pattern-copy-2",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": 8,
+                  "y": -12
+                },
+                "p1": {
+                  "x": 14,
+                  "y": -6
+                }
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": -20,
+                "y": -12
+              },
+              {
+                "x": -14,
+                "y": -12
+              },
+              {
+                "x": -14,
+                "y": -6
+              },
+              {
+                "x": -20,
+                "y": -6
+              },
+              {
+                "x": -6,
+                "y": -12
+              },
+              {
+                "x": 0,
+                "y": -12
+              },
+              {
+                "x": 0,
+                "y": -6
+              },
+              {
+                "x": -6,
+                "y": -6
+              },
+              {
+                "x": 8,
+                "y": -12
+              },
+              {
+                "x": 14,
+                "y": -12
+              },
+              {
+                "x": 14,
+                "y": -6
+              },
+              {
+                "x": 8,
+                "y": -6
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-2",
+                "vertexIndices": [
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-3",
+                "vertexIndices": [
+                  8,
+                  9,
+                  10,
+                  11
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": []
+              },
+              {
+                "id": "plate/sketch-profile-2",
+                "outerLoopId": "plate/sketch-loop-2",
+                "holeLoopIds": []
+              },
+              {
+                "id": "plate/sketch-profile-3",
+                "outerLoopId": "plate/sketch-loop-3",
+                "holeLoopIds": []
+              }
+            ],
+            "relations": [
+              {
+                "id": "linear-pattern-1",
+                "type": "linearPattern",
+                "sources": [
+                  "grid-hole"
+                ],
+                "instances": [
+                  [
+                    "pattern-copy-1"
+                  ],
+                  [
+                    "pattern-copy-2"
+                  ]
+                ],
+                "step": {
+                  "x": 14,
+                  "y": 0
+                },
+                "columns": 3,
+                "rowStep": {
+                  "x": 0,
+                  "y": 20
+                }
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "plate",
+            "name": "plate",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "plate/sketch",
+              "profileId": "plate/sketch-profile-3"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "plate",
+            "type": "extrusion",
+            "featureId": "plate",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-pattern-edge-retarget",
+      "type": "part",
+      "name": "legacy-pattern-edge-retarget",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "plate",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 80,
+                "height": 60,
+                "rotation": 0,
+                "id": "plate/sketch/0"
+              },
+              {
+                "id": "grid-hole",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -20,
+                  "y": -12
+                },
+                "p1": {
+                  "x": -14,
+                  "y": -6
+                }
+              },
+              {
+                "id": "pattern-copy-1",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -6,
+                  "y": -12
+                },
+                "p1": {
+                  "x": 0,
+                  "y": -6
+                }
+              },
+              {
+                "id": "pattern-copy-2",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": 8,
+                  "y": -12
+                },
+                "p1": {
+                  "x": 14,
+                  "y": -6
+                }
+              },
+              {
+                "id": "pattern-copy-3",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -16,
+                  "y": 4
+                },
+                "p1": {
+                  "x": -10,
+                  "y": 10
+                }
+              },
+              {
+                "id": "pattern-copy-4",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": -2,
+                  "y": 4
+                },
+                "p1": {
+                  "x": 4,
+                  "y": 10
+                }
+              },
+              {
+                "id": "pattern-copy-5",
+                "type": "cornerRectangle",
+                "p0": {
+                  "x": 12,
+                  "y": 4
+                },
+                "p1": {
+                  "x": 18,
+                  "y": 10
+                }
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 40,
+                "y": 30
+              },
+              {
+                "x": -40,
+                "y": 30
+              },
+              {
+                "x": -40,
+                "y": -30
+              },
+              {
+                "x": 40,
+                "y": -30
+              },
+              {
+                "x": -20,
+                "y": -6
+              },
+              {
+                "x": -14,
+                "y": -6
+              },
+              {
+                "x": -14,
+                "y": -12
+              },
+              {
+                "x": -20,
+                "y": -12
+              },
+              {
+                "x": -6,
+                "y": -6
+              },
+              {
+                "x": 0,
+                "y": -6
+              },
+              {
+                "x": 0,
+                "y": -12
+              },
+              {
+                "x": -6,
+                "y": -12
+              },
+              {
+                "x": 8,
+                "y": -6
+              },
+              {
+                "x": 14,
+                "y": -6
+              },
+              {
+                "x": 14,
+                "y": -12
+              },
+              {
+                "x": 8,
+                "y": -12
+              },
+              {
+                "x": -16,
+                "y": 10
+              },
+              {
+                "x": -10,
+                "y": 10
+              },
+              {
+                "x": -10,
+                "y": 4
+              },
+              {
+                "x": -16,
+                "y": 4
+              },
+              {
+                "x": -2,
+                "y": 10
+              },
+              {
+                "x": 4,
+                "y": 10
+              },
+              {
+                "x": 4,
+                "y": 4
+              },
+              {
+                "x": -2,
+                "y": 4
+              },
+              {
+                "x": 12,
+                "y": 10
+              },
+              {
+                "x": 18,
+                "y": 10
+              },
+              {
+                "x": 18,
+                "y": 4
+              },
+              {
+                "x": 12,
+                "y": 4
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-2",
+                "vertexIndices": [
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-3",
+                "vertexIndices": [
+                  8,
+                  9,
+                  10,
+                  11
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-4",
+                "vertexIndices": [
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-5",
+                "vertexIndices": [
+                  16,
+                  17,
+                  18,
+                  19
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-6",
+                "vertexIndices": [
+                  20,
+                  21,
+                  22,
+                  23
+                ]
+              },
+              {
+                "id": "plate/sketch-loop-7",
+                "vertexIndices": [
+                  24,
+                  25,
+                  26,
+                  27
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": [
+                  "plate/sketch-loop-2",
+                  "plate/sketch-loop-3",
+                  "plate/sketch-loop-4",
+                  "plate/sketch-loop-5",
+                  "plate/sketch-loop-6",
+                  "plate/sketch-loop-7"
+                ]
+              }
+            ],
+            "relations": [
+              {
+                "id": "linear-pattern-1",
+                "type": "linearPattern",
+                "sources": [
+                  "grid-hole"
+                ],
+                "instances": [
+                  [
+                    "pattern-copy-1"
+                  ],
+                  [
+                    "pattern-copy-2"
+                  ],
+                  [
+                    "pattern-copy-3"
+                  ],
+                  [
+                    "pattern-copy-4"
+                  ],
+                  [
+                    "pattern-copy-5"
+                  ]
+                ],
+                "step": {
+                  "x": 14,
+                  "y": 0
+                },
+                "columns": 3,
+                "rowStep": {
+                  "x": 4,
+                  "y": 16
+                }
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "plate",
+            "name": "plate",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "plate/sketch",
+              "profileId": "plate/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "plate",
+            "type": "extrusion",
+            "featureId": "plate",
+            "operation": "join",
+            "edgeFinishes": [
+              {
+                "kind": "chamfer",
+                "edgeId": "plate-solid-edge-98",
+                "radius": 0.5,
+                "distance2": 0.25
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

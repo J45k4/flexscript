@@ -1,0 +1,508 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "capsule-span-free-opposite",
+      "type": "part",
+      "name": "capsule-span-free-opposite",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "slot/sketch",
+            "name": "slot",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "capsule",
+                "from": {
+                  "x": 10,
+                  "y": 0
+                },
+                "to": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 4,
+                "arcSegments": 7,
+                "id": "slot/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 1.2246467991473532e-16,
+                "y": 2
+              },
+              {
+                "x": -0.8677674782351161,
+                "y": 1.8019377358048383
+              },
+              {
+                "x": -1.5636629649360596,
+                "y": 1.2469796037174672
+              },
+              {
+                "x": -1.9498558243636472,
+                "y": 0.445041867912629
+              },
+              {
+                "x": -1.9498558243636472,
+                "y": -0.44504186791262856
+              },
+              {
+                "x": -1.5636629649360598,
+                "y": -1.2469796037174667
+              },
+              {
+                "x": -0.8677674782351166,
+                "y": -1.801937735804838
+              },
+              {
+                "x": -3.6739403974420594e-16,
+                "y": -2
+              },
+              {
+                "x": 10,
+                "y": -2
+              },
+              {
+                "x": 10.867767478235116,
+                "y": -1.8019377358048385
+              },
+              {
+                "x": 11.563662964936059,
+                "y": -1.2469796037174674
+              },
+              {
+                "x": 11.949855824363647,
+                "y": -0.4450418679126293
+              },
+              {
+                "x": 11.949855824363647,
+                "y": 0.44504186791262834
+              },
+              {
+                "x": 11.56366296493606,
+                "y": 1.2469796037174667
+              },
+              {
+                "x": 10.867767478235116,
+                "y": 1.801937735804838
+              },
+              {
+                "x": 10,
+                "y": 2
+              }
+            ],
+            "loops": [
+              {
+                "id": "slot/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "slot/sketch-profile-1",
+                "outerLoopId": "slot/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ],
+            "variables": [
+              {
+                "name": "stock",
+                "kind": "length",
+                "expression": "4 mm"
+              }
+            ],
+            "relations": [
+              {
+                "id": "slot-span",
+                "type": "distance",
+                "a": {
+                  "entityId": "slot/sketch/0",
+                  "point": "to"
+                },
+                "b": {
+                  "entityId": "slot/sketch/0",
+                  "point": "from"
+                },
+                "value": 10,
+                "labelPosition": {
+                  "x": 4,
+                  "y": 3
+                }
+              },
+              {
+                "id": "slot-width",
+                "type": "width",
+                "entityId": "slot/sketch/0",
+                "value": 4,
+                "expression": "#stock",
+                "labelPosition": {
+                  "x": 1,
+                  "y": 7
+                }
+              },
+              {
+                "id": "slot-x-reference",
+                "type": "distance",
+                "a": {
+                  "entityId": "slot/sketch/0",
+                  "point": "from"
+                },
+                "b": {
+                  "entityId": "slot/sketch/0",
+                  "point": "to"
+                },
+                "value": -10,
+                "axis": "x",
+                "reference": true
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "slot",
+            "name": "slot",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "slot/sketch",
+              "profileId": "slot/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "slot",
+            "type": "extrusion",
+            "featureId": "slot",
+            "operation": "join"
+          }
+        ]
+      }
+    },
+    {
+      "id": "capsule-span-fixed-opposite",
+      "type": "part",
+      "name": "capsule-span-fixed-opposite",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "slot/sketch",
+            "name": "slot",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "capsule",
+                "from": {
+                  "x": 10,
+                  "y": 0
+                },
+                "to": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 4,
+                "arcSegments": 7,
+                "id": "slot/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 1.2246467991473532e-16,
+                "y": 2
+              },
+              {
+                "x": -0.8677674782351161,
+                "y": 1.8019377358048383
+              },
+              {
+                "x": -1.5636629649360596,
+                "y": 1.2469796037174672
+              },
+              {
+                "x": -1.9498558243636472,
+                "y": 0.445041867912629
+              },
+              {
+                "x": -1.9498558243636472,
+                "y": -0.44504186791262856
+              },
+              {
+                "x": -1.5636629649360598,
+                "y": -1.2469796037174667
+              },
+              {
+                "x": -0.8677674782351166,
+                "y": -1.801937735804838
+              },
+              {
+                "x": -3.6739403974420594e-16,
+                "y": -2
+              },
+              {
+                "x": 10,
+                "y": -2
+              },
+              {
+                "x": 10.867767478235116,
+                "y": -1.8019377358048385
+              },
+              {
+                "x": 11.563662964936059,
+                "y": -1.2469796037174674
+              },
+              {
+                "x": 11.949855824363647,
+                "y": -0.4450418679126293
+              },
+              {
+                "x": 11.949855824363647,
+                "y": 0.44504186791262834
+              },
+              {
+                "x": 11.56366296493606,
+                "y": 1.2469796037174667
+              },
+              {
+                "x": 10.867767478235116,
+                "y": 1.801937735804838
+              },
+              {
+                "x": 10,
+                "y": 2
+              }
+            ],
+            "loops": [
+              {
+                "id": "slot/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "slot/sketch-profile-1",
+                "outerLoopId": "slot/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ],
+            "variables": [
+              {
+                "name": "stock",
+                "kind": "length",
+                "expression": "4 mm"
+              }
+            ],
+            "relations": [
+              {
+                "id": "slot-span",
+                "type": "distance",
+                "a": {
+                  "entityId": "slot/sketch/0",
+                  "point": "to"
+                },
+                "b": {
+                  "entityId": "slot/sketch/0",
+                  "point": "from"
+                },
+                "value": 10,
+                "labelPosition": {
+                  "x": 4,
+                  "y": 3
+                }
+              },
+              {
+                "id": "slot-width",
+                "type": "width",
+                "entityId": "slot/sketch/0",
+                "value": 4,
+                "expression": "#stock",
+                "labelPosition": {
+                  "x": 1,
+                  "y": 7
+                }
+              },
+              {
+                "id": "slot-x-reference",
+                "type": "distance",
+                "a": {
+                  "entityId": "slot/sketch/0",
+                  "point": "from"
+                },
+                "b": {
+                  "entityId": "slot/sketch/0",
+                  "point": "to"
+                },
+                "value": -10,
+                "axis": "x",
+                "reference": true
+              },
+              {
+                "id": "fixed-cap",
+                "type": "fixed",
+                "anchor": {
+                  "entityId": "slot/sketch/0",
+                  "point": "to"
+                },
+                "position": {
+                  "x": 0,
+                  "y": 0
+                }
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "slot",
+            "name": "slot",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "slot/sketch",
+              "profileId": "slot/sketch-profile-1"
+            },
+            "depth": 8
+          },
+          {
+            "type": "sketch",
+            "id": "boss/sketch",
+            "name": "boss",
+            "dirty": false,
+            "target": {
+              "type": "face",
+              "face": {
+                "type": "extrudeFace",
+                "extrudeId": "slot",
+                "faceId": "slot-solid-face-18"
+              }
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 1,
+                  "y": 0.5
+                },
+                "width": 1,
+                "height": 0.75,
+                "rotation": 0,
+                "id": "boss/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 1.5,
+                "y": 0.875
+              },
+              {
+                "x": 0.5,
+                "y": 0.875
+              },
+              {
+                "x": 0.5,
+                "y": 0.125
+              },
+              {
+                "x": 1.5,
+                "y": 0.125
+              }
+            ],
+            "loops": [
+              {
+                "id": "boss/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "boss/sketch-profile-1",
+                "outerLoopId": "boss/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "boss",
+            "name": "boss",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "boss/sketch",
+              "profileId": "boss/sketch-profile-1"
+            },
+            "depth": 2
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "slot",
+            "type": "extrusion",
+            "featureId": "slot",
+            "operation": "join"
+          },
+          {
+            "id": "boss",
+            "type": "extrusion",
+            "featureId": "boss",
+            "operation": "join"
+          }
+        ]
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

@@ -1,0 +1,206 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "normal-control-part",
+      "type": "part",
+      "name": "Control spline Normal",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "spline-guide-split-1"
+                },
+                {
+                  "id": "normal-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 5
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 30,
+                    "y": 5
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                },
+                {
+                  "id": "coincident-1",
+                  "type": "coincident",
+                  "a": {
+                    "entityId": "spline-guide",
+                    "point": "point3"
+                  },
+                  "b": {
+                    "entityId": "spline-guide-split-1",
+                    "point": "point0"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "spline-guide",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "spline-guide",
+                "type": "spline",
+                "mode": "control",
+                "points": [
+                  {
+                    "x": 0,
+                    "y": 0
+                  },
+                  {
+                    "x": 0,
+                    "y": 2.999999999999999
+                  },
+                  {
+                    "x": 0.8999999999999996,
+                    "y": 5.099999999999999
+                  },
+                  {
+                    "x": 2.1599999999999993,
+                    "y": 6.299999999999999
+                  }
+                ],
+                "closed": false,
+                "construction": true
+              }
+            },
+            {
+              "id": "spline-guide-split-1",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "spline-guide-split-1",
+                "type": "spline",
+                "mode": "control",
+                "points": [
+                  {
+                    "x": 2.1599999999999993,
+                    "y": 6.299999999999999
+                  },
+                  {
+                    "x": 5.099999999999999,
+                    "y": 9.100000000000001
+                  },
+                  {
+                    "x": 10,
+                    "y": 7.000000000000001
+                  },
+                  {
+                    "x": 10,
+                    "y": 0
+                  }
+                ],
+                "closed": false,
+                "construction": true
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 8.959999999999999,
+                "y": 4.799999999999999
+              },
+              "p1": {
+                "x": 13.371764705882352,
+                "y": 7.152941176470586
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 30,
+                  "y": 5
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

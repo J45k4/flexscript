@@ -32,7 +32,7 @@ fn vl_scan(node,locals,globals,depth) {
 fn vl_invariants(state,loop,kind) {
     let clause=load64(loop+24);while clause {
         if load64(clause)==19 {let condition=pw_truth(vf_context,vf_eval(state,load64(clause+8),0));
-            if kind {vf_obligation(state,clause,kind,condition);}store64(state+24,pw_and(vf_context,load64(state+24),condition));vf_fact(state,load64(clause+8));
+            if kind {vf_obligation(state,clause,kind,condition);}store64(state+24,pw_and(vf_context,load64(state+24),condition));vf_fact(state,load64(clause+8),0);
         }clause=load64(clause+48);
     }return 0;
 }

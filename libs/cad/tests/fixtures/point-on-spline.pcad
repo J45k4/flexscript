@@ -1,0 +1,448 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "crossing-spline-part",
+      "type": "part",
+      "name": "Crossing spline contact",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline contact",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "crossing-spline-contact",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "probe",
+                    "point": "center"
+                  },
+                  "b": "crossing-spline"
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 42,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "crossing-spline",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "type": "spline",
+                "id": "crossing-spline",
+                "mode": "control",
+                "construction": true,
+                "points": [
+                  {
+                    "x": -18,
+                    "y": -12
+                  },
+                  {
+                    "x": -6,
+                    "y": -4
+                  },
+                  {
+                    "x": 6,
+                    "y": 4
+                  },
+                  {
+                    "x": 18,
+                    "y": 12
+                  },
+                  {
+                    "x": 9,
+                    "y": 20
+                  },
+                  {
+                    "x": -9,
+                    "y": 20
+                  },
+                  {
+                    "x": -18,
+                    "y": 12
+                  },
+                  {
+                    "x": -6,
+                    "y": 4
+                  },
+                  {
+                    "x": 6,
+                    "y": -4
+                  },
+                  {
+                    "x": 18,
+                    "y": -12
+                  }
+                ]
+              }
+            },
+            {
+              "id": "probe",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "probe",
+                "type": "point",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "construction": true
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 42,
+                  "y": 0
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "proof-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "proof-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "proof-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "open-spline-part",
+      "type": "part",
+      "name": "Open spline contact",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline contact",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "open-spline-contact",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "probe",
+                    "point": "p0"
+                  },
+                  "b": "open-spline"
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 42,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "open-spline",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "type": "spline",
+                "id": "open-spline",
+                "mode": "fit",
+                "construction": true,
+                "points": [
+                  {
+                    "x": -25,
+                    "y": 1
+                  },
+                  {
+                    "x": -8,
+                    "y": 10
+                  },
+                  {
+                    "x": 8,
+                    "y": -6
+                  },
+                  {
+                    "x": 18,
+                    "y": 2
+                  }
+                ]
+              }
+            },
+            {
+              "id": "probe",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": -19.09095,
+                "y": 6.688899999999999
+              },
+              "p1": {
+                "x": 25,
+                "y": -8
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 42,
+                  "y": 0
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "proof-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "proof-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "proof-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "periodic-spline-part",
+      "type": "part",
+      "name": "Periodic spline contact",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline contact",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "periodic-spline-contact",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "probe",
+                    "point": "center"
+                  },
+                  "b": "periodic-spline"
+                }
+              ]
+            },
+            {
+              "id": "periodic-spline",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "type": "spline",
+                "id": "periodic-spline",
+                "mode": "fit",
+                "closed": true,
+                "points": [
+                  {
+                    "x": -20,
+                    "y": 0
+                  },
+                  {
+                    "x": -7,
+                    "y": -13
+                  },
+                  {
+                    "x": 12,
+                    "y": -8
+                  },
+                  {
+                    "x": 18,
+                    "y": 7
+                  },
+                  {
+                    "x": 0,
+                    "y": 15
+                  }
+                ]
+              }
+            },
+            {
+              "id": "probe",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "probe",
+                "type": "point",
+                "center": {
+                  "x": -20,
+                  "y": 0
+                },
+                "construction": true
+              }
+            },
+            {
+              "id": "proof-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "proof-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "proof-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

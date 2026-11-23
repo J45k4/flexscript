@@ -1,0 +1,1 @@
+{"version":4,"revision":7,"items":[{"id":"partial-revolve","type":"part","name":"partial-revolve","data":{"features":[],"solidSteps":[{"outline":[{"x":2,"y":1},{"x":6,"y":1},{"x":6,"y":3},{"x":2,"y":3}],"angle":90,"segments":64,"translation":{"x":1,"y":-1,"z":2},"id":"Quarter boss","type":"revolve","operation":"join"}]}}],"selectedPath":[0]}

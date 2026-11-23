@@ -2,6 +2,10 @@ import "../lib/http.flex";
 import "../lib/signature.flex";
 import "../vm/runtime.flex";
 import "program-state.flex";
+import "function-table.flex";
+import "x86-emission.flex";
+import "vm-emission.flex";
+import "word-operations.flex";
 import "backends/x86_64.flex";
 import "backends/arm64.flex";
 import "backends/arm64-object.flex";
@@ -33,16 +37,10 @@ import "gpu-codeobject.flex";
 import "proof-verify.flex";
 // Flexscript compiler 0.0.5. Native Linux x86-64 / ELF backend.
 // Every value is a word; tables consist of fixed-size records in mmap buffers.
-global source = 0;
-global source_size = 0;
-global source_path = 0;
 global pos = 0;
 global token = 0;
-global token_start = 0;
 global token_size = 0;
 global token_value = 0;
-global output_limit = 67108864;
-global globals = 0;
 global global_count = 0;
 global locals = 0;
 global local_count = 0;
@@ -54,7 +52,6 @@ global calls = 0;
 global call_count = 0;
 // A first parse weights local references; a second emits the selected register
 // assignments. Caller-saved locals spill around calls and host syscalls.
-global native_register_frame=0;
 global native_parameter_count=0;
 global native_frame_hint=-1;
 global native_reg_counts=0;
@@ -64,15 +61,7 @@ global native_reg_callee_count=0;
 global native_spill_slots=-1;
 global native_spill_mask=-1;
 global native_loop_depth=0;
-global native_address_site=-1;
-global native_address_kind=0;
-global native_address_value=0;
 global native_temp_epoch=0;
-global native_binary_cached=0;
-// Only the immediately emitted boolean may reuse its producer's flags.
-global native_boolean_end=-1;
-global native_boolean_start=0;
-global native_boolean_cc=0;
 // File records: path, bytes, size, device, inode, state, declarations, functions.
 global modules = 0;
 global module_count = 0;
@@ -121,61 +110,6 @@ global up_owns_dir = 0;
 global up_message = 0;
 global up_signal_fd = -1;
 global up_exe_fd = -1;
-
-fn length(text) {
-    let n = 0;
-    while load8(text + n) != 0 { n = n + 1; }
-    return n;
-}
-
-fn write_all(fd, bytes, size) {
-    while size > 0 {
-        let n = syscall(1, fd, bytes, size, 0, 0, 0);
-        if n == -4 { n = 0; }
-        else { if n <= 0 { return 0; } }
-        bytes = bytes + n;
-        size = size - n;
-    }
-    return 1;
-}
-
-fn print(fd, text) { return write_all(fd, text, length(text)); }
-
-fn print_number(n) {
-    let buf = alloc(32);
-    let i = 31;
-    store8(buf + i, 0);
-    while n >= 10 {
-        i = i - 1;
-        store8(buf + i, 48 + n % 10);
-        n = n / 10;
-    }
-    i = i - 1;
-    store8(buf + i, 48 + n);
-    print(2, buf + i);
-    return 0;
-}
-
-fn fail(message) {
-    print(2, source_path);
-    print(2, ":");
-    let i = 0;
-    let line = 1;
-    let column = 1;
-    while i < token_start && i < source_size {
-        if load8(source + i) == 10 { line = line + 1; column = 1; }
-        else { column = column + 1; }
-        i = i + 1;
-    }
-    print_number(line);
-    print(2, ":");
-    print_number(column);
-    print(2, ": error: ");
-    print(2, message);
-    print(2, "\n");
-    syscall(60, 1, 0, 0, 0, 0, 0);
-    return 0;
-}
 
 fn equal(a, an, b, bn) {
     if an != bn { return 0; }
@@ -318,15 +252,6 @@ fn expect(t) {
     return 0;
 }
 
-fn emit(b) {
-    native_address_site=-1;
-    native_boolean_end=-1;
-    if output_size >= output_limit {if output_limit==268435456 {fail("output exceeds 256 MiB");}fail("output exceeds 64 MiB");}
-    store8(output + output_size, b);
-    output_size = output_size + 1;
-    return 0;
-}
-
 fn emit32(value) {
     let i = 0;
     while i < 4 { emit(value >> (i * 8)); i = i + 1; }
@@ -340,7 +265,7 @@ fn emit64(value) {
 }
 
 fn patch32(at, value) {
-    if vm_mode {store64(output+at,at+4+value);return 0;}
+    if vm_mode {return vm_patch_jump(at,at+4+value);}
     // Recorded branches return negative handles. Existing relative-fixup
     // callers still yield the absolute target through at+4+value.
     if at<0 {return native_branch_patch(at,at+4+value);}
@@ -350,10 +275,7 @@ fn patch32(at, value) {
 }
 
 fn jump(opcode) {
-    if vm_mode {
-        let kind=10;if opcode==132 {kind=11;}else if opcode==133 {kind=12;}
-        return vm_emit(kind,0)+8;
-    }
+    if vm_mode {return vm_emit_jump(opcode);}
     if native_branch_mode {let handle=native_branch_emit(opcode);if handle {return handle;}}
     if opcode != 233 { emit(15); }
     emit(opcode);
@@ -362,7 +284,7 @@ fn jump(opcode) {
     return at;
 }
 
-fn patch_jump(at) {native_boolean_end=-1;if vm_mode {store64(output+at,output_size);}else {patch32(at,output_size-at-4);}return 0;}
+fn patch_jump(at) {native_boolean_end=-1;if vm_mode {return vm_patch_jump(at,output_size);}patch32(at,output_size-at-4);return 0;}
 fn test_rax() {if vm_mode {return 0;}emit(72);emit(133);emit(192);return 0;}
 // MOV EAX zero-extends; MOV r64,imm32 sign-extends. Both preserve flags, unlike
 // XOR-based zeroing, and avoid an imm64 for the common small word constants.
@@ -441,14 +363,6 @@ fn normalize() {
     if native_boolean_end==output_size {return 0;}
     test_rax();return native_boolean(149);
 }
-fn native_boolean(cc) {
-    let start=output_size;emit(15);emit(cc);emit(192);
-    // MOVZX EAX,AL also clears RAX's high half. Neither instruction changes
-    // the producer's flags, so a following branch can consume them directly.
-    emit(15);emit(182);emit(192);
-    if native_register_frame && !frontend_language {native_boolean_start=start;native_boolean_cc=cc;native_boolean_end=output_size;}
-    return 0;
-}
 fn native_boolean_not() {
     if native_boolean_end==output_size {let cc=native_boolean_cc;output_size=native_boolean_start;return native_boolean(cc^1);}
     test_rax();return native_boolean(148);
@@ -466,31 +380,7 @@ fn condition_jump(truth,discard) {
 
 fn binary(op) {
     if vm_mode {vm_emit(7,op);return 0;}
-    if native_binary_cached {native_binary_cached=0;emit(76);emit(137);emit(217);}else {emit(89);} // RCX=left, RAX=right
-    if op == 43 {let at=output_size;emit(72);emit(1);emit(200);native_address_site=at;native_address_kind=2;native_address_value=8;}
-    else if op == 45 {
-        emit(72); emit(41); emit(193);
-        emit(72); emit(137); emit(200);
-    } else if op == 42 { emit(72); emit(15); emit(175); emit(193); }
-    else if op == 47 || op == 37 {
-        emit(72); emit(137); emit(199);
-        emit(72); emit(137); emit(200);
-        emit(72); emit(153);
-        emit(72); emit(247); emit(255);
-        if op == 37 { emit(72); emit(137); emit(208); }
-    } else if op == 38 { emit(72); emit(33); emit(200); }
-    else if op == 124 { emit(72); emit(9); emit(200); }
-    else if op == 94 { emit(72); emit(49); emit(200); }
-    else if op == 265 || op == 266 {
-        emit(72); emit(135); emit(200); // xchg rax, rcx
-        emit(72); emit(211);
-        if op == 265 { emit(224); } else { emit(248); }
-    } else {
-        emit(72); emit(57); emit(193);
-        let cc=157;if op==259 {cc=148;}else if op==260 {cc=149;}else if op==60 {cc=156;}else if op==62 {cc=159;}else if op==261 {cc=158;}
-        native_boolean(cc);
-    }
-    return 0;
+    return native_binary(op);
 }
 
 // Native literal operands need no expression-stack round trip. Recognize only
@@ -598,18 +488,12 @@ fn native_immediate_group(group,value) {
     emit(72);if value>= -128 && value<=127 {emit(131);emit(192|(group<<3));emit(value&255);}
     else {emit(129);emit(192|(group<<3));emit32(value);}return 0;
 }
-fn word_binary_result(op,a,b) {
-    if op==43 {return a+b;}if op==45 {return a-b;}if op==42 {return a*b;}
-    if op==47 {return a/b;}if op==37 {return a%b;}if op==38 {return a&b;}if op==124 {return a|b;}if op==94 {return a^b;}
-    if op==265 {return a<<b;}if op==266 {return a>>b;}if op==259 {return a==b;}if op==260 {return a!=b;}
-    if op==60 {return a<b;}if op==62 {return a>b;}if op==261 {return a<=b;}return a>=b;
-}
 fn native_binary_literal(op,begin,pushed) {
     if vm_mode || !native_constant(pushed+native_push_span(),output_size) {return 0;}
     let value=native_constant_value(pushed+native_push_span(),output_size);
     if native_constant(begin,pushed) {
         let a=native_constant_value(begin,pushed);
-        if (op!=47 && op!=37) || (value!=0 && !(a==0x8000000000000000 && value==(-1))) {
+        if word_binary_can_fold(op,a,value) {
             output_size=begin;immediate(word_binary_result(op,a,value));return 1;
         }
     }
@@ -957,11 +841,7 @@ fn function_definition() {
     if reserved(name, size) { fail("reserved declaration name"); }
     if find(globals, global_count, name, size) >= 0
         || find(functions, function_count, name, size) >= 0 { fail("duplicate function"); }
-    let entry = functions + function_count * 32;
-    store64(entry, name);
-    store64(entry + 8, size);
-    store64(entry + 16, output_size);
-    function_count = function_count + 1;
+    let entry = compiler_reserve_function(name,size);
     local_count = 0;
     slots = 0;
     native_reg_begin();
@@ -978,11 +858,11 @@ fn function_definition() {
     }
     expect(41);
     let count = local_count;
-    store64(entry + 24, count);
+    compiler_set_function_arity(entry,count);
     if native_link_replay && !native_link_live(function_count-1) {skip_function();return 0;}
     if vm_mode {
-        let frame=vm_emit(18,0);depth=0;block();immediate(0);epilogue();
-        store64(output+frame+8,slots);tx_function_site(function_count-1,definition_start);return 0;
+        let frame=vm_emit_function_header(entry);depth=0;block();immediate(0);epilogue();
+        vm_patch_function_slots(frame,slots);tx_function_site(function_count-1,definition_start);return 0;
     }
     let body=token_start;let before_calls=call_count;let start=output_size;
     let frame=native_frame(count);depth=0;block();immediate(0);epilogue();native_frame_patch(frame);
@@ -1971,7 +1851,7 @@ fn main(argc, argv) {
         }
         if equal(arg, length(arg), "--help", 6) {
             print(1,"Offline GPU output: --target hip --emit code-object --gpu-arch gfx... [--rocm-root PATH]\n");
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--native-literals writable|shared] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript verify <source.flex> [--budget=N] [--no-trusted]\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--native-literals writable|shared] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript verify <source.flex> [--budget=N] [--circuit-gates=N] [--circuit-words=N] [--defer-memory-aliases] [--no-trusted]\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -2097,10 +1977,7 @@ fn compiler_initialize() {
     let source_limit=16777216;if frontend_language {source_limit=33554432;}if frontend_language==1 {source_limit=67108864;}if frontend_language==3 {source_limit=268435456;}
     source_arena = alloc(source_limit);
     source = source_arena;
-    output = alloc(output_limit);
-    globals = alloc(2048 * 32);
-    // Portable FIR functions plus the existing 2,048 trusted platform functions.
-    functions = alloc((ir_function_capacity + 2048) * 32);
+    compiler_allocate_code_and_records(output_limit,ir_function_capacity);
     locals = alloc(4096 * 32);
     calls = alloc(65536 * 32);
     lowering_entries=alloc(2048*32);lowering_count=0;

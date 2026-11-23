@@ -1,0 +1,107 @@
+{
+  "version": 4,
+  "revision": 2,
+  "items": [
+    {
+      "id": "overlapping-chamfer-rejected",
+      "type": "part",
+      "name": "overlapping chamfer rejected",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "plate/sketch",
+            "name": "plate",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 20,
+                "height": 12,
+                "rotation": 0,
+                "id": "plate/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 10,
+                "y": 6
+              },
+              {
+                "x": -10,
+                "y": 6
+              },
+              {
+                "x": -10,
+                "y": -6
+              },
+              {
+                "x": 10,
+                "y": -6
+              }
+            ],
+            "loops": [
+              {
+                "id": "plate/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "plate/sketch-profile-1",
+                "outerLoopId": "plate/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "plate",
+            "name": "plate",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "plate/sketch",
+              "profileId": "plate/sketch-profile-1"
+            },
+            "depth": 8
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "plate",
+            "type": "extrusion",
+            "featureId": "plate",
+            "operation": "join",
+            "finishes": [
+              {
+                "kind": "chamfer",
+                "radius": 7,
+                "vertices": [
+                  0,
+                  3
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

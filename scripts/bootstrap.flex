@@ -21,9 +21,41 @@ fn bs_first_word(line) {
     let scanning=1;
     while scanning && i<n {
         let c=load8(line+i);
-        if (c>=65 && c<=90) || (c>=97 && c<=122) || c==95 {i=i+1;}else {scanning=0;}
+        if (c>=65 && c<=90) || (c>=97 && c<=122) || c==95 || (c>=48 && c<=57) {i=i+1;}else {scanning=0;}
     }
     return h_slice(line+start,i-start);
+}
+fn bs_block_annotation(line,word) {
+    if !h_equal(word,"proof") && !h_equal(word,"lemma") && !h_equal(word,"spec") {return 0;}
+    let i=0;
+    while load8(line+i)==32 || load8(line+i)==9 {i=i+1;}
+    i=i+h_len(word);
+    while load8(line+i)==32 || load8(line+i)==9 {i=i+1;}
+    if h_equal(word,"proof") {return load8(line+i)==123;}
+    return h_starts(line+i,"fn ") || h_starts(line+i,"fn\t");
+}
+// Skip an erased definition or statement block in the flattened core. Count
+// nested braces outside strings and comments, as the compiler's lexer does.
+fn bs_skip_block(source,at,end) {
+    let depth=0;
+    let quoted=0;
+    while at<end {
+        let c=load8(source+at);
+        at=at+1;
+        if quoted {
+            if c==92 {at=at+1;}else if c==34 {quoted=0;}
+        }else if c==34 {quoted=1;}
+        else if c==47 && at<end && load8(source+at)==47 {
+            while at<end && load8(source+at)!=10 {at=at+1;}
+        }else if c==123 {depth=depth+1;}
+        else if c==125 {
+            h_assert(depth>0,"bootstrap proof block has no opening brace");
+            depth=depth-1;
+            if !depth {return at;}
+        }
+    }
+    h_assert(0,"unterminated bootstrap proof block");
+    return end;
 }
 fn bs_strip(source) {
     // The published seeds predate the verifier annotation syntax. Contracts
@@ -32,6 +64,7 @@ fn bs_strip(source) {
     // loudly instead of being silently altered.
     let words=h_args("requires","ensures","reads","modifies","releases","trusted");
     h_add(words,"terminates");h_add(words,"verify");
+    h_add(words,"invariant");h_add(words,"decreases");
     let out=h_buffer();
     let n=h_len(source);
     let i=0;
@@ -46,6 +79,15 @@ fn bs_strip(source) {
             if h_len(line) && load8(line+h_len(line)-1)==59 {dropping=0;}
         }else {
             let word=bs_first_word(line);
+            if bs_block_annotation(line,word) {
+                i=bs_skip_block(source,start,n);
+                while i<n && (load8(source+i)==32 || load8(source+i)==9 || load8(source+i)==13) {i=i+1;}
+                if i+1<n && load8(source+i)==47 && load8(source+i+1)==47 {
+                    while i<n && load8(source+i)!=10 {i=i+1;}
+                }
+                h_assert(i==n || load8(source+i)==10,"bootstrap proof block must end its line");
+                kept=0;
+            }
             let k=0;
             while k<h_count(words) {
                 if h_equal(word,h_at(words,k)) {

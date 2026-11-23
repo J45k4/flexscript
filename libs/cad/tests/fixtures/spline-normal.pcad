@@ -1,0 +1,542 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "normal-control-part",
+      "type": "part",
+      "name": "Control spline Normal",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "spline-guide"
+                },
+                {
+                  "id": "normal-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 5
+                },
+                {
+                  "id": "fixed-point-0",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point0"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "fixed-point-1",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point1"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 10
+                  }
+                },
+                {
+                  "id": "fixed-point-2",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point2"
+                  },
+                  "position": {
+                    "x": 10,
+                    "y": 10
+                  }
+                },
+                {
+                  "id": "fixed-point-3",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point3"
+                  },
+                  "position": {
+                    "x": 10,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 30,
+                    "y": 5
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "spline-guide",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "spline-guide",
+                "type": "spline",
+                "mode": "control",
+                "points": [
+                  {
+                    "x": 0,
+                    "y": 0
+                  },
+                  {
+                    "x": 0,
+                    "y": 10
+                  },
+                  {
+                    "x": 10,
+                    "y": 10
+                  },
+                  {
+                    "x": 10,
+                    "y": 0
+                  }
+                ],
+                "construction": true
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 5,
+                "y": 7.5
+              },
+              "p1": {
+                "x": 5,
+                "y": 12.5
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 30,
+                  "y": 5
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "normal-fit-part",
+      "type": "part",
+      "name": "Fit spline Normal",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "spline-guide"
+                },
+                {
+                  "id": "normal-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 5
+                },
+                {
+                  "id": "fixed-point-0",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point0"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "fixed-point-2",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point2"
+                  },
+                  "position": {
+                    "x": 10,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 30,
+                    "y": 5
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "spline-guide",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "spline-guide",
+                "type": "spline",
+                "mode": "fit",
+                "points": [
+                  {
+                    "x": 0,
+                    "y": 0
+                  },
+                  {
+                    "x": 5,
+                    "y": 10
+                  },
+                  {
+                    "x": 10,
+                    "y": 0
+                  }
+                ],
+                "construction": true
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 5,
+                "y": 10
+              },
+              "p1": {
+                "x": 5,
+                "y": 15
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 30,
+                  "y": 5
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "normal-periodic-part",
+      "type": "part",
+      "name": "Periodic spline Normal",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "spline-guide"
+                },
+                {
+                  "id": "normal-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 5
+                },
+                {
+                  "id": "fixed-point-0",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point0"
+                  },
+                  "position": {
+                    "x": -10,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "fixed-point-1",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point1"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": -8
+                  }
+                },
+                {
+                  "id": "fixed-point-2",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "spline-guide",
+                    "point": "point2"
+                  },
+                  "position": {
+                    "x": 10,
+                    "y": 0
+                  }
+                }
+              ]
+            },
+            {
+              "id": "spline-guide",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "spline-guide",
+                "type": "spline",
+                "mode": "fit",
+                "closed": true,
+                "points": [
+                  {
+                    "x": -10,
+                    "y": 0
+                  },
+                  {
+                    "x": 0,
+                    "y": -8
+                  },
+                  {
+                    "x": 10,
+                    "y": 0
+                  },
+                  {
+                    "x": 0,
+                    "y": 10
+                  }
+                ]
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 0,
+                "y": 10
+              },
+              "p1": {
+                "x": 0,
+                "y": 5
+              }
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

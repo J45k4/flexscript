@@ -1,0 +1,45 @@
+import "cad/author.flex";
+import "cad/project-access.flex";
+
+fn main() {
+    let p=cad_project_new("Round pocket");let sk="native-sketch-1";
+    let entity=cad_project_add_primitive(p,sk,"circle",cg_v(3000000,4000000,0),cg_v(11000000,4000000,0));let id=j_string(entity,"id");
+    p=cad_project_add_extrusion(p,sk,1,5000000,"newBody");m_assert(p,cg_error);
+    let base=j_encode(p);let report=cad_project_line_sketch(p,sk);m_assert(j_integer(report,"degrees_of_freedom")==3,"Circle has two free centre coordinates and one radius");
+    p=cad_project_edit_line_variable(p,sk,"","bore","2 cm");m_assert(p,cg_error);
+    let edited=cad_project_set_circle_dimension(p,sk,id,"diameter","#bore + 4 mm");m_assert(edited,cg_error);
+    let nodes=pc_nodes(cad_project_part(edited));let rel=pc_first(j_get(pc_find(nodes,sk),"relations"));let key=j_string(rel,"id");
+    m_assert(pc_circle_measure(pc_find(nodes,id),"radius")==12000000 && m_eq(j_string(rel,"expression"),"#bore + 4 mm"),"Expression updates radius and survives");
+    m_assert(j_integer(cad_project_line_sketch(edited,sk),"degrees_of_freedom")==2,"Diameter locks one radial DOF");
+    edited=cad_project_toggle_circle_reference(edited,sk,id,"radius");m_assert(edited,cg_error);
+    edited=cad_project_edit_line_variable(edited,sk,"bore","hole","1 in");m_assert(edited,cg_error);
+    nodes=pc_nodes(cad_project_part(edited));let rows=j_get(pc_find(nodes,sk),"relations");rel=pc_find(rows,key);
+    m_assert(m_eq(j_string(rel,"expression"),"#hole + 4 mm") && pc_pose_number(j_get(rel,"value"))==29400000,"Variable rename and recomputation");
+    m_assert(pc_pose_number(j_get(load64(rel+24),"value"))==14700000 && j_value(j_get(load64(rel+24),"reference")),"Reference radius follows diameter");
+    let saved=j_encode(edited);
+    m_assert(!cad_project_set_circle_dimension(edited,sk,id,"radius","9"),"Cannot write reference diameter or radius");
+    m_assert(!cad_project_set_circle_dimension(edited,sk,id,"diameter","0") && !cad_project_set_circle_dimension(edited,sk,id,"diameter","10 deg"),"Reject invalid units or values");
+    let fixed=cad_project_toggle_circle_reference(edited,sk,id,"radius");m_assert(fixed,cg_error);
+    m_assert(!cad_project_set_circle_dimension(fixed,sk,id,"diameter","25"),"Conflicting driving radius");
+    m_assert(m_eq(saved,j_encode(edited)),"Failed edit preserves source");
+    edited=cad_project_remove_circle_dimension(edited,sk,id,"diameter");m_assert(edited,cg_error);
+    let point=cad_project_add_primitive(edited,sk,"point",cg_v(0,0,0),0);m_assert(point,cg_error);
+    let a=j_parse("{\"entityId\":\"native-entity-2\",\"point\":\"center\"}");let b=j_parse("{\"entityId\":\"native-entity-1\",\"point\":\"center\"}");
+    edited=cad_project_add_point_distance(edited,sk,a,b,"x",0);m_assert(edited,cg_error);
+    edited=cad_project_set_distance_expression(edited,sk,"native-distance-1","10");m_assert(edited,cg_error);
+    nodes=pc_nodes(cad_project_part(edited));let circle=pc_find(nodes,id);
+    m_assert(pc_pose_number(j_get(j_get(j_get(circle,"primitive"),"center"),"x"))==10000000 && pc_circle_measure(circle,"radius")==14700000,"Centre constraint preserves radius");
+    let stale=j_parse(saved);nodes=pc_nodes(cad_project_part(stale));cg_j_set(j_get(pc_find(nodes,id),"primitive"),"radius",j_number(6));
+    m_assert(j_get(cad_project_mesh(stale),"error"),"Manufacturing path rejects stale driving diameter");
+    let original=j_parse(base);let huge=cad_project_set_circle_dimension(original,sk,id,"diameter","800");m_assert(huge,cg_error);
+    m_assert(pc_circle_measure(pc_find(pc_nodes(cad_project_part(huge)),id),"radius")==400000000,"Diameter can exceed the radius limit");
+    let ring=cad_project_new("Ring");
+    m_assert(cad_project_add_primitive(ring,sk,"circle",cg_v(0,0,0),cg_v(10000000,0,0)),cg_error);
+    m_assert(cad_project_add_primitive(ring,sk,"circle",cg_v(4000000,0,0),cg_v(6000000,0,0)),cg_error);
+    ring=cad_project_add_extrusion(ring,sk,1,5000000,"newBody");m_assert(ring,cg_error);
+    let valid=j_encode(ring);m_assert(!cad_project_set_circle_dimension(ring,sk,"native-entity-2","radius","9"),"Crossing loop must reject the dependent extrusion");
+    m_assert(!cad_project_move_point(ring,sk,"native-entity-2",j_parse("{\"x\":9,\"y\":0}")),"Moving the hole across the outer loop must reject the rebuild");
+    let moved=cad_project_move_point(ring,sk,"native-entity-2",j_parse("{\"x\":3,\"y\":1}"));m_assert(moved,cg_error);
+    m_assert(m_eq(j_encode(ring),valid),"Failed profile rebuild leaves the ring intact");
+    return 0;
+}

@@ -1,0 +1,32 @@
+import "cad/project.flex";
+fn main() {
+    let data=j_parse("{\"instances\":[{\"id\":\"a\"},{\"id\":\"b\"}],\"connectors\":[{\"id\":\"top\",\"instanceId\":\"a\",\"position\":{\"x\":0,\"y\":0,\"z\":10}},{\"id\":\"base\",\"instanceId\":\"b\"}],\"mates\":[{\"id\":\"hinge\",\"type\":\"revolute\",\"a\":{\"instanceId\":\"a\",\"connectorId\":\"top\"},\"b\":{\"instanceId\":\"b\",\"connectorId\":\"base\"}}],\"actuators\":[{\"type\":\"servo\",\"mateId\":\"hinge\",\"homeDeg\":90}]}");
+    cg_begin();let rows=pc_assembly_poses(data);m_assert(cg_count(rows)==2,"Solve hinge");
+    let pose=load64(cg_at(rows,1)+24);let point=ca_point(pose,cg_v(5000000,0,0));
+    m_assert(!load64(point) && load64(point+8)==5000000 && load64(point+16)==10000000,"Hinge position and angle");
+    let project=j_parse("{\"items\":[{\"type\":\"assembly\",\"id\":\"one\"}],\"selectedPath\":[0]}");
+    j_add(cad_project_item(project),"data",data);
+    let joint=cad_project_servo_frame(project,"b");m_assert(joint,cg_error);
+    m_assert(load64(load64(joint)+88)==10000000 && load64(load64(joint)+64)==1000000,"World hinge frame");
+    m_assert(!cad_project_servo_frame(project,"a"),"Grounded base");
+    let followers=cad_project_hinge_followers(data,load64(joint+16));
+    m_assert(cg_count(followers)==1 && ca_find(followers,"b"),"Only hinge child moves");
+    let relation=j_parse("{\"id\":\"mount\",\"type\":\"fasten\",\"a\":{\"instanceId\":\"b\",\"connectorId\":\"base\"},\"b\":{\"instanceId\":\"c\",\"connectorId\":\"end\"}}");
+    let nested=j_parse(j_encode(project));let nd=j_get(cad_project_item(nested),"data");
+    j_add(j_get(nd,"mates"),0,relation);j_add(j_get(nd,"instances"),0,j_parse("{\"id\":\"c\"}"));
+    j_add(j_get(nd,"connectors"),0,j_parse("{\"id\":\"end\",\"instanceId\":\"c\"}"));
+    let child=cad_project_servo_frame(nested,"c");m_assert(child && m_eq(j_string(load64(child+16),"id"),"hinge"),"Pick a fastened follower");
+    followers=cad_project_hinge_followers(nd,load64(child+16));
+    m_assert(cg_count(followers)==2 && ca_find(followers,"c") && !ca_find(followers,"a"),"Nested moving subtree");
+    cg_j_set(pc_find(j_get(nd,"instances"),"c"),"fixed",j_new(5,1));
+    m_assert(!cad_project_servo_frame(nested,"c"),"Fixed occurrence cannot initiate drag");
+    let fixed=j_get(pc_first(j_get(data,"mates")),"type");store64(fixed+8,"fasten");
+    rows=pc_assembly_poses(data);pose=load64(cg_at(rows,1)+24);point=ca_point(pose,cg_v(5000000,0,0));
+    m_assert(load64(point)==5000000 && !load64(point+8) && load64(point+16)==10000000,"Fasten placement");
+    cg_j_set(data,"actuators",j_array());store64(fixed+8,"ball");cg_begin();
+    rows=pc_assembly_poses(data);m_assert(cg_count(rows)==2,"Solve free ball joint");
+    pose=load64(cg_at(rows,1)+24);m_assert(cg_abs(load64(pose+88)-10000000)<=2,"Coincident ball origins");
+    store64(fixed+8,"prismatic");cg_begin();rows=pc_assembly_poses(data);
+    m_assert(rows && !load64(load64(cg_at(rows,1)+24)+88),"Slider preserves free offset");
+    return 0;
+}

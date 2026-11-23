@@ -1,0 +1,97 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "bevel-part",
+      "type": "part",
+      "name": "Legacy v4 bevel",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "rectangle-sketch",
+              "type": "sketch",
+              "name": "Rectangle",
+              "targetId": "plane-top",
+              "dimensions": []
+            },
+            {
+              "id": "outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "rectangle-sketch",
+              "p0": {
+                "x": 20,
+                "y": 20
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "block",
+              "type": "extrude",
+              "name": "Block",
+              "sketchId": "rectangle-sketch",
+              "profileId": "rectangle-sketch-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-block-block-solid-edge-2",
+              "type": "edge",
+              "sourceId": "block",
+              "edgeId": "block-solid-edge-2"
+            },
+            {
+              "id": "chamfer-1",
+              "type": "chamfer",
+              "name": "Unequal chamfer",
+              "edgeId": "edge-block-block-solid-edge-2",
+              "d1": 2,
+              "d2": 3
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "block",
+            "chamfer-1"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "rectangle-sketch",
+            "block",
+            "chamfer-1"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

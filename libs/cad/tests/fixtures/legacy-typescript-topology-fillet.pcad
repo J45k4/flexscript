@@ -1,0 +1,105 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "topology-fillet",
+      "type": "part",
+      "name": "topology-fillet",
+      "data": {
+        "features": [
+          {
+            "type": "sketch",
+            "id": "body/sketch",
+            "name": "body",
+            "dirty": false,
+            "target": {
+              "type": "plane",
+              "plane": "XY"
+            },
+            "entities": [
+              {
+                "type": "rectangle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 20,
+                "height": 20,
+                "rotation": 0,
+                "id": "body/sketch/0"
+              }
+            ],
+            "dimensions": [],
+            "vertices": [
+              {
+                "x": 10,
+                "y": 10
+              },
+              {
+                "x": -10,
+                "y": 10
+              },
+              {
+                "x": -10,
+                "y": -10
+              },
+              {
+                "x": 10,
+                "y": -10
+              }
+            ],
+            "loops": [
+              {
+                "id": "body/sketch-loop-1",
+                "vertexIndices": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ],
+            "profiles": [
+              {
+                "id": "body/sketch-profile-1",
+                "outerLoopId": "body/sketch-loop-1",
+                "holeLoopIds": []
+              }
+            ]
+          },
+          {
+            "type": "extrude",
+            "id": "body",
+            "name": "body",
+            "target": {
+              "type": "profileRef",
+              "sketchId": "body/sketch",
+              "profileId": "body/sketch-profile-1"
+            },
+            "depth": 10
+          }
+        ],
+        "solidSteps": [
+          {
+            "id": "body",
+            "type": "extrusion",
+            "featureId": "body",
+            "operation": "join",
+            "edgeFinishes": [
+              {
+                "kind": "fillet",
+                "edgeId": "body-solid-edge-2",
+                "radius": 2,
+                "segments": 32
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

@@ -1,6 +1,8 @@
 import "address.flex";
+import "word-operations.flex";
 import "allocation.flex";
 import "call-frame.flex";
+import "startup.flex";
 import "jit.flex";
 // Trusted execution uses native pointers/syscalls/FFI. Restricted execution
 // uses guest offsets and explicitly granted host capabilities.
@@ -19,27 +21,17 @@ global vm_yielded=0;
 global vm_fuel=10000000;
 global vm_deadline=0;
 global vm_timeout=5000;
-global vm_time=0;
 global vm_steps=0;
 global vm_output_left=1048576;
-global vm_stdin=0;
 global vm_read_root=-1;
 global vm_root_name=0;
-global vm_path=0;
-global vm_open_how=0;
-global vm_poll_records=0;
-global vm_file_stat=0;
-global vm_fds=0;
 global vm_show_stats=0;
 global vm_jit_enabled=1;
 global vm_jit_threshold=16;
 global vm_jit_explicit=0;
-global vm_jit_cache=0;
-global vm_jit_context=0;
 global vm_jit_compilations=0;
 global vm_jit_calls=0;
 global vm_word_buffer=0;
-fn vm_emit(op,value) {let at=output_size;emit64(op);emit64(value);return at;}
 // Keep native mappings separate from the internal bump arena. Reclaiming a
 // mapping must not rewind the cursor holding strings and startup arguments.
 fn vm_native_reserve() {
@@ -146,18 +138,6 @@ fn vm_resolve() {
     }
     ir_optimize();return 0;
 }
-fn vm_binary(op,a,b) {
-    if op==43 {return a+b;}if op==45 {return a-b;}if op==42 {return a*b;}
-    if op==47 || op==37 {
-        if !b || (a==(-9223372036854775807-1) && b==-1) {vm_error=2;return 0;}
-        if op==47 {return a/b;}return a%b;
-    }
-    if op==38 {return a&b;}if op==124 {return a|b;}if op==94 {return a^b;}
-    if op==265 {return a<<(b&63);}if op==266 {return a>>(b&63);}
-    if op==259 {return a==b;}if op==260 {return a!=b;}
-    if op==60 {return a<b;}if op==62 {return a>b;}if op==261 {return a<=b;}if op==262 {return a>=b;}
-    vm_error=9;return 0;
-}
 fn vm_now() {
     if syscall(228,1,vm_time,0,0,0,0)<0 {vm_error=8;return 0;}
     return load64(vm_time)*1000+load64(vm_time+8)/1000000;
@@ -167,9 +147,6 @@ fn vm_wait(fd,events) {
     let left=vm_deadline-vm_now();if left<=0 {vm_error=8;return 0;}
     let result=syscall(7,record,1,left,0,0,0);
     if !result {vm_error=8;return 0;}if result<0 {return 0;}return 1;
-}
-fn vm_host_fd(fd) {
-    if fd<0 || fd>=67 {return -1;}return load64(vm_fds+fd*8);
 }
 fn vm_guest_path(pointer) {
     let i=0;
@@ -309,7 +286,8 @@ fn vm_continue(){
         else {
             if vm_steps%4096==0 && vm_now()>=vm_deadline {vm_error=8;}
             if !vm_error {
-                if vm_pc<0 || vm_pc>output_size-16 || vm_pc%16 {vm_error=9;}
+                // Keep the two-word bounds check inline in the dispatch loop.
+                if output_size<16 || vm_pc<0 || vm_pc>output_size-16 || (vm_pc&15)!=0 {vm_error=9;}
                 else {
                     let op=load64(output+vm_pc);let arg=load64(output+vm_pc+8);
                     vm_pc=vm_pc+16;vm_fuel=vm_fuel-1;vm_steps=vm_steps+1;
@@ -381,16 +359,7 @@ fn vm_help(fd) {
     print(fd,"  --allow-read=DIR     grant read-only files in restricted mode\n  --allow-stdin        grant standard input in restricted mode\n  --allow-url-imports  enable source downloads in restricted mode\n  --no-url-imports     disable HTTP/HTTPS source downloads\n");return 0;
 }
 fn vm_initialize() {
-    vm_heap=alloc(vm_heap_limit);vm_stack=alloc(524288);vm_local_memory=alloc(8388608);
-    vm_frames=alloc(1024*40);vm_time=alloc(16);vm_path=alloc(4096);vm_open_how=alloc(24);
-    vm_fds=alloc(67*8);vm_jit_cache=alloc((ir_function_capacity+2048)*32);vm_jit_context=alloc(64);
-    vm_poll_records=alloc(67*8);
-    vm_file_stat=alloc(144);
-    if vm_heap<0 || vm_stack<0 || vm_local_memory<0 || vm_frames<0 || vm_time<0
-        || vm_path<0 || vm_open_how<0 || vm_fds<0 || vm_jit_cache<0 || vm_jit_context<0
-        || vm_poll_records<0 || vm_file_stat<0 {return 0;}
-    let i=0;while i<67 {store64(vm_fds+i*8,-1);i=i+1;}
-    if vm_stdin {store64(vm_fds,0);}store64(vm_fds+8,1);store64(vm_fds+16,2);
+    if !vm_initialize_buffers(ir_function_capacity) {return 0;}
     if vm_jit_enabled && !ffi_open("libc.so.6") {
         vm_jit_enabled=0;if vm_jit_explicit {print(2,"flex vm: JIT requires the full compiler runtime.\n");return 0;}
     }

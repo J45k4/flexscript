@@ -1,0 +1,533 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "normal-elliptic-vertical-part",
+      "type": "part",
+      "name": "Elliptic normal vertical",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Normal guides",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "oval-guide"
+                },
+                {
+                  "id": "line-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 5
+                },
+                {
+                  "id": "oval-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "oval-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "oval-width",
+                  "type": "width",
+                  "entityId": "oval-guide",
+                  "value": 20
+                },
+                {
+                  "id": "oval-height",
+                  "type": "height",
+                  "entityId": "oval-guide",
+                  "value": 10
+                },
+                {
+                  "id": "oval-rotation",
+                  "type": "rotation",
+                  "entityId": "oval-guide",
+                  "value": 0
+                },
+                {
+                  "id": "oval-sweep",
+                  "type": "arcSweep",
+                  "entityId": "oval-guide",
+                  "value": 180
+                },
+                {
+                  "id": "normal-contact-midpoint",
+                  "type": "midpoint",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "oval-guide"
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 45,
+                    "y": 4
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                },
+                {
+                  "id": "normal-vertical",
+                  "type": "vertical",
+                  "entityId": "normal-line"
+                }
+              ]
+            },
+            {
+              "id": "oval-guide",
+              "type": "sketchArc",
+              "sketchId": "native-sketch-1",
+              "arc": {
+                "id": "oval-guide",
+                "type": "ellipticArc",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 20,
+                "height": 10,
+                "rotation": 0,
+                "startAngle": 0,
+                "sweep": 3.141592653589793,
+                "segments": 64,
+                "construction": true
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 6.123233995736766e-16,
+                "y": 5
+              },
+              "p1": {
+                "x": 7.654042494670958e-16,
+                "y": 10
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 45,
+                  "y": 4
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "normal-elliptic-signed-part",
+      "type": "part",
+      "name": "Elliptic normal signed",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Normal guides",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "oval-guide"
+                },
+                {
+                  "id": "line-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 12
+                },
+                {
+                  "id": "oval-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "oval-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 3,
+                    "y": 4
+                  }
+                },
+                {
+                  "id": "oval-width",
+                  "type": "width",
+                  "entityId": "oval-guide",
+                  "value": 20
+                },
+                {
+                  "id": "oval-height",
+                  "type": "height",
+                  "entityId": "oval-guide",
+                  "value": 8
+                },
+                {
+                  "id": "oval-rotation",
+                  "type": "rotation",
+                  "entityId": "oval-guide",
+                  "value": 35
+                },
+                {
+                  "id": "oval-sweep",
+                  "type": "arcSweep",
+                  "entityId": "oval-guide",
+                  "value": -34.37746770784939
+                },
+                {
+                  "id": "normal-contact-midpoint",
+                  "type": "midpoint",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p0"
+                  },
+                  "b": "oval-guide"
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 45,
+                    "y": 4
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "oval-guide",
+              "type": "sketchArc",
+              "sketchId": "native-sketch-1",
+              "arc": {
+                "id": "oval-guide",
+                "type": "ellipticArc",
+                "center": {
+                  "x": 3,
+                  "y": 4
+                },
+                "width": 20,
+                "height": 8,
+                "rotation": 35,
+                "startAngle": 0.8,
+                "sweep": -0.6,
+                "segments": 64,
+                "construction": true
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 9.088786728335576,
+                "y": 10.604496424656949
+              },
+              "p1": {
+                "x": 9.34248390918015,
+                "y": 22.60181436411456
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 45,
+                  "y": 4
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "normal-ellipse-part",
+      "type": "part",
+      "name": "Closed ellipse normal",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Normal guides",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "normal-from-web",
+                  "type": "normal",
+                  "a": {
+                    "entityId": "normal-line",
+                    "point": "p1"
+                  },
+                  "b": "oval-guide"
+                },
+                {
+                  "id": "line-length",
+                  "type": "length",
+                  "entityId": "normal-line",
+                  "value": 10
+                },
+                {
+                  "id": "oval-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "oval-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 3,
+                    "y": 2
+                  }
+                },
+                {
+                  "id": "oval-width",
+                  "type": "width",
+                  "entityId": "oval-guide",
+                  "value": 40
+                },
+                {
+                  "id": "oval-height",
+                  "type": "height",
+                  "entityId": "oval-guide",
+                  "value": 12
+                },
+                {
+                  "id": "oval-rotation",
+                  "type": "rotation",
+                  "entityId": "oval-guide",
+                  "value": 32
+                }
+              ]
+            },
+            {
+              "id": "oval-guide",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "oval-guide",
+                "type": "ellipse",
+                "center": {
+                  "x": 3,
+                  "y": 2
+                },
+                "width": 40,
+                "height": 12,
+                "rotation": 32,
+                "segments": 128
+              }
+            },
+            {
+              "id": "normal-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 7.8614007096992715,
+                "y": 22.05103141073102
+              },
+              "p1": {
+                "x": 11.052502885252668,
+                "y": 12.573855306786431
+              }
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

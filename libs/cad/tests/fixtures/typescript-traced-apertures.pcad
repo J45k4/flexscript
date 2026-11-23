@@ -1,0 +1,386 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "mixed-traced-apertures",
+      "type": "part",
+      "name": "Mixed traced apertures",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Line outline",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "line-1",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 0,
+                "y": 20
+              }
+            },
+            {
+              "id": "line-3",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 20,
+                "y": 0
+              },
+              "p1": {
+                "x": 20,
+                "y": 20
+              }
+            },
+            {
+              "id": "line-2",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 0,
+                "y": 20
+              },
+              "p1": {
+                "x": 20,
+                "y": 20
+              }
+            },
+            {
+              "id": "line-4",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 20,
+                "y": 0
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "construction-diagonal",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "construction": true,
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 20,
+                "y": 20
+              }
+            },
+            {
+              "id": "aperture-line-1",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 6.5,
+                "y": 14.1
+              },
+              "p1": {
+                "x": 7.25,
+                "y": 17.6
+              }
+            },
+            {
+              "id": "aperture-line-2",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 10.8,
+                "y": 13.7
+              },
+              "p1": {
+                "x": 10.6,
+                "y": 17.2
+              }
+            },
+            {
+              "id": "aperture-line-3",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 10.6,
+                "y": 17.2
+              },
+              "p1": {
+                "x": 7.25,
+                "y": 17.6
+              }
+            },
+            {
+              "id": "aperture-line-4",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 10.8,
+                "y": 13.7
+              },
+              "p1": {
+                "x": 6.5,
+                "y": 14.1
+              }
+            },
+            {
+              "id": "hole-outline",
+              "type": "sketchPrimitive",
+              "sketchId": "profile",
+              "primitive": {
+                "id": "hole-outline",
+                "type": "circle",
+                "center": {
+                  "x": 4,
+                  "y": 10
+                },
+                "radius": 2,
+                "segments": 16
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Line extrusion",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-82",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-82"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Line bevel",
+              "edgeId": "edge-source-source-solid-edge-82",
+              "d1": 0.5,
+              "d2": 1.25
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "direct-outline-traced-apertures",
+      "type": "part",
+      "name": "Direct outline with traced aperture",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Line outline",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "direct-outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "profile",
+              "p0": {
+                "x": 20,
+                "y": 20
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "construction-diagonal",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "construction": true,
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 20,
+                "y": 20
+              }
+            },
+            {
+              "id": "aperture-line-1",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 6.5,
+                "y": 14.1
+              },
+              "p1": {
+                "x": 7.25,
+                "y": 17.6
+              }
+            },
+            {
+              "id": "aperture-line-2",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 10.8,
+                "y": 13.7
+              },
+              "p1": {
+                "x": 10.6,
+                "y": 17.2
+              }
+            },
+            {
+              "id": "aperture-line-3",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 10.6,
+                "y": 17.2
+              },
+              "p1": {
+                "x": 7.25,
+                "y": 17.6
+              }
+            },
+            {
+              "id": "aperture-line-4",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 10.8,
+                "y": 13.7
+              },
+              "p1": {
+                "x": 6.5,
+                "y": 14.1
+              }
+            },
+            {
+              "id": "hole-outline",
+              "type": "sketchPrimitive",
+              "sketchId": "profile",
+              "primitive": {
+                "id": "hole-outline",
+                "type": "circle",
+                "center": {
+                  "x": 4,
+                  "y": 10
+                },
+                "radius": 2,
+                "segments": 16
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Line extrusion",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-82",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-82"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Line bevel",
+              "edgeId": "edge-source-source-solid-edge-82",
+              "d1": 0.5,
+              "d2": 1.25
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

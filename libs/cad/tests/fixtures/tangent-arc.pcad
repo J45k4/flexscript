@@ -1,0 +1,140 @@
+{
+  "items": [
+    {
+      "data": {
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "name": "Top",
+              "plane": "XY",
+              "type": "referencePlane"
+            },
+            {
+              "id": "plane-front",
+              "name": "Front",
+              "plane": "XZ",
+              "type": "referencePlane"
+            },
+            {
+              "id": "plane-right",
+              "name": "Right",
+              "plane": "YZ",
+              "type": "referencePlane"
+            },
+            {
+              "dimensions": [],
+              "id": "native-sketch-1",
+              "name": "Sketch 1",
+              "relations": [
+                {
+                  "a": {
+                    "entityId": "native-entity-1",
+                    "point": "p1"
+                  },
+                  "b": {
+                    "entityId": "native-entity-2",
+                    "point": "p0"
+                  },
+                  "id": "native-smooth-join-native-entity-2-p0",
+                  "type": "smoothJoin"
+                },
+                {
+                  "a": {
+                    "entityId": "native-entity-2",
+                    "point": "p1"
+                  },
+                  "b": {
+                    "entityId": "native-entity-3",
+                    "point": "point0"
+                  },
+                  "id": "native-smooth-join-native-entity-3-point0",
+                  "type": "smoothJoin"
+                }
+              ],
+              "targetId": "plane-top",
+              "type": "sketch",
+              "variables": []
+            },
+            {
+              "id": "native-entity-1",
+              "p0": {
+                "x": 0.0,
+                "y": 0.0
+              },
+              "p1": {
+                "x": 40.0,
+                "y": 0.0
+              },
+              "sketchId": "native-sketch-1",
+              "type": "sketchLine"
+            },
+            {
+              "arc": {
+                "center": {
+                  "x": 40.0,
+                  "y": 20.0
+                },
+                "id": "native-entity-2",
+                "radius": 20.0,
+                "segments": 128,
+                "startAngle": -1.5707963267948966,
+                "sweep": 1.5707963267948966,
+                "type": "arc"
+              },
+              "id": "native-entity-2",
+              "sketchId": "native-sketch-1",
+              "type": "sketchArc"
+            },
+            {
+              "id": "native-entity-3",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "closed": false,
+                "id": "native-entity-3",
+                "mode": "fit",
+                "points": [
+                  {
+                    "x": 60.0,
+                    "y": 20.0
+                  },
+                  {
+                    "x": 58.64864730834961,
+                    "y": 40.0
+                  },
+                  {
+                    "x": 51.89189147949219,
+                    "y": 60.0
+                  }
+                ],
+                "type": "spline"
+              },
+              "type": "sketchSpline"
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1"
+          ]
+        },
+        "features": [],
+        "tree": {
+          "dirtySketchIds": [],
+          "orderedNodeIds": [
+            "native-sketch-1"
+          ]
+        }
+      },
+      "id": "native-part-1",
+      "name": "Tangent arc",
+      "type": "part"
+    }
+  ],
+  "revision": 1,
+  "selectedPath": [
+    0
+  ],
+  "version": 4
+}

@@ -1,0 +1,1 @@
+{"version":4,"revision":1,"items":[{"id":"flared-loft","type":"part","name":"flared loft","data":{"features":[],"solidSteps":[{"id":"loft-1","type":"loft","operation":"join","loft":{"bottomRadius":12,"topRadius":18,"height":30,"segments":32},"translation":{"x":4,"y":-7,"z":3}}]}}],"selectedPath":[0]}

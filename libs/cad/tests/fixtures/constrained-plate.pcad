@@ -1,0 +1,236 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "native-part-1",
+      "type": "part",
+      "name": "Constrained plate",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Outline",
+              "targetId": "plane-top",
+              "relations": [
+                {
+                  "id": "join-bottom",
+                  "type": "coincident",
+                  "a": {
+                    "entityId": "bottom",
+                    "point": "p1"
+                  },
+                  "b": {
+                    "entityId": "right",
+                    "point": "p0"
+                  }
+                },
+                {
+                  "id": "join-right",
+                  "type": "coincident",
+                  "a": {
+                    "entityId": "right",
+                    "point": "p1"
+                  },
+                  "b": {
+                    "entityId": "top",
+                    "point": "p0"
+                  }
+                },
+                {
+                  "id": "join-top",
+                  "type": "coincident",
+                  "a": {
+                    "entityId": "top",
+                    "point": "p1"
+                  },
+                  "b": {
+                    "entityId": "left",
+                    "point": "p0"
+                  }
+                },
+                {
+                  "id": "join-left",
+                  "type": "coincident",
+                  "a": {
+                    "entityId": "left",
+                    "point": "p1"
+                  },
+                  "b": {
+                    "entityId": "bottom",
+                    "point": "p0"
+                  }
+                },
+                {
+                  "id": "origin",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "bottom",
+                    "point": "p0"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "height",
+                  "type": "length",
+                  "value": 10,
+                  "entityId": "right"
+                }
+              ],
+              "variables": [],
+              "dimensions": []
+            },
+            {
+              "id": "bottom",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 20,
+                "y": 0
+              }
+            },
+            {
+              "id": "axis-bottom",
+              "type": "sketchConstraint",
+              "sketchId": "native-sketch-1",
+              "constraint": {
+                "type": "horizontal",
+                "entityId": "bottom"
+              }
+            },
+            {
+              "id": "right",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "p0": {
+                "x": 20,
+                "y": 0
+              },
+              "p1": {
+                "x": 20,
+                "y": 10
+              }
+            },
+            {
+              "id": "axis-right",
+              "type": "sketchConstraint",
+              "sketchId": "native-sketch-1",
+              "constraint": {
+                "type": "vertical",
+                "entityId": "right"
+              }
+            },
+            {
+              "id": "top",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "p0": {
+                "x": 20,
+                "y": 10
+              },
+              "p1": {
+                "x": 0,
+                "y": 10
+              }
+            },
+            {
+              "id": "axis-top",
+              "type": "sketchConstraint",
+              "sketchId": "native-sketch-1",
+              "constraint": {
+                "type": "horizontal",
+                "entityId": "top"
+              }
+            },
+            {
+              "id": "left",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "p0": {
+                "x": 0,
+                "y": 10
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "axis-left",
+              "type": "sketchConstraint",
+              "sketchId": "native-sketch-1",
+              "constraint": {
+                "type": "vertical",
+                "entityId": "left"
+              }
+            },
+            {
+              "id": "width",
+              "type": "sketchConstraint",
+              "sketchId": "native-sketch-1",
+              "constraint": {
+                "type": "lineLength",
+                "entityId": "bottom",
+                "value": 20
+              }
+            },
+            {
+              "id": "plate",
+              "type": "extrude",
+              "name": "Plate",
+              "depth": 5,
+              "operation": "newBody",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1"
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "plate"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "plate"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

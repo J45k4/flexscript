@@ -1,0 +1,30 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [0],
+  "items": [{
+    "id": "native-part-1", "type": "part", "name": "Ring contact",
+    "data": {
+      "features": [],
+      "cad": {
+        "rootNodeIds": ["plane-top", "plane-front", "plane-right", "native-sketch-1"],
+        "nodes": [
+          {"id": "plane-top", "type": "referencePlane", "name": "Top", "plane": "XY"},
+          {"id": "plane-front", "type": "referencePlane", "name": "Front", "plane": "XZ"},
+          {"id": "plane-right", "type": "referencePlane", "name": "Right", "plane": "YZ"},
+          {
+            "id": "native-sketch-1", "type": "sketch", "name": "Ring contact", "targetId": "plane-top", "dimensions": [], "variables": [],
+            "relations": [
+              {"id": "ring-contact-from-web", "type": "pointOnCurve", "a": {"entityId": "probe", "point": "center"}, "b": "rim"},
+              {"id": "ring-origin", "type": "fixed", "anchor": {"entityId": "rim", "point": "center"}, "position": {"x": 0, "y": 0}},
+              {"id": "ring-diameter", "type": "diameter", "entityId": "rim", "value": 40}
+            ]
+          },
+          {"id": "rim", "type": "sketchPrimitive", "sketchId": "native-sketch-1", "primitive": {"id": "rim", "type": "circle", "center": {"x": 0, "y": 0}, "radius": 20, "segments": 64}},
+          {"id": "probe", "type": "sketchPrimitive", "sketchId": "native-sketch-1", "primitive": {"id": "probe", "type": "point", "center": {"x": 20, "y": 0}, "construction": true}}
+        ]
+      },
+      "tree": {"orderedNodeIds": ["native-sketch-1"], "dirtySketchIds": []}
+    }
+  }]
+}

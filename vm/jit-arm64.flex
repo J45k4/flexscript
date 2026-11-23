@@ -1,4 +1,5 @@
 import "../lib/arm64-code.flex";
+import "word-operators.flex";
 // Leaf word-IR JIT. Code generation is platform independent; executable-memory
 // publication/calls belong to the host. Caller owns code and scratch buffers.
 // Context words: locals, fuel, error, backedges, deadline_ns, timespec[2],
@@ -191,10 +192,6 @@ fn aj_binary_immediate(op,dst,left,value,boolean) {
 fn aj_local_source(reg,slot) {
     if slot<7 {return slot+22;}aj_local(0,reg,slot);return reg;
 }
-fn aj_operator(op) {
-    return op==43 || op==45 || op==42 || op==47 || op==37 || op==38 || op==124 || op==94
-        || op==265 || op==266 || op==259 || op==260 || op==60 || op==62 || op==261 || op==262;
-}
 fn aj_heap_address(end) {
     if end==aj_heap_end {if aj_batch {return 0;}aj_cmp(17,31);aj_guard(1,3);}
     else {aj_const(9,end);aj_cmp(13,9);aj_guard(2,3);aj_cmp(12,31);aj_guard(1,3);}
@@ -369,7 +366,7 @@ fn arm64_jit_compile(ir,bytes,code,capacity,scratch,scratch_bytes) {
             if base<16 || base%8 || span<1 || span>(4294967295-base)/8 {return -2;}
             if op==22 {aj_depth=aj_depth-1;}
             if !aj_heap_end {aj_heap_end=base+span*8;aj_heap_base=base;}
-        }else if op==7 {if !aj_operator(arg) {return -2;}aj_depth=aj_depth-1;}
+        }else if op==7 {if !vm_binary_operator(arg) {return -2;}aj_depth=aj_depth-1;}
         else if op==9 {if arg || aj_depth {return -2;}}
         else if op==10 || op==11 || op==12 {if arg<16 || arg>=bytes || arg%16 {return -2;}}
         else if op>=13 && op<=16 {if arg {return -2;}}

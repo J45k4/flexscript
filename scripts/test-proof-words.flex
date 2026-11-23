@@ -99,6 +99,24 @@ fn tw_affine_products() {
         }kind=kind+1;
     }return 0;
 }
+fn tw_large_gate_identifiers() {
+    let context=pw_context(1,524287,8);
+    tw_check(context,"large circuit allocation");
+    let input=0;
+    while load64(context+8)<262145 {input=pw_gate(context,0,0,0,0);}
+    tw_check(input==262145,"gate beyond the former limit");
+    let formula=pw_cnf_query(context,input);
+    tw_check(formula && pv_formula_valid(formula),"large-literal query construction");
+    let search=pv_search(formula,32);
+    tw_check(search,"large-literal search allocation");
+    tw_check(pv_decide(search,10000000,10000000)==1,"large-literal checked model");
+    tw_check(load64(load64(search+8)+input*8)==1,"large-literal model decoding");
+    tw_check(pw_emit(context,formula,-input,0,0,0,1),"large-literal contradicting clause");
+    tw_check(pv_decide(search,10000000,10000000)==2,"large-literal checked refutation");
+    syscall(11,search,104+(load64(formula)+1)*16+load64(search+48)*32,0,0,0,0);
+    syscall(11,formula,64+load64(formula+24)*16+load64(formula+32)*8,0,0,0,0);
+    pw_release(context);return 0;
+}
 fn tw_limits() {
     tw_check(!pw_context(3,32,32),"unsupported width rejected");let tiny=pw_context(64,2,2);pw_input(tiny);
     tw_check(load64(tiny+72) && !pw_cnf(tiny,0),"gate exhaustion cannot produce a formula");pw_release(tiny);
@@ -198,7 +216,27 @@ fn tw_constant_division() {
     }
     return 0;
 }
+fn tw_common_path_facts() {
+    let context=pw_context(1,64,16);
+    tw_check(context!=0,"allocate path fact circuit");
+    let fact=pw_gate(context,0,0,0,0);
+    let a=pw_gate(context,0,0,0,0);
+    let b=pw_gate(context,0,0,0,0);
+    let c=pw_gate(context,0,0,0,0);
+    let d=pw_gate(context,0,0,0,0);
+    let yes=pw_and(context,pw_and(context,fact,a),b);
+    let also_yes=pw_and(context,pw_and(context,fact,c),d);
+    let no=pw_and(context,pw_and(context,-fact,c),d);
+    let unknown=pw_and(context,c,d);
+    let joined=pw_or(context,yes,also_yes);
+    tw_check(joined< -1 && pw_path_conjunct(context,joined,fact,64,0)== -1,"joined paths imply their common fact");
+    tw_check(pw_path_conjunct(context,joined,-fact,64,0)== -2,"joined paths imply the negation of the opposite fact");
+    tw_check(pw_path_conjunct(context,pw_or(context,yes,no),fact,64,0)>=0,"disagreeing paths imply neither fact");
+    tw_check(pw_path_conjunct(context,pw_or(context,yes,unknown),fact,64,0)>=0,"a fact from one path must not carry across the join");
+    pw_release(context);
+    return 0;
+}
 fn main(argc,argv) {
-    h_environment(argc,argv);tw_suite(1,1);tw_suite(2,1);tw_suite(4,1);tw_suite(64,0);tw_constant_division();tw_constant_dividends();tw_affine_products();tw_constant_products();tw_limits();
+    h_environment(argc,argv);tw_suite(1,1);tw_suite(2,1);tw_suite(4,1);tw_suite(64,0);tw_constant_division();tw_constant_dividends();tw_affine_products();tw_constant_products();tw_limits();tw_large_gate_identifiers();tw_common_path_facts();
     h_print(1,h_cat3("PASS: ",h_int(tw_checks),h_cat3(" word checks across ",h_int(tw_cases)," assignments; checked SAT and UNSAT evidence\n")));return 0;
 }

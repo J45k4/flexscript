@@ -1,0 +1,467 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "rotated-rectangle",
+      "type": "part",
+      "name": "rotated-rectangle",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Support profile",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "outline",
+              "type": "sketchPrimitive",
+              "sketchId": "profile",
+              "primitive": {
+                "id": "outline",
+                "type": "rectangle",
+                "center": {
+                  "x": 6,
+                  "y": -2
+                },
+                "width": 24,
+                "height": 14,
+                "rotation": 30
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Source tool",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-2",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-2"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Unequal chamfer",
+              "edgeId": "edge-source-source-solid-edge-2",
+              "d1": 2,
+              "d2": 3
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "pentagon",
+      "type": "part",
+      "name": "pentagon",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Support profile",
+              "targetId": "plane-right",
+              "dimensions": []
+            },
+            {
+              "id": "outline",
+              "type": "sketchPrimitive",
+              "sketchId": "profile",
+              "primitive": {
+                "id": "outline",
+                "type": "polygon",
+                "center": {
+                  "x": 13,
+                  "y": 4
+                },
+                "radius": 12,
+                "sides": 5,
+                "rotation": 23
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Source tool",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-3",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-3"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Unequal chamfer",
+              "edgeId": "edge-source-source-solid-edge-3",
+              "d1": 2,
+              "d2": 3
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "circle",
+      "type": "part",
+      "name": "circle",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Support profile",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "outline",
+              "type": "sketchPrimitive",
+              "sketchId": "profile",
+              "primitive": {
+                "id": "outline",
+                "type": "circle",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "radius": 12,
+                "segments": 24
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Source tool",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-2",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-2"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Unequal chamfer",
+              "edgeId": "edge-source-source-solid-edge-2",
+              "d1": 2,
+              "d2": 3
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "ellipse",
+      "type": "part",
+      "name": "ellipse",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Support profile",
+              "targetId": "plane-top",
+              "dimensions": []
+            },
+            {
+              "id": "outline",
+              "type": "sketchPrimitive",
+              "sketchId": "profile",
+              "primitive": {
+                "id": "outline",
+                "type": "ellipse",
+                "center": {
+                  "x": -2,
+                  "y": 5
+                },
+                "width": 24,
+                "height": 11,
+                "rotation": 28,
+                "segments": 20
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Source tool",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-1",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-1"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Unequal chamfer",
+              "edgeId": "edge-source-source-solid-edge-1",
+              "d1": 2,
+              "d2": 3
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "capsule",
+      "type": "part",
+      "name": "capsule",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Support profile",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "outline",
+              "type": "sketchPrimitive",
+              "sketchId": "profile",
+              "primitive": {
+                "id": "outline",
+                "type": "capsule",
+                "from": {
+                  "x": -8,
+                  "y": -5
+                },
+                "to": {
+                  "x": 11,
+                  "y": 7
+                },
+                "width": 8,
+                "arcSegments": 7
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Source tool",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-30",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-30"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Unequal chamfer",
+              "edgeId": "edge-source-source-solid-edge-30",
+              "d1": 2,
+              "d2": 3
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

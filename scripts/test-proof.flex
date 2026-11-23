@@ -76,7 +76,7 @@ fn tp_corruption() {
     tp_check(!pv_check_model(formula,load64(search+8)),"accepted false SAT witness");return 0;
 }
 fn tp_inputs() {
-    tp_check(!pv_formula(-1,1,1) && !pv_formula(262145,1,1),"variable bounds");
+    tp_check(!pv_formula(-1,1,1) && !pv_formula(524289,1,1),"variable bounds");
     let formula=pv_formula(1,1,2);let words=h_take(16);store64(words,0);
     tp_check(!pv_clause(formula,words,1),"zero literal rejected");store64(words,2);
     tp_check(!pv_clause(formula,words,1),"out of range literal rejected");store64(words,0x8000000000000000);

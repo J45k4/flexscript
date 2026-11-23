@@ -1,0 +1,1 @@
+{"version":4,"revision":1,"items":[{"id":"narrowing-eccentric-loft","type":"part","name":"narrowing eccentric loft","data":{"features":[],"solidSteps":[{"id":"loft-1","type":"loft","operation":"join","loft":{"bottomRadius":18,"topRadius":9,"height":28,"segments":24},"translation":{"x":6,"y":-3,"z":4}}]}}],"selectedPath":[0]}

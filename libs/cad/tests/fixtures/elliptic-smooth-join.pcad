@@ -1,0 +1,377 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "rotated-elliptic-join-part",
+      "type": "part",
+      "name": "Elliptic arc Smooth join",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Tangent guide",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "smooth-from-web",
+                  "type": "smoothJoin",
+                  "a": {
+                    "entityId": "arc-guide",
+                    "point": "p1"
+                  },
+                  "b": {
+                    "entityId": "tangent-line",
+                    "point": "p0"
+                  }
+                },
+                {
+                  "id": "line-length",
+                  "type": "length",
+                  "entityId": "tangent-line",
+                  "value": 12
+                },
+                {
+                  "id": "arc-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "arc-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "arc-width",
+                  "type": "width",
+                  "entityId": "arc-guide",
+                  "value": 40
+                },
+                {
+                  "id": "arc-height",
+                  "type": "height",
+                  "entityId": "arc-guide",
+                  "value": 10
+                },
+                {
+                  "id": "arc-rotation",
+                  "type": "rotation",
+                  "entityId": "arc-guide",
+                  "value": 30
+                },
+                {
+                  "id": "arc-sweep",
+                  "type": "arcSweep",
+                  "entityId": "arc-guide",
+                  "value": -110
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 45,
+                    "y": 4
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "arc-guide",
+              "type": "sketchArc",
+              "sketchId": "native-sketch-1",
+              "arc": {
+                "id": "arc-guide",
+                "type": "ellipticArc",
+                "center": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 40,
+                "height": 10,
+                "rotation": 30,
+                "startAngle": 0.7853981633974483,
+                "sweep": -1.9198621771937625,
+                "segments": 128,
+                "construction": true
+              }
+            },
+            {
+              "id": "tangent-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 9.58573248300496,
+                "y": 0.30175478130001476
+              },
+              "p1": {
+                "x": -0.04191095798385902,
+                "y": -6.861239129990499
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 45,
+                  "y": 4
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "proof-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "proof-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "proof-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "ccw-elliptic-join-part",
+      "type": "part",
+      "name": "Counterclockwise elliptic join",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Tangent guide",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "smooth-from-web",
+                  "type": "smoothJoin",
+                  "a": {
+                    "entityId": "arc-guide",
+                    "point": "p0"
+                  },
+                  "b": {
+                    "entityId": "tangent-line",
+                    "point": "p0"
+                  }
+                },
+                {
+                  "id": "line-length",
+                  "type": "length",
+                  "entityId": "tangent-line",
+                  "value": 12
+                },
+                {
+                  "id": "arc-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "arc-guide",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 5,
+                    "y": -7
+                  }
+                },
+                {
+                  "id": "arc-width",
+                  "type": "width",
+                  "entityId": "arc-guide",
+                  "value": 40
+                },
+                {
+                  "id": "arc-height",
+                  "type": "height",
+                  "entityId": "arc-guide",
+                  "value": 10
+                },
+                {
+                  "id": "arc-rotation",
+                  "type": "rotation",
+                  "entityId": "arc-guide",
+                  "value": -25
+                },
+                {
+                  "id": "arc-sweep",
+                  "type": "arcSweep",
+                  "entityId": "arc-guide",
+                  "value": 140
+                },
+                {
+                  "id": "body-center",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 45,
+                    "y": 4
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "arc-guide",
+              "type": "sketchArc",
+              "sketchId": "native-sketch-1",
+              "arc": {
+                "id": "arc-guide",
+                "type": "ellipticArc",
+                "center": {
+                  "x": 5,
+                  "y": -7
+                },
+                "width": 40,
+                "height": 10,
+                "rotation": -25,
+                "startAngle": 4.974188368183839,
+                "sweep": 2.443460952792061,
+                "segments": 128,
+                "construction": true
+              }
+            },
+            {
+              "id": "tangent-line",
+              "type": "sketchLine",
+              "sketchId": "native-sketch-1",
+              "construction": true,
+              "p0": {
+                "x": 7.6503048518124075,
+                "y": -13.564763589260263
+              },
+              "p1": {
+                "x": -3.5400301766860487,
+                "y": -9.231589008198425
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 45,
+                  "y": 4
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            },
+            {
+              "id": "proof-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "proof-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "proof-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

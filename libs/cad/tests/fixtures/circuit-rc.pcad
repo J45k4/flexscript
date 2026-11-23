@@ -1,0 +1,21 @@
+{
+  "format": "puppycorp.pcad",
+  "schema_version": 1,
+  "units": "mm",
+  "electrical": {
+    "components": [
+      {"id":"V1", "reference":"V1", "simulation":{"kind":"voltage", "value":5},
+       "pins":[{"id":"plus", "number":"1"}, {"id":"minus", "number":"2"}]},
+      {"id":"R1", "reference":"R1", "simulation":{"kind":"resistor", "value":1000},
+       "pins":[{"id":"plus", "number":"1"}, {"id":"minus", "number":"2"}]},
+      {"id":"C1", "reference":"C1", "simulation":{"kind":"capacitor", "value":1e-6},
+       "pins":[{"id":"plus", "number":"1"}, {"id":"minus", "number":"2"}]}
+    ],
+    "nets": [
+      {"id":"vin", "name":"VIN", "endpoints":[{"component_id":"V1", "pin_id":"plus"}, {"component_id":"R1", "pin_id":"plus"}]},
+      {"id":"out", "name":"OUT", "endpoints":[{"component_id":"R1", "pin_id":"minus"}, {"component_id":"C1", "pin_id":"plus"}]},
+      {"id":"gnd", "name":"GND", "endpoints":[{"component_id":"V1", "pin_id":"minus"}, {"component_id":"C1", "pin_id":"minus"}]}
+    ],
+    "experiments": [{"id":"rc", "analysis":"transient", "ground_net_id":"gnd", "stop_s":0.005, "step_s":0.00001}]
+  }
+}

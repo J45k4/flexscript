@@ -1,0 +1,14 @@
+requires vm_local_base>=0 && vm_local_base<=vm_local_top;
+requires writable_bytes(vm_frames+vm_depth*40,40);
+requires readable_bytes(vm_stack+(vm_sp-CALL_ARITY*8),CALL_ARITY*8);
+requires writable_bytes(vm_local_memory+vm_local_top,CALL_SLOTS*8);
+requires disjoint_bytes(vm_stack+(vm_sp-CALL_ARITY*8),CALL_ARITY*8,vm_local_memory+vm_local_top,CALL_SLOTS*8);
+requires disjoint_bytes(vm_frames+vm_depth*40,40,vm_stack+(vm_sp-CALL_ARITY*8),CALL_ARITY*8);
+requires disjoint_bytes(vm_frames+vm_depth*40,40,vm_local_memory+vm_local_top,CALL_SLOTS*8);
+CALL_COPY_SEPARATIONmodifies CALL_EXTRA_EFFECTSvm_depth,vm_sp,vm_local_base,vm_local_top,vm_pc,bytes(vm_frames+vm_depth*40,40),bytes(vm_local_memory+vm_local_top,CALL_SLOTS*8);
+ensures result==1;
+CALL_ERROR_EFFECTensures vm_depth==old(vm_depth)+1;
+ensures vm_sp==old(vm_sp)-CALL_ARITY*8;
+ensures vm_local_base==old(vm_local_top);
+ensures vm_local_top==old(vm_local_top)+CALL_SLOTS*8;
+ensures vm_pc==CALL_PC+16;

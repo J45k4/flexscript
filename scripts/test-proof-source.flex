@@ -1,6 +1,10 @@
 import "lib/proof-harness.flex";
 fn suite(compiler) {
     t_init(compiler);
+    ps_verify("requires observed==saved; ensures result==cursor-saved; fn remaining(observed,saved,cursor){return cursor-observed;}",0,"Verified roots: 1/1");
+    ps_verify("requires first==second; ensures result==old(second); ensures second==old(second)+1; fn update(first,second){second=second+1;return first;}",0,"Verified roots: 1/1");
+    let different=ps_verify("ensures result==right; fn unmatched(left,right){if left==right {assert left==right;}return left;}",1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(different),"concrete replay:"),"a conditional equality escaped its branch");
     ps_verify("fn ordinary(x){return x+1;}",0,"NO VERIFICATION REQUESTED");
     ps_verify("requires x < 0x7fffffffffffffff; ensures result == old(x)+1; ensures result>old(x); fn increment(x){return x+1;}",0,"Verified roots: 1/1");
     let p=ps_verify("ensures result>x; fn bad(x){return x+1;}",1,"COUNTEREXAMPLE: postcondition");
@@ -20,6 +24,12 @@ fn suite(compiler) {
     ps_verify("verify; fn good(x){return x!=0 && 1/x;}",0,"Verified roots: 1/1");
     ps_verify("verify; fn good(x){return x==0 || 1/x;}",0,"Verified roots: 1/1");
     ps_verify("verify; fn bad(x){return x==0 && 1/x;}",1,"COUNTEREXAMPLE: arithmetic safety");
+    let bump="global total=0; requires flag!=0; modifies total; ensures result==1; ensures total==old(total)+1; fn bump(flag){total=total+1;return 1;}\n";
+    let counted="ensures total==old(total)+(flag!=0); ";
+    ps_verify(h_cat3(bump,counted,"ensures result==(flag!=0); fn and_call(flag){return flag && bump(flag);}"),0,"Verified roots: 2/2");
+    ps_verify(h_cat3(bump,counted,"ensures result==1; fn or_call(flag){return !flag || bump(flag);}"),0,"Verified roots: 2/2");
+    p=ps_verify(h_cat(bump,"requires flag==0; ensures total==old(total)+1; fn bypass(flag){return !flag || bump(flag);}"),1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(p),"concrete replay:"),"the bypass path incorrectly inherited the call effect");
     ps_verify("requires x==1; requires 1/x; verify; fn good(x){return 1/x;}",0,"Verified roots: 1/1");
     ps_verify("requires 1/x; requires x!=0; fn bad(x){return 1;}",1,"COUNTEREXAMPLE: arithmetic safety");
     ps_verify("requires x==1; requires x==2; fn empty(x){return x;}",1,"VACUOUS: requirements are unsatisfiable");
@@ -28,6 +38,24 @@ fn suite(compiler) {
     ps_verify("ensures result==old(x); fn chain(x){return helper(x);} fn helper(x){return leaf(x);} fn leaf(x){return x;}",0,"checked call closure: chain helper leaf");
     ps_verify("requires x==1; ensures result==1; fn helper(x){return x;} verify; fn caller(){return helper(0);}",1,"COUNTEREXAMPLE: callee requirement");
     ps_verify("requires x==1; ensures result==1; fn helper(x){return x;} verify; fn caller(){return helper(1);}",0,"Verified roots: 2/2");
+    ps_verify("requires n>=0 && n<=8 && m>=0 && m<=16; requires saved==disjoint_bytes(q+m,m,p+n,n); requires disjoint_bytes(p,16,q,32); ensures saved==1; fn reverse_span_order(p,q,n,m,saved){return 0;}",0,"Verified roots: 1/1");
+    p=ps_verify("requires p==8192 && q==8208 && n==1; requires disjoint_bytes(p,16,q,32); ensures disjoint_bytes(p+16,n,q,n); fn outside_parent(p,q,n){return 0;}",1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(p),"concrete replay:"),"out-of-bounds subspan did not replay");
+    let stamp="requires n>=8; requires writable_bytes(dst,n); modifies bytes(dst,n); ensures result==0; ensures load64(dst)==99; fn stamp(dst,n){store64(dst,99);return 0;}\n";
+    ps_verify(h_cat(stamp,"requires n>=8; requires writable_bytes(dst,n); requires readable_bytes(frame,40); requires disjoint_bytes(frame,40,dst,n); ensures result==old(load64(frame+32)); fn loading(frame,dst,n){stamp(dst,n);return load64(frame+32);}"),0,"Verified roots: 2/2");
+    p=ps_verify(h_cat(stamp,"requires frame==4096 && (dst==4128 || dst==8192) && n==8; requires readable_bytes(frame,40); requires writable_bytes(dst,n); requires apart==disjoint_bytes(frame,40,dst,n); requires load64(frame+32)!=99; ensures result==old(load64(frame+32)); fn loading(frame,dst,n,apart){stamp(dst,n);if apart {proof {assert disjoint_bytes(frame,40,dst,n);}return load64(frame+32);}return load64(frame+32);}"),1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(p),"concrete replay:"),"overlapping branch read after a summary did not replay");
+    p=ps_verify(h_cat(stamp,"requires frame==4096 && dst==4136 && n==8; requires readable_bytes(frame,48); requires writable_bytes(dst,n); requires disjoint_bytes(frame,40,dst,n); ensures result==old(load64(frame+36)); fn loading(frame,dst,n){stamp(dst,n);return load64(frame+36);}"),1,"COUNTEREXAMPLE: postcondition");
+    t_assert(h_has(h_out(p),"concrete replay:"),"partially covered read after a summary did not replay");
+    let context_frame="requires writable_bytes(context,40); requires disjoint_bytes(context,40,observed,8);\n";
+    let context_writes="store64(context,locals);store64(context+8,fuel);store64(context+16,0);store64(context+24,0);store64(context+32,deadline);return 0;}\n";
+    let context_post="ensures load64(observed)==old(load64(observed));\nfn update_context(context,observed,locals,fuel,deadline) {\n";
+    let context_separate=h_cat3(context_frame,"requires readable_bytes(observed,8); modifies bytes(context,40);\n",context_post);
+    ps_verify_option(h_cat(context_separate,context_writes),0,"Verified roots: 1/1","--defer-memory-aliases");
+    let overlap="requires writable_bytes(observed,8); requires load64(observed)==0; modifies bytes(context,40),bytes(observed,8);\n";
+    let context_overwrite=h_cat3(context_frame,overlap,context_post);
+    p=ps_verify_option(h_cat3(context_overwrite,"store64(observed,1);\n",context_writes),1,"COUNTEREXAMPLE: postcondition","--defer-memory-aliases");
+    t_assert(h_has(h_out(p),"concrete replay:"),"load skipped an overlapping store below a disjoint record update");
     ps_verify("fn assertion(x){assert x==x;return x;}",0,"Verified roots: 1/1");
     ps_verify("fn assertion(x){assert x==0;return x;}",1,"COUNTEREXAMPLE: assertion");
     ps_verify("ensures result==old(x); fn shift(x){return x<<64;}",0,"Verified roots: 1/1");
@@ -48,11 +76,37 @@ fn suite(compiler) {
     p=h_run(h_args(t_compiler,"verify",t_fixture,"--budget=0",0,0));h_check(p,1,0);t_assert(h_has(h_err(p),"verification budget"),"zero budget accepted");
     p=h_run(h_args(t_compiler,"verify",t_fixture,"--budget=1000000001",0,0));h_check(p,1,0);t_assert(h_has(h_err(p),"verification budget"),"oversize budget accepted");
     p=h_run(h_args(t_compiler,"verify",t_fixture,"--budget=bad",0,0));h_check(p,1,0);t_assert(h_has(h_err(p),"verification budget"),"nonnumeric budget accepted");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--circuit-gates=8192",0,0));h_check(p,1,0);
+    t_assert(h_has(h_out(p),"circuit capacity: gates=8192/8192"),"explicit circuit capacity was ignored");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--circuit-gates=524288",0,0));h_check(p,1,0);t_assert(h_has(h_err(p),"verification circuit gate limit"),"oversize circuit accepted");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--circuit-gates=0",0,0));h_check(p,1,0);t_assert(h_has(h_err(p),"verification circuit gate limit"),"zero circuit accepted");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--circuit-gates=131072","--circuit-gates=262143",0));h_check(p,1,0);t_assert(h_has(h_err(p),"duplicate --circuit-gates"),"duplicate circuit option accepted");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--circuit-words=64",0,0));h_check(p,1,0);
+    t_assert(h_has(h_out(p),"words=64/64"),"explicit word capacity was ignored");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--circuit-words=131073",0,0));h_check(p,1,0);
+    t_assert(h_has(h_err(p),"verification circuit word limit"),"oversize word capacity accepted");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--circuit-words=0",0,0));h_check(p,1,0);
+    t_assert(h_has(h_err(p),"verification circuit word limit"),"zero word capacity accepted");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--circuit-words=65536","--circuit-words=131072",0));h_check(p,1,0);
+    t_assert(h_has(h_err(p),"duplicate --circuit-words"),"duplicate word capacity accepted");
+    t_program("ensures result==1; fn one(){return 1;}");
+    let options=h_args(t_compiler,"verify",t_fixture,"--budget=200000000","--circuit-gates=262143","--no-trusted");
+    h_add(options,"--circuit-words=131072");
+    p=h_run(h_add(options,"--defer-memory-aliases"));h_check(p,0,0);
+    t_assert(h_has(h_out(p),"Verified roots: 1/1; trusted external assumptions: none"),"combined verification options failed");
+    p=h_run(h_args(t_compiler,"verify",t_fixture,"--defer-memory-aliases","--defer-memory-aliases",0));h_check(p,1,0);
+    t_assert(h_has(h_err(p),"duplicate --defer-memory-aliases"),"duplicate memory refinement option accepted");
     ps_verify("verify; fn recur(x){return recur(x);}",1,"UNPROVED: recursive calls");
     ps_verify("verify; fn loop(x){while x{x=x-1;}return x;}",1,"UNPROVED: loop termination requires decreases");
     ps_verify("global x=0; verify; fn read(){return x;}",0,"reads x; modifies nothing");
     ps_verify("global x=0; verify; fn write(){x=1;return 0;}",0,"reads nothing; modifies x");
     ps_verify("verify; fn memory(p){return load64(p);}",1,"COUNTEREXAMPLE: memory read safety");
+    let alias="requires readable_bytes(a,1); requires readable_bytes(b,1); requires a==b;\n";
+    let defer="--defer-memory-aliases";
+    ps_verify_option(h_cat(alias,"ensures result==load8(b); fn same_byte(a,b){return load8(a);}"),0,"Verified roots: 1/1",defer);
+    ps_verify_option(h_cat(alias,"requires load8(a)!=load8(b); verify; fn inconsistent(a,b){return 0;}"),1,"UNPROVED: inconsistent requirements",defer);
+    p=ps_verify_option("requires readable_bytes(a,1); requires readable_bytes(b,1); requires a!=b; ensures result==load8(b); fn distinct_bytes(a,b){return load8(a);}",1,"COUNTEREXAMPLE: postcondition",defer);
+    t_assert(h_has(h_out(p),"concrete replay:"),"distinct-address witness did not replay");
     ps_verify("verify; fn foreign(p){return ffi_open(p);}",1,"UNPROVED: external or unsupported");
     ps_verify("verify; fn safe(){if 0{return load64(0);}return 1;}",0,"Verified roots: 1/1");
     ps_verify("ensures result==0; // attachment\n fn zero() {return 0;}",0,"Verified roots: 1/1");
@@ -70,6 +124,10 @@ fn suite(compiler) {
     ps_bad("verify; fn main(){if 0{helper(1);}return 0;} fn helper(){return 0;}","wrong function argument count");
     ps_bad("verify; fn main(){if 0{load64();}return 0;}","wrong builtin argument count");
     ps_verify("modifies nothing; fn main(){return 0;}",0,"Verified roots: 1/1");
+    // A guard can be buried under unrelated entry requirements. A fact under
+    // disjunction, however, cannot justify pruning a branch.
+    ps_verify("requires x<0;requires a>0;requires b>0;requires c>0;requires d>0;ensures result==42;fn guarded(x,a,b,c,d){if x>=0{while 1{}}return 42;}",0,"Verified roots: 1/1");
+    ps_verify("requires x<0 || y<0;requires a>0;requires b>0;requires c>0;requires d>0;ensures result==42;fn guarded(x,y,a,b,c,d){if x>=0{return 41;}return 42;}",1,"COUNTEREXAMPLE: postcondition");
     ps_bad("verify; fn main(){ghost let x=1;return x;}","ghost values cannot be used in executable expressions");
     // Verification metadata is erased without evaluating it or adding checks.
     t_native("requires 0; ensures 0; fn main(){assert 0;return 42;}",42,"");

@@ -1,0 +1,33 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [0],
+  "items": [{
+    "id": "tangent-part", "type": "part", "name": "Line tangent ellipse",
+    "data": {
+      "features": [],
+      "cad": {
+        "rootNodeIds": ["plane-top", "plane-front", "plane-right", "tangent-sketch"],
+        "nodes": [
+          {"id": "plane-top", "type": "referencePlane", "name": "Top", "plane": "XY"},
+          {"id": "plane-front", "type": "referencePlane", "name": "Front", "plane": "XZ"},
+          {"id": "plane-right", "type": "referencePlane", "name": "Right", "plane": "YZ"},
+          {
+            "id": "tangent-sketch", "type": "sketch", "name": "Contact", "targetId": "plane-top", "dimensions": [], "variables": [],
+            "relations": [
+              {"id": "tangent-imported-from-web", "type": "tangent", "a": "guide-line", "b": "roller-ellipse"},
+              {"id": "guide-start", "type": "fixed", "anchor": {"entityId": "guide-line", "point": "p0"}, "position": {"x": -40, "y": 0}},
+              {"id": "guide-end", "type": "fixed", "anchor": {"entityId": "guide-line", "point": "p1"}, "position": {"x": 40, "y": 0}},
+              {"id": "roller-width", "type": "width", "entityId": "roller-ellipse", "value": 40},
+              {"id": "roller-height", "type": "height", "entityId": "roller-ellipse", "value": 20},
+              {"id": "roller-rotation", "type": "rotation", "entityId": "roller-ellipse", "value": 30}
+            ]
+          },
+          {"id": "guide-line", "type": "sketchLine", "sketchId": "tangent-sketch", "construction": true, "p0": {"x": -40, "y": 0}, "p1": {"x": 40, "y": 0}},
+          {"id": "roller-ellipse", "type": "sketchPrimitive", "sketchId": "tangent-sketch", "primitive": {"id": "roller-ellipse", "type": "ellipse", "center": {"x": 0, "y": 13.228757}, "width": 40, "height": 20, "rotation": 30, "segments": 128}}
+        ]
+      },
+      "tree": {"orderedNodeIds": ["tangent-sketch"], "dirtySketchIds": []}
+    }
+  }]
+}

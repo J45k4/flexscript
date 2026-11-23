@@ -1,0 +1,129 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "sampled-aperture-bevel",
+      "type": "part",
+      "name": "sampled-aperture-bevel",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "plate-sketch",
+              "type": "sketch",
+              "name": "Plate and half-ellipse aperture",
+              "targetId": "plane-top",
+              "dimensions": []
+            },
+            {
+              "id": "outline",
+              "type": "sketchCornerRectangle",
+              "sketchId": "plate-sketch",
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 24,
+                "y": 16
+              }
+            },
+            {
+              "id": "aperture-arc",
+              "type": "sketchArc",
+              "sketchId": "plate-sketch",
+              "arc": {
+                "id": "aperture-arc",
+                "type": "ellipticArc",
+                "center": {
+                  "x": 9,
+                  "y": 6
+                },
+                "width": 6,
+                "height": 4,
+                "rotation": 0,
+                "startAngle": 0,
+                "sweep": 3.141592653589793,
+                "segments": 32
+              }
+            },
+            {
+              "id": "aperture-chord",
+              "type": "sketchLine",
+              "sketchId": "plate-sketch",
+              "p0": {
+                "x": 6,
+                "y": 6
+              },
+              "p1": {
+                "x": 12,
+                "y": 6
+              }
+            },
+            {
+              "id": "plate",
+              "type": "extrude",
+              "name": "Plate",
+              "sketchId": "plate-sketch",
+              "profileId": "plate-sketch-profile-1",
+              "operation": "newBody",
+              "depth": 8
+            },
+            {
+              "id": "edge-plate-plate-solid-edge-2",
+              "type": "edge",
+              "sourceId": "plate",
+              "edgeId": "plate-solid-edge-2"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Saved outer edge bevel",
+              "edgeId": "edge-plate-plate-solid-edge-2",
+              "d1": 0.5,
+              "d2": 0.75
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "plate",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "plate-sketch",
+            "plate",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

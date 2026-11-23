@@ -4,3 +4,5 @@ global output=0;
 global output_size=0;
 global functions=0;
 global function_count=0;
+
+global frontend_language=0;

@@ -1,0 +1,40 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [0],
+  "items": [
+    {
+      "id": "tangent-part", "type": "part", "name": "Circular tangent stop",
+      "data": {
+        "features": [],
+        "cad": {
+          "rootNodeIds": ["plane-top", "plane-front", "plane-right", "tangent-sketch"],
+          "nodes": [
+            {"id": "plane-top", "type": "referencePlane", "name": "Top", "plane": "XY"},
+            {"id": "plane-front", "type": "referencePlane", "name": "Front", "plane": "XZ"},
+            {"id": "plane-right", "type": "referencePlane", "name": "Right", "plane": "YZ"},
+            {
+              "id": "tangent-sketch", "type": "sketch", "name": "Stop", "targetId": "plane-top", "dimensions": [], "variables": [],
+              "relations": [
+                {"id": "imported-stop-tangent", "type": "tangent", "a": "guide-arc", "b": "stop-circle"},
+                {"id": "guide-center", "type": "fixed", "anchor": {"entityId": "guide-arc", "point": "center"}, "position": {"x": 0, "y": 0}},
+                {"id": "guide-radius", "type": "radius", "entityId": "guide-arc", "value": 20},
+                {"id": "guide-sweep", "type": "arcSweep", "entityId": "guide-arc", "value": 90},
+                {"id": "stop-diameter", "type": "diameter", "entityId": "stop-circle", "value": 20}
+              ]
+            },
+            {
+              "id": "guide-arc", "type": "sketchArc", "sketchId": "tangent-sketch",
+              "arc": {"id": "guide-arc", "type": "arc", "center": {"x": 0, "y": 0}, "radius": 20, "startAngle": -0.7853981633974483, "sweep": 1.5707963267948966, "segments": 64, "construction": true}
+            },
+            {
+              "id": "stop-circle", "type": "sketchPrimitive", "sketchId": "tangent-sketch",
+              "primitive": {"id": "stop-circle", "type": "circle", "center": {"x": 30, "y": 0}, "radius": 10, "segments": 64}
+            }
+          ]
+        },
+        "tree": {"orderedNodeIds": ["tangent-sketch"], "dirtySketchIds": []}
+      }
+    }
+  ]
+}

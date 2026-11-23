@@ -37,6 +37,25 @@ fn bm_geometry() {
         bm_check((pb_disjoint(memory,pw_constant(c,p),pw_constant(c,n),pw_constant(c,q),pw_constant(c,m))==1)==expected,"region disjointness differs from native intervals");m=m+1;
     }q=q+1;}n=n+1;}p=p+1;}bm_close(memory);return 0;
 }
+fn bm_small_disjoint_spans() {
+    let p=0;while p<136 {
+        let memory=bm_context(8);let c=load64(memory);
+        let left=pw_constant(c,p);let four=pw_constant(c,4);let eight=pw_constant(c,8);let forty=pw_constant(c,40);
+        let q=0;while q<136 {
+            let right=pw_constant(c,q);
+            let separate=p>0 && p<=124 && q>0 && q<=120 && (p+4<=q || q+8<=p);
+            let expected= -1;if separate {expected=1;}
+            bm_check(pb_disjoint(memory,left,four,right,eight)==expected,"small-span separation differs from endpoint geometry");
+            bm_check(pb_disjoint(memory,right,eight,left,four)==expected,"small-span separation depends on argument order");
+            let wider=p>0 && p<=120 && q>0 && q<=88 && (p+8<=q || q+40<=p);
+            expected= -1;if wider {expected=1;}
+            bm_check(pb_disjoint(memory,left,eight,right,forty)==expected,"distance separation differs from endpoint geometry");
+            bm_check(pb_disjoint(memory,right,forty,left,eight)==expected,"distance separation depends on argument order");
+            q=q+1;if q==20 {q=88;}if q==90 {q=112;}
+        }
+        bm_close(memory);p=p+1;if p==20 {p=112;}
+    }return 0;
+}
 fn bm_membership_oracle() {
     let p=0;while p<16 {
         let memory=bm_context(8);let c=load64(memory);let n=0;
@@ -85,6 +104,79 @@ fn bm_ranges() {
     let upper=pb_permission(memory,root,pw_constant(c,1000010),pw_constant(c,1),0);bm_query(memory,pw_and(c,whole,-upper),1,"permissions escaped after a region");
     bm_close(memory);return 0;
 }
+fn bm_symbolic_subranges(reverse,shape) {
+    let memory=bm_context(8);let c=load64(memory);let root=load64(memory+176);
+    let base=pw_constant(c,16);let size=pw_constant(c,16);let span=pw_constant(c,8);
+    if shape!=0 {span=pw_input(c);}
+    if shape!=1 {size=pw_input(c);}
+    if shape==2 {base=pw_input(c);}
+    let offset=pw_input(c);let address=pw_add(c,base,offset);
+    let parent=0;let child=0;
+    if reverse {
+        child=pb_permission(memory,root,address,span,0);
+        parent=pb_permission(memory,root,base,size,1);
+    }else {
+        parent=pb_permission(memory,root,base,size,1);
+        child=pb_permission(memory,root,address,span,0);
+    }
+    let base_bound=pw_equal(c,base,pw_constant(c,16));
+    let size_bound=pw_and(c,base_bound,pw_and(c,pw_equal(c,size,pw_constant(c,16)),pw_equal(c,span,pw_constant(c,8))));
+    let denied=pw_and(c,size_bound,pw_and(c,parent,-child));
+    let exact=pw_equal(c,offset,pw_constant(c,8));
+    bm_query(memory,pw_and(c,denied,exact),2,"permission lost its exact-fit subrange");
+    bm_query(memory,pw_and(c,denied,pw_equal(c,offset,pw_constant(c,9))),1,"permission granted past its upper bound");
+    bm_query(memory,pw_and(c,denied,pw_equal(c,offset,pw_constant(c,-1))),1,"permission granted before its lower bound");
+    let small_parent=pw_equal(c,size,pw_constant(c,4));
+    let large_child=pw_equal(c,span,pw_constant(c,17));
+    let excess=pw_and(c,small_parent,pw_equal(c,span,pw_constant(c,8)));
+    if shape!=0 {excess=pw_and(c,large_child,pw_equal(c,size,pw_constant(c,16)));}
+    let too_large=pw_and(c,pw_and(c,base_bound,excess),pw_equal(c,offset,pw_constant(c,0)));
+    bm_query(memory,pw_and(c,too_large,pw_and(c,parent,-child)),1,"permission granted a larger child");
+
+    let read_parent=pb_permission(memory,root,base,size,0);
+    let write_child=pb_permission(memory,root,address,span,1);
+    let geometry=pw_and(c,size_bound,exact);
+    bm_query(memory,pw_and(c,geometry,pw_and(c,read_parent,-write_child)),1,"subrange strengthened a read grant to a write grant");
+    let released=pb_free(memory,root,address,span,1);
+    let after=pb_permission(memory,released,address,span,0);
+    bm_query(memory,pw_and(c,geometry,pw_and(c,parent,-after)),1,"subrange grant crossed a release snapshot");
+    bm_close(memory);return 0;
+}
+
+fn bm_subspan_geometry() {
+    let memory=bm_context(8);let c=load64(memory);
+    let origin=pw_input(c);let base=pw_add(c,origin,pw_constant(c,3));let size=pw_constant(c,8);
+    let inner=pw_add(c,pw_add(c,origin,pw_input(c)),pw_constant(c,7));let span=pw_input(c);let address=pw_input(c);
+    let contained=pw_and(c,pb_valid(memory,base,size),pb_span_contains(memory,base,size,inner,span));
+    let escapes=pw_and(c,pb_member(memory,inner,span,address),-pb_member(memory,base,size,address));
+    let invalid=pw_or(c,-pb_valid(memory,inner,span),escapes);
+    bm_query(memory,pw_and(c,contained,invalid),2,"contained byte lies outside its valid parent");
+    let at_end=pw_equal(c,base,pw_constant(c,120));
+    let empty_after=pw_and(c,pw_equal(c,inner,pw_constant(c,-128)),pw_equal(c,span,pw_constant(c,0)));
+    let edge=pw_and(c,at_end,empty_after);
+    bm_query(memory,pw_and(c,contained,edge),1,"empty subspan cannot begin one past the last address");
+    bm_close(memory);
+
+    memory=bm_context(8);c=load64(memory);
+    base=pw_input(c);size=pw_input(c);
+    inner=pw_add(c,base,pw_input(c));span=pw_input(c);address=pw_input(c);
+    contained=pw_and(c,pb_valid(memory,base,size),pb_span_contains(memory,base,size,inner,span));
+    escapes=pw_and(c,pb_member(memory,inner,span,address),-pb_member(memory,base,size,address));
+    bm_query(memory,pw_and(c,contained,escapes),2,"contained frame with a symbolic size misses an effect byte");
+    origin=pw_input(c);
+    base=pw_add(c,origin,pw_input(c));
+    inner=pw_add(c,pw_input(c),origin);
+    bm_check(pb_span_shares_base(memory,base,inner),"sibling offsets did not share their base");
+    bm_close(memory);
+
+    memory=bm_context(8);c=load64(memory);
+    let left=pw_constant(c,116);let right=pw_constant(c,120);let four=pw_constant(c,4);let eight=pw_constant(c,8);
+    let p=pw_add(c,left,pw_input(c));let q=pw_add(c,right,pw_input(c));let n=pw_input(c);let m=pw_input(c);
+    let disjoint=pb_disjoint(memory,left,four,right,eight);
+    let subspans=pw_and(c,pb_span_contains(memory,left,four,p,n),pb_span_contains(memory,right,eight,q,m));
+    bm_query(memory,pw_and(c,disjoint,pw_and(c,subspans,-pb_disjoint(memory,p,n,q,m))),2,"contained subspans of disjoint spans can overlap");
+    bm_close(memory);return 0;
+}
 fn bm_store() {
     let memory=bm_context(64);let c=load64(memory);let root=load64(memory+176);let p=pw_input(c);let q=pw_input(c);let value=pw_input(c);let one=pw_constant(c,1);let out=h_take(16);
     let allowed=pb_permission(memory,root,p,one,1);bm_check(pb_store(memory,root,p,value,1,1,out),"byte store construction");let after=load64(out);let safe=load64(out+8);
@@ -92,6 +184,25 @@ fn bm_store() {
     let correct=pw_and(c,safe,pw_and(c,read_safe,pw_equal(c,got,low)));bm_query(memory,pw_and(c,allowed,pw_and(c,alias,-correct)),2,"byte store/load alias or truncation differs");
     let old=pb_lookup(memory,root,p,0);bm_query(memory,pw_and(c,allowed,pw_and(c,alias,-pw_equal(c,load64(old+16),low))),1,"store overwrote its old snapshot");
     let before=pb_lookup(memory,root,q,0);let current=pb_lookup(memory,after,q,0);bm_query(memory,pw_and(c,-alias,-pw_equal(c,load64(before+16),load64(current+16))),2,"byte store changed a nonaliased byte");
+    bm_close(memory);return 0;
+}
+fn bm_path_store() {
+    let memory=bm_context(64);let c=load64(memory);let root=load64(memory+176);
+    let p=pw_input(c);let q=pw_input(c);let out=h_take(16);let value=pw_constant(c,17);
+    let same=pb_address_equal(memory,q,p);
+    bm_check(pb_store(memory,root,p,value,1,1,out),"path store construction");let after=load64(out);
+    bm_check(pb_load(memory,root,q,1,out),"original byte construction");let old=load64(out);let safe=load64(out+8);
+    let condition=pw_gate(c,0,0,0,0);let separate=pw_and(c,condition,-same);
+    bm_check(pb_load_on_path(memory,after,q,1,separate,out),"disjoint path load construction");
+    bm_check(pb_same(memory,load64(out),old) && load64(out+8)==safe,"disjoint path did not reuse the original cell");
+    let depth=0;while depth<128 {separate=pw_and(c,separate,pw_gate(c,0,0,0,0));depth=depth+1;}
+    bm_check(pb_load_on_path(memory,after,q,1,separate,out),"deep disjoint path load construction");
+    bm_check(pb_same(memory,load64(out),old) && load64(out+8)==safe,"deep path hid a non-aliasing fact");
+    // The same snapshot and address may alias along another path.
+    bm_check(pb_load_on_path(memory,after,q,1,same,out),"overlapping path load construction");
+    let same_value=pw_equal(c,load64(out),value);
+    bm_query(memory,pw_and(c,same,pw_and(c,load64(out+8),-same_value)),2,"a disjoint read leaked into an overlapping path");
+    bm_query(memory,pw_and(c,same,pw_and(c,load64(out+8),same_value)),1,"overlapping path has no concrete witness");
     bm_close(memory);return 0;
 }
 fn bm_word() {
@@ -113,6 +224,24 @@ fn bm_frames() {
     let at_p=pb_lookup(memory,next,p,0);bm_query(memory,pw_and(c,pw_equal(c,p,q),-pw_equal(c,load64(at_p+16),load64(b+16))),2,"havoc maps gave aliased addresses different values");
     let condition=pw_gate(c,0,0,0,0);let joined=pb_join(memory,condition,next,root);let value=pb_lookup(memory,joined,q,0);
     bm_query(memory,pw_and(c,-condition,-pw_equal(c,load64(value+16),load64(a+16))),2,"join changed the unselected snapshot");bm_close(memory);return 0;
+}
+fn bm_content_permission_snapshots() {
+    let memory=bm_context(8);let c=load64(memory);let root=load64(memory+176);
+    let base=pw_constant(c,16);let span=pw_constant(c,8);
+    let granted=pb_permission(memory,root,base,span,1);
+    let out=h_take(16);
+    bm_check(pb_store(memory,root,base,pw_constant(c,42),1,1,out),"content snapshot store construction");
+    let stored=load64(out);
+    let changed=pb_havoc(memory,stored,base,span,1);
+    let grants=pw_and(c,pb_permission(memory,stored,base,span,1),pb_permission(memory,changed,base,span,1));
+    bm_query(memory,pw_and(c,granted,-grants),2,"content snapshots changed a write grant");
+    let cell=pb_lookup(memory,changed,base,0);
+    let different=pw_equal(c,load64(cell+16),pw_constant(c,43));
+    bm_query(memory,pw_and(c,granted,pw_and(c,grants,different)),1,"permission reuse constrained changed bytes");
+    let released=pb_free(memory,changed,base,span,1);
+    let readable=pb_permission(memory,released,base,span,0);
+    bm_query(memory,pw_and(c,granted,readable),2,"permission reuse crossed a release");
+    bm_close(memory);return 0;
 }
 fn bm_lifetime() {
     let memory=bm_context(64);let c=load64(memory);let root=load64(memory+176);let p=pw_constant(c,20);let n=pw_constant(c,8);let original=pb_permission(memory,root,p,n,1);
@@ -176,6 +305,16 @@ fn bm_address_identities() {
     let base=pw_input(c);let left=pw_add(c,base,x);let right=pw_add(c,base,y);
     bm_query(memory,pw_xor(c,pb_address_equal(memory,left,right),pw_equal(c,left,right)),2,"symbolic offset cancellation differs from bit-level addition");
     bm_query(memory,pw_xor(c,pb_address_equal(memory,base,left),pw_equal(c,base,left)),2,"zero offset cancellation differs from bit-level addition");
+    let x_word=pw_multiply(c,x,pw_constant(c,8));let y_word=pw_multiply(c,y,pw_constant(c,8));
+    let first=pw_add(c,pw_add(c,base,x_word),pw_constant(c,3));
+    let different_byte=pw_add(c,pw_add(c,y_word,base),pw_constant(c,4));
+    let next_word=pw_add(c,pw_add(c,y_word,base),pw_constant(c,11));
+    bm_check(pb_address_equal(memory,first,different_byte)== -1,"different byte positions in word-strided addresses may alias");
+    let same=pw_equal(c,first,next_word);
+    bm_query(memory,pw_xor(c,pb_address_equal(memory,first,next_word),same),2,"shifted word addresses differ from bit-level addition");
+    bm_query(memory,pw_xor(c,pb_address_equal(memory,next_word,first),same),2,"shifted word address equality depends on operand order");
+    let biased_base=pw_add(c,base,pw_constant(c,11));
+    bm_query(memory,pw_xor(c,pb_address_equal(memory,first,biased_base),pw_equal(c,first,biased_base)),2,"biased base equality differs from bit-level addition");
     bm_close(memory);return 0;
 }
 fn bm_completion() {
@@ -315,14 +454,58 @@ fn bm_distinct_cells() {
     let grant=pb_permission(memory,root,pw_constant(c,4096),pw_constant(c,32),1);let safe=1;let out=h_take(16);let i=0;
     while i<32 {bm_check(pb_load(memory,root,pw_constant(c,4096+i),1,out),"distinct-cell load capacity");safe=pw_and(c,safe,load64(out+8));i=i+1;}
     bm_query(memory,grant,1,"distinct-cell writable model");bm_query(memory,pw_and(c,grant,-safe),2,"distinct-cell read permissions");
-    bm_check(!load64(c+72) && load64(c+8)<32768,"distinct cells exhausted a bounded circuit");bm_close(memory);return 0;
+    bm_check(!load64(c+72) && load64(c+8)<32768,"distinct cells exhausted a bounded circuit");bm_close(memory);
+
+    // Initial observations may alias across groups. Keep the byte and
+    // permission congruence while fitting several symbolic words in one query.
+    c=pw_context(64,131072,8192);bm_check(c,"symbolic-cell word context");
+    memory=pb_context(c,16,128,256,16);bm_check(memory,"symbolic-cell memory context");root=load64(memory+176);
+    let first=pw_input(c);let second=pw_input(c);let first_cell=pb_lookup(memory,root,first,0);
+    let second_cell=pb_lookup(memory,root,second,0);let base=first;let group=0;
+    while group<6 {
+        if group==1 {base=second;}else if group>1 {base=pw_input(c);}
+        bm_check(pb_load(memory,root,base,8,out),"symbolic-cell load capacity");
+        group=group+1;
+    }
+    let alias=pw_equal(c,first,second);
+    let disagree=-pw_equal(c,load64(first_cell+16),load64(second_cell+16));
+    disagree=pw_or(c,disagree,pw_xor(c,load64(first_cell+24),load64(second_cell+24)));
+    disagree=pw_or(c,disagree,-pw_equal(c,load64(first_cell+40),load64(second_cell+40)));
+    bm_query(memory,pw_and(c,alias,disagree),2,"aliasing initial cells have different observations");
+    let separated=pw_and(c,pw_equal(c,first,pw_constant(c,4096)),pw_equal(c,second,pw_constant(c,8192)));
+    bm_query(memory,pw_and(c,separated,disagree),1,"distinct initial cells cannot differ");
+    bm_close(memory);return 0;
+}
+
+fn bm_late_snapshot_observations() {
+    let memory=bm_context(8);let c=load64(memory);let root=load64(memory+176);
+    let length=pw_constant(c,8);let base=pw_constant(c,10);
+    let grant=pb_permission(memory,root,base,length,1);
+    let child=pb_havoc(memory,root,base,length,1);
+    let allocation=pw_constant(c,40);let out=h_take(16);
+    bm_check(pb_alloc(memory,root,length,1,out),"late observation allocation");
+    let at_allocation=pw_equal(c,load64(out),allocation);
+    bm_query(memory,pw_and(c,grant,at_allocation),1,"disjoint initial grant and allocation have no witness");
+
+    // Introduce interior addresses through a derived snapshot after closing
+    // the first query. Existing regions and allocations must see them too.
+    let granted=pb_lookup(memory,child,pw_constant(c,13),0);
+    bm_query(memory,pw_and(c,grant,-load64(granted+32)),2,"late observation missed its initial write grant");
+    let inside=pb_lookup(memory,child,pw_constant(c,44),0);
+    bm_query(memory,pw_and(c,at_allocation,pw_truth(c,load64(inside+40))),2,"late observation allowed allocation over a live parent byte");
+    let outside=pb_lookup(memory,child,pw_constant(c,49),0);
+    bm_query(memory,pw_and(c,at_allocation,pw_truth(c,load64(outside+40))),1,"allocation ruled out a live byte outside its span");
+    bm_close(memory);return 0;
 }
 fn main(argc,argv) {
-    h_environment(argc,argv);bm_geometry();bm_membership_oracle();h_print(1,"PASS: memory geometry and membership oracle\n");bm_alias();h_print(1,"PASS: memory aliasing\n");bm_ranges();h_print(1,"PASS: memory ranges\n");
+    h_environment(argc,argv);bm_geometry();bm_membership_oracle();bm_subspan_geometry();h_print(1,"PASS: memory geometry and membership oracle\n");bm_alias();h_print(1,"PASS: memory aliasing\n");bm_ranges();
+    bm_symbolic_subranges(0,0);bm_symbolic_subranges(1,0);bm_symbolic_subranges(0,1);bm_symbolic_subranges(1,1);
+    bm_symbolic_subranges(0,2);bm_symbolic_subranges(1,2);h_print(1,"PASS: memory ranges\n");
+    bm_content_permission_snapshots();bm_small_disjoint_spans();bm_path_store();
     bm_store();h_print(1,"PASS: byte stores\n");bm_word();h_print(1,"PASS: word stores\n");bm_frames();h_print(1,"PASS: memory frames\n");bm_lifetime();h_print(1,"PASS: lifetimes\n");bm_allocations();h_print(1,"PASS: allocations\n");
     bm_fresh_frames();h_print(1,"PASS: allocation frames\n");bm_offsets();h_print(1,"PASS: wrapped address offsets\n");
     bm_native_permissions();h_print(1,"PASS: native interval oracle\n");bm_address_identities();h_print(1,"PASS: address identities\n");bm_completion();h_print(1,"PASS: concrete memory completion and corruption checks\n");
     bm_heap_closure();h_print(1,"PASS: allocation closure and fresh storage\n");bm_fresh_predicates();h_print(1,"PASS: fresh interval predicates\n");
-    bm_heap_corruption();h_print(1,"PASS: abstract memory corruption rejection\n");bm_distinct_cells();h_print(1,"PASS: bounded distinct-cell observations\n");bm_limits();
+    bm_heap_corruption();h_print(1,"PASS: abstract memory corruption rejection\n");bm_distinct_cells();bm_late_snapshot_observations();h_print(1,"PASS: bounded and late address observations\n");bm_limits();
     h_print(1,h_cat3("PASS: ",h_int(bm_checks)," memory-engine checks with independent SAT/UNSAT evidence\n"));return 0;
 }

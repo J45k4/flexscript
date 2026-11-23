@@ -1,0 +1,291 @@
+{
+  "version": 4,
+  "revision": 0,
+  "items": [
+    {
+      "id": "ordered-square",
+      "type": "part",
+      "name": "ordered-square",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Line outline",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "line-1",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 0,
+                "y": 20
+              }
+            },
+            {
+              "id": "line-3",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 20,
+                "y": 0
+              },
+              "p1": {
+                "x": 20,
+                "y": 20
+              }
+            },
+            {
+              "id": "line-2",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 0,
+                "y": 20
+              },
+              "p1": {
+                "x": 20,
+                "y": 20
+              }
+            },
+            {
+              "id": "line-4",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 20,
+                "y": 0
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "construction-diagonal",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "construction": true,
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 20,
+                "y": 20
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Line extrusion",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-2",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-2"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Line bevel",
+              "edgeId": "edge-source-source-solid-edge-2",
+              "d1": 2,
+              "d2": 3
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "vertical-trapezoid",
+      "type": "part",
+      "name": "vertical-trapezoid",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "profile",
+              "type": "sketch",
+              "name": "Line outline",
+              "targetId": "plane-front",
+              "dimensions": []
+            },
+            {
+              "id": "line-1",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 3,
+                "y": 18
+              }
+            },
+            {
+              "id": "line-3",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 22,
+                "y": 0
+              },
+              "p1": {
+                "x": 16,
+                "y": 18
+              }
+            },
+            {
+              "id": "line-2",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 3,
+                "y": 18
+              },
+              "p1": {
+                "x": 16,
+                "y": 18
+              }
+            },
+            {
+              "id": "line-4",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "p0": {
+                "x": 22,
+                "y": 0
+              },
+              "p1": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "id": "construction-diagonal",
+              "type": "sketchLine",
+              "sketchId": "profile",
+              "construction": true,
+              "p0": {
+                "x": 0,
+                "y": 0
+              },
+              "p1": {
+                "x": 16,
+                "y": 18
+              }
+            },
+            {
+              "id": "source",
+              "type": "extrude",
+              "name": "Line extrusion",
+              "sketchId": "profile",
+              "profileId": "profile-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "edge-source-source-solid-edge-3",
+              "type": "edge",
+              "sourceId": "source",
+              "edgeId": "source-solid-edge-3"
+            },
+            {
+              "id": "bevel",
+              "type": "chamfer",
+              "name": "Line bevel",
+              "edgeId": "edge-source-source-solid-edge-3",
+              "d1": 2,
+              "d2": 3
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "source",
+            "bevel"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "profile",
+            "source",
+            "bevel"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ],
+  "selectedPath": [
+    0
+  ]
+}

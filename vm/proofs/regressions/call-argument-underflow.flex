@@ -32,8 +32,15 @@ fn main() {
     vm_error=0;vm_push(42);vm_local_top=8388600;
     if vm_call_capacity(1,1)!=1 || vm_error || vm_sp!=24 || vm_depth!=2 || vm_local_top!=8388600 {return 97;}
     vm_local_top=16;
-    if vm_enter(2,48)!=1 || vm_error || vm_sp!=16 || vm_depth!=3 || vm_local_base!=16 || vm_local_top!=24 {return 98;}
+    // Reuse dirty local storage. Unused slots must be zeroed and the next
+    // word must be preserved.
+    store64(output+72,3);
+    store64(vm_local_memory+24,555);
+    store64(vm_local_memory+32,666);
+    store64(vm_local_memory+40,777);
+    if vm_enter(2,48)!=1 || vm_error || vm_sp!=16 || vm_depth!=3 || vm_local_base!=16 || vm_local_top!=40 {return 98;}
     if load64(vm_local_memory+16)!=42 || load64(vm_frames+80+24)!=16 {return 99;}
+    if load64(vm_local_memory+24) || load64(vm_local_memory+32) || load64(vm_local_memory+40)!=777 {return 101;}
     vm_return();
     if vm_depth!=2 || vm_sp!=16 || vm_local_base!=8 || vm_local_top!=16 || vm_pc!=48 || vm_error {return 100;}
     return 0;
