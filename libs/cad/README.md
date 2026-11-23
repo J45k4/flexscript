@@ -632,6 +632,9 @@ position, with the first equally near span used for the local tangent.
 `cad_project_move_smooth_point` also moves attached followers after editing
 a source spline handle. It preserves the other controls and rejects a source
 edit if a follower cannot meet its existing constraints.
+An anchor shared by two spline contacts follows their finite intersection.
+When there are multiple crossings, its saved or requested position selects
+the nearest candidate before the combined constraint solve.
 
 Import `cad/project-normal-author.flex` for
 `cad_project_toggle_normal(project, sketch_id, curve_id, anchor)`. A Normal
@@ -777,10 +780,16 @@ with `cad_project_edit_line_variable` or the dimension itself with
 moves a `from` or `to` endpoint and updates measured distances and
 linked copies. One driving center-to-center distance lets the capsule
 rotate while preserving its length. If the other endpoint is free, it can
-also move to satisfy that distance. An incompatible cursor position, a
-fixed selected endpoint, or a span coupled to other driving geometry
-refuses the edit. Direct profile caches use the original TypeScript sampling
-order. Apply preserves the primitive record and refuses edits that would
+also move to satisfy that distance. A fixed selected endpoint blocks the
+drag. The SDK rejects incompatible cursor positions and spans coupled to
+other driving geometry. The center distance appears in the Dimensions distance
+list. Edit it with `cad_project_set_distance_expression` or update a
+variable used by its expression. The edit moves both free cap centers or
+resizes from a fixed cap. Use `cad_project_toggle_distance_reference` to
+switch between measured and driving at the current distance, and
+`cad_project_remove_point_distance` to remove the dimension. Direct profile
+caches use the original TypeScript sampling order. Apply preserves the
+primitive record and refuses edits that would
 redirect a dependent face, numbered edge or selected profile corner.
 Use `cad_project_add_pattern`, `cad_project_set_pattern` and
 `cad_project_move_pattern_center` on the temporary sketch to author or edit a

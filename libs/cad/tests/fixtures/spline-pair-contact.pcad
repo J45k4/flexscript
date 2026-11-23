@@ -1,0 +1,483 @@
+{
+  "version": 4,
+  "revision": 0,
+  "selectedPath": [
+    0
+  ],
+  "items": [
+    {
+      "id": "shallow-spline-crossing",
+      "type": "part",
+      "name": "Shallow spline crossing",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "marker-fit",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "crossing-marker",
+                    "point": "center"
+                  },
+                  "b": "fit-crossing"
+                },
+                {
+                  "id": "marker-control",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "crossing-marker",
+                    "point": "center"
+                  },
+                  "b": "control-crossing"
+                },
+                {
+                  "id": "fit-start",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "fit-crossing",
+                    "point": "point0"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "control-fixed-0",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "control-crossing",
+                    "point": "point0"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0.9
+                  }
+                },
+                {
+                  "id": "control-fixed-1",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "control-crossing",
+                    "point": "point1"
+                  },
+                  "position": {
+                    "x": 30,
+                    "y": 0.3
+                  }
+                },
+                {
+                  "id": "control-fixed-2",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "control-crossing",
+                    "point": "point2"
+                  },
+                  "position": {
+                    "x": 60,
+                    "y": -0.3
+                  }
+                },
+                {
+                  "id": "control-fixed-3",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "control-crossing",
+                    "point": "point3"
+                  },
+                  "position": {
+                    "x": 90,
+                    "y": -0.9
+                  }
+                },
+                {
+                  "id": "body-fixed",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 30
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "fit-crossing",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "fit-crossing",
+                "type": "spline",
+                "mode": "fit",
+                "points": [
+                  {
+                    "x": 0,
+                    "y": 0
+                  },
+                  {
+                    "x": 90,
+                    "y": 0
+                  }
+                ],
+                "construction": true
+              }
+            },
+            {
+              "id": "control-crossing",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "control-crossing",
+                "type": "spline",
+                "mode": "control",
+                "points": [
+                  {
+                    "x": 0,
+                    "y": 0.9
+                  },
+                  {
+                    "x": 30,
+                    "y": 0.3
+                  },
+                  {
+                    "x": 60,
+                    "y": -0.3
+                  },
+                  {
+                    "x": 90,
+                    "y": -0.9
+                  }
+                ],
+                "construction": true
+              }
+            },
+            {
+              "id": "crossing-marker",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "crossing-marker",
+                "type": "point",
+                "center": {
+                  "x": 45,
+                  "y": 0
+                }
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 0,
+                  "y": 30
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    },
+    {
+      "id": "branch-spline-crossing",
+      "type": "part",
+      "name": "Curved spline crossings",
+      "data": {
+        "features": [],
+        "cad": {
+          "nodes": [
+            {
+              "id": "plane-top",
+              "type": "referencePlane",
+              "name": "Top",
+              "plane": "XY"
+            },
+            {
+              "id": "plane-front",
+              "type": "referencePlane",
+              "name": "Front",
+              "plane": "XZ"
+            },
+            {
+              "id": "plane-right",
+              "type": "referencePlane",
+              "name": "Right",
+              "plane": "YZ"
+            },
+            {
+              "id": "native-sketch-1",
+              "type": "sketch",
+              "name": "Spline normals",
+              "targetId": "plane-top",
+              "dimensions": [],
+              "variables": [],
+              "relations": [
+                {
+                  "id": "marker-fit",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "crossing-marker",
+                    "point": "center"
+                  },
+                  "b": "fit-crossing"
+                },
+                {
+                  "id": "marker-control",
+                  "type": "pointOnCurve",
+                  "a": {
+                    "entityId": "crossing-marker",
+                    "point": "center"
+                  },
+                  "b": "control-crossing"
+                },
+                {
+                  "id": "fit-start",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "fit-crossing",
+                    "point": "point0"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 0
+                  }
+                },
+                {
+                  "id": "control-fixed-0",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "control-crossing",
+                    "point": "point0"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 1
+                  }
+                },
+                {
+                  "id": "control-fixed-1",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "control-crossing",
+                    "point": "point1"
+                  },
+                  "position": {
+                    "x": 30,
+                    "y": -1
+                  }
+                },
+                {
+                  "id": "control-fixed-2",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "control-crossing",
+                    "point": "point2"
+                  },
+                  "position": {
+                    "x": 60,
+                    "y": -1
+                  }
+                },
+                {
+                  "id": "control-fixed-3",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "control-crossing",
+                    "point": "point3"
+                  },
+                  "position": {
+                    "x": 90,
+                    "y": 1
+                  }
+                },
+                {
+                  "id": "body-fixed",
+                  "type": "fixed",
+                  "anchor": {
+                    "entityId": "body-profile",
+                    "point": "center"
+                  },
+                  "position": {
+                    "x": 0,
+                    "y": 30
+                  }
+                },
+                {
+                  "id": "body-radius",
+                  "type": "radius",
+                  "entityId": "body-profile",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "id": "normal-solid",
+              "type": "extrude",
+              "name": "Extrusion 1",
+              "sketchId": "native-sketch-1",
+              "profileId": "native-sketch-1-profile-1",
+              "operation": "newBody",
+              "depth": 10
+            },
+            {
+              "id": "fit-crossing",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "fit-crossing",
+                "type": "spline",
+                "mode": "fit",
+                "points": [
+                  {
+                    "x": 0,
+                    "y": 0
+                  },
+                  {
+                    "x": 90,
+                    "y": 0
+                  }
+                ],
+                "construction": true
+              }
+            },
+            {
+              "id": "control-crossing",
+              "type": "sketchSpline",
+              "sketchId": "native-sketch-1",
+              "spline": {
+                "id": "control-crossing",
+                "type": "spline",
+                "mode": "control",
+                "points": [
+                  {
+                    "x": 0,
+                    "y": 1
+                  },
+                  {
+                    "x": 30,
+                    "y": -1
+                  },
+                  {
+                    "x": 60,
+                    "y": -1
+                  },
+                  {
+                    "x": 90,
+                    "y": 1
+                  }
+                ],
+                "construction": true
+              }
+            },
+            {
+              "id": "crossing-marker",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "crossing-marker",
+                "type": "point",
+                "center": {
+                  "x": 19.019237886466843,
+                  "y": 0
+                }
+              }
+            },
+            {
+              "id": "body-profile",
+              "type": "sketchPrimitive",
+              "sketchId": "native-sketch-1",
+              "primitive": {
+                "id": "body-profile",
+                "type": "circle",
+                "center": {
+                  "x": 0,
+                  "y": 30
+                },
+                "radius": 5,
+                "segments": 32
+              }
+            }
+          ],
+          "rootNodeIds": [
+            "plane-top",
+            "plane-front",
+            "plane-right",
+            "native-sketch-1",
+            "normal-solid"
+          ]
+        },
+        "tree": {
+          "orderedNodeIds": [
+            "native-sketch-1",
+            "normal-solid"
+          ],
+          "dirtySketchIds": []
+        }
+      }
+    }
+  ]
+}

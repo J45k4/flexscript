@@ -173,26 +173,74 @@ fn pcb_linked_board_model_rules(electrical,board,legacy,placements,strict,routin
     return output;
 }
 
+// Fitted packages are derived occurrences. Resolve the fixed mate back to the
+// matching authored board in its own scope before accepting their part IDs.
+fn pcb_linked_fitted_package(document,assembly,occurrence) {
+    let id=j_string(occurrence,"id");let part=j_string(occurrence,"part");
+    let mate=pcm_find(j_get(assembly,"mates"),id);let path=j_string(mate,"parent");
+    if !m_eq(j_string(mate,"type"),"fixed") || !m_eq(j_string(mate,"child"),id)
+        || j_value(j_get(mate,"suppressed")) || !cah_path_id(path) {return 0;}
+    let scope=j_get(document,"assembly");let local=path;let cursor=path;
+    while load8(cursor) {
+        if load8(cursor)==47 {
+            let container=pcm_find(j_get(scope,"instances"),m_slice(local,cursor-local));
+            scope=pcm_find(j_get(document,"assembly_definitions"),j_string(container,"assembly"));
+            if !scope {return 0;}
+            local=cursor+1;
+        }
+        cursor=cursor+1;
+    }
+    let authored=j_get(scope,"instances");let source=pcm_find(authored,local);
+    let parent=pcm_find(j_get(assembly,"instances"),path);
+    let board_part=j_string(source,"part");
+    if !m_len(board_part) || !m_eq(j_string(parent,"part"),board_part) {return 0;}
+    let prototype=pcm_find(j_get(document,"parts"),board_part);
+    let node=pcm_find(j_get(document,"nodes"),j_string(prototype,"node"));
+    if !m_eq(j_string(node,"type"),"pcb-board") {return 0;}
+    let board=pcm_board(document,j_string(node,"board_id"));let electrical=j_get(document,"electrical");
+    let placement=pc_first(pc_list(board,"placements",6));
+    while placement && !cg_error {
+        let component=pcm_find(j_get(electrical,"components"),j_string(placement,"component_id"));
+        let definition=pl_pinned(electrical,component);
+        if j_get(definition,"mechanical") {
+            let generated=pmb_key("pkg-",local,j_string(component,"id"));
+            let wanted=pmb_key("pkg-part-",j_string(definition,"id"),m_int(j_integer(definition,"revision")));
+            if m_eq(id,m_cat(m_slice(path,local-path),generated)) && m_eq(part,wanted)
+                && !pcm_find(authored,generated) && !cg_error {
+                return pmb_compatible(component,placement,definition);
+            }
+        }
+        placement=load64(placement+24);
+    }
+    return 0;
+}
+
 fn pcb_linked_occurrences(document,mesh,by_board) {
-    let instances=j_get(j_get(mesh,"assembly"),"instances");
+    let assembly=j_get(mesh,"assembly");let instances=j_get(assembly,"instances");
     if j_kind(instances)!=3 {return cg_fail("Linked PCB positions need a solved assembly");}
     let parts=j_get(document,"parts");let nodes=j_get(document,"nodes");
     let occurrence=pc_first(instances);
     while occurrence {
         if j_get(occurrence,"part") {
             let part=pcm_find(parts,j_string(occurrence,"part"));
-            if !part {return cg_fail("A solved assembly occurrence has no part definition");}
-            let node=pcm_find(nodes,j_string(part,"node"));
             if cg_error {return 0;}
-            if m_eq(j_string(node,"type"),"pcb-board") {
-                let rows=j_get(by_board,j_string(node,"board_id"));
-                if !rows || j_kind(j_get(occurrence,"transform"))!=3 {
-                    return cg_fail("A solved PCB occurrence needs its linked board and transform");
+            if !part {
+                if !pcb_linked_fitted_package(document,assembly,occurrence) {
+                    return cg_fail("A solved assembly occurrence has no part definition");
                 }
-                let row=j_object();pcc_copy(occurrence,"id",row);pcc_copy(occurrence,"part",row);
-                cg_j_text(row,"node",j_string(node,"id"));pcc_copy(occurrence,"transform",row);
-                pcc_copy(occurrence,"local_transform",row);pcc_copy(occurrence,"fixed",row);
-                j_add(rows,0,row);
+            }else {
+                let node=pcm_find(nodes,j_string(part,"node"));
+                if cg_error {return 0;}
+                if m_eq(j_string(node,"type"),"pcb-board") {
+                    let rows=j_get(by_board,j_string(node,"board_id"));
+                    if !rows || j_kind(j_get(occurrence,"transform"))!=3 {
+                        return cg_fail("A solved PCB occurrence needs its linked board and transform");
+                    }
+                    let row=j_object();pcc_copy(occurrence,"id",row);pcc_copy(occurrence,"part",row);
+                    cg_j_text(row,"node",j_string(node,"id"));pcc_copy(occurrence,"transform",row);
+                    pcc_copy(occurrence,"local_transform",row);pcc_copy(occurrence,"fixed",row);
+                    j_add(rows,0,row);
+                }
             }
         }
         occurrence=load64(occurrence+24);

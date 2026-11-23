@@ -4,6 +4,7 @@ import "project-history.flex";
 import "project-symmetry.flex";
 import "project-smooth-transform.flex";
 import "project-capsule-span.flex";
+import "project-spline-crossings.flex";
 
 fn pc_line_entities(nodes,sketch) {
     return pc_line_entities_mode(nodes,sketch,0);
@@ -255,12 +256,18 @@ fn pc_line_problem(lines,records,preferred,target) {
         }
         if !m_eq(type,"reference") {cg_j_text(row,"type",type);j_add(j_get(model,"constraints"),0,row);}i=i+1;
     }
-    if cg_error || (picked && symmetry && !pc_seed_symmetries(model,picked)) {return 0;}return model;
+    if cg_error || !psc_seed_crossings(model,ids,records) || (picked && symmetry && !pc_seed_symmetries(model,picked)) {return 0;}return model;
 }
 fn pc_line_write_xy(point,xy) {
     if !j_get(point,"x") || pc_pose_number(j_get(point,"x"))!=load64(xy) {cg_j_set(point,"x",cg_json_number(load64(xy)));}
     if !j_get(point,"y") || pc_pose_number(j_get(point,"y"))!=load64(xy+8) {cg_j_set(point,"y",cg_json_number(load64(xy+8)));}
     return 1;
+}
+fn pc_distance_report_row(rel,a,b,measured) {
+    let row=j_parse(j_encode(rel));let from=j_object();let to=j_object();
+    pc_line_write_xy(from,a);pc_line_write_xy(to,b);
+    cg_j_set(row,"from",from);cg_j_set(row,"to",to);cg_j_set(row,"measured",cg_json_number(measured));
+    return row;
 }
 fn pc_solved_position(state,key) {return cg_at(load64(state),j_integer(load64(state+8),key)-1);}
 fn pc_line_index(lines,id) {
@@ -413,9 +420,8 @@ fn pc_solve_lines_mode(lines,records,index,end,at,target,source,write) {
             !pc_tangent_profile_driven(lines,records,projected,j_string(rel,"b")) {upper_bound=1;}
         if m_eq(j_string(rel,"type"),"distance") {
             let a=pc_solved_anchor(lines,state,j_get(rel,"a"));let b=pc_solved_anchor(lines,state,j_get(rel,"b"));
-            let measured=pc_distance_value(a,b,pc_distance_axis(rel));let row=j_parse(j_encode(rel));
-            let from=j_object();pc_line_write_xy(from,a);cg_j_set(row,"from",from);
-            let to=j_object();pc_line_write_xy(to,b);cg_j_set(row,"to",to);cg_j_set(row,"measured",cg_json_number(measured));
+            let measured=pc_distance_value(a,b,pc_distance_axis(rel));
+            let row=pc_distance_report_row(rel,a,b,measured);
             if write && j_value(j_get(rel,"reference")) && pc_serial_number(j_get(rel,"value"),6,1000000,1500)!=measured {cg_j_set(rel,"value",cg_json_number(measured));}
             j_add(distances,0,row);
         }
@@ -678,9 +684,7 @@ fn cad_project_set_circle_dimension(project,sketch,id,field,text) {return pc_edi
 fn cad_project_toggle_circle_reference(project,sketch,id,field) {return pc_edit_curve_dimension(project,sketch,id,field,1,0);}
 fn cad_project_remove_circle_dimension(project,sketch,id,field) {return pc_edit_curve_dimension(project,sketch,id,field,2,0);}
 // Polygon sides and slot width are primitive properties in v4.
-fn pc_finish_profile_parameter(project,updated,nodes,sketch,shape) {
-    if !pc_primitive_loop(shape) || !pc_evaluate_links(nodes,sketch,1) || !pc_check_pattern_profiles(nodes,sketch) {return 0;}
-    let records=pc_line_records(nodes,sketch);if !records {return 0;}
+fn pc_capsule_measure_references(nodes,sketch,records) {
     let i=0;let sk=j_string(sketch,"id");
     while i<cg_count(records) {
         let rel=load64(cg_at(records,i));
@@ -698,6 +702,11 @@ fn pc_finish_profile_parameter(project,updated,nodes,sketch,shape) {
         }
         i=i+1;
     }
+    return 1;
+}
+fn pc_finish_profile_parameter(project,updated,nodes,sketch,shape) {
+    if !pc_primitive_loop(shape) || !pc_evaluate_links(nodes,sketch,1) || !pc_check_pattern_profiles(nodes,sketch) {return 0;}
+    let records=pc_line_records(nodes,sketch);if !records || !pc_capsule_measure_references(nodes,sketch,records) {return 0;}
     return pc_checked_feature_edit(project,updated);
 }
 fn cad_project_set_profile_parameter(project,sketch_id,id,text) {
@@ -728,12 +737,23 @@ fn cad_project_set_profile_parameter(project,sketch_id,id,text) {
     }else {return cg_fail("Select a polygon or slot");}
     return pc_finish_profile_parameter(project,updated,nodes,sketch,shape);
 }
-fn pc_capsule_own_span(rel,id) {
-    if !m_eq(j_string(rel,"type"),"distance") || j_value(j_get(rel,"reference")) || pc_distance_axis(rel)!=0 {return 0;}
+fn pc_capsule_span_ends(rel,id) {
+    if !m_eq(j_string(rel,"type"),"distance") || pc_distance_axis(rel)!=0 || j_get(rel,"direction") {return 0;}
     let a=j_get(rel,"a");let b=j_get(rel,"b");
     let first=j_string(a,"point");let second=j_string(b,"point");
     return m_eq(j_string(a,"entityId"),id) && m_eq(j_string(b,"entityId"),id)
         && ((m_eq(first,"from") && m_eq(second,"to")) || (m_eq(first,"to") && m_eq(second,"from")));
+}
+fn pc_capsule_own_span(rel,id) {return pc_capsule_span_ends(rel,id) && !j_value(j_get(rel,"reference"));}
+fn pc_capsule_span_shape(nodes,rel) {
+    let id=j_string(j_get(rel,"a"),"entityId");let shape=pc_find(nodes,id);
+    if pc_capsule_entity(shape) && pc_capsule_span_ends(rel,id) {return shape;}
+    return 0;
+}
+fn pc_capsule_write_centers(primitive,centers) {
+    pc_line_write_xy(j_get(primitive,"from"),centers);
+    pc_line_write_xy(j_get(primitive,"to"),centers+16);
+    return !cg_error;
 }
 fn pc_capsule_link_source(rel,id) {
     if pp_kind(rel) {
@@ -779,9 +799,10 @@ fn cad_project_move_capsule_endpoint(project,sketch_id,id,end,position) {
     if j_kind(endpoint)!=4 {return cg_fail("Missing capsule endpoint");}
     if span {
         if linked || locks>1 {return cg_fail("Capsule endpoint has a driving constraint");}
-        let centers=pc_capsule_span_solve(primitive,end,position,span,fixed);if !centers {return 0;}
-        pc_line_write_xy(j_get(primitive,"from"),centers);
-        pc_line_write_xy(j_get(primitive,"to"),centers+16);
+        let from=fixed;let to=position;if m_eq(end,"from") {from=position;to=fixed;}
+        let distance=pc_web_geometry_number(span,"value","Invalid capsule center distance");
+        let centers=pc_capsule_span_solve(primitive,distance,from,to,"Capsule endpoint conflicts with the driving center distance");
+        if !centers || !pc_capsule_write_centers(primitive,centers) {return 0;}
     }else {pc_line_write_xy(endpoint,target);}
     return pc_finish_profile_parameter(project,updated,nodes,sketch,shape);
 }
@@ -811,6 +832,10 @@ fn pc_capsule_report(nodes,sketch,records,report) {
                 if m_eq(kind,"fixed") && m_eq(j_string(anchor,"entityId"),id) {
                     if m_eq(j_string(anchor,"point"),"from") {fixed_from=1;}
                     if m_eq(j_string(anchor,"point"),"to") {fixed_to=1;}
+                }
+                if pc_capsule_span_ends(rel,id) {
+                    let a=pc_uv(pc_saved_anchor(nodes,sk,j_get(rel,"a")));let b=pc_uv(pc_saved_anchor(nodes,sk,j_get(rel,"b")));
+                    j_add(j_get(report,"distances"),0,pc_distance_report_row(rel,a,b,pc_distance_value(a,b,0)));
                 }
                 if m_eq(kind,"distance") && !j_value(j_get(rel,"reference")) &&
                     (m_eq(j_string(j_get(rel,"a"),"entityId"),id) || m_eq(j_string(j_get(rel,"b"),"entityId"),id)) {
@@ -866,22 +891,66 @@ fn pc_edit_distance(nodes,sketch,lines,records,rel,text,bindings) {
     if pcv_plain(text) {pc_remove_field(rel,"expression");}else {cg_j_text(rel,"expression",text);}
     return pc_solve_lines(lines,records,index,j_string(anchor,"point"),at,0);
 }
+fn pc_capsule_span_value(nodes,sketch,records,shape,relation,value) {
+    let saved=pc_serial_number(j_get(relation,"value"),6,1000000,1500);if cg_error {return 0;}
+    if value==saved {return 1;}
+    let id=j_string(shape,"id");
+    if j_get(pp_targets(sketch),id) || po_owner(records,id) {return cg_fail("Edit the source of this linked profile");}
+    let owner=j_object();cg_j_int(owner,id,1);let fixed_from=0;let fixed_to=0;let i=0;
+    while i<cg_count(records) {
+        let rel=load64(cg_at(records,i));
+        if pc_capsule_link_source(rel,id) {return cg_fail("Capsule center distance needs a coupled solve");}
+        if rel!=relation && pp_refers_to_copy(rel,owner) && !pp_kind(rel) && !po_kind(rel) {
+            let kind=pc_capsule_direct_relation(nodes,rel);
+            if kind==2 {
+                let point=j_string(j_get(rel,"anchor"),"point");let position=j_get(rel,"position");
+                if m_eq(point,"from") && !fixed_from {fixed_from=position;}
+                else if m_eq(point,"to") && !fixed_to {fixed_to=position;}
+                else {return cg_fail("Capsule center distance needs a coupled solve");}
+            }else if kind!=1 && !(kind==3 && j_value(j_get(rel,"reference"))) {
+                return cg_fail("Capsule center distance needs a coupled solve");
+            }
+        }
+        i=i+1;
+    }
+    let primitive=j_get(shape,"primitive");let distance=f64_div(f64_from_i64(value),f64_from_i64(1000000));
+    let centers=pc_capsule_span_solve(primitive,distance,fixed_from,fixed_to,"Capsule center distance conflicts with fixed endpoints");
+    if !centers || !pc_capsule_write_centers(primitive,centers) || !pc_primitive_loop(shape) {return 0;}
+    cg_j_set(relation,"value",cg_json_number(value));return 1;
+}
 fn cad_project_set_distance_expression(project,sketch_id,id,text) {
     cg_begin();let result=j_parse(j_encode(project));let nodes=pc_nodes(cad_project_part(result));let sketch=pc_find(nodes,sketch_id);
+    let rel=pc_find(j_get(sketch,"relations"),id);let shape=pc_capsule_span_shape(nodes,rel);
+    if shape {
+        if j_value(j_get(rel,"reference")) {return cg_fail("Reference distance is measured");}
+        let records=pc_line_records(nodes,sketch);if !records {return 0;}
+        text=pcv_trim(text);let value=pc_distance_input(text,pcv_bind(j_get(sketch,"variables")),0);
+        if cg_error || !pc_capsule_span_value(nodes,sketch,records,shape,rel,value) {return 0;}
+        if pcv_plain(text) {pc_remove_field(rel,"expression");}else {cg_j_text(rel,"expression",text);}
+        return pc_finish_profile_parameter(project,result,nodes,sketch,shape);
+    }
     let lines=pc_line_entities(nodes,sketch);if !lines || !pc_line_access(nodes,sketch) {return cg_fail("Select an editable distance sketch");}
-    let rel=pc_find(j_get(sketch,"relations"),id);
     if !m_eq(j_string(rel,"type"),"distance") {return cg_fail("Select a point distance");}
     let records=pc_line_records(nodes,sketch);
     if !pc_edit_distance(nodes,sketch,lines,records,rel,text,pcv_bind(j_get(sketch,"variables"))) {return 0;}return pc_finish_circle_sketch(project,result,lines);
 }
-fn cad_project_toggle_distance_reference(project,sketch_id,id) {
-    cg_begin();let result=j_parse(j_encode(project));let nodes=pc_nodes(cad_project_part(result));let sketch=pc_find(nodes,sketch_id);
-    let lines=pc_line_entities(nodes,sketch);if !lines || !pc_line_access(nodes,sketch) {return cg_fail("Select an editable distance sketch");}
-    let rel=pc_find(j_get(sketch,"relations"),id);if !m_eq(j_string(rel,"type"),"distance") {return cg_fail("Select a point distance");}
+fn pc_toggle_distance_reference(nodes,sketch_id,rel) {
     let a=pc_saved_anchor(nodes,sketch_id,j_get(rel,"a"));let b=pc_saved_anchor(nodes,sketch_id,j_get(rel,"b"));
     let measured=pc_distance_value(pc_uv(a),pc_uv(b),pc_distance_axis(rel));cg_j_set(rel,"value",cg_json_number(measured));
     if j_value(j_get(rel,"reference")) {pc_remove_field(rel,"reference");}
     else {cg_j_set(rel,"reference",j_new(5,1));pc_remove_field(rel,"expression");}
+    return !cg_error;
+}
+fn cad_project_toggle_distance_reference(project,sketch_id,id) {
+    cg_begin();let result=j_parse(j_encode(project));let nodes=pc_nodes(cad_project_part(result));let sketch=pc_find(nodes,sketch_id);
+    let rel=pc_find(j_get(sketch,"relations"),id);let shape=pc_capsule_span_shape(nodes,rel);
+    if shape {
+        if !pc_line_records(nodes,sketch) || !pc_toggle_distance_reference(nodes,sketch_id,rel) {return 0;}
+        return pc_finish_profile_parameter(project,result,nodes,sketch,shape);
+    }
+    let lines=pc_line_entities(nodes,sketch);if !lines || !pc_line_access(nodes,sketch) {return cg_fail("Select an editable distance sketch");}
+    if !m_eq(j_string(rel,"type"),"distance") {return cg_fail("Select a point distance");}
+    if !pc_toggle_distance_reference(nodes,sketch_id,rel) {return 0;}
     if !pc_line_access(nodes,sketch) {return 0;}return result;
 }
 fn pc_line_unlink(list,node,id) {
@@ -918,8 +987,13 @@ fn cad_project_add_point_distance(project,sketch_id,a,b,axis,reference) {
 }
 fn cad_project_remove_point_distance(project,sketch_id,id) {
     cg_begin();let result=j_parse(j_encode(project));let nodes=pc_nodes(cad_project_part(result));let sketch=pc_find(nodes,sketch_id);
-    if !sketch || !pc_line_access(nodes,sketch) {return cg_fail("Select an editable distance sketch");}
     let rows=j_get(sketch,"relations");let rel=pc_find(rows,id);
+    let shape=pc_capsule_span_shape(nodes,rel);
+    if shape {
+        if !pc_line_records(nodes,sketch) {return 0;}pc_line_unlink(rows,rel,"");
+        return pc_finish_profile_parameter(project,result,nodes,sketch,shape);
+    }
+    if !sketch || !pc_line_access(nodes,sketch) {return cg_fail("Select an editable distance sketch");}
     if !m_eq(j_string(rel,"type"),"distance") {return cg_fail("Select a point distance");}
     pc_line_unlink(rows,rel,"");return result;
 }
@@ -1183,9 +1257,10 @@ fn cad_project_edit_line_variable(project,sketch_id,previous,name,text) {
             let expression=j_string(rel,"expression");
             if pc_capsule_direct_relation(nodes,rel)==3 {
                 let value=pc_distance_input(expression,bindings,pc_distance_axis(rel));if cg_error {return 0;}
-                if value!=pc_serial_number(j_get(rel,"value"),6,1000000,1500) {
-                    return cg_fail("Capsule center distance needs a coupled solve");
-                }
+                let shape=pc_capsule_span_shape(nodes,rel);
+                if shape {
+                    if !pc_capsule_span_value(nodes,sketch,records,shape,rel,value) {return 0;}
+                }else if value!=pc_serial_number(j_get(rel,"value"),6,1000000,1500) {return cg_fail("Capsule center distance needs a coupled solve");}
             }else if !pc_edit_distance(nodes,sketch,lines,affine,rel,expression,bindings) {return 0;}
         }
         i=i+1;
@@ -1196,6 +1271,7 @@ fn cad_project_edit_line_variable(project,sketch_id,previous,name,text) {
         i=i+1;
     }
     let updated_records=pc_line_records(nodes,sketch);if !updated_records {return 0;}
+    if !pc_capsule_measure_references(nodes,sketch,updated_records) {return 0;}
     if !pc_line_access_records(nodes,sketch,lines,pc_affine_records(nodes,updated_records)) {return 0;}
     if !cg_count(lines) {
         if !pc_check_pattern_profiles(nodes,sketch) {return 0;}

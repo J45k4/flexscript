@@ -100,6 +100,45 @@ fn check_routing_rules(document) {
         && m_eq(j_encode(document),snapshot),"Release metadata leaves checker inputs and authored board untouched");
 }
 
+fn check_fitted_package(document) {
+    let snapshot=j_encode(document);let mesh=pcad_mechanical(j_parse(snapshot));
+    m_assert(j_value(j_get(mesh,"closed")) && !j_get(mesh,"error"),j_string(mesh,"error"));
+    let assembly=j_get(mesh,"assembly");let instances=j_get(assembly,"instances");
+    let fitted=pc_find(instances,"pkg-3289940991");
+    m_assert(cg_j_count(instances)==7 && fitted,"Reopen the historical fitted package occurrence");
+    m_assert(m_eq(j_encode(j_get(fitted,"transform")),
+        "[[0.000000,-1.000000,0.000000,14.000000],[1.000000,0.000000,0.000000,18.000000],[0.000000,0.000000,1.000000,7.100000]]"),
+        "The package carries the original pinned front-side pose");
+    let projected=cad_pcad_linked_boards(document,mesh);m_assert(projected,cg_error);
+    let same=cad_pcad_linked_boards(document,0);m_assert(same,cg_error);
+    m_assert(m_eq(j_encode(projected),j_encode(same)) && m_eq(j_encode(document),snapshot),
+        "Evaluating or reusing the pose preserves the source and board projections");
+    let boards=j_get(j_get(projected,"manifest"),"boards");let controller=pc_first(boards);
+    let mount=pc_first(j_get(controller,"occurrences"));
+    m_assert(cg_j_count(boards)==2 && m_eq(j_string(mount,"id"),"controller") && !load64(mount+24),
+        "Fitted mechanical bodies do not become extra board occurrences");
+    let first=pc_first(j_get(projected,"boards"));let second=load64(first+24);
+    m_assert(j_get(first,"source") && j_get(second,"source"),"Both source boards still export");
+
+    let before=j_encode(mesh);let corrupt=j_parse(before);
+    let bad_assembly=j_get(corrupt,"assembly");
+    cg_j_text(pc_find(j_get(bad_assembly,"instances"),"lid"),"part","pkg-part-missing");
+    m_assert(!cad_pcad_linked_boards(document,corrupt)
+        && m_eq(cg_error,"A solved assembly occurrence has no part definition"),
+        "A package prefix does not authorize an unknown authored part");
+    corrupt=j_parse(before);bad_assembly=j_get(corrupt,"assembly");
+    cg_j_text(pc_find(j_get(bad_assembly,"mates"),"pkg-3289940991"),"parent","sensor");
+    m_assert(!cad_pcad_linked_boards(document,corrupt)
+        && m_eq(cg_error,"A solved assembly occurrence has no part definition"),
+        "A genuine fitted ID still needs its authored board's fixed mate");
+    let collision=j_parse(snapshot);
+    j_add(j_get(j_get(collision,"assembly"),"instances"),0,
+        j_parse("{\"id\":\"pkg-3289940991\",\"part\":\"missing\"}"));
+    m_assert(!cad_pcad_linked_boards(collision,mesh)
+        && m_eq(cg_error,"A solved assembly occurrence has no part definition"),
+        "An authored missing part cannot masquerade as a fitted package");
+}
+
 fn main(argc,argv) {
     let text=m_read_file("libs/cad/tests/fixtures/linked-boards.pcad");
     let document=j_parse(text);m_assert(document,"Load the two-board fixture");
@@ -107,6 +146,7 @@ fn main(argc,argv) {
     check_board_errors(j_parse(text));
     check_repeated_occurrence(j_parse(text));
     check_routing_rules(j_parse(text));
+    check_fitted_package(j_parse(m_read_file("libs/cad/tests/fixtures/studio-fitted-package.pcad")));
     if argc==2 {
         let sensor=j_parse(m_read_file(load64(argv+8)));m_assert(sensor,"Load the standalone sensor unit");
         check_sensor_links(sensor,0);

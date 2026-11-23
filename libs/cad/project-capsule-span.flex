@@ -1,5 +1,6 @@
-// Match the PartBuilder anchor drag on one capsule. The transient cursor
-// constraint couples both cap centers through the saved Euclidean distance.
+// Match the PartBuilder solve for one capsule center distance. A drag
+// supplies a transient lock at the cursor. A driving value edit uses the
+// same initial centers and only the saved locks.
 import "project-curves.flex";
 import "least-squares.flex";
 
@@ -8,19 +9,20 @@ fn pc_capsule_span_point(out,point) {
     store64(out,pc_web_geometry_number(point,"x",diagnostic));
     store64(out+8,pc_web_geometry_number(point,"y",diagnostic));
 }
-fn pc_capsule_span_residual(out,centers,targets,moved,locked,distance) {
+fn pc_capsule_span_residual(out,centers,targets,locks,distance) {
     let x=f64_sub(load64(centers),load64(centers+16));
     let y=f64_sub(load64(centers+8),load64(centers+24));
     store64(out,f64_sub(f64_hypot(x,y),distance));
     let row=out+8;
-    if locked {
-        let other=16-moved;
-        store64(row,f64_sub(load64(centers+other),load64(targets+other)));
-        store64(row+8,f64_sub(load64(centers+other+8),load64(targets+other+8)));
+    if locks&1 {
+        store64(row,f64_sub(load64(centers),load64(targets)));
+        store64(row+8,f64_sub(load64(centers+8),load64(targets+8)));
         row=row+16;
     }
-    store64(row,f64_sub(load64(centers+moved),load64(targets+moved)));
-    store64(row+8,f64_sub(load64(centers+moved+8),load64(targets+moved+8)));
+    if locks&2 {
+        store64(row,f64_sub(load64(centers+16),load64(targets+16)));
+        store64(row+8,f64_sub(load64(centers+24),load64(targets+24)));
+    }
 }
 fn pc_capsule_span_converged(errors,count) {
     let i=0;let tolerance=0x3eb0c6f7a0b5ed8d; // 1e-6 mm
@@ -37,14 +39,14 @@ fn pc_capsule_span_squared(errors,count) {
     }
     return sum;
 }
-fn pc_capsule_span_jacobian(jacobian,centers,targets,moved,locked,distance,plus,minus,count) {
+fn pc_capsule_span_jacobian(jacobian,centers,targets,locks,distance,plus,minus,count) {
     let i=0;
     while i<4 {
         let coord=centers+i*8;let before=load64(coord);let scale=f64_magnitude(before);
         if scale<0x3ff0000000000000 {scale=0x3ff0000000000000;}
         let h=f64_mul(scale,0x3ee4f8b588e368f1); // 1e-5 times coordinate scale
-        store64(coord,f64_add(before,h));pc_capsule_span_residual(plus,centers,targets,moved,locked,distance);
-        store64(coord,f64_sub(before,h));pc_capsule_span_residual(minus,centers,targets,moved,locked,distance);
+        store64(coord,f64_add(before,h));pc_capsule_span_residual(plus,centers,targets,locks,distance);
+        store64(coord,f64_sub(before,h));pc_capsule_span_residual(minus,centers,targets,locks,distance);
         store64(coord,before);
         let divisor=f64_add(h,h);let row=0;
         while row<count {
@@ -73,31 +75,28 @@ fn pc_capsule_span_system(normal,rhs,jacobian,errors,count) {
         store64(rhs+a*8,f64_math_neg(sum));a=a+1;
     }
 }
-fn pc_capsule_span_solve(primitive,end,position,span,fixed) {
-    let conflict="Capsule endpoint conflicts with the driving center distance";
-    let moved=0;if m_eq(end,"to") {moved=16;}
-    let centers=m_take(32);let targets=m_take(32);let count=3;
+fn pc_capsule_span_solve(primitive,distance,from,to,conflict) {
+    let centers=m_take(32);let targets=m_take(32);let count=1;let locks=0;
     pc_capsule_span_point(centers,j_get(primitive,"from"));
     pc_capsule_span_point(centers+16,j_get(primitive,"to"));
-    pc_capsule_span_point(targets+moved,position);
-    if fixed {pc_capsule_span_point(targets+16-moved,fixed);count=5;}
-    let distance=pc_web_geometry_number(span,"value","Invalid capsule center distance");
+    if from {pc_capsule_span_point(targets,from);locks=1;count=count+2;}
+    if to {pc_capsule_span_point(targets+16,to);locks=locks+2;count=count+2;}
     if cg_error {return 0;}
     let errors=m_take(40);let next=m_take(40);let plus=m_take(40);let minus=m_take(40);
     let jacobian=m_take(160);let normal=m_take(128);let rhs=m_take(32);
     let matrix=m_take(160);let step=m_take(32);let candidate=m_take(32);
-    pc_capsule_span_residual(errors,centers,targets,moved,fixed,distance);
+    pc_capsule_span_residual(errors,centers,targets,locks,distance);
     let iteration=0;let damping=0x3f1a36e2eb1c432d; // 1e-4
     while iteration<100 && damping<=0x426d1a94a2000000 && !pc_capsule_span_converged(errors,count) {
         if !cg_step() {return 0;}
-        pc_capsule_span_jacobian(jacobian,centers,targets,moved,fixed,distance,plus,minus,count);
+        pc_capsule_span_jacobian(jacobian,centers,targets,locks,distance,plus,minus,count);
         pc_capsule_span_system(normal,rhs,jacobian,errors,count);
         if !ls_step(normal,rhs,4,damping,step,matrix) {return cg_fail(conflict);}
         let i=0;
         while i<4 {
             store64(candidate+i*8,f64_add(load64(centers+i*8),load64(step+i*8)));i=i+1;
         }
-        pc_capsule_span_residual(next,candidate,targets,moved,fixed,distance);
+        pc_capsule_span_residual(next,candidate,targets,locks,distance);
         if f64_lt(pc_capsule_span_squared(next,count),pc_capsule_span_squared(errors,count)) {
             m_copy(centers,candidate,32);m_copy(errors,next,count*8);
             damping=f64_div(damping,f64_from_i64(3));
@@ -108,10 +107,9 @@ fn pc_capsule_span_solve(primitive,end,position,span,fixed) {
         iteration=iteration+1;
     }
     if !pc_capsule_span_converged(errors,count) {return cg_fail(conflict);}
-    // Preserve exactly the coordinates that the user pinned. The solver
-    // leaves residuals below one nanometre at the cursor and fixed point.
-    m_copy(centers+moved,targets+moved,16);
-    if fixed {m_copy(centers+16-moved,targets+16-moved,16);}
+    // Keep the input targets exact when rounding to the saved nanometre grid.
+    if from {m_copy(centers,targets,16);}
+    if to {m_copy(centers+16,targets+16,16);}
     let i=0;let scale=f64_from_i64(1000000);
     while i<4 {
         let nm=f64_to_i64_round(f64_mul(load64(centers+i*8),scale));

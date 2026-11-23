@@ -210,6 +210,10 @@ fn psb_controls_point(controls) {
 
 fn psb_spline(out,source,node) {
     let other=pc_spline_data(node);if !other {return 0;}
+    return psb_spline_pair_hits(out,source,other);
+}
+
+fn psb_spline_pair_hits(out,source,other) {
     let n=load64(other+8);let controls=m_take(n*64);let boxes=m_take(n*32);let i=0;
     while i<n && !cg_error {
         if !cg_step() || !psb_store_controls(controls+i*64,other,i) {return 0;}
