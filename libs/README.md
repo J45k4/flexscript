@@ -5,6 +5,8 @@ low-level adapters in `lib/` remain available and can be imported directly.
 
 - [`cad`](cad/README.md) provides headless constructive geometry, STL export,
   assembly evaluation and sampled motion.
+- [`json`](json/README.md): bounded, nonfatal JSON parsing and encoding with
+  exact number text, duplicate-key rejection and a nesting bound.
 - [`autotune`](autotune/README.md): native Flexscript kernel generators, compute
   sweeps, correctness checks and GPU benchmark reports.
 - [`ml`](ml/README.md): tensors, reverse-mode autodiff, neural-network layers,
