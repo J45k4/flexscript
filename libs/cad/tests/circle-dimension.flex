@@ -37,9 +37,12 @@ fn main() {
     m_assert(cad_project_add_primitive(ring,sk,"circle",cg_v(0,0,0),cg_v(10000000,0,0)),cg_error);
     m_assert(cad_project_add_primitive(ring,sk,"circle",cg_v(4000000,0,0),cg_v(6000000,0,0)),cg_error);
     ring=cad_project_add_extrusion(ring,sk,1,5000000,"newBody");m_assert(ring,cg_error);
-    let valid=j_encode(ring);m_assert(!cad_project_set_circle_dimension(ring,sk,"native-entity-2","radius","9"),"Crossing loop must reject the dependent extrusion");
-    m_assert(!cad_project_move_point(ring,sk,"native-entity-2",j_parse("{\"x\":9,\"y\":0}")),"Moving the hole across the outer loop must reject the rebuild");
+    let valid=j_encode(ring);
+    let crossed=cad_project_set_circle_dimension(ring,sk,"native-entity-2","radius","9");
+    m_assert(crossed && j_value(j_get(cad_project_mesh(crossed),"closed")),"Crossing circle subdivides into closed cuts");
+    let shifted=cad_project_move_point(ring,sk,"native-entity-2",j_parse("{\"x\":9,\"y\":0}"));
+    m_assert(shifted && j_value(j_get(cad_project_mesh(shifted),"closed")),"Moving the hole across the outer loop subdivides cleanly");
     let moved=cad_project_move_point(ring,sk,"native-entity-2",j_parse("{\"x\":3,\"y\":1}"));m_assert(moved,cg_error);
-    m_assert(m_eq(j_encode(ring),valid),"Failed profile rebuild leaves the ring intact");
+    m_assert(m_eq(j_encode(ring),valid),"Source ring stays immutable across edits");
     return 0;
 }

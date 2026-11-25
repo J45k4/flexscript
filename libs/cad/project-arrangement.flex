@@ -22,6 +22,12 @@ fn pc_arrangement_interior(p,a,b) {
 }
 
 fn pc_arrangement_crossing(a,b,c,d) {
+    let ax0=load64(a);let ax1=load64(b);if ax0>ax1 {let tmp=ax0;ax0=ax1;ax1=tmp;}
+    let cx0=load64(c);let cx1=load64(d);if cx0>cx1 {let tmp=cx0;cx0=cx1;cx1=tmp;}
+    if ax1+200<cx0 || cx1+200<ax0 {return 0;}
+    let ay0=load64(a+8);let ay1=load64(b+8);if ay0>ay1 {let tmp=ay0;ay0=ay1;ay1=tmp;}
+    let cy0=load64(c+8);let cy1=load64(d+8);if cy0>cy1 {let tmp=cy0;cy0=cy1;cy1=tmp;}
+    if ay1+200<cy0 || cy1+200<ay0 {return 0;}
     let rx=load64(b)-load64(a);let ry=load64(b+8)-load64(a+8);
     let sx=load64(d)-load64(c);let sy=load64(d+8)-load64(c+8);
     let denominator=rx*sy-ry*sx;
@@ -30,7 +36,7 @@ fn pc_arrangement_crossing(a,b,c,d) {
     let q=f64_from_i64(denominator);
     let t=f64_div(f64_from_i64(x*sy-y*sx),q);
     let u=f64_div(f64_from_i64(x*ry-y*rx),q);
-    let margin=f64_div(0x3ff0000000000000,f64_from_i64(1000000));
+    let margin=f64_div(0x3ff0000000000000,f64_from_i64(1000000000000));
     let upper=f64_sub(0x3ff0000000000000,margin);
     if f64_lt(margin,t) && f64_lt(t,upper) && f64_lt(margin,u) && f64_lt(u,upper) {return t;}
     return 0;
@@ -128,14 +134,20 @@ fn pc_arrangement_split(segments,vertices,edges) {
     let i=0;
     while i<cg_count(segments) && !cg_error {
         let segment=cg_at(segments,i);let a=load64(segment);let b=load64(segment+8);
+        let ax0=load64(a);let ax1=load64(b);if ax0>ax1 {let tmp=ax0;ax0=ax1;ax1=tmp;}
+        let ay0=load64(a+8);let ay1=load64(b+8);if ay0>ay1 {let tmp=ay0;ay0=ay1;ay1=tmp;}
         let cuts=cg_array();cg_push(cuts,0x3ff0000000000000);let j=0;
         while j<cg_count(segments) {
             if !cg_step() {return 0;}
             if j!=i {
                 let other=cg_at(segments,j);let c=load64(other);let d=load64(other+8);
-                let t=pc_arrangement_interior(c,a,b);if t && !pc_arrangement_insert(cuts,t,-1) {return 0;}
-                t=pc_arrangement_interior(d,a,b);if t && !pc_arrangement_insert(cuts,t,-1) {return 0;}
-                t=pc_arrangement_crossing(a,b,c,d);if t && !pc_arrangement_insert(cuts,t,-1) {return 0;}
+                let cx0=load64(c);let cx1=load64(d);if cx0>cx1 {let tmp=cx0;cx0=cx1;cx1=tmp;}
+                let cy0=load64(c+8);let cy1=load64(d+8);if cy0>cy1 {let tmp=cy0;cy0=cy1;cy1=tmp;}
+                if ax1+200>=cx0 && cx1+200>=ax0 && ay1+200>=cy0 && cy1+200>=ay0 {
+                    let t=pc_arrangement_interior(c,a,b);if t && !pc_arrangement_insert(cuts,t,-1) {return 0;}
+                    t=pc_arrangement_interior(d,a,b);if t && !pc_arrangement_insert(cuts,t,-1) {return 0;}
+                    t=pc_arrangement_crossing(a,b,c,d);if t && !pc_arrangement_insert(cuts,t,-1) {return 0;}
+                }
             }
             j=j+1;
         }
@@ -143,7 +155,7 @@ fn pc_arrangement_split(segments,vertices,edges) {
         let start=0;let first=a;j=0;
         while j<cg_count(cuts) {
             let t=cg_at(cuts,j);
-            if !f64_lt(f64_mul(f64_sub(t,start),length),f64_from_i64(10)) {
+            if t==0x3ff0000000000000 || !f64_lt(f64_mul(f64_sub(t,start),length),f64_from_i64(10)) {
                 let next=pc_arrangement_lerp(a,b,t);
                 if !pc_arrangement_piece(vertices,edges,first,next,load64(segment+16)) {return 0;}
                 start=t;first=next;
@@ -199,7 +211,7 @@ fn pc_arrangement_connect(vertices) {
     return !cg_error;
 }
 
-fn pc_arrangement_face(start,loops) {
+fn pc_arrangement_face(start,loops,exteriors) {
     let points=cg_array();let half=start;let twice_area=0;let origin=load64(load64(start));
     while half && !load64(half+32) {
         if !cg_step() {return 0;}
@@ -213,11 +225,15 @@ fn pc_arrangement_face(start,loops) {
         if cg_count(points)<3 {return cg_fail("Degenerate projected face");}
         if !pc_boundaries_clear(points,points) {return 0;}
         cg_push(loops,cg_v(points,load64(load64(start+24)+8),0));
+    }else if exteriors && f64_lt(twice_area,f64_from_i64(-2000)) {
+        let rev=cg_array();let k=cg_count(points);
+        while k {k=k-1;cg_push(rev,cg_at(points,k));}
+        if cg_count(rev)>=3 {cg_push(exteriors,cg_v(rev,load64(load64(start+24)+8),0));}
     }
     return !cg_error;
 }
 
-fn pc_arrangement_trace(segments,loops) {
+fn pc_arrangement_trace_all(segments,loops,exteriors) {
     let vertices=cg_array();let edges=cg_array();
     if !pc_arrangement_split(segments,vertices,edges) || !pc_arrangement_prune(vertices)
         || !pc_arrangement_connect(vertices) {return 0;}
@@ -227,10 +243,14 @@ fn pc_arrangement_trace(segments,loops) {
         let edge=cg_at(edges,i);
         if load64(edge) {
             let forward=load64(edge+16);let reverse=load64(edge+24);
-            if !load64(forward+32) && !pc_arrangement_face(forward,loops) {return 0;}
-            if !load64(reverse+32) && !pc_arrangement_face(reverse,loops) {return 0;}
+            if !load64(forward+32) && !pc_arrangement_face(forward,loops,exteriors) {return 0;}
+            if !load64(reverse+32) && !pc_arrangement_face(reverse,loops,exteriors) {return 0;}
         }
         i=i+1;
     }
     return !cg_error;
+}
+
+fn pc_arrangement_trace(segments,loops) {
+    return pc_arrangement_trace_all(segments,loops,0);
 }

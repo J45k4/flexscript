@@ -58,7 +58,8 @@ fn main() {
     m_assert(pc_circle_measure(measured,"width")==70000000 && pc_circle_measure(measured,"rotation")==-30000000,"Named width and signed rotation update geometry");
     m_assert(j_integer(cad_project_line_sketch(plate,sk),"degrees_of_freedom")==5,"Independent ellipse fields remove three degrees of freedom");
     saved=j_encode(plate);
-    m_assert(!cad_project_set_curve_dimension(plate,sk,oval,"height","6 mm"),"Resizing through bore fails");
+    let crossed=cad_project_set_curve_dimension(plate,sk,oval,"height","6 mm");
+    m_assert(crossed && j_value(j_get(cad_project_mesh(crossed),"closed")),"Resizing through bore subdivides into closed cuts");
     m_assert(!cad_project_set_curve_dimension(plate,sk,oval,"rotation","2 cm"),"Length cannot drive rotation");
     m_assert(m_eq(j_encode(plate),saved),"Invalid ellipse edit changed the input");
     stale=j_parse(saved);cg_j_int(pc_curve_geometry(pc_find(pc_nodes(cad_project_part(stale)),oval)),"height",25);

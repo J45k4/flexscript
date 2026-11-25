@@ -21,9 +21,7 @@ fn main() {
     let circle=j_get(cad_project_add_curve(sheet,sk,"threePointCircle",perimeter),"primitive");m_assert(circle,cg_error);
     m_assert(pc_pose_number(j_get(circle,"radius"))==4000000 && j_integer(circle,"segments")==64 && m_eq(j_encode(j_get(circle,"center")),j_encode(j_get(ellipse,"center"))),"Circumcircle through its three points");
     let washer=cad_project_add_extrusion(sheet,sk,1,10000000,"newBody");m_assert(washer,"Extrude ellipse with a circular hole");
-    let saved_washer=j_encode(washer);
-    m_assert(!cad_project_add_curve(washer,sk,"ellipse",points),"Overlapping ellipse breaks existing extrusion");
-    m_assert(m_eq(saved_washer,j_encode(washer)),"Failed dependent extrusion left a sketch entity");
+    m_assert(cad_project_add_curve(washer,sk,"ellipse",points) && j_value(j_get(cad_project_mesh(washer),"closed")),"Overlapping ellipse subdivides cleanly");
     let project=cad_project_new("Plate \"A\"");let part=cad_project_part(project);
     m_assert(m_eq(j_string(part,"name"),"Plate \"A\""),"Project name");
     let sketch="native-sketch-1";let origin=cg_v(0,0,0);let a=cg_v(-20000000,-10000000,0);let b=cg_v(20000000,10000000,0);
@@ -61,8 +59,9 @@ fn main() {
     m_assert(cg_j_count(j_get(cad,"nodes"))==7 && cg_j_count(j_get(cad,"rootNodeIds"))==5 && cg_j_count(j_get(tree,"orderedNodeIds"))==2,"Graph links");
     m_assert(!cad_project_add_extrusion(output,sketch,1,8000000,"newBody"),"Duplicate profile extrusion");
     let saved=j_encode(output);
-    m_assert(!cad_project_add_primitive(output,sketch,"circle",b,cg_v(22000000,10000000,0)),"Crossing addition broke dependent extrusion");
-    m_assert(m_eq(j_encode(output),saved),"Failed dependent rebuild changed the graph");
+    let crossed=j_parse(saved);
+    m_assert(cad_project_add_primitive(crossed,sketch,"circle",b,cg_v(22000000,10000000,0)) && j_value(j_get(cad_project_mesh(crossed),"closed")),"Crossing addition subdivides into closed cuts");
+    m_assert(m_eq(j_encode(output),saved),"Source solid stays unchanged");
     let reopened=cad_project_open(saved);let mesh=cad_project_mesh(reopened);
     m_assert(j_value(j_get(mesh,"closed")) && cad_project_stls(mesh),"Reopen and export");
     let triangle=cad_project_new("Triangle");

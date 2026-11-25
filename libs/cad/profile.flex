@@ -164,11 +164,81 @@ fn pc_profile_inside(loop,p) {
     }
     return 1;
 }
+fn pc_loop_area2(points) {
+    let n=cg_count(points);if n<3 {return 0;}
+    let origin=cg_at(points,0);let total=0;let i=1;
+    while i+1<n {
+        total=f64_add(total,f64_from_i64(pc_turn(origin,cg_at(points,i),cg_at(points,i+1))));
+        i=i+1;
+    }
+    return total;
+}
+fn pc_segment_hits_loop(a,b,points) {
+    let ax0=load64(a);let ax1=load64(b);if ax0>ax1 {let tmp=ax0;ax0=ax1;ax1=tmp;}
+    let ay0=load64(a+8);let ay1=load64(b+8);if ay0>ay1 {let tmp=ay0;ay0=ay1;ay1=tmp;}
+    let n=cg_count(points);let i=0;
+    while i<n {
+        if !cg_step() {return 0;}
+        let c=cg_at(points,i);let d=cg_at(points,(i+1)%n);
+        let cx0=load64(c);let cx1=load64(d);if cx0>cx1 {let tmp=cx0;cx0=cx1;cx1=tmp;}
+        let cy0=load64(c+8);let cy1=load64(d+8);if cy0>cy1 {let tmp=cy0;cy0=cy1;cy1=tmp;}
+        if ax1>=cx0 && cx1>=ax0 && ay1>=cy0 && cy1>=ay0 && pc_crossing(a,b,c,d) {return 1;}
+        i=i+1;
+    }
+    return 0;
+}
+fn pc_arrangement_profiles(raw_loops,raw_segments) {
+    let all_segments=cg_array();let i=0;
+    while i<cg_count(raw_loops) && !cg_error {
+        let loop=cg_at(raw_loops,i);let pts=load64(loop);let src=load64(loop+8);
+        let n=cg_count(pts);let j=0;
+        while j<n && !cg_error {
+            let a=cg_at(pts,j);let b=cg_at(pts,(j+1)%n);
+            if cg_distance2(a,b)>1 {cg_push(all_segments,cg_v(a,b,src));}
+            j=j+1;
+        }
+        i=i+1;
+    }
+    i=0;
+    while i<cg_count(raw_segments) && !cg_error {
+        cg_push(all_segments,cg_at(raw_segments,i));i=i+1;
+    }
+    let faces=cg_array();let exteriors=cg_array();
+    if !pc_arrangement_trace_all(all_segments,faces,exteriors) {return 0;}
+    let fc=cg_count(faces);
+    let areas=0;
+    if fc {
+        areas=m_take(fc*8);i=0;
+        while i<fc {store64(areas+i*8,pc_loop_area2(load64(cg_at(faces,i))));i=i+1;}
+    }
+    let holes=cg_array();let e=0;
+    while e<cg_count(exteriors) && !cg_error {
+        let ext=cg_at(exteriors,e);let epts=load64(ext);
+        let simple=pc_boundaries_clear(epts,epts);
+        if cg_error {cg_error=0;simple=0;}
+        if simple {
+            let best=-1;let best_area=0;let f=0;
+            while f<fc {
+                let fpts=load64(cg_at(faces,f));
+                if pc_profile_inside(fpts,cg_at(epts,0)) {
+                    let clear=pc_boundaries_clear(fpts,epts);
+                    if cg_error {cg_error=0;clear=0;}
+                    let fa=load64(areas+f*8);
+                    if clear && (best<0 || f64_lt(fa,best_area)) {best=f;best_area=fa;}
+                }
+                f=f+1;
+            }
+            if best>=0 {cg_push(holes,cg_v(epts,load64(ext+8),best));}
+        }
+        e=e+1;
+    }
+    return cg_v(faces,2,holes);
+}
 fn pc_profile_contours(nodes,sketch) {
     if !pc_line_records(nodes,sketch) {return 0;}
-    let id=j_string(sketch,"id");let row=pc_first(nodes);let loops=cg_array();
-    let vertices=cg_array();let edges=cg_array();let segments=0;
-    if pc_profile_uses_projection(nodes,sketch) {segments=cg_array();}
+    let id=j_string(sketch,"id");let row=pc_first(nodes);
+    let raw_loops=cg_array();let raw_segments=cg_array();
+    let uses_proj=pc_profile_uses_projection(nodes,sketch);
     while row && !cg_error {
         let primitive=j_get(row,"primitive");let kind=j_string(row,"type");
         if m_eq(j_string(row,"sketchId"),id) && m_len(kind)>=6 && m_eq(m_slice(kind,6),"sketch")
@@ -176,29 +246,63 @@ fn pc_profile_contours(nodes,sketch) {
             && !m_eq(kind,"sketchConstraint") && !m_eq(j_string(primitive,"type"),"point") {
             if m_eq(kind,"sketchLine") {
                 let a=pc_uv(j_get(row,"p0"));let b=pc_uv(j_get(row,"p1"));
-                if !cg_error {pc_profile_add_segment(segments,vertices,edges,row,a,b);}
+                if !cg_error && cg_distance2(a,b)>1 {cg_push(raw_segments,cg_v(a,b,row));}
             }else if pc_sampled_curve(row) {
                 let points=pc_curve_path(row);if !points {return 0;}
                 let j=1;while j<cg_count(points) && !cg_error {
-                    pc_profile_add_segment(segments,vertices,edges,row,cg_at(points,j-1),cg_at(points,j));j=j+1;
+                    let a=cg_at(points,j-1);let b=cg_at(points,j);
+                    if cg_distance2(a,b)>1 {cg_push(raw_segments,cg_v(a,b,row));}
+                    j=j+1;
                 }
             }else {
                 let points=pc_primitive_loop(row);if !points || cg_error {return 0;}
-                cg_push(loops,cg_v(points,row,0));
+                cg_push(raw_loops,cg_v(points,row,0));
             }
         }
         row=load64(row+24);
     }
-    let first_arranged=cg_count(loops);let arranged=segments && pc_arrangement_needed(segments);
     if cg_error {return 0;}
+    let loops=cg_array();let i=0;
+    while i<cg_count(raw_loops) {
+        let rl=cg_at(raw_loops,i);cg_push(loops,cg_v(load64(rl),load64(rl+8),0));i=i+1;
+    }
+    let first_arranged=cg_count(loops);
+    let arranged=uses_proj && cg_count(raw_segments) && pc_arrangement_needed(raw_segments);
+    if cg_error {return 0;}
+    let need_general=0;let trace_err=0;
     if arranged {
-        if !pc_arrangement_trace(segments,loops) {return 0;}
-    }else {
-        let i=0;while i<cg_count(segments) && !cg_error {
-            let segment=cg_at(segments,i);
+        if !pc_arrangement_trace(raw_segments,loops) {return 0;}
+    }else if cg_count(raw_segments) {
+        let vertices=cg_array();let edges=cg_array();
+        i=0;while i<cg_count(raw_segments) && !cg_error {
+            let segment=cg_at(raw_segments,i);
             pc_add_segment(vertices,edges,load64(segment+16),load64(segment),load64(segment+8));i=i+1;
         }
-        if !pc_trace_contours(edges,loops) {return 0;}
+        if !pc_trace_contours(edges,loops) {
+            trace_err=cg_error;cg_error=0;need_general=1;
+        }else if cg_count(loops) {
+            let ei=0;
+            while ei<cg_count(edges) && !need_general && !cg_error {
+                let edge=cg_at(edges,ei);let u=load64(edge);let v=load64(edge+8);
+                if load64(u+8)!=2 || load64(v+8)!=2 {
+                    let li=0;
+                    while li<cg_count(loops) && !need_general && !cg_error {
+                        if pc_segment_hits_loop(load64(u),load64(v),load64(cg_at(loops,li))) {need_general=1;}
+                        li=li+1;
+                    }
+                }
+                ei=ei+1;
+            }
+            if cg_error {return 0;}
+        }
+    }
+    if need_general {
+        let general=pc_arrangement_profiles(raw_loops,raw_segments);
+        if !general {return 0;}
+        if trace_err && !cg_count(raw_loops) && cg_count(load64(general))<2 {
+            return cg_fail(trace_err);
+        }
+        return general;
     }
     let k=0;
     while k<cg_count(loops) {
@@ -208,7 +312,10 @@ fn pc_profile_contours(nodes,sketch) {
             let contact=0;
             if arranged && j>=first_arranged {contact=pc_arrangement_boundaries(points,boundary);}
             else {contact=pc_boundaries_clear(points,boundary);}
-            if !contact {return 0;}
+            if !contact {
+                cg_error=0;
+                return pc_arrangement_profiles(raw_loops,raw_segments);
+            }
             if contact==1 {
                 if pc_inside(points,cg_at(boundary,0)) {store64(other+16,load64(other+16)+1);}
                 else if pc_inside(boundary,cg_at(points,0)) {store64(current+16,load64(current+16)+1);}
@@ -219,19 +326,29 @@ fn pc_profile_contours(nodes,sketch) {
     }
     return cg_v(loops,arranged,0);
 }
-fn cad_project_profile(nodes,sketch,feature) {
-    let contours=pc_profile_contours(nodes,sketch);if !contours {return 0;}
-    let loops=load64(contours);let arranged=load64(contours+8);let id=j_string(sketch,"id");
-    let region=cg_array();let i=0;let index=0;let outer=0;
+fn pc_region_at(contours,index) {
+    let loops=load64(contours);let arranged=load64(contours+8);let region=cg_array();
+    if arranged==2 {
+        if index<0 || index>=cg_count(loops) {return 0;}
+        cg_push(region,cg_at(loops,index));
+        let holes=load64(contours+16);let i=0;
+        while i<cg_count(holes) {
+            let hole=cg_at(holes,i);
+            if load64(hole+16)==index {cg_push(region,cg_v(load64(hole),load64(hole+8),1));}
+            i=i+1;
+        }
+        return region;
+    }
+    let i=0;let ordinal=0;let outer=0;
     while i<cg_count(loops) {
         let loop=cg_at(loops,i);
         if !(load64(loop+16)%2) {
-            index=index+1;
-            if m_eq(j_string(feature,"profileId"),m_cat(id,m_cat("-profile-",m_int(index)))) {outer=loop;}
+            if ordinal==index {outer=loop;}
+            ordinal=ordinal+1;
         }
         i=i+1;
     }
-    if !outer {return cg_fail("Extrusion profile not found");}
+    if !outer {return 0;}
     cg_push(region,outer);i=0;
     while i<cg_count(loops) && !cg_error {
         let loop=cg_at(loops,i);
@@ -244,6 +361,36 @@ fn cad_project_profile(nodes,sketch,feature) {
         i=i+1;
     }
     if cg_error {return 0;}return region;
+}
+fn cad_project_profiles(nodes,sketch) {
+    let contours=pc_profile_contours(nodes,sketch);if !contours {return 0;}
+    let regions=cg_array();let idx=0;
+    while 1 {
+        let region=pc_region_at(contours,idx);
+        if !region {return regions;}
+        cg_push(regions,region);idx=idx+1;
+    }
+    return regions;
+}
+fn cad_project_profile(nodes,sketch,feature) {
+    let contours=pc_profile_contours(nodes,sketch);if !contours {return 0;}
+    let loops=load64(contours);let arranged=load64(contours+8);let id=j_string(sketch,"id");
+    let count=cg_count(loops);
+    if arranged!=2 {
+        count=0;let i=0;
+        while i<cg_count(loops) {
+            if !(load64(cg_at(loops,i)+16)%2) {count=count+1;}
+            i=i+1;
+        }
+    }
+    let idx=0;
+    while idx<count {
+        if m_eq(j_string(feature,"profileId"),m_cat(id,m_cat("-profile-",m_int(idx+1)))) {
+            return pc_region_at(contours,idx);
+        }
+        idx=idx+1;
+    }
+    return cg_fail("Extrusion profile not found");
 }
 fn pc_prism(points,frame,start,depth) {return pc_prism_in_range(points,frame,start,depth,500000000);}
 fn pc_prism_in_range(points,frame,start,depth,limit) {

@@ -38,9 +38,31 @@ fn asymmetric_cuts() {
 
     let unlinked=cad_project_open(before);let sketch=pc_find(pc_nodes(cad_project_part(unlinked)),side);
     cg_j_set(sketch,"relations",j_array());
-    let whole=cad_project_add_extrusion(unlinked,side,1,10000000,"cut");m_assert(whole,cg_error);
-    arrangement_volume(whole,base_id,900000);
-    m_assert(!cad_project_add_extrusion(unlinked,side,2,10000000,"cut"),"A plain sketch keeps the simple contour rule");
+    let first_cut=cad_project_add_extrusion(unlinked,side,1,10000000,"cut");m_assert(first_cut,cg_error);
+    let second_cut=cad_project_add_extrusion(unlinked,side,2,10000000,"cut");m_assert(second_cut,cg_error);
+    arrangement_volume(first_cut,base_id,921000);
+    arrangement_volume(second_cut,base_id,939000);
+}
+fn overlapping_primitives() {
+    let base="native-sketch-1";
+    let model=cad_project_new("Overlapping circle and rectangle");
+    m_assert(cad_project_add_primitive(model,base,"circle",cg_v(0,0,0),cg_v(20000000,0,0)),cg_error);
+    m_assert(arrangement_box(model,base,5000000,-15000000,35000000,15000000),cg_error);
+    let nodes=pc_nodes(cad_project_part(model));let sketch=pc_find(nodes,base);
+    let regions=cad_project_profiles(nodes,sketch);
+    m_assert(regions && cg_count(regions)==3,m_cat("Expected 3 split regions: ",cg_error));
+    let total_vol=0;let idx=1;
+    while idx<=3 {
+        let extruded=cad_project_add_extrusion(model,base,idx,10000000,"newBody");
+        m_assert(extruded,m_cat("Expected region extrude to succeed: ",cg_error));
+        let mesh=cad_project_mesh(extruded);
+        m_assert(mesh && !j_get(mesh,"error") && j_value(j_get(mesh,"closed")),m_cat("Expected closed solid: ",cg_error));
+        let part=pc_first(j_get(mesh,"parts"));
+        total_vol=total_vol+pc_serial_number(j_get(part,"volume_mm3"),6,1000000,100000000);
+        idx=idx+1;
+    }
+    // Circle area (~1253 mm²) + Rectangle area (900 mm²) - lens overlap (~318 mm²) => ~1835 mm² * 10 mm
+    m_assert(total_vol>17000000000 && total_vol<20000000000,"Total volume of the 3 cuts should match union");
 }
 fn projected_hole() {
     let base="native-sketch-1";let cap="native-sketch-2";
@@ -63,10 +85,10 @@ fn projected_hole() {
     let raised=cad_project_add_extrusion(model,cap,hole_ordinal,2000000,"newBody");m_assert(raised,cg_error);
     arrangement_volume(raised,"native-extrude-2",5520);
 
-    // A separate primitive crossing the divider is not a subdivision edge.
+    // A separate primitive crossing the divider now subdivides cleanly into selectable cuts.
     m_assert(arrangement_box(model,cap,-2000000,-2000000,2000000,2000000),cg_error);
-    m_assert(!arrangement_region(model,cap,1) && m_eq(cg_error,"Sketch profile loops intersect or touch"),
-        "Shared subdivision boundaries do not permit an unrelated crossing loop");
+    let cut_regions=cad_project_profiles(pc_nodes(cad_project_part(model)),pc_find(pc_nodes(cad_project_part(model)),cap));
+    m_assert(cut_regions && cg_count(cut_regions)>=4,m_cat("Crossing box should subdivide cleanly: ",cg_error));
 }
 fn arrangement_boundaries() {
     cg_begin();
@@ -83,6 +105,7 @@ fn arrangement_boundaries() {
 
 fn main() {
     asymmetric_cuts();
+    overlapping_primitives();
     projected_hole();
     arrangement_boundaries();
     return 0;
