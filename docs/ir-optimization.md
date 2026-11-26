@@ -23,8 +23,9 @@ build/flex run --jit --ir-opt=basic --stats app.flex
 ```
 
 For native Linux compilation, `--native-pipeline ir` explicitly selects the
-default. `--native-pipeline direct` selects the original source emitter for
-reference comparisons. Both produce standalone ELF machine-code executables.
+default register-based emitter. `--native-pipeline legacy-ir` selects the
+previous IR emitter. `--native-pipeline direct` selects the original source
+emitter. All three produce standalone ELF machine-code executables.
 The native IR path supports native pointers, globals, mutable binary string
 literals, allocation, Linux syscalls, FFI and registered hardware lowerings.
 It reuses the existing x86 register cache, arithmetic/address peepholes, direct
@@ -128,6 +129,24 @@ separate storage for each source literal, including mutable binary/NUL strings.
 use it only when the program treats literals as immutable. It is limited to the
 native Linux IR pipeline. It does not change interpreter, JIT, portable IR,
 other CPU targets, or direct-emitter literal behavior.
+
+## Register-based native pipeline
+
+Native Linux x86-64 builds use the register-based emitter by default.
+It emits a standalone ELF directly from the resolved word IR. The emitter keeps
+constants, locals and intermediate values in registers when possible, and spills
+live operands at control-flow joins and calls. It reuses registers for disjoint
+local lifetimes and inlines small calls with bounded code growth. A native IR
+pass forwards local constants and avoids repeating a test on an edge that already
+establishes the outcome. The `registers` spelling is an alias for `ir`.
+
+```sh
+build/flex app.flex -o app
+build/flex --native-pipeline legacy-ir app.flex -o app-legacy
+```
+
+With `--ir-opt none`, the IR pipeline uses the previous emitter. Programs with
+many small calls can get larger binaries from inlining.
 
 `FLEX_COMPILER=build/flex python3 scripts/test-native-literals.py` verifies
 mutation/identity, full binary contents and hash collisions, branch replay,

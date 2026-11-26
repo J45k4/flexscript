@@ -417,7 +417,9 @@ fn native_reg_select() {
     native_reg_callee_count=chosen;if native_reg_callee_count>5 {native_reg_callee_count=5;}return 0;
 }
 fn native_reg_spill(storing) {
-    if !native_register_frame || !native_reg_replay {return 0;}let limit=slots;if native_spill_slots>=0 {limit=native_spill_slots;}let slot=0;while slot<limit {let reg=load64(native_reg_map+slot*8);if reg>=6 && (native_spill_mask&(1<<(reg-6))) {let op=139;if storing {op=137;}native_rbp(op,reg+2,-8*(slot+1));}slot=slot+1;}return 0;
+    if !native_register_frame || !native_reg_replay {return 0;}
+    if nr_shared_spills {return nr_spill(storing);}
+    let limit=slots;if native_spill_slots>=0 {limit=native_spill_slots;}let slot=0;while slot<limit {let reg=load64(native_reg_map+slot*8);if reg>=6 && (native_spill_mask&(1<<(reg-6))) {let op=139;if storing {op=137;}native_rbp(op,reg+2,-8*(slot+1));}slot=slot+1;}return 0;
 }
 fn native_frame(count) {
     native_parameter_count=count;emit(85);emit(72);emit(137);emit(229);let frame=0;let bytes=-1;
@@ -1854,7 +1856,7 @@ fn main(argc, argv) {
         }
         if equal(arg, length(arg), "--help", 6) {
             print(1,"Offline GPU output: --target hip --emit code-object --gpu-arch gfx... [--rocm-root PATH]\n");
-            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|direct] [--native-literals writable|shared] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript verify <source.flex> [--budget=N] [--circuit-gates=N] [--circuit-words=N] [--defer-memory-aliases] [--no-trusted]\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
+            print(1, "Usage: flexscript <source.flex> -o <binary>\n       flexscript [--language flex|seta|ir] [--word-io buffered|unbuffered] [--lowering-mode hardware|reference] [--native-link reachable|all] [--native-pipeline ir|legacy-ir|direct|registers] [--native-literals writable|shared] [--ir-opt basic|none] [--target android-arm64|linux-arm64|wasm32|glsl|glsl-es|wgsl|ptx|sass-sm75|hip|rdna-gfx1201|cpu-cxx|ir|baremetal-x86_64|esp32|esp32s3|esp32-elf|esp32s3-elf|esp32s3-sdk-elf|esp32s3-xip-elf|esp32-radio-elf|esp32-xip-elf|esp32-btdm-elf|esp32c3|esp32c6|esp32c3-elf|esp32c6-elf|esp32c3-xip-elf|esp32c6-xip-elf|esp32c3-radio-elf|esp32c6-radio-elf] <source> -o <output>\n       flexscript --frontend <parser.flex> <source> -o <output>\n       flexscript --target <esp32-target> [--language seta|ir] [--platform <module.flex>]... <source> -o <output>\n       flexscript verify <source.flex> [--budget=N] [--circuit-gates=N] [--circuit-words=N] [--defer-memory-aliases] [--no-trusted]\n       flexscript upgrade [--check]\n       flexscript run [options] <source> [args...]\n       flexscript <source.flex|source.seta> [args...]\n"); return 0;
         }
     }
     let first=1;
@@ -1906,7 +1908,14 @@ fn main(argc, argv) {
             else {print(2,"expected reachable or all native link mode\n");return 1;}
         }
         else if up_text(arg,"--ir-opt") {ir_opt_select(value);}
-        else if up_text(arg,"--native-pipeline") {if native_pipeline_seen {fail("choose only one native pipeline");}native_pipeline_seen=1;if up_text(value,"ir") {native_pipeline_ir=1;}else if up_text(value,"direct") {native_pipeline_ir=0;}else {fail("expected ir or direct native pipeline");}}
+        else if up_text(arg,"--native-pipeline") {
+            if native_pipeline_seen {fail("choose only one native pipeline");}
+            native_pipeline_seen=1;
+            if up_text(value,"ir") || up_text(value,"registers") {native_pipeline_ir=1;ni_register_pipeline=1;}
+            else if up_text(value,"legacy-ir") {native_pipeline_ir=1;ni_register_pipeline=0;}
+            else if up_text(value,"direct") {native_pipeline_ir=0;}
+            else {fail("expected ir, legacy-ir, direct, or registers native pipeline");}
+        }
         else if up_text(arg,"--native-literals") {if native_literals_seen {fail("choose only one native literal mode");}native_literals_seen=1;if up_text(value,"writable") {ni_literal_shared=0;}else if up_text(value,"shared") {ni_literal_shared=1;}else {fail("expected writable or shared native literal mode");}}
         else {print(2,"unknown compiler option\n");return 1;}
         first=first+2;

@@ -33,17 +33,28 @@ def main():
 
         for text, status, stdout in cases:
             source.write_text(text)
-            for mode in ("direct", "ir", None):
+            for mode in ("direct", "legacy-ir", "ir", "registers", None):
                 for opt in ("none", "basic"):
                     compile_file(mode, opt)
                     p = subprocess.run([str(binary), "argument"], capture_output=True, timeout=10)
                     assert p.returncode == status and p.stdout == stdout, (mode, opt, p)
                     checks += 1
+        source.write_text(
+            'lowering hint "memory.prefetch_read" "native-x86_64";'
+            'fn hint(p){return 0;}fn main(){let p=alloc(16);store64(p,123);'
+            'if hint(p) || load64(p)!=123{return 1;}return 42;}'
+        )
+        for mode in ("direct", "legacy-ir", "ir", "registers", None):
+            compile_file(mode)
+            p = subprocess.run([str(binary)], capture_output=True, timeout=5)
+            assert p.returncode == 42 and p.stdout == b"", (mode, p)
+            checks += 1
         source.write_text('fn main(){if 0{return ffi_open("unreachable.so");}return (2+3)*(8-1)+7;}')
-        reference = compile_file("ir")
+        reference = compile_file("registers")
         assert b"/lib64/ld-linux-x86-64.so.2" not in reference
-        assert compile_file(None) == reference, "native IR is not the default"
-        checks += 2
+        assert compile_file(None) == reference, "register-based native IR is not the default"
+        assert compile_file("ir") == reference, "explicit IR differs from the default"
+        checks += 3
         original = hashlib.sha256(binary.read_bytes()).digest()
         source.write_text('fn unused(){return missing();}fn main(){return 42;}')
         p = subprocess.run([compiler, str(source), "-o", str(binary)], capture_output=True)
@@ -60,12 +71,17 @@ def main():
         source.write_text('global count=0;fn next(){count=count+1;return count;}fn main(){let a=next();let b=next();let c=next();let d=next();let e=next();let f=next();let g=next();let h=next();let i=0;while i<3 {a=a+b+c+d+e+f+g+h;i=i+1;}return a;}')
         direct = compile_file("direct")
         p = subprocess.run([str(binary)], capture_output=True, timeout=5)
-        optimized = compile_file("ir")
+        optimized = compile_file("legacy-ir")
         q = subprocess.run([str(binary)], capture_output=True, timeout=5)
         assert p.returncode == q.returncode
         assert len(optimized) <= len(direct), (len(direct), len(optimized))
-        checks += 2
-    print(f"Native pipeline: {checks} IR/direct/default, mutable binary literals, globals, argc/argv, FFI, recursion, validation and size checks pass")
+        default = compile_file(None)
+        q = subprocess.run([str(binary)], capture_output=True, timeout=5)
+        assert p.returncode == q.returncode
+        assert default == compile_file("registers")
+        assert default != optimized, "default backend matches legacy IR on the inlining fixture"
+        checks += 5
+    print(f"Native pipeline: {checks} native pipeline, mutable binary literals, globals, argc/argv, FFI, recursion, validation and size checks pass")
 
 
 if __name__ == "__main__":

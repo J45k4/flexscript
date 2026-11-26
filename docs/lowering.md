@@ -49,6 +49,7 @@ retain their documented target restrictions.
 | `memory.copy` | 3 | `(dst, src, n)`: exact-bound forward byte copy, returns `dst` |
 | `memory.fill` | 3 | `(dst, value, n)`: fill with low byte, returns `dst` |
 | `word.load32` | 1 | Unaligned little-endian load, zero-extended to a word |
+| `memory.prefetch_read` | 1 | Optional read-locality hint for a readable address |
 | `word.store32` | 2 | Unaligned little-endian store of low 32 bits; returns original value |
 | `word.high_bit` | 1 | Highest set bit 0–63; `-1` for zero |
 | `memory.common_prefix` | 3 | `(a, b, n)`: equal prefix length, bounded by `n` |

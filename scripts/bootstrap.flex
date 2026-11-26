@@ -10,6 +10,8 @@ fn bs_suite(compiler,out,name,seed,first,second) {
     let timeout=h_timeout;
     // TLS graph-limit fixtures fetch hundreds of modules across both stages.
     if h_equal(name,"url-imports") { h_timeout=300000; }
+    // The VM suite runs both compiler stages and retains its own case deadlines.
+    if h_equal(name,"vm") { h_timeout=120000; }
     h_print(1,h_out(h_ok(args)));
     h_timeout=timeout;
     return j_parse(h_read(h_join(out,h_cat(name,"-tests.json"))));

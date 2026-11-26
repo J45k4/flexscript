@@ -20,6 +20,7 @@ fn lowering_operation(p,n) {
     if equal(p,n,"f64.sqrt",8) {return 44;}
     if equal(p,n,"f32.dot3",8) {return 110;}
     if equal(p,n,"f32.dot3.load",13) {return 111;}
+    if equal(p,n,"memory.prefetch_read",20) {return 126;}
     if equal(p,n,"memory.copy",11) {return 120;}
     if equal(p,n,"memory.fill",11) {return 121;}
     if equal(p,n,"word.store32",12) {return 125;}
@@ -31,7 +32,7 @@ fn lowering_operation(p,n) {
     if equal(p,n,"lowering.active",15) {return 102;}
     fail("unknown lowering operation");return 0;
 }
-fn lowering_arity(op) {if op>=128 && op<=137 {return nt_arity(op);}if op==125 || op==127 {return 2;}if op>=120 && op<=124 {if op==122 || op==123 {return 1;}return 3;}if op==110 {return 6;}if op==102 {return 0;}if op==34 || op==44 {return 1;}return 2;}
+fn lowering_arity(op) {if op==126 {return 1;}if op>=128 && op<=137 {return nt_arity(op);}if op==125 || op==127 {return 2;}if op>=120 && op<=124 {if op==122 || op==123 {return 1;}return 3;}if op==110 {return 6;}if op==102 {return 0;}if op==34 || op==44 {return 1;}return 2;}
 fn lowering_declaration() {
     next();if token!=256 {fail("expected lowering function name");}
     let name=source+token_start;let size=token_size;
@@ -80,6 +81,10 @@ fn lowering_native(op) {
         // Caller spills volatile locals before entering this operation. The
         // machine function follows System V, including preserving RBP.
         lowering_bytes("5f58554889e54883e4f0ffd04889ec5d");return 0;
+    }
+    if op==126 {
+        // pop rax; prefetcht0 [rax]; xor eax,eax
+        lowering_bytes("580f180831c0");return 0;
     }
     if op>=120 && op<=125 {return lowering_memory(op);}
     if op==102 {immediate(1);return 0;}

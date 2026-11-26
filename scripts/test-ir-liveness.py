@@ -138,13 +138,13 @@ def main():
                     actual = subprocess.run([str(binary)], capture_output=True, timeout=10)
                     assert (actual.returncode, actual.stdout) == (result.returncode, result.stdout), (index, x, opt, actual, result)
                     checks += 1
-        # Compare the very same IR emitter before/after liveness when a
-        # baseline compiler is supplied; CI also compares the direct emitter.
+        # Isolate the original IR emitter's liveness-related size reduction.
+        # The default emitter also inlines calls.
         source.write_text(helpers + f'fn subject(x){{{locals_}let n=0;while n<4{{{call};{call};n=n+1;}}{call};return 42;}}fn main(){{return subject(7);}}')
         reference = work / 'size-before'
         actual = work / 'size-after'
         subprocess.run([baseline or compiler, '--native-pipeline', 'ir' if baseline else 'direct', str(source), '-o', str(reference)], check=True)
-        subprocess.run([compiler, str(source), '-o', str(actual)], check=True)
+        subprocess.run([compiler, '--native-pipeline', 'legacy-ir', str(source), '-o', str(actual)], check=True)
         before, after = reference.stat().st_size, actual.stat().st_size
         assert after < before, (before, after)
         checks += 1

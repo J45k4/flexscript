@@ -94,7 +94,11 @@ def main():
             got = list(map(int, wasm_run(module, calls=calls)["values"]))
             assert got == expected
             checks += len(got)
-        assert len(native[1]) < len(native[0]), "default native source compilation bypassed shared optimization"
+        # Compare sizes with the same emitter. The default also inlines calls.
+        legacy = [compile_file(source, work / f"legacy-{mode}", mode,
+                               extra=("--native-pipeline", "legacy-ir")) for mode in ("none", "basic")]
+        assert len(legacy[1]) < len(legacy[0]), "native compilation bypassed shared optimization"
+        assert native[0] == legacy[0], "disabling optimization changed the IR emitter"
         direct = [compile_file(source, work / f"direct-{mode}", mode, extra=("--native-pipeline", "direct")) for mode in ("none", "basic")]
         assert direct[0] == direct[1], "IR mode unexpectedly changes the direct reference emitter"
         assert sizes["basic"] < sizes["none"], sizes

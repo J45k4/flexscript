@@ -2,6 +2,10 @@
 // Opcode 28 is an internal static-address literal (length:offset). It is never
 // serialized as portable FIR or executed by the VM.
 import "native-literals.flex";
+import "native-inline.flex";
+import "native-operands.flex";
+import "native-local-ranges.flex";
+import "native-constants.flex";
 global native_pipeline_ir=1;
 global native_ir_target=0;
 global ni_code=0;
@@ -19,6 +23,8 @@ global ni_depth=0;
 global ni_block=0;
 global ni_acc_begin=0;
 global ni_slot_bits=0;
+global ni_operand_depth=0;
+global ni_register_pipeline=1;
 fn native_ir_prepare() {
     native_ir_target=1;vm_mode=1;vm_restricted=1;vm_heap_limit=67108864;vm_heap_used=16;
     vm_heap=alloc(vm_heap_limit);if vm_heap<0 {fail("cannot allocate native IR data");}
@@ -42,7 +48,7 @@ fn ni_reachable() {
     }return 0;
 }
 fn ni_analyze(start,end,arity) {
-    let pc=start+16;let depth=0;let level=0;let slot=0;
+    let pc=start+16;let depth=0;let level=0;let slot=0;ni_operand_depth=0;
     while slot<slots {let count=0;if slot<arity {count=1;}store64(native_reg_counts+slot*8,count);store64(native_reg_map+slot*8,0);slot=slot+1;}
     while pc<end {
         level=level+load64(ni_loops+pc/2);let weight=level*3;if weight>12 {weight=12;}
@@ -51,9 +57,12 @@ fn ni_analyze(start,end,arity) {
         if op==2 {if depth>=65536 {fail("native IR operand stack exceeds limit");}store64(ni_stack+depth*32,pc);depth=depth+1;}
         else if op==7 {if !depth {fail("native IR operand stack underflow");}depth=depth-1;store8(ni_binary_push+load64(ni_stack+depth*32)/16,1);}
         else if op==8 || op==17 {depth=depth-ni_arity(op,arg);if depth<0 {fail("native IR argument stack underflow");}}
+        if depth>ni_operand_depth {ni_operand_depth=depth;}
         pc=pc+16;
     }
-    if depth {fail("native IR operand stack unbalanced");}native_loop_depth=0;native_reg_select();
+    if depth {fail("native IR operand stack unbalanced");}
+    native_loop_depth=0;
+    if !ir_opt_enabled || !ni_register_pipeline || !nr_select(start,end,arity) {native_reg_select();}
     if !ni_slot_bits {ni_slot_bits=alloc(4096*8);if ni_slot_bits<0 {fail("cannot allocate native liveness map");}}
     slot=0;while slot<slots {let reg=load64(native_reg_map+slot*8);let mask=0;if reg>=6 {mask=1<<(reg-6);}store64(ni_slot_bits+slot*8,mask);slot=slot+1;}
     ir_live_analyze(ni_code,start,end,slots,ni_slot_bits);return 0;
@@ -79,6 +88,7 @@ fn ni_literal(arg) {
     return ni_literal_reference(arg);
 }
 fn ni_emit(start,end,arity) {
+    if ir_opt_enabled && ni_register_pipeline { return no_emit(start,end,arity); }
     ni_literal_ref_count=ni_literal_ref_begin;
     ni_depth=0;ni_block=0;native_temp_epoch=0;native_binary_cached=0;ni_acc_begin=output_size;native_spill_slots=arity;
     let frame=native_frame(arity);let pc=start+16;let fixes=0;
@@ -122,6 +132,14 @@ fn ni_emit(start,end,arity) {
     return 0;
 }
 fn native_ir_finish() {
+    vm_mode=0;
+    if ir_opt_enabled && ni_register_pipeline {
+        ni_inline();
+        call_count=0;
+        nc_propagate();ir_optimize();
+        nc_propagate();ir_optimize();
+    }
+    if ir_opt_enabled && ni_register_pipeline { nc_thread_tests(); }
     ni_code=output;ni_size=output_size;let count=ni_size/16;
     ni_literals_prepare();
     ni_entries=alloc(function_count*8);ni_live=alloc(function_count*8);ni_map=alloc((count+1)*8);ni_targets=alloc(count);ni_binary_push=alloc(count);ni_loops=alloc((count+1)*8);ni_stack=alloc(65536*32);ni_fixups=alloc(ni_size);

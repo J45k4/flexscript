@@ -48,7 +48,9 @@ def main():
                     assert subprocess.run([str(binary)], timeout=5).returncode == (42 if expected else 7)
                     checks += 1
             data = compile_text(f"fn main(argc,argv){{return argc {op} 2;}}")
-            assert bytes([0x0F, cc, 0xC0, 0x0F, 0xB6, 0xC0]) in data
+            setcc = bytes([0x0F, cc, 0xC0])
+            extend = bytes([0x0F, 0xB6, 0xC0])
+            assert setcc + extend in data or setcc + b"\x40" + extend in data
             assert subprocess.run([str(binary)], timeout=5).returncode == int(compare(1, 2))
             checks += 1
 
