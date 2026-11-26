@@ -63,11 +63,8 @@ fn demo_frame(shadows) {
 }
 fn demo_capture(path) {
     let w=gui_pixel_width(load64(demo_device));let h=gui_pixel_height(load64(demo_device));let data=alloc(w*h*3);let row=alloc(w*3);
-    render_gl(demo_device,"glPixelStorei",0x0d05,1,0,0,0,0);
-    // ReadPixels has seven arguments, including the destination buffer.
-    let args=gui__zero(alloc(88),88);store64(args+16,w);store64(args+24,h);store64(args+32,0x1907);store64(args+40,0x1401);store64(args+48,data);
-    ffi_call_words(gui_gl_cached_proc(load64(demo_device),"glReadPixels"),args);
+    demo_require(render_read_rgb8(demo_device,0,0,w,h,data,w*h*3));
     let y=0;while y<h/2 {h_copy(row,data+y*w*3,w*3);h_copy(data+y*w*3,data+(h-y-1)*w*3,w*3);h_copy(data+(h-y-1)*w*3,row,w*3);y=y+1;}
     let header=h_cat("P6\n",h_cat(h_int(w),h_cat(" ",h_cat(h_int(h),"\n255\n"))));let fd=syscall(2,path,577,420,0,0,0);h_assert(fd>=0,"Capture file creation");h_assert(h_write(fd,header,h_len(header))==h_len(header) && h_write(fd,data,w*h*3)==w*h*3,"Capture write");h_close(fd);
-    syscall(11,data,w*h*3,0,0,0,0);syscall(11,row,w*3,0,0,0,0);syscall(11,args,88,0,0,0,0);return 0;
+    syscall(11,data,w*h*3,0,0,0,0);syscall(11,row,w*3,0,0,0,0);return 0;
 }

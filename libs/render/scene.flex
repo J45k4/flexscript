@@ -107,3 +107,121 @@ fn render_begin(d,target,width,height) {
 fn render_target_close(t) {
     if !t || !load64(t+16) {return 1;}render_delete(load64(t),5,load64(t+16));render_delete(load64(t),4,load64(t+8));store64(t+16,0);store64(t+8,0);return 1;
 }
+
+// Save or restore the OpenGL state that changes the layout of client RGB rows.
+fn render__tight_pixels(d, state, packing, restore) {
+    let row_length = 0x0cf2;
+    let buffer_target = 0x88ec;
+    let buffer_binding = 0x88ef;
+    if packing {
+        row_length = 0x0d02;
+        buffer_target = 0x88eb;
+        buffer_binding = 0x88ed;
+    }
+    let word = load64(d + 24);
+    let i = 0;
+    while i < 4 {
+        let token = row_length + i;
+        if restore {
+            render_gl(d, "glPixelStorei", token, load64(state + i * 8), 0, 0, 0, 0);
+        } else {
+            render_gl(d, "glGetIntegerv", token, word, 0, 0, 0, 0);
+            store64(state + i * 8, gui__u32(word));
+            // Row length and skips are zero, alignment is one byte.
+            render_gl(d, "glPixelStorei", token, i == 3, 0, 0, 0, 0);
+        }
+        i = i + 1;
+    }
+    if restore {
+        render_gl(d, "glBindBuffer", buffer_target, load64(state + 32), 0, 0, 0, 0);
+    } else {
+        render_gl(d, "glGetIntegerv", buffer_binding, word, 0, 0, 0, 0);
+        store64(state + 32, gui__u32(word));
+        render_gl(d, "glBindBuffer", buffer_target, 0, 0, 0, 0, 0);
+    }
+    return 0;
+}
+
+fn render__valid_rgb8(width, height, pixels, bytes) {
+    return width >= 1 && width <= 8192 && height >= 1 && height <= 8192 &&
+           pixels && bytes >= width * height * 3;
+}
+
+// Create a tracked GL_RGB8 texture from tightly packed RGB bytes. Row zero
+// becomes texture row zero. Filtering is linear and wrapping is clamp-to-edge.
+fn render_texture_rgb8(d, width, height, pixels, bytes, mipmaps) {
+    if !render__valid_rgb8(width, height, pixels, bytes) || !render_live(d) {
+        return gui__fail("Invalid RGB texture upload");
+    }
+    let upload = gui_gl_cached_proc(load64(d), "glTexImage2D");
+    if !upload { return gui__fail("RGB texture upload is unavailable"); }
+    let word = load64(d + 24);
+    gui__put32(word, 0);
+    render_gl(d, "glGenTextures", 1, word, 0, 0, 0, 0);
+    let texture = render_track(d, 4, gui__u32(word));
+    if !texture { return gui__fail("Could not create RGB texture"); }
+
+    render_gl(d, "glGetIntegerv", 0x8069, word, 0, 0, 0, 0);
+    let previous = gui__u32(word);
+    render_gl(d, "glBindTexture", 0x0de1, texture, 0, 0, 0, 0);
+    let transfer = alloc(40);
+    render__tight_pixels(d, transfer, 0, 0);
+    let args = gui__zero(alloc(88), 88);
+    store64(args, 0x0de1);
+    store64(args + 16, 0x8051);
+    store64(args + 24, width);
+    store64(args + 32, height);
+    store64(args + 48, 0x1907);
+    store64(args + 56, 0x1401);
+    store64(args + 64, pixels);
+    let result = ffi_call_words(upload, args);
+    render__tight_pixels(d, transfer, 0, 1);
+    syscall(11, transfer, 40, 0, 0, 0, 0);
+    syscall(11, args, 88, 0, 0, 0, 0);
+
+    let min_filter = 0x2601;
+    if mipmaps {
+        render_gl(d, "glGenerateMipmap", 0x0de1, 0, 0, 0, 0, 0);
+        min_filter = 0x2703;
+    }
+    render_gl(d, "glTexParameteri", 0x0de1, 0x2801, min_filter, 0, 0, 0);
+    render_gl(d, "glTexParameteri", 0x0de1, 0x2800, 0x2601, 0, 0, 0);
+    render_gl(d, "glTexParameteri", 0x0de1, 0x2802, 0x812f, 0, 0, 0);
+    render_gl(d, "glTexParameteri", 0x0de1, 0x2803, 0x812f, 0, 0, 0);
+    render_gl(d, "glBindTexture", 0x0de1, previous, 0, 0, 0, 0);
+    let error = render_gl(d, "glGetError", 0, 0, 0, 0, 0, 0);
+    if error || result == -10001 || result == -10002 || result == -10003 {
+        render_delete(d, 4, texture);
+        return gui__fail("RGB texture upload failed");
+    }
+    return texture;
+}
+
+// Read tightly packed RGB from the selected read framebuffer, bottom row first.
+fn render_read_rgb8(d, x, y, width, height, pixels, bytes) {
+    if x < 0 || y < 0 || x > 2147483647 || y > 2147483647 ||
+       !render__valid_rgb8(width, height, pixels, bytes) || !render_live(d) {
+        return gui__fail("Invalid RGB framebuffer read");
+    }
+    let read = gui_gl_cached_proc(load64(d), "glReadPixels");
+    if !read { return gui__fail("RGB framebuffer read is unavailable"); }
+    let transfer = alloc(40);
+    render__tight_pixels(d, transfer, 1, 0);
+    let args = gui__zero(alloc(88), 88);
+    store64(args, x);
+    store64(args + 8, y);
+    store64(args + 16, width);
+    store64(args + 24, height);
+    store64(args + 32, 0x1907);
+    store64(args + 40, 0x1401);
+    store64(args + 48, pixels);
+    let result = ffi_call_words(read, args);
+    render__tight_pixels(d, transfer, 1, 1);
+    syscall(11, transfer, 40, 0, 0, 0, 0);
+    syscall(11, args, 88, 0, 0, 0, 0);
+    let error = render_gl(d, "glGetError", 0, 0, 0, 0, 0, 0);
+    if error || result == -10001 || result == -10002 || result == -10003 {
+        return gui__fail("RGB framebuffer read failed");
+    }
+    return 1;
+}
