@@ -3,3 +3,4 @@ import "render/device.flex";
 import "render/numeric.flex";
 import "render/camera.flex";
 import "render/scene.flex";
+import "render/mesh.flex";

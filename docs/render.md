@@ -43,6 +43,20 @@ lists; index buffers, instance submission and automatic scene sorting are future
 extensions. `render_array`, `render_buffer`, `render_upload`, `render_layout` and
 `render_draw` provide the same primitives for existing retained-scene adapters.
 
+`render_packed_mesh(device)` creates the 36-byte layout used by DrivePuppy's
+procedural and baked meshes. Shader locations 0 through 3 receive a float3
+position, a float3 normal, a float2 UV, and a uint selected by the application.
+`render_packed_vertex` and `render_packed_box` append to a caller-owned buffer and
+return the next vertex index. Inputs use thousandths. Reserve 36 bytes per
+vertex and 36 vertices per box.
+
+`render_texture_rgb8(device,width,height,pixels,bytes,mipmaps)` creates a tracked
+RGB8 texture with linear filtering, clamp-to-edge wrapping, and optional mipmaps.
+`render_read_rgb8(device,x,y,width,height,pixels,bytes)` writes RGB from the active
+read framebuffer, bottom row first. Both accept tightly packed rows and restore
+the OpenGL pixel-transfer state. To retire a texture before closing the device,
+release it with `render_delete(device,4,texture)`.
+
 `render_matrix(material,pass,name,matrix)` binds an ordinary GLSL matrix uniform.
 `render_block(material,pass,name,binding,data,bytes)` owns/reuses uniform storage;
 this supports the compiler's `sw_blockN` resources. Blocks for different passes
@@ -69,6 +83,14 @@ ratios within 1/64..64. Setaworld retains its planetary origin/camera adapter.
 `render_identity` and `render_float` help construct matrices and binary32 vertex
 data. The extracted `render_f32` retains Setaworld's half-up conversion for
 positive denominators up to 1e9; `render_float` scales larger denominators first.
+
+`render_orthographic_view(matrix,center,basis,half_width,half_height,half_depth)`
+builds a world-to-clip transform from an explicit right/up/forward basis.
+Store the three basis vectors consecutively as int64 values in millionths.
+The center and half-extents are in millimetres. The forward vector points
+toward increasing clip Z. The application selects its light direction,
+shadow extents and any texel snapping.
+
 
 ## Shared effects and provenance
 

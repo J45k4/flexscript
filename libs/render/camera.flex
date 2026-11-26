@@ -41,3 +41,32 @@ fn render_camera(out,eye,target,up,width,height,focal,near,far) {
     render_float(out+56,-((tz/1000000)*(far+near)+2*far*near),1000*(far-near));render_float(out+60,-tz,1000000000);
     syscall(11,vectors,72,0,0,0,0);return 1;
 }
+
+// World-to-clip transform with explicit right, up and forward vectors stored
+// consecutively in basis as three int64 vectors in millionths. Center and
+// half-extents are in millimetres. Forward points toward increasing clip Z.
+fn render_orthographic_view(out, center, basis, half_width, half_height, half_depth) {
+    if !out || !center || !basis || half_width <= 0 || half_height <= 0 || half_depth <= 0 ||
+       half_width > 1000000000 || half_height > 1000000000 || half_depth > 1000000000 {
+        return 0;
+    }
+    render_identity(out);
+    let axis = 0;
+    while axis < 3 {
+        let extent = half_width;
+        if axis == 1 { extent = half_height; }
+        if axis == 2 { extent = half_depth; }
+        let vector = basis + axis * 24;
+        let dot = 0;
+        let i = 0;
+        while i < 3 {
+            let coefficient = load64(vector + i * 8);
+            render_float(out + i * 16 + axis * 4, coefficient, extent * 1000);
+            dot = dot + coefficient * load64(center + i * 8);
+            i = i + 1;
+        }
+        render_float(out + 48 + axis * 4, -(dot / 1000000), extent);
+        axis = axis + 1;
+    }
+    return out;
+}

@@ -5,6 +5,7 @@ fn main(argc,argv) {
     let target=load64(argv+8);let checking=argc==3;h_assert(h_isdir(target),"Platform directory must exist");
     let sources=h_args("libs/render.flex","libs/render/device.flex","libs/render/numeric.flex","libs/render/camera.flex","libs/render/scene.flex","lib/ffi-words.flex");
     h_add(sources,"libs/render/shaders/water-vertex.seta");h_add(sources,"libs/render/shaders/water-fragment.seta");h_add(sources,"libs/render/shaders/atmosphere-vertex.seta");h_add(sources,"libs/render/shaders/atmosphere-fragment.seta");
+    h_add(sources,"libs/render/mesh.flex");
     let files=j_object();let i=0;while i<h_count(sources) {
         let source=h_at(sources,i);let name=h_slice(source+5,h_len(source)-5);if i==5 {name="ffi-words.flex";}
         let content=h_read(source);let original=h_sha_bytes(content,h_len(content));
